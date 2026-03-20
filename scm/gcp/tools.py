@@ -249,6 +249,15 @@ TOOLS = {
         "group": "kubernetes",
         "status": "ready"
     },
+    "18": {
+        "name": "Cloud SQL Comparator",
+        "description": "Compara instancias Cloud SQL (edición, tipo, puertos, IPs) entre dos proyectos GCP",
+        "path": "cloud-sql/gcp_sql_comparator.py",
+        "args": ["--project1", "--project2", "--instance", "--output", "--all"],
+        "requirements": "cloud-sql/requirements.txt",
+        "group": "database",
+        "status": "ready"
+    },
     "A": {
         "name": "Ejecutar Todos (Checkers)",
         "description": "Ejecuta todos los checkers con proyecto default y output JSON",
@@ -678,6 +687,35 @@ def run_tool(tool_key: str):
         view = input().strip().lower()
         if view and view in ["all", "gateways", "routes", "services", "policies"]:
             args.extend(["--view", view])
+
+    if "--project1" in tool_args:
+        print(f"\n{Colors.BOLD}Proyecto GCP 1 - referencia [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        project1 = input().strip()
+        if not project1:
+            project1 = DEFAULT_PROJECT_ID
+            print(f"{Colors.GREEN}Usando proyecto 1: {project1}{Colors.ENDC}")
+        args.extend(["--project1", project1])
+
+    if "--project2" in tool_args:
+        print(f"\n{Colors.BOLD}Proyecto GCP 2 - a comparar:{Colors.ENDC} ", end="")
+        project2 = input().strip()
+        if not project2:
+            print(f"{Colors.FAIL}Se requiere el ID del segundo proyecto GCP.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        args.extend(["--project2", project2])
+
+    if "--instance" in tool_args:
+        print(f"\n{Colors.BOLD}Filtrar por nombre de instancia (vacío para todas):{Colors.ENDC} ", end="")
+        instance_filter = input().strip()
+        if instance_filter:
+            args.extend(["--instance", instance_filter])
+
+    if "--all" in tool_args:
+        print(f"\n{Colors.BOLD}¿Mostrar comparación de todos los atributos? (s/n) [n]:{Colors.ENDC} ", end="")
+        show_all = input().strip().lower()
+        if show_all == "s":
+            args.append("--all")
     
     if "--output" in tool_args or "-o" in tool_args:
         print(f"\n{Colors.BOLD}¿Exportar resultado? (json/csv/ninguno) [json]:{Colors.ENDC} ", end="")
