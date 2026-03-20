@@ -1,6 +1,6 @@
 # GCP Cloud SQL Tools
 
-Herramientas SRE para Cloud SQL en Google Cloud Platform: monitoreo de disco.
+Herramientas SCM para Cloud SQL en Google Cloud Platform: monitoreo de disco y comparación de instancias.
 
 > **Nota:** El connectivity checker fue movido a `gcp/connectivity/pod_connectivity_checker.py`
 
@@ -9,6 +9,7 @@ Herramientas SRE para Cloud SQL en Google Cloud Platform: monitoreo de disco.
 | Archivo | Descripción |
 |---------|-------------|
 | `gcp_disk_checker.py` | Monitorea el uso de disco de instancias Cloud SQL |
+| `gcp_sql_comparator.py` | Compara versiones y atributos entre proyectos GCP |
 | `requirements.txt` | Dependencias de Python |
 
 ---
@@ -135,7 +136,85 @@ gcloud config set project YOUR_PROJECT_ID
 
 ---
 
-## 🔌 Cloud SQL Connectivity Checker
+## � Cloud SQL Comparator
+
+Herramienta para comparar **versiones** de instancias Cloud SQL entre dos proyectos GCP.
+
+### Características
+
+- **Comparación de versiones por defecto** - Compara `POSTGRES_15`, `MYSQL_8_0`, etc.
+- **Comparación de atributos opcional** - Edition, Type, Port, Public/Private IP
+- **Listado automático** - Lista todas las instancias de ambos proyectos
+- **Sistema de Semáforos** - Indicadores visuales:
+  - ✅ **OK** - Valores coinciden
+  - 🚧 **DIFFERS** - Valores difieren (no crítico)
+  - ⛔ **MISMATCH** - Valores difieren (crítico: type, port)
+- **Detección de instancias faltantes** - Muestra instancias que solo existen en un proyecto
+- **Exportación CSV/JSON** - Reportes en carpeta `outcome/`
+
+### Uso
+
+```bash
+# Comparar solo VERSIONES (por defecto)
+python gcp_sql_comparator.py -p1 <PROJECT_1> -p2 <PROJECT_2>
+
+# Comparar TODOS los atributos
+python gcp_sql_comparator.py -p1 <PROJECT_1> -p2 <PROJECT_2> --all
+
+# Comparar atributos específicos
+python gcp_sql_comparator.py -p1 <PROJECT_1> -p2 <PROJECT_2> --attributes edition public_ip
+
+# Filtrar por instancia
+python gcp_sql_comparator.py -p1 <PROJECT_1> -p2 <PROJECT_2> --instance db-main
+
+# Exportar a JSON
+python gcp_sql_comparator.py -p1 <PROJECT_1> -p2 <PROJECT_2> --output json
+```
+
+### Argumentos
+
+| Argumento | Alias | Requerido | Descripción |
+|-----------|-------|-----------|-------------|
+| `--project1` | `-p1` | ✅ | ID del primer proyecto GCP (referencia) |
+| `--project2` | `-p2` | ✅ | ID del segundo proyecto GCP (a comparar) |
+| `--instance` | `-i` | ❌ | Filtrar por nombre de instancia específica |
+| `--all` | `-a` | ❌ | Muestra comparación de TODOS los atributos |
+| `--attributes` | - | ❌ | Atributos: `edition`, `type`, `port`, `public_ip`, `private_ip` |
+| `--output` | `-o` | ❌ | Exporta resultados (`csv` o `json`) |
+| `--timezone` | `-tz` | ❌ | Zona horaria (default: America/Mazatlan) |
+| `--debug` | - | ❌ | Modo debug para ver comandos ejecutados |
+| `--help` | `-h` | ❌ | Muestra documentación completa |
+
+### Ejemplo de Salida (Versiones)
+
+```
+🔍 Cloud SQL Instance Comparator
+🕐 Fecha y hora de revisión: 2026-03-20 11:30:00 (America/Mazatlan)
+📌 Proyecto 1: cpl-xxxx-yyyy-zzzz-99999999
+📌 Proyecto 2: cpl-aaaa-bbbb-cccc-11111111
+
+📊 Instancias encontradas: 3 en P1, 2 en P2
+
+╭─────────────── 📦 Comparación de Versiones de Base de Datos ───────────────╮
+│ # │ Instancia     │ 📌 cpl-xxxx...      │ 📌 cpl-aaaa...      │ Check │
+├───┼───────────────┼─────────────────────┼─────────────────────┼───────┤
+│ 1 │ db-main       │ POSTGRES_15         │ POSTGRES_15         │  ✅   │
+│ 2 │ db-analytics  │ POSTGRES_14         │ POSTGRES_15         │  ⛔   │
+│ 3 │ db-legacy     │ MYSQL_8_0           │ ❌ NO EXISTE        │  🚧   │
+╰────────────────────────────────────────────────────────────────────────────╯
+   Versiones: ✅ Iguales: 1 | ⛔ Diferentes: 2 | Total: 3
+```
+
+### Casos de Uso
+
+1. **Validación pre-migración** - Comparar configuración antes de migrar datos
+2. **Auditoría de seguridad** - Verificar que producción tenga IP pública deshabilitada
+3. **Consistencia de ambientes** - Asegurar que staging refleje producción
+4. **Documentación de diferencias** - Exportar comparaciones para reportes
+
+---
+
+## �🔌 Cloud SQL Connectivity Checker
 
 Herramienta para validar la conectividad desde un Pod de GKE hasta una instancia de Cloud SQL, verificando todos los elementos de la cadena de conectividad.
 
@@ -198,6 +277,7 @@ Internal SRE Tool - Softtek
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-03-20 | 3.0.0 | Nuevo: gcp_sql_comparator.py para comparar versiones y atributos entre proyectos |
 | 2026-02-20 | 2.3.1 | Spinner con barra de progreso durante procesamiento paralelo de instancias |
 | 2026-02-20 | 2.3.0 | Reporte JSON mejorado con metadatos (timestamp, timezone, summary) |
 | 2026-02-19 | 2.2.1 | Validación de conexión GCP al inicio (check_gcp_connection) en ambos scripts |
