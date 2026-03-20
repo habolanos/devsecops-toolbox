@@ -6,6 +6,9 @@
 .rustup
 .local
 
+#Secrets
+*.origin.json
+
 #IAs
 .windsurf
 

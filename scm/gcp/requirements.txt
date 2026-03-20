@@ -1,0 +1,3 @@
+# Requirements para GCP Tools Launcher
+# Interfaz moderna de terminal
+rich>=13.0.0
