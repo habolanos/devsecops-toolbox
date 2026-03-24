@@ -112,7 +112,7 @@ python tools.py
 
 ```
 ╔══════════════════════════════════════════════════╗
-║        🔷  Azure DevOps Tools  🔷                 ║
+║        🔷  Azure DevOps Tools  🔷               ║
 ║   v1.0.0  |  by Harold Adrian                    ║
 ╚══════════════════════════════════════════════════╝
   📄 config.json:  PAT: ✅ Configurado  |  Org: https://dev.azure.com/...
@@ -302,7 +302,7 @@ python azdo_release_cd_health.py --pat <PAT> --sort date --output json
 
 ```
   ┌────────────┐         ┌────────────┐         ┌────────────┐
-  │   DEV      │────▶    │   QA       │────▶    │   PROD     │
+  │   DEV      │────▶   │   QA        │────▶   │   PROD     │
   └────────────┘         └────────────┘         └────────────┘
   ✅ Stage PROD: PROD  |  Último deploy: 2025-03-10 14:22
 ```
