@@ -278,7 +278,28 @@ def print_header():
         print(f"{Colors.HEADER}{'='*60}")
         print(f"{'AZURE DEVOPS TOOLS':^60}")
         print(f"v{__version__} | by {__author__}".center(60))
-        print(f"{'='*60}{Colors.ENDC}\n")
+        print(f"{'='*60}{Colors.ENDC}")
+        _print_config_status_fallback()
+        print()
+
+
+def _print_config_status_fallback():
+    """Versión plain-text (sin Rich) del estado de config.json."""
+    cfg = load_config()
+    if not cfg:
+        print(f"{Colors.WARNING}⚠  config.json no encontrado — "
+              f"se pedirá PAT/org/proyecto en cada ejecución.{Colors.ENDC}")
+        print(f"{Colors.CYAN}   (copia config.json.template → config.json){Colors.ENDC}")
+        return
+    pat   = config_get(cfg, "organization", "pat")
+    org   = config_get(cfg, "organization", "url")
+    proj  = config_get(cfg, "organization", "project")
+    valid = pat and not pat.startswith("<")
+    pat_display = (f"{Colors.GREEN}✅ Configurado{Colors.ENDC}"
+                   if valid else f"{Colors.FAIL}❌ Sin configurar{Colors.ENDC}")
+    print(f"📄 config.json:  PAT: {pat_display}  "
+          f"| Org: {Colors.CYAN}{org}{Colors.ENDC}  "
+          f"| Proyecto: {Colors.CYAN}{proj}{Colors.ENDC}")
 
 
 def _print_config_status():
