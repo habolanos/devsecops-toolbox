@@ -67,7 +67,7 @@ DEFAULT_PR_STATUS = "active"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_STAGE_NAME = "validador"
 DEFAULT_TOP = 500
-DEFAULT_THREADS = 6
+DEFAULT_THREADS = 16
 API_VERSION = "7.1"
 
 
@@ -206,6 +206,37 @@ def get_pull_requests(
 def vsrm_base(org_url: str) -> str:
     """Transforma dev.azure.com/{org} → vsrm.dev.azure.com/{org} para Release APIs."""
     return org_url.replace("dev.azure.com", "vsrm.dev.azure.com")
+
+
+def get_all_pull_requests(
+    org: str, project: str,
+    target_branch: str, status: str, top: int,
+    headers: Dict, debug: bool = False,
+) -> List[Dict]:
+    """Descarga todos los PRs del proyecto en bloque (cross-repo, paginado).
+    1-N llamadas en lugar de 1 por repositorio.
+    """
+    url = f"{org}/{quote(project, safe='')}/_apis/git/pullrequests"
+    all_prs: List[Dict] = []
+    skip = 0
+    page_size = min(top, 1000)
+    while True:
+        params = {
+            "searchCriteria.targetRefName": f"refs/heads/{target_branch}",
+            "searchCriteria.status": status,
+            "$top": page_size,
+            "$skip": skip,
+            "api-version": API_VERSION,
+        }
+        data = api_get(url, headers, params, debug)
+        if not data:
+            break
+        batch = data.get("value", [])
+        all_prs.extend(batch)
+        if len(batch) < page_size or len(all_prs) >= top:
+            break
+        skip += page_size
+    return all_prs[:top]
 
 
 def get_release_definitions_list(
@@ -580,61 +611,109 @@ def main():
 
     console.print() if console else None
 
-    # ── 3. PRs por repo (paralelo) ───────────────────────────────────────────
-    cd_detail_cache: Dict[int, Optional[Dict]] = {}
-    cache_lock = threading.Lock()
-    all_rows: List[Dict] = []
+    # ── 3. PRs en bloque (cross-project) ───────────────────────────────────────
+    repo_ids_in_scope = {r["id"] for r in repos}
 
     if RICH_AVAILABLE and console:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task(
-                f"Consultando PRs → '{args.branch}' en {len(repos)} repos...",
-                total=len(repos)
+        with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
+            t = p.add_task("Descargando PRs del proyecto en bloque...", total=None)
+            raw_prs = get_all_pull_requests(
+                args.org, args.project, args.branch, args.status, args.top, headers, args.debug
             )
-            with ThreadPoolExecutor(max_workers=args.threads) as executor:
-                futures = {
-                    executor.submit(
-                        process_repo,
-                        repo, args.org, args.project, headers,
-                        args.branch, args.status, args.top, tz_name,
-                        release_defs_list, cd_detail_cache, cache_lock,
-                        args.stage_name, args.debug,
-                    ): repo["name"]
-                    for repo in repos
-                }
-                for future in as_completed(futures):
-                    try:
-                        all_rows.extend(future.result())
-                    except Exception:
-                        pass
-                    progress.advance(task)
+            prs_in_scope = [pr for pr in raw_prs if pr.get("repository", {}).get("id") in repo_ids_in_scope]
+            p.update(t, description=f"✅ {len(prs_in_scope)} PRs encontrados ({len(raw_prs)} totales en proyecto)")
     else:
-        with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            futures = {
-                executor.submit(
-                    process_repo,
-                    repo, args.org, args.project, headers,
-                    args.branch, args.status, args.top, tz_name,
-                    release_defs_list, cd_detail_cache, cache_lock,
-                    args.stage_name, args.debug,
-                ): repo["name"]
-                for repo in repos
-            }
-            done = 0
-            for future in as_completed(futures):
-                try:
-                    all_rows.extend(future.result())
-                except Exception:
-                    pass
-                done += 1
-                print(f"\r  Consultando PRs → '{args.branch}' en {len(repos)} repos... {done}/{len(repos)}", end="", flush=True)
-        print()
+        print("  Descargando PRs del proyecto en bloque...", end="", flush=True)
+        raw_prs = get_all_pull_requests(
+            args.org, args.project, args.branch, args.status, args.top, headers, args.debug
+        )
+        prs_in_scope = [pr for pr in raw_prs if pr.get("repository", {}).get("id") in repo_ids_in_scope]
+        print(f"\r  ✅ {len(prs_in_scope)} PRs encontrados ({len(raw_prs)} totales en proyecto)          ")
+
+    console.print() if console else None
+
+    # ── 4. Pre-fetch CD details solo para repos con PRs ───────────────────────
+    repos_with_prs_names = {pr.get("repository", {}).get("name", "") for pr in prs_in_scope}
+    cd_for_repo: Dict[str, Optional[Dict]] = {
+        name: find_cd_for_repo(name, release_defs_list)
+        for name in repos_with_prs_names
+    }
+    cd_ids_needed = {cd["id"] for cd in cd_for_repo.values() if cd}
+
+    cd_details: Dict[int, Optional[Dict]] = {}
+    if cd_ids_needed:
+        if RICH_AVAILABLE and console:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+            ) as p:
+                t = p.add_task(f"Cargando detalles de {len(cd_ids_needed)} pipelines CD...", total=len(cd_ids_needed))
+                with ThreadPoolExecutor(max_workers=args.threads) as executor:
+                    futs = {
+                        executor.submit(
+                            get_release_definition_detail,
+                            args.org, args.project, def_id, headers, args.debug,
+                        ): def_id
+                        for def_id in cd_ids_needed
+                    }
+                    for fut in as_completed(futs):
+                        def_id = futs[fut]
+                        try:
+                            cd_details[def_id] = fut.result()
+                        except Exception:
+                            cd_details[def_id] = None
+                        p.advance(t)
+        else:
+            print(f"  Cargando detalles de {len(cd_ids_needed)} pipelines CD...", end="", flush=True)
+            with ThreadPoolExecutor(max_workers=args.threads) as executor:
+                futs = {
+                    executor.submit(
+                        get_release_definition_detail,
+                        args.org, args.project, def_id, headers, args.debug,
+                    ): def_id
+                    for def_id in cd_ids_needed
+                }
+                for fut in as_completed(futs):
+                    def_id = futs[fut]
+                    try:
+                        cd_details[def_id] = fut.result()
+                    except Exception:
+                        cd_details[def_id] = None
+            print(f"\r  ✅ {len(cd_ids_needed)} pipelines CD cargados                              ")
+
+    console.print() if console else None
+
+    # ── 5. Construir filas (sin HTTP) ────────────────────────────────────
+    all_rows: List[Dict] = []
+    for pr in prs_in_scope:
+        repo_info = pr.get("repository", {})
+        repo_name = repo_info.get("name", "")
+        pr_id = pr.get("pullRequestId")
+
+        cd_summary = cd_for_repo.get(repo_name)
+        has_cd = cd_summary is not None
+        cd_name = cd_summary["name"] if cd_summary else "—"
+        cd_has_stage = False
+        if cd_summary:
+            detail = cd_details.get(cd_summary["id"])
+            if detail:
+                cd_has_stage = has_stage(detail, args.stage_name)
+
+        all_rows.append({
+            "repository": repo_name,
+            "pr_id": pr_id,
+            "title": pr.get("title", ""),
+            "status": pr.get("status", ""),
+            "created_by": pr.get("createdBy", {}).get("displayName", ""),
+            "date": get_pr_date(pr, tz_name),
+            "url": build_pr_url(args.org, args.project, repo_name, pr_id),
+            "has_cd": has_cd,
+            "cd_name": cd_name,
+            "cd_has_stage": cd_has_stage,
+        })
 
     # Ordenar por fecha descendente
     all_rows.sort(key=lambda r: r["date"], reverse=True)
