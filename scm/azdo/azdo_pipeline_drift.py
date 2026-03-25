@@ -28,6 +28,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import quote
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -130,8 +131,12 @@ def api_get(
 ) -> Optional[Any]:
     try:
         r = requests.get(url, headers=headers, params=params, timeout=30)
-        if debug and r.status_code >= 400:
-            print(f"[DEBUG] {r.status_code} → {url}\n{r.text[:400]}")
+        if r.status_code >= 400:
+            _api_label = url.split("/_apis")[0].split("/")[-1] if "/_apis" in url else url
+            print(f"  ⚠  HTTP {r.status_code} ({_api_label})")
+            if debug:
+                print(f"[DEBUG] URL: {url}")
+                print(f"[DEBUG] Body: {r.text[:400]}")
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -175,7 +180,7 @@ def get_release_definitions(
     org: str, project: str, headers: Dict, debug: bool
 ) -> List[Dict]:
     vsrm = vsrm_base(org)
-    url  = f"{vsrm}/{project}/_apis/release/definitions"
+    url  = f"{vsrm}/{quote(project, safe='')}/_apis/release/definitions"
     data = api_get(url, headers, {"api-version": API_VERSION_DEFS, "$top": 500}, debug)
     return (data or {}).get("value", [])
 
@@ -184,7 +189,7 @@ def get_release_definition_detail(
     org: str, project: str, def_id: int, headers: Dict, debug: bool
 ) -> Optional[Dict]:
     vsrm = vsrm_base(org)
-    url  = f"{vsrm}/{project}/_apis/release/definitions/{def_id}"
+    url  = f"{vsrm}/{quote(project, safe='')}/_apis/release/definitions/{def_id}"
     return api_get(url, headers,
                    {"api-version": API_VERSION_DEFS, "$expand": "environments"}, debug)
 
@@ -199,7 +204,7 @@ def get_last_release_full(
     vsrm = vsrm_base(org)
 
     list_data = api_get(
-        f"{vsrm}/{project}/_apis/release/releases", headers,
+        f"{vsrm}/{quote(project, safe='')}/_apis/release/releases", headers,
         {
             "api-version": API_VERSION_RELS,
             "definitionId": def_id,
@@ -214,7 +219,7 @@ def get_last_release_full(
 
     rel_id = releases[0]["id"]
     return api_get(
-        f"{vsrm}/{project}/_apis/release/releases/{rel_id}",
+        f"{vsrm}/{quote(project, safe='')}/_apis/release/releases/{rel_id}",
         headers,
         {"api-version": API_VERSION_RELS},
         debug,

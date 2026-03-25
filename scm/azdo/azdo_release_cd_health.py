@@ -36,6 +36,7 @@ import json
 import os
 import time
 from collections import Counter
+from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -137,8 +138,12 @@ def make_headers(pat: str) -> Dict:
 def api_get(url: str, headers: Dict, params: Dict = None, debug: bool = False) -> Optional[Any]:
     try:
         r = requests.get(url, headers=headers, params=params, timeout=30)
-        if debug and r.status_code >= 400:
-            print(f"[DEBUG] {r.status_code} → {url}\n[DEBUG] {r.text[:400]}")
+        if r.status_code >= 400:
+            _api_label = url.split("/_apis")[0].split("/")[-1] if "/_apis" in url else url
+            print(f"  ⚠  HTTP {r.status_code} ({_api_label})")
+            if debug:
+                print(f"[DEBUG] URL: {url}")
+                print(f"[DEBUG] Body: {r.text[:400]}")
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -157,7 +162,7 @@ def vsrm_base(org_url: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_release_defs_list(org: str, project: str, headers: Dict, debug: bool) -> List[Dict]:
     base = vsrm_base(org)
-    data = api_get(f"{base}/{project}/_apis/release/definitions",
+    data = api_get(f"{base}/{quote(project, safe='')}/_apis/release/definitions",
                    headers, {"api-version": API_VERSION_DEFS, "$top": 500}, debug)
     return data.get("value", []) if data else []
 
@@ -167,7 +172,7 @@ def get_release_def_detail(
 ) -> Optional[Dict]:
     base = vsrm_base(org)
     return api_get(
-        f"{base}/{project}/_apis/release/definitions/{def_id}",
+        f"{base}/{quote(project, safe='')}/_apis/release/definitions/{def_id}",
         headers, {"api-version": API_VERSION_DEFS}, debug
     )
 
@@ -177,7 +182,7 @@ def get_latest_releases(
 ) -> List[Dict]:
     base = vsrm_base(org)
     data = api_get(
-        f"{base}/{project}/_apis/release/releases",
+        f"{base}/{quote(project, safe='')}/_apis/release/releases",
         headers,
         {
             "definitionId": def_id,

@@ -89,8 +89,8 @@ TOOLS: Dict = {
         "name":        "PR Master Checker",
         "description": "Lista PRs hacia master/main con pipeline CD asociado y stage 'validador'",
         "path":        "azdo_pr_master_checker.py",
-        "args":        ["--pat", "--org", "--project", "--filter", "--target-branch",
-                        "--status", "--stage", "--output"],
+        "args":        ["--pat", "--org", "--project", "--filter", "--branch",
+                        "--status", "--stage-name", "--output"],
         "group":       "pr",
         "status":      "ready",
     },
@@ -485,10 +485,10 @@ def run_tool(tool_key: str):
         if val:
             extra += ["--filter", val]
 
-    if "--target-branch" in tool_args:
+    if "--branch" in tool_args:
         cfg_branch = config_get(cfg, "tools", "pr_master_checker", "target_branch", default="master")
         val = prompt("Branch destino de los PRs", default=cfg_branch)
-        extra += ["--target-branch", val]
+        extra += ["--branch", val]
 
     if "--status" in tool_args:
         cfg_status = config_get(cfg, "tools", "pr_master_checker", "pr_status", default="all")
@@ -496,10 +496,10 @@ def run_tool(tool_key: str):
         val = input().strip() or cfg_status
         extra += ["--status", val]
 
-    if "--stage" in tool_args:
+    if "--stage-name" in tool_args:
         cfg_stage = config_get(cfg, "tools", "pr_master_checker", "stage_name", default="validador")
         val = prompt("Nombre del stage a buscar en CD", default=cfg_stage)
-        extra += ["--stage", val]
+        extra += ["--stage-name", val]
 
     if "--sort" in tool_args:
         if tool_key == "3":

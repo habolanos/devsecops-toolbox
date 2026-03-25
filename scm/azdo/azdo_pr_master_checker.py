@@ -31,6 +31,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import quote
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -66,7 +67,7 @@ DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_STAGE_NAME = "validador"
 DEFAULT_TOP = 500
 DEFAULT_THREADS = 6
-API_VERSION = "7.2"
+API_VERSION = "7.1"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -158,9 +159,12 @@ def make_headers(pat: str) -> Dict:
 def api_get(url: str, headers: Dict, params: Dict = None, debug: bool = False) -> Optional[Any]:
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
-        if debug and resp.status_code >= 400:
-            print(f"[DEBUG] {resp.status_code} → {url}")
-            print(f"[DEBUG] {resp.text[:300]}")
+        if resp.status_code >= 400:
+            _api_label = url.split("/_apis")[0].split("/")[-1] if "/_apis" in url else url
+            print(f"  ⚠  HTTP {resp.status_code} ({_api_label})")
+            if debug:
+                print(f"[DEBUG] URL: {url}")
+                print(f"[DEBUG] Body: {resp.text[:300]}")
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.HTTPError as e:
@@ -177,7 +181,7 @@ def api_get(url: str, headers: Dict, params: Dict = None, debug: bool = False) -
 # API CALLS
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_repositories(org: str, project: str, headers: Dict, debug: bool = False) -> List[Dict]:
-    url = f"{org}/{project}/_apis/git/repositories"
+    url = f"{org}/{quote(project, safe='')}/_apis/git/repositories"
     data = api_get(url, headers, {"api-version": API_VERSION}, debug)
     return data.get("value", []) if data else []
 
@@ -187,7 +191,7 @@ def get_pull_requests(
     target_branch: str, status: str, top: int,
     headers: Dict, debug: bool = False
 ) -> List[Dict]:
-    url = f"{org}/{project}/_apis/git/repositories/{repo_id}/pullrequests"
+    url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/pullrequests"
     params = {
         "searchCriteria.targetRefName": f"refs/heads/{target_branch}",
         "searchCriteria.status": status,
@@ -202,7 +206,7 @@ def get_release_definitions_list(
     org: str, project: str, headers: Dict, debug: bool = False
 ) -> List[Dict]:
     """Lista resumida de release definitions (ID + nombre)."""
-    url = f"{org}/{project}/_apis/release/definitions"
+    url = f"{org}/{quote(project, safe='')}/_apis/release/definitions"
     params = {"api-version": f"{API_VERSION}-preview.4", "$top": 500}
     data = api_get(url, headers, params, debug)
     return data.get("value", []) if data else []
@@ -212,7 +216,7 @@ def get_release_definition_detail(
     org: str, project: str, def_id: int, headers: Dict, debug: bool = False
 ) -> Optional[Dict]:
     """Detalle completo de una release definition (incluye environments/stages)."""
-    url = f"{org}/{project}/_apis/release/definitions/{def_id}"
+    url = f"{org}/{quote(project, safe='')}/_apis/release/definitions/{def_id}"
     params = {"api-version": f"{API_VERSION}-preview.4"}
     return api_get(url, headers, params, debug)
 
@@ -547,7 +551,8 @@ def main():
         print(f"{len(repos)} repositorios encontrados")
 
     if not repos:
-        msg = "❌ Sin repositorios. Verifica URL de org, nombre de proyecto y PAT."
+        msg = ("❌ Sin repositorios. Verifica URL de org, nombre de proyecto y PAT.\n"
+               "   💡 Si el proyecto tiene espacios (ej: 'Cadena de Suministros') ingrésalo con espacios, no con guiones bajos.")
         if console:
             console.print(f"[red]{msg}[/]")
         else:

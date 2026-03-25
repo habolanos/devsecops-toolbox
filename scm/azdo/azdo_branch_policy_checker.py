@@ -28,6 +28,7 @@ import json
 import os
 import time
 from datetime import datetime, timezone
+from urllib.parse import quote
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
@@ -57,7 +58,7 @@ __author__ = "Harold Adrian"
 DEFAULT_ORG_URL  = "https://dev.azure.com/Coppel-Retail"
 DEFAULT_PROJECT  = "Compras.RMI"
 DEFAULT_TIMEZONE = "America/Mazatlan"
-API_VERSION      = "7.2"
+API_VERSION      = "7.1"
 
 # Nombres canónicos y sus variantes en refs/heads/
 BRANCH_ALIASES: Dict[str, List[str]] = {
@@ -163,9 +164,12 @@ def api_get(
 ) -> Optional[Any]:
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
-        if debug and resp.status_code >= 400:
-            print(f"[DEBUG] {resp.status_code} → {url}")
-            print(f"[DEBUG] Body: {resp.text[:400]}")
+        if resp.status_code >= 400:
+            _api_label = url.split("/_apis")[0].split("/")[-1] if "/_apis" in url else url
+            print(f"  ⚠  HTTP {resp.status_code} ({_api_label})")
+            if debug:
+                print(f"[DEBUG] URL: {url}")
+                print(f"[DEBUG] Body: {resp.text[:400]}")
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.HTTPError as e:
@@ -184,7 +188,7 @@ def api_get(
 def get_repositories(
     org: str, project: str, headers: Dict, debug: bool = False
 ) -> List[Dict]:
-    url  = f"{org}/{project}/_apis/git/repositories"
+    url  = f"{org}/{quote(project, safe='')}/_apis/git/repositories"
     data = api_get(url, headers, {"api-version": API_VERSION}, debug)
     return data.get("value", []) if data else []
 
@@ -196,7 +200,7 @@ def get_policy_configurations(
     Obtiene TODAS las policy configurations del proyecto en una sola llamada.
     Incluye políticas con scope de repo específico Y políticas globales (sin repositoryId).
     """
-    url    = f"{org}/{project}/_apis/policy/configurations"
+    url    = f"{org}/{quote(project, safe='')}/_apis/policy/configurations"
     params = {"api-version": API_VERSION, "$top": 1000}
     data   = api_get(url, headers, params, debug)
     return data.get("value", []) if data else []
