@@ -63,6 +63,7 @@ $ExcludedFileNames = [System.Collections.Generic.HashSet[string]]::new(
 )
 @(
     'config.json',                   # Secretos - distribuir solo config.json.template
+    'make_dist.ps1',                 # Script de empaquetado - no incluir en el distribuible
     '.gitignore', '.gitconfig',
     '.bash_history', '.bash_logout', '.bashrc', '.profile',
     '.env', 'taged.cache', '.lesshst', '.viminfo'
