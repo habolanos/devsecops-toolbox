@@ -89,7 +89,7 @@ TOOLS: Dict = {
         "name":        "PR Master Checker",
         "description": "Lista PRs hacia master/main con pipeline CD asociado y stage 'validador'",
         "path":        "azdo_pr_master_checker.py",
-        "args":        ["--pat", "--org", "--project", "--filter", "--branch",
+        "args":        ["--pat", "--org", "--project", "--repo", "--branch",
                         "--status", "--stage-name", "--output"],
         "group":       "pr",
         "status":      "ready",
@@ -98,7 +98,7 @@ TOOLS: Dict = {
         "name":        "Branch Policy Checker",
         "description": "Audita políticas de rama (master/main, QA, develop) por repositorio",
         "path":        "azdo_branch_policy_checker.py",
-        "args":        ["--pat", "--org", "--project", "--filter", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--output"],
         "group":       "policy",
         "status":      "ready",
     },
@@ -106,7 +106,7 @@ TOOLS: Dict = {
         "name":        "Release CD Health",
         "description": "Score de salud de Release Pipelines CD: recencia + estabilidad + consistencia",
         "path":        "azdo_release_cd_health.py",
-        "args":        ["--pat", "--org", "--project", "--filter", "--sort",
+        "args":        ["--pat", "--org", "--project", "--repo", "--sort",
                         "--diagram", "--output"],
         "group":       "release",
         "status":      "ready",
@@ -115,14 +115,23 @@ TOOLS: Dict = {
         "name":        "Pipeline Drift Analyzer",
         "description": "Detecta drift entre pipeline actual y snapshot del último release (stages/vars/approvals/tasks)",
         "path":        "azdo_pipeline_drift.py",
-        "args":        ["--pat", "--org", "--project", "--filter", "--severity",
+        "args":        ["--pat", "--org", "--project", "--repo", "--severity",
                         "--sort", "--output"],
         "group":       "drift",
         "status":      "ready",
     },
+    "5": {
+        "name":        "Release Deep Dive",
+        "description": "Análisis profundo de un Release Definition por ID: PRs + Políticas + CD Health + Drift",
+        "path":        "azdo_release_deep_dive.py",
+        "args":        ["--pat", "--org", "--project", "--release-id", "--branch",
+                        "--stage-name", "--output"],
+        "group":       "release",
+        "status":      "ready",
+    },
     "A": {
         "name":        "Ejecutar Todos",
-        "description": "Ejecuta todas las herramientas con la misma configuración",
+        "description": "Ejecuta todas las herramientas con la misma configuración (sin Deep Dive)",
         "auto_tools":  ["1", "2", "3", "4"],
         "group":       "system",
         "status":      "ready",
@@ -480,10 +489,19 @@ def run_tool(tool_key: str):
     extra += ["--project", params["project"]]
 
     # ── Parámetros específicos por herramienta ────────────────────────────────
-    if "--filter" in tool_args:
-        val = prompt("Filtrar por nombre (vacío = todos)", default="")
+    if "--release-id" in tool_args:
+        print(f"{Colors.BOLD}Release Definition ID (obligatorio):{Colors.ENDC} ", end="")
+        val = input().strip()
+        if not val or not val.isdigit():
+            print(f"{Colors.RED}❌ El Release ID es obligatorio y debe ser un número entero.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        extra += ["--release-id", val]
+
+    if "--repo" in tool_args:
+        val = prompt("Filtrar por repo/nombre (vacío = todos)", default="")
         if val:
-            extra += ["--filter", val]
+            extra += ["--repo", val]
 
     if "--branch" in tool_args:
         cfg_branch = config_get(cfg, "tools", "pr_master_checker", "target_branch", default="master")

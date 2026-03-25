@@ -108,8 +108,8 @@ def get_args() -> argparse.Namespace:
                    help=f"Nombre del proyecto (default: {DEFAULT_PROJECT})")
     p.add_argument("--pat", required=True,
                    help="Personal Access Token con permiso Release (Read)")
-    p.add_argument("--filter", "-f", default=None,
-                   help="Filtrar pipelines por nombre (substring, case insensitive)")
+    p.add_argument("--filter", "--repo", "-f", "-r", dest="filter", default=None,
+                   help="Filtrar pipelines por nombre/repo (substring, case insensitive)")
     p.add_argument("--output", "-o", choices=["json", "csv", "excel"], default=None,
                    help="Exportar resultados (json / csv / excel)")
     p.add_argument("--timezone", "-tz", default=DEFAULT_TIMEZONE,
@@ -504,6 +504,7 @@ def print_rich_table(console: "Console", rows: List[Dict], tz_name: str):
         show_lines=False,
     )
     tbl.add_column("#",             style="dim",        width=4,  justify="right")
+    tbl.add_column("Def ID",        style="cyan",       width=8,  justify="right")
     tbl.add_column("Pipeline CD",   style="bold white", min_width=26)
     tbl.add_column("Stages",        min_width=28, max_width=52)
     tbl.add_column("Consistencia",  justify="center",   width=14)
@@ -521,6 +522,7 @@ def print_rich_table(console: "Console", rows: List[Dict], tz_name: str):
         )
         tbl.add_row(
             str(idx),
+            str(row["id"]),
             row["name"],
             fmt_stages_rich(row["stages"]),
             cons_cell_rich(row["consistency"]),
@@ -980,13 +982,13 @@ def main():
         if args.diagram:
             print_pipeline_diagrams(console, rows, tz_name)
     else:
-        hdr = f"{'#':>4}  {'Pipeline':<35} {'Stages':<32} {'Cons':^10} {'Último PROD':^20} {'Int':^5} {'Score':>6}  Rating"
+        hdr = f"{'#':>4}  {'ID':>7}  {'Pipeline':<35} {'Stages':<32} {'Cons':^10} {'Último PROD':^20} {'Int':^5} {'Score':>6}  Rating"
         print(f"\n{'='*len(hdr)}\n{hdr}\n{'='*len(hdr)}")
         for idx, row in enumerate(rows, 1):
             stg = " → ".join(row["stages"])[:30]
             dt  = row["last_prod_dt"].strftime("%Y-%m-%d") if row["last_prod_dt"] else "Nunca"
             att = str(row["prod_attempts"]) if row["prod_attempts"] is not None else "—"
-            print(f"{idx:>4}  {row['name']:<35} {stg:<32} {row['consistency']:^10} "
+            print(f"{idx:>4}  {row['id']:>7}  {row['name']:<35} {stg:<32} {row['consistency']:^10} "
                   f"{dt:^20} {att:^5} {row['score']:>6}  {row['rating_emoji']} {row['rating_label']}")
         avg = round(sum(r["score"] for r in rows) / len(rows)) if rows else 0
         print(f"\nTotal: {total_defs} | Score promedio: {avg}/100 | Tiempo: {elapsed:.2f}s\n")

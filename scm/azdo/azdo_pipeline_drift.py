@@ -100,8 +100,8 @@ def get_args() -> argparse.Namespace:
                    help=f"Nombre del proyecto (default: {DEFAULT_PROJECT})")
     p.add_argument("--pat", required=True,
                    help="Personal Access Token con permiso Release (Read)")
-    p.add_argument("--filter", "-f", default=None,
-                   help="Filtrar pipelines por nombre (substring, case insensitive)")
+    p.add_argument("--filter", "--repo", "-f", "-r", dest="filter", default=None,
+                   help="Filtrar pipelines por nombre/repo (substring, case insensitive)")
     p.add_argument("--severity", "-s",
                    choices=["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"], default=None,
                    help="Mostrar solo pipelines con severidad >= especificada")
