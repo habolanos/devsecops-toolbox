@@ -478,6 +478,33 @@ outcome/
 
 ---
 
+## Generación de distribución
+
+El script `make_dist.ps1` (ubicado en la raíz de `devsecops-toolbox/`) empaqueta todos los archivos del proyecto en un ZIP distribuible.
+
+```powershell
+# Uso básico
+.\make_dist.ps1
+
+# Con carpeta de salida personalizada y lista de excluidos
+.\make_dist.ps1 -OutputDir "C:\entregas" -ShowExcluded
+```
+
+**Exclusiones automáticas:**
+
+| Categoría | Excluido |
+|---|---|
+| Control de versiones | `.git/`, `.github/` |
+| Secretos | `config.json` (se incluye `config.json.template`) |
+| Entornos Python | `.venv/`, `venv/`, `__pycache__/`, `*.pyc` |
+| Resultados | `outcome/` (logs, reportes, ZIPs anteriores) |
+| IDE / sistema | `.vscode/`, `.windsurf/`, `*.log` |
+| Office | `*.xlsx`, `*.docx` |
+
+El ZIP se genera en `outcome/devsecops-toolbox_dist_<YYYYMMDD_HHMMSS>.zip`.
+
+---
+
 ## Autor
 
 **Harold Adrian** — DevSecOps Toolbox  
@@ -496,4 +523,5 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 | 2026-03-25 | 1.1.0 | Refactor PR fetch: endpoint cross-project bulk (1 llamada vs N repos) | `azdo_pr_master_checker.py` |
 | 2026-03-25 | 1.1.0 | Pre-fetch paralelo de CD details; `DEFAULT_THREADS` aumentado a 16 | `azdo_pr_master_checker.py` |
 | 2026-03-25 | 1.0.1 | API version corregida a `7.1` para repos/políticas (fix HTTP 400) | `azdo_pr_master_checker.py`, `azdo_branch_policy_checker.py` |
+| 2026-03-25 | 1.3.1 | Script PowerShell `make_dist.ps1` para generar ZIP distribuible | `make_dist.ps1` (nuevo en raíz) |
 | 2026-03-25 | 1.0.1 | Default PR status cambiado de `all` a `active` | `azdo_pr_master_checker.py`, `config.json.template`, `tools.py` |
