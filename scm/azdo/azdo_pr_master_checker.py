@@ -30,6 +30,7 @@ import csv
 import json
 import os
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
 from datetime import datetime, timezone
@@ -62,7 +63,7 @@ __author__ = "Harold Adrian"
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
 DEFAULT_TARGET_BRANCH = "master"
-DEFAULT_PR_STATUS = "all"
+DEFAULT_PR_STATUS = "active"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_STAGE_NAME = "validador"
 DEFAULT_TOP = 500
@@ -202,12 +203,18 @@ def get_pull_requests(
     return data.get("value", []) if data else []
 
 
+def vsrm_base(org_url: str) -> str:
+    """Transforma dev.azure.com/{org} → vsrm.dev.azure.com/{org} para Release APIs."""
+    return org_url.replace("dev.azure.com", "vsrm.dev.azure.com")
+
+
 def get_release_definitions_list(
     org: str, project: str, headers: Dict, debug: bool = False
 ) -> List[Dict]:
     """Lista resumida de release definitions (ID + nombre)."""
-    url = f"{org}/{quote(project, safe='')}/_apis/release/definitions"
-    params = {"api-version": f"{API_VERSION}-preview.4", "$top": 500}
+    base = vsrm_base(org)
+    url = f"{base}/{quote(project, safe='')}/_apis/release/definitions"
+    params = {"api-version": "7.2-preview.4", "$top": 500}
     data = api_get(url, headers, params, debug)
     return data.get("value", []) if data else []
 
@@ -216,8 +223,9 @@ def get_release_definition_detail(
     org: str, project: str, def_id: int, headers: Dict, debug: bool = False
 ) -> Optional[Dict]:
     """Detalle completo de una release definition (incluye environments/stages)."""
-    url = f"{org}/{quote(project, safe='')}/_apis/release/definitions/{def_id}"
-    params = {"api-version": f"{API_VERSION}-preview.4"}
+    base = vsrm_base(org)
+    url = f"{base}/{quote(project, safe='')}/_apis/release/definitions/{def_id}"
+    params = {"api-version": "7.2-preview.4"}
     return api_get(url, headers, params, debug)
 
 
@@ -387,9 +395,9 @@ def print_rich_table(console: "Console", rows: List[Dict], stage_name: str, bran
     table.add_column("PR", justify="center", width=7)
     table.add_column("Estado", justify="center", width=11)
     table.add_column("Fecha/Hora", justify="center", width=20)
-    table.add_column("Autor", min_width=14, max_width=20)
-    table.add_column("Título", min_width=22, max_width=38)
-    table.add_column("Pipeline CD", min_width=22, max_width=35)
+    table.add_column("Autor", min_width=14)
+    table.add_column("Título", min_width=22)
+    table.add_column("Pipeline CD", min_width=22)
     table.add_column(f"Stage '{stage_name}'", justify="center", width=12)
 
     status_style = {
@@ -411,18 +419,14 @@ def print_rich_table(console: "Console", rows: List[Dict], stage_name: str, bran
         else:
             stage_cell = "[bold red]⛔[/bold red]"
 
-        title_str = row["title"]
-        if len(title_str) > 38:
-            title_str = title_str[:35] + "..."
-
         table.add_row(
             str(idx),
             row["repository"],
             str(row["pr_id"]),
             f"[{st_color}]{st}[/{st_color}]",
             row["date"],
-            row["created_by"][:20],
-            title_str,
+            row["created_by"],
+            row["title"],
             cd_cell,
             stage_cell,
         )
@@ -577,7 +581,6 @@ def main():
     console.print() if console else None
 
     # ── 3. PRs por repo (paralelo) ───────────────────────────────────────────
-    import threading
     cd_detail_cache: Dict[int, Optional[Dict]] = {}
     cache_lock = threading.Lock()
     all_rows: List[Dict] = []
@@ -612,14 +615,26 @@ def main():
                         pass
                     progress.advance(task)
     else:
-        for repo in repos:
-            rows = process_repo(
-                repo, args.org, args.project, headers,
-                args.branch, args.status, args.top, tz_name,
-                release_defs_list, cd_detail_cache, cache_lock,
-                args.stage_name, args.debug,
-            )
-            all_rows.extend(rows)
+        with ThreadPoolExecutor(max_workers=args.threads) as executor:
+            futures = {
+                executor.submit(
+                    process_repo,
+                    repo, args.org, args.project, headers,
+                    args.branch, args.status, args.top, tz_name,
+                    release_defs_list, cd_detail_cache, cache_lock,
+                    args.stage_name, args.debug,
+                ): repo["name"]
+                for repo in repos
+            }
+            done = 0
+            for future in as_completed(futures):
+                try:
+                    all_rows.extend(future.result())
+                except Exception:
+                    pass
+                done += 1
+                print(f"\r  Consultando PRs → '{args.branch}' en {len(repos)} repos... {done}/{len(repos)}", end="", flush=True)
+        print()
 
     # Ordenar por fecha descendente
     all_rows.sort(key=lambda r: r["date"], reverse=True)

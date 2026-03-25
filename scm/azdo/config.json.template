@@ -20,7 +20,7 @@
     "_info": "Valores por defecto compartidos entre todas las herramientas. Se pueden sobreescribir por herramienta.",
     "timezone":      "America/Mazatlan",
     "threads":       8,
-    "output_format": null,
+    "output_format": "csv",
     "debug":         false
   },
 
@@ -28,7 +28,7 @@
     "pr_master_checker": {
       "_info": "azdo_pr_master_checker.py — Lista PRs hacia master con pipeline CD y stage validador.",
       "target_branch": "master",
-      "pr_status":     "all",
+      "pr_status":     "active",
       "stage_name":    "validador",
       "top_prs":       500,
       "threads":       6

@@ -491,7 +491,7 @@ def run_tool(tool_key: str):
         extra += ["--branch", val]
 
     if "--status" in tool_args:
-        cfg_status = config_get(cfg, "tools", "pr_master_checker", "pr_status", default="all")
+        cfg_status = config_get(cfg, "tools", "pr_master_checker", "pr_status", default="active")
         print(f"{Colors.BOLD}Estado de PRs (all/active/completed/abandoned) [{Colors.CYAN}{cfg_status}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         val = input().strip() or cfg_status
         extra += ["--status", val]
