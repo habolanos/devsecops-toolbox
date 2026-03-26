@@ -39,7 +39,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__     = "1.0.0"
+__version__     = "1.1.0"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -72,14 +72,15 @@ class Colors:
 # GRUPOS DE HERRAMIENTAS
 # ═══════════════════════════════════════════════════════════════════════════════
 TOOL_GROUPS = {
-    "pr":      {"name": "Pull Requests",      "emoji": "📬", "color": "cyan"},
-    "policy":  {"name": "Políticas de Rama",  "emoji": "🔒", "color": "yellow"},
-    "release": {"name": "Release Pipelines",  "emoji": "🚀", "color": "green"},
-    "drift":   {"name": "Drift Analysis",     "emoji": "🔍", "color": "magenta"},
-    "system":  {"name": "Sistema",            "emoji": "⚙️",  "color": "white"},
+    "pr":         {"name": "Pull Requests",      "emoji": "📬", "color": "cyan"},
+    "policy":     {"name": "Políticas de Rama",  "emoji": "🔒", "color": "yellow"},
+    "release":    {"name": "Release Pipelines",  "emoji": "🚀", "color": "green"},
+    "drift":      {"name": "Drift Analysis",     "emoji": "🔍", "color": "magenta"},
+    "validation": {"name": "Validación",         "emoji": "✅", "color": "blue"},
+    "system":     {"name": "Sistema",            "emoji": "⚙️",  "color": "white"},
 }
 
-GROUP_ORDER = ["pr", "policy", "release", "drift", "system"]
+GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "system"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HERRAMIENTAS DISPONIBLES
@@ -127,6 +128,16 @@ TOOLS: Dict = {
         "args":        ["--pat", "--org", "--project", "--release-id", "--branch",
                         "--stage-name", "--output"],
         "group":       "release",
+        "status":      "ready",
+    },
+    "6": {
+        "name":        "Task Validator",
+        "description": "Validación DevSecOps: imágenes Docker, rollback, credenciales GIT, ConfigMap vs Repo",
+        "path":        "azdo_task_validator.py",
+        "args":        ["--pat", "--org", "--project", "--release-id",
+                        "--image-actual", "--image-nueva", "--gcp-project",
+                        "--group-id", "--artifact-name", "--namespace", "--output"],
+        "group":       "validation",
         "status":      "ready",
     },
     "A": {

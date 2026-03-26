@@ -14,6 +14,7 @@ devsecops-toolbox/scm/azdo/
 ├── azdo_release_cd_health.py      # Herramienta 3 — Score de salud de Release Pipelines
 ├── azdo_pipeline_drift.py         # Herramienta 4 — Detección de drift en pipelines CD
 ├── azdo_release_deep_dive.py      # Herramienta 5 — Deep-dive por Release Definition ID
+├── azdo_task_validator.py         # Herramienta 6 — Validación DevSecOps de releases
 ├── config.json.template           # Plantilla de configuración (copiala como config.json)
 ├── requirements.txt               # Dependencias Python compartidas
 └── outcome/                       # Carpeta autogenerada con los reportes exportados
@@ -96,8 +97,9 @@ Edita `config.json` con tus valores reales. **Este archivo está en `.gitignore`
 | `azdo_branch_policy_checker` | `Code (Read)` · `Project and Team (Read)` |
 | `azdo_release_cd_health` | `Release (Read)` |
 | `azdo_pipeline_drift` | `Release (Read)` |
+| `azdo_task_validator` | `Release (Read, Write)` · `Build (Read)` · `Variable Groups (Read)` · `Code (Read)` |
 
-> Un PAT con `Code (Read)` + `Release (Read)` + `Project and Team (Read)` cubre **todas** las herramientas.
+> Un PAT con `Code (Read)` + `Release (Read, Write)` + `Build (Read)` + `Variable Groups (Read)` + `Project and Team (Read)` cubre **todas** las herramientas.
 
 ---
 
@@ -124,6 +126,7 @@ python tools.py
   3   🚀 Release Pipelines    Release CD Health         Score de salud de Release...
   4   🔍 Drift Analysis       Pipeline Drift Analyzer   Detecta drift en pipelines...
   5   🚀 Release Pipelines    Release Deep Dive         Análisis profundo por ID...
+  6   ✅ Validación           Task Validator            Validación DevSecOps de releases
   A   ⚙️  Sistema              Ejecutar Todos            Ejecuta las herramientas 1-4
   Q   ⚙️  Sistema              Salir
 ```
@@ -430,6 +433,73 @@ python azdo_release_deep_dive.py --release-id 42 --pat <PAT> --stage-name qa-gat
 
 ---
 
+### 6 · Task Validator — `azdo_task_validator.py`
+
+Herramienta DevSecOps para validación de releases en Azure DevOps. Implementa controles de seguridad y verificación de integridad durante el proceso de release.
+
+#### Funciones de validación
+
+| # | Función | Descripción |
+|---|---------|-------------|
+| 1 | **Validación de Imágenes** | Verifica existencia de imágenes Docker en Harbor/Artifact Registry |
+| 2 | **Búsqueda de Rollback** | Encuentra releases anteriores por TAG para rollback |
+| 3 | **Validación de Credenciales** | Compara fechas de vigencia de credenciales GIT |
+| 4 | **Comparación ConfigMap** | Compara configuración K8s vs repositorio Git |
+
+#### Argumentos CLI
+
+| Argumento | Corto | Requerido | Default | Descripción |
+|---|---|---|---|---|
+| `--pat` | — | ✅ | — | Personal Access Token |
+| `--org` | — | — | Desde env | URL de la organización |
+| `--project` | — | — | Desde env | Nombre del proyecto |
+| `--release-id` | — | — | Desde env | ID del release actual |
+| `--image-actual` | — | — | — | Imagen actualmente desplegada |
+| `--image-nueva` | — | — | — | Nueva imagen a desplegar |
+| `--gcp-project` | — | — | — | Proyecto GCP para autenticación |
+| `--group-id` | — | — | — | ID del Variable Group de credenciales |
+| `--artifact-name` | — | — | — | Nombre del servicio/artefacto |
+| `--namespace` | — | — | — | Namespace de Kubernetes |
+| `--all` | — | — | — | Ejecuta todas las validaciones |
+| `--validate-images` | — | — | — | Solo validación de imágenes |
+| `--find-rollback` | — | — | — | Solo búsqueda de rollback |
+| `--validate-credentials` | — | — | — | Solo validación de credenciales |
+| `--compare-configmap` | — | — | — | Solo comparación de ConfigMap |
+| `--output` | `-o` | — | — | Exportar: `json` / `csv` |
+| `--debug` | — | — | `false` | Modo debug con logs detallados |
+
+#### Variables de Azure DevOps establecidas
+
+| Variable | Descripción |
+|----------|-------------|
+| `TAG_ACTUAL` | TAG extraído de la imagen actual |
+| `RELEASE_ID_RB` | ID del release de rollback encontrado |
+| `MatchedCommitIdJob` | Commit ID que coincide con el ConfigMap |
+| `ShouldRollbackJob` | `true` o `false` según si se encontró coincidencia |
+
+#### Ejemplos
+
+```bash
+# Ejecutar todas las validaciones
+python azdo_task_validator.py --all --pat <PAT> --org mi-org --project mi-proyecto --release-id 123
+
+# Solo validar imágenes
+python azdo_task_validator.py --validate-images --image-actual us-docker.pkg.dev/.../img:v1.0 --image-nueva us-docker.pkg.dev/.../img:v1.1
+
+# Solo buscar release rollback
+python azdo_task_validator.py --find-rollback --release-id 123 --tag v1.0.0
+```
+
+#### Requisitos adicionales
+
+- `gcloud` CLI (para validación de imágenes en Artifact Registry)
+- `crane` (para validación de imágenes en Harbor)
+- `kubectl` (para obtener ConfigMaps de Kubernetes)
+
+> **Basado en:** `azdo-task-validador-optimized.sh` — Port de bash a Python con mejoras de UI y exportación.
+
+---
+
 ## Exportación de resultados
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
@@ -550,3 +620,4 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 | 2026-03-26 | 1.4.0 | `make_dist.ps1` publica releases en GitHub via API (ZIP como asset) | `make_dist.ps1` |
 | 2026-03-25 | 1.3.1 | Script PowerShell `make_dist.ps1` para generar ZIP distribuible | `make_dist.ps1` (nuevo en raiz) |
 | 2026-03-25 | 1.0.1 | Default PR status cambiado de `all` a `active` | `azdo_pr_master_checker.py`, `config.json.template`, `tools.py` |
+| 2026-03-26 | 1.1.0 | Nueva herramienta 6: `azdo_task_validator.py` — Validación DevSecOps de releases | `azdo_task_validator.py` (nuevo), `tools.py`, `README.md` |
