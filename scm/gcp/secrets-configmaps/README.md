@@ -1,6 +1,6 @@
 # GCP Secrets & ConfigMaps Checker
 
-Herramienta SRE para identificar y validar referencias de Secrets y ConfigMaps en Deployments de GKE.
+Herramienta SCM para identificar y validar referencias de Secrets y ConfigMaps en Deployments de GKE.
 
 ## 🔍 Características
 
@@ -164,4 +164,4 @@ Con el parámetro `--details` se muestra una columna adicional indicando qué de
 
 ## Licencia
 
-Internal SRE Tool - Softtek
+Internal SCM Tool - Softtek

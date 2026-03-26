@@ -366,7 +366,7 @@ Nueva herramienta que inspecciona los ConfigMaps referenciados por un Deployment
 | `--probe-image` | `jrecord/nettools:latest` | Imagen utilizada para el pod temporal (incluye `nc`) |
 | `--timeout` | `5` | Timeout en segundos para cada intento |
 
-> Cuando `--probe-mode=pod`, el script crea `nettools-sre-<timestamp>` usando el mismo `serviceAccountName` del deployment para respetar NetworkPolicies/Workload Identity. Si falla la creación, cambia automáticamente a modo `local` y notifica un warning.
+> Cuando `--probe-mode=pod`, el script crea `nettools-scm-<timestamp>` usando el mismo `serviceAccountName` del deployment para respetar NetworkPolicies/Workload Identity. Si falla la creación, cambia automáticamente a modo `local` y notifica un warning.
 
 ### Ejemplo (modo pod por defecto)
 
@@ -491,4 +491,4 @@ gcloud services vpc-peerings connect \
 
 ## Licencia
 
-Internal SRE Tool - Softtek
+Internal SCM Tool - Softtek

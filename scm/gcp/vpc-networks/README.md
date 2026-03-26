@@ -1,16 +1,16 @@
 ## Herramientas Disponibles
 
 ### 1. gcp_vpc_networks_checker.py
-Herramienta SRE para visualizar información detallada de VPC Networks en Google Cloud Platform.
+Herramienta SCM para visualizar información detallada de VPC Networks en Google Cloud Platform.
 
 ### 2. gcp_ip_addresses_checker.py
-Herramienta SRE para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
+Herramienta SCM para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
 
 ---
 
 # GCP VPC Networks Checker
 
-Herramienta SRE para visualizar información detallada de VPC Networks en Google Cloud Platform.
+Herramienta SCM para visualizar información detallada de VPC Networks en Google Cloud Platform.
 
 ## Descripción
 
@@ -256,7 +256,7 @@ Verifica que tu cuenta tenga los permisos IAM necesarios listados arriba.
 
 # GCP IP Addresses Checker
 
-Herramienta SRE para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
+Herramienta SCM para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
 
 ## Descripción
 

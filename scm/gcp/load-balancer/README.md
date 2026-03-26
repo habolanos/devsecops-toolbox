@@ -1,6 +1,6 @@
 # GCP Load Balancer Checker
 
-Herramienta SRE para monitorear y analizar Load Balancers en Google Cloud Platform.
+Herramienta SCM para monitorear y analizar Load Balancers en Google Cloud Platform.
 
 ## 📋 Contenido
 
@@ -19,6 +19,9 @@ Herramienta SRE para monitorear y analizar Load Balancers en Google Cloud Platfo
 - **Múltiples vistas** para filtrar información
 - **Exportación** a JSON y CSV
 - **Timezone configurable**
+- **Security Policies (Cloud Armor)** - Equivalente a WAF de Akamai
+- **CDN Configuration** - Visualización de configuración CDN por backend
+- **Comparación entre proyectos** - Compara configuraciones de seguridad entre dos proyectos
 
 ### Componentes Analizados
 
@@ -33,6 +36,8 @@ Herramienta SRE para monitorear y analizar Load Balancers en Google Cloud Platfo
 | **SSL Policies** | Políticas de SSL |
 | **Target Pools** | Pools para Network Load Balancers |
 | **Backend Buckets** | Buckets de Cloud Storage como backend |
+| **Security Policies** | Cloud Armor (WAF/DDoS) - Equivalente a Akamai WAF |
+| **CDN Config** | Configuración de Cloud CDN por backend service |
 
 ---
 
@@ -62,6 +67,15 @@ python gcp_load_balancer_checker.py --project mi-proyecto --view healthchecks
 # Ver solo certificados SSL
 python gcp_load_balancer_checker.py --project mi-proyecto --view ssl
 
+# Ver Security Policies (Cloud Armor)
+python gcp_load_balancer_checker.py --project mi-proyecto --view security
+
+# Ver configuración CDN
+python gcp_load_balancer_checker.py --project mi-proyecto --view cdn
+
+# Comparar con otro proyecto
+python gcp_load_balancer_checker.py --project proyecto-prod --compare proyecto-dev
+
 # Exportar a JSON
 python gcp_load_balancer_checker.py --project mi-proyecto --output json
 
@@ -78,14 +92,15 @@ python gcp_load_balancer_checker.py --project mi-proyecto --debug
 
 | Parámetro | Requerido | Descripción |
 |-----------|-----------|-------------|
-| `--project, -p` | ❌ | ID del proyecto GCP (Default: cpl-xxxx-yyyy-zzzz-99999999) |
-| `--view, -v` | ❌ | Vista: `all`, `forwarding`, `backends`, `urlmaps`, `healthchecks`, `ssl` |
+| `--project, -p` | ❌ | ID del proyecto GCP (Default: cpl-corp-cial-prod-17042024) |
+| `--view, -v` | ❌ | Vista: `all`, `forwarding`, `backends`, `urlmaps`, `healthchecks`, `ssl`, `security`, `cdn` |
 | `--output, -o` | ❌ | Exportar: `json` o `csv` |
 | `--debug` | ❌ | Muestra comandos gcloud ejecutados |
 | `--parallel` | ❌ | Ejecución paralela (default: activado) |
 | `--no-parallel` | ❌ | Desactiva ejecución paralela |
 | `--max-workers` | ❌ | Workers para paralelismo (default: 6) |
 | `--timezone, -tz` | ❌ | Timezone (default: America/Mazatlan) |
+| `--compare, -c` | ❌ | Compara con otro proyecto GCP (ej: `--compare proyecto-dev`) |
 | `--help, -h` | ❌ | Muestra ayuda |
 
 ---
@@ -233,11 +248,39 @@ pip install rich
 
 ---
 
-## 📜 Historial de Cambios
+## �️ Cloud Armor vs Akamai
+
+**Akamai NO es un servicio nativo de GCP**. En GCP, los equivalentes nativos son:
+
+| Akamai Feature | Equivalente GCP | Vista en este script |
+|----------------|-----------------|----------------------|
+| CDN | **Cloud CDN** | `--view cdn` |
+| WAF/DDoS | **Cloud Armor** | `--view security` |
+| Edge Security | **Security Policies** | `--view security` |
+
+### Comparación de Proyectos
+
+El modo `--compare` permite identificar diferencias de configuración entre proyectos:
+
+```bash
+# Comparar producción con desarrollo
+python gcp_load_balancer_checker.py -p proyecto-prod --compare proyecto-dev
+```
+
+Muestra:
+- Security Policies en cada proyecto
+- Backends con CDN habilitado
+- Backends con Cloud Armor
+- Backends con IAP (Identity-Aware Proxy)
+- Diferencias en reglas de seguridad
+
+---
+
+## �📜 Historial de Cambios
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
-| 2026-02-20 | 1.1.0 | Reporte JSON mejorado con metadatos (timestamp, timezone, summary) |
+| 2026-03-25 | 1.1.0 | Security Policies (Cloud Armor), CDN Config, Comparación entre proyectos |
 | 2026-02-19 | 1.0.0 | Versión inicial con soporte completo para Load Balancers |
 
 ---

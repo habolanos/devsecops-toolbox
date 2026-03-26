@@ -7,7 +7,7 @@ Este directorio contiene herramientas y scripts para interactuar con Google Clou
 | Directorio/Archivo | Descripción |
 |--------------------|-------------|
 | **[artifact-registry/](artifact-registry/README.md)** | Extractor de imágenes Docker de Artifact Registry con filtrado y exportación a Excel |
-| **[cloud-sql/](cloud-sql/README.md)** | Herramientas para Cloud SQL: verificación de conectividad y monitoreo de disco |
+| **[cloud-sql/](cloud-sql/README.md)** | Herramientas para Cloud SQL: monitoreo de disco, listado de DBs y comparador entre proyectos |
 | **[monitoring/](monitoring/README.md)** | Monitoreo de recursos GCP/GKE y generación de reportes de deployments |
 | **[notification/](notification/README.md)** | Scripts de notificaciones y alertas vía webhooks de Google Chat |
 | **[rolesypermisos/](rolesypermisos/README.md)** | Reportes detallados de roles y permisos IAM en proyectos GCP |
@@ -20,7 +20,8 @@ Este directorio contiene herramientas y scripts para interactuar con Google Clou
 | **[certificate-manager/](certificate-manager/README.md)** | Monitoreo de certificados en Certificate Manager |
 | **[secrets-configmaps/](secrets-configmaps/README.md)** | Análisis de Secrets y ConfigMaps en GKE |
 | **[reports-viewer/](reports-viewer/README.md)** | Visualizador de reportes JSON con gráficos HTML interactivos |
-| **[tools.py](tools.py)** | Lanzador unificado de herramientas GCP con menú interactivo |
+| **[cloud-run/](cloud-run/README.md)** | Checker de Cloud Run: services, revisions, jobs, IAM y networking |
+| **[tools.py](tools.py)** | Lanzador unificado de herramientas SCM/GCP con menú interactivo |
 
 ## 🚀 GCP Tools Launcher
 
@@ -49,6 +50,8 @@ python tools.py
 | 13 | Kubernetes | Secrets & ConfigMaps Checker | Valida referencias de Secrets y ConfigMaps en GKE |
 | 14 | Kubernetes | Pod Connectivity Checker | Valida conectividad desde un Pod GKE hasta Cloud SQL |
 | 17 | Kubernetes | Deploy Dependency Checker | Analiza ConfigMaps de un deployment y valida conexiones a bases de datos |
+| 18 | Database | Cloud SQL Comparator | Compara instancias Cloud SQL entre dos proyectos GCP |
+| 19 | Kubernetes | Cloud Run Checker | Analiza servicios Cloud Run, revisiones, Jobs, IAM y networking |
 | 15 | Artifacts | Artifact Registry Tag Filter | Filtra y exporta imágenes de Artifact Registry a Excel |
 | 16 | Reports | Visualizar Reportes JSON | Genera dashboard HTML con gráficos desde reportes JSON |
 | A | Sistema | Ejecutar Todos (Checkers) | Corre automáticamente los checkers soportados con parámetros por defecto |
@@ -87,14 +90,20 @@ pip install -r requirements.txt
 gcp/
 ├── .venv/                    # Entorno virtual (creado automáticamente)
 ├── artifact-registry/        # Extractor de imágenes de Artifact Registry
-├── cloud-sql/                # Herramientas de Cloud SQL
+├── certificate-manager/      # Checker de certificados SSL/TLS
+├── cloud-run/                # Checker de Cloud Run services y jobs
+├── cloud-sql/                # Herramientas de Cloud SQL (disk, db, comparator)
+├── cluster-gke/              # Checker de clusters GKE
+├── connectivity/             # Validación de conectividad Pod → Cloud SQL
+├── gateway-services/         # Checker de Gateway API
+├── load-balancer/            # Checker de Load Balancers
 ├── monitoring/               # Monitoreo y reportes GKE
 ├── notification/             # Webhooks y notificaciones
-├── outcome/                  # Directorio de salida de reportes
+├── reports-viewer/           # Visualizador de reportes JSON
 ├── rolesypermisos/           # Reportes IAM
-├── service-account/          # Service accounts (templates)
-├── vpc-networks/             # Checker de VPC Networks, subnets, IPs, CIDR
-├── gateway-services/         # Checker de Gateway API (Gateways, Routes, Services, Policies)
+├── secrets-configmaps/       # Checker de Secrets y ConfigMaps
+├── service-account/          # Checker de Service Accounts
+├── vpc-networks/             # Checker de VPC Networks
 ├── tools.py                  # Launcher principal
 └── README.md                 # Este archivo
 ```
@@ -110,6 +119,8 @@ gcp/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-03-25 | 1.8.0 | Actualización de README: launcher renombrado a tools.py, estructura de directorios actualizada |
+| 2026-03-25 | 1.7.0 | Nueva herramienta: Cloud Run Checker para analizar servicios, revisiones, jobs, IAM y networking |
 | 2026-03-09 | 1.6.1 | Menú reorganizado por grupos (Monitoreo → Sistema) y documentación actualizada (Deploy Dependency Checker) |
 | 2026-02-25 | 1.6.0 | Nueva herramienta: Cloud SQL Database Checker para listar bases de datos por instancia |
 | 2026-02-25 | 1.5.0 | UI modernizada con Rich: paneles, tablas con grupos, semáforos, emojis. Agregada metadata (versión, autor) |

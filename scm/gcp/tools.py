@@ -41,7 +41,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.6.1"
+__version__ = "1.7.0"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas GCP"
 
@@ -86,10 +86,10 @@ VENV_DIR = BASE_DIR / ".venv"
 INSTALLED_MARKER = VENV_DIR / ".installed_requirements"
 
 # Proyecto GCP por defecto
-DEFAULT_PROJECT_ID = "cpl-xxxx-yyyy-zzzz-99999999"
+DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
 
 # Cluster por defecto
-DEFAULT_CLUSTER_ID = "gke-aaaaa-bbbbb-ccccc-99"
+DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
 
 # Deployment por defecto para checkers de conectividad
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
@@ -128,7 +128,7 @@ TOOLS = {
         "description": "Lista y analiza Service Accounts, keys y roles IAM",
         "path": "service-account/gcp_service_account_checker.py",
         "args": ["--project", "-o"],
-        "requirements": "service-account/requirements.txt",
+        "requirements": None,
         "group": "iam",
         "status": "ready"
     },
@@ -137,7 +137,7 @@ TOOLS = {
         "description": "Monitorea certificados SSL/TLS en Certificate Manager",
         "path": "certificate-manager/gcp_certificate_checker.py",
         "args": ["--project", "--output"],
-        "requirements": "certificate-manager/requirements.txt",
+        "requirements": None,
         "group": "iam",
         "status": "ready"
     },
@@ -182,7 +182,7 @@ TOOLS = {
         "description": "Analiza Load Balancers, Backend Services, Health Checks y SSL",
         "path": "load-balancer/gcp_load_balancer_checker.py",
         "args": ["--project", "--view", "-o"],
-        "requirements": "load-balancer/requirements.txt",
+        "requirements": None,
         "group": "network",
         "status": "ready"
     },
@@ -191,7 +191,7 @@ TOOLS = {
         "description": "Analiza capacidad de red de clusters GKE (IPs de pods y servicios)",
         "path": "vpc-networks/gcp_ip_addresses_checker.py",
         "args": ["--project", "--cluster", "--region", "-o"],
-        "requirements": "vpc-networks/requirements.txt",
+        "requirements": None,
         "group": "network",
         "status": "ready"
     },
@@ -200,7 +200,7 @@ TOOLS = {
         "description": "Monitorea clusters GKE, versiones, nodos y pods",
         "path": "cluster-gke/gcp_cluster_checker.py",
         "args": ["--project", "--output"],
-        "requirements": "cluster-gke/requirements.txt",
+        "requirements": None,
         "group": "kubernetes",
         "status": "ready"
     },
@@ -209,7 +209,7 @@ TOOLS = {
         "description": "Valida referencias de Secrets y ConfigMaps en GKE",
         "path": "secrets-configmaps/gcp_secrets_configmaps_checker.py",
         "args": ["--project", "--cluster", "--output"],
-        "requirements": "secrets-configmaps/requirements.txt",
+        "requirements": None,
         "group": "kubernetes",
         "status": "ready"
     },
@@ -218,7 +218,7 @@ TOOLS = {
         "description": "Valida conectividad desde un Pod GKE hasta Cloud SQL",
         "path": "connectivity/pod_connectivity_checker.py",
         "args": ["--deployment", "--sql-instance"],
-        "requirements": "connectivity/requirements.txt",
+        "requirements": None,
         "group": "kubernetes",
         "status": "ready"
     },
@@ -245,7 +245,7 @@ TOOLS = {
         "description": "Analiza ConfigMaps de un deployment y valida conexiones a bases de datos",
         "path": "connectivity/deploy_dependency_checker.py",
         "args": ["--project", "--deployment", "--namespace", "--probe-mode", "--probe-image", "--timeout", "-o"],
-        "requirements": "connectivity/requirements.txt",
+        "requirements": None,
         "group": "kubernetes",
         "status": "ready"
     },
@@ -256,6 +256,15 @@ TOOLS = {
         "args": ["--project1", "--project2", "--instance", "--output", "--all"],
         "requirements": "cloud-sql/requirements.txt",
         "group": "database",
+        "status": "ready"
+    },
+    "19": {
+        "name": "Cloud Run Checker",
+        "description": "Analiza servicios Cloud Run, revisiones, Jobs, IAM y networking",
+        "path": "cloud-run/gcp_cloudrun_checker.py",
+        "args": ["--project", "--region", "--view", "--compare", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
         "status": "ready"
     },
     "A": {
@@ -299,7 +308,7 @@ def print_header_rich():
     # Título principal con panel
     title = Text()
     title.append("☁️  ", style="bold white")
-    title.append("SCM Tools for GCP Cloud Platform", style="bold cyan")
+    title.append("SRE Tools for GCP Cloud Platform", style="bold cyan")
     title.append("  ☁️", style="bold white")
     
     subtitle = Text()
@@ -606,6 +615,23 @@ def run_tool(tool_key: str):
             print(f"{Colors.GREEN}Usando proyecto: {project}{Colors.ENDC}")
         args.extend(["--project", project])
 
+    if "--project1" in tool_args:
+        print(f"\n{Colors.BOLD}Proyecto GCP 1 - referencia [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        project1 = input().strip()
+        if not project1:
+            project1 = DEFAULT_PROJECT_ID
+            print(f"{Colors.GREEN}Usando proyecto 1: {project1}{Colors.ENDC}")
+        args.extend(["--project1", project1])
+
+    if "--project2" in tool_args:
+        print(f"\n{Colors.BOLD}Proyecto GCP 2 - a comparar:{Colors.ENDC} ", end="")
+        project2 = input().strip()
+        if not project2:
+            print(f"{Colors.FAIL}Se requiere el ID del segundo proyecto GCP.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        args.extend(["--project2", project2])
+
     if "--deployment" in tool_args:
         print(f"\n{Colors.BOLD}Ingrese el nombre del deployment [{Colors.CYAN}{DEFAULT_DEPLOYMENT}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         deployment = input().strip()
@@ -683,27 +709,27 @@ def run_tool(tool_key: str):
         args.extend(["--timeout", str(timeout_val)])
 
     if "--view" in tool_args:
-        print(f"\n{Colors.BOLD}Seleccione vista (all/gateways/routes/services/policies) [all]:{Colors.ENDC} ", end="")
+        # Determinar opciones de vista según la herramienta
+        if "cloud-run" in tool.get("path", ""):
+            view_options = "all/services/revisions/security/jobs/networking"
+            valid_views = ["all", "services", "revisions", "security", "jobs", "networking"]
+        elif "load-balancer" in tool.get("path", ""):
+            view_options = "all/forwarding/backends/urlmaps/healthchecks/ssl/security/cdn"
+            valid_views = ["all", "forwarding", "backends", "urlmaps", "healthchecks", "ssl", "security", "cdn"]
+        else:
+            view_options = "all/gateways/routes/services/policies"
+            valid_views = ["all", "gateways", "routes", "services", "policies"]
+        
+        print(f"\n{Colors.BOLD}Seleccione vista ({view_options}) [all]:{Colors.ENDC} ", end="")
         view = input().strip().lower()
-        if view and view in ["all", "gateways", "routes", "services", "policies"]:
+        if view and view in valid_views:
             args.extend(["--view", view])
-
-    if "--project1" in tool_args:
-        print(f"\n{Colors.BOLD}Proyecto GCP 1 - referencia [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
-        project1 = input().strip()
-        if not project1:
-            project1 = DEFAULT_PROJECT_ID
-            print(f"{Colors.GREEN}Usando proyecto 1: {project1}{Colors.ENDC}")
-        args.extend(["--project1", project1])
-
-    if "--project2" in tool_args:
-        print(f"\n{Colors.BOLD}Proyecto GCP 2 - a comparar:{Colors.ENDC} ", end="")
-        project2 = input().strip()
-        if not project2:
-            print(f"{Colors.FAIL}Se requiere el ID del segundo proyecto GCP.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        args.extend(["--project2", project2])
+    
+    if "--compare" in tool_args:
+        print(f"\n{Colors.BOLD}Comparar con otro proyecto (vacío para omitir):{Colors.ENDC} ", end="")
+        compare_project = input().strip()
+        if compare_project:
+            args.extend(["--compare", compare_project])
 
     if "--instance" in tool_args:
         print(f"\n{Colors.BOLD}Filtrar por nombre de instancia (vacío para todas):{Colors.ENDC} ", end="")

@@ -1,6 +1,6 @@
 # GCP GKE Cluster Checker
 
-Herramienta SRE para monitorear clusters de Google Kubernetes Engine (GKE).
+Herramienta SCM para monitorear clusters de Google Kubernetes Engine (GKE).
 
 ## ☸️ Características
 
@@ -10,7 +10,7 @@ Herramienta SRE para monitorear clusters de Google Kubernetes Engine (GKE).
 - **Release Channel** - Muestra el canal de actualizaciones configurado
 - **Ejecución paralela** - Procesa múltiples clusters simultáneamente con ThreadPoolExecutor
 - **Medición de tiempo** - Muestra duración de ejecución al finalizar
-- **Sistema de Semáforo SRE** - Indicadores visuales de estado:
+- **Sistema de Semáforo SCM** - Indicadores visuales de estado:
   - 🟢 **HEALTHY** - Cluster funcionando correctamente
   - ✨ **AUTOPILOT** - Cluster Autopilot saludable
   - 🔵 **NO CHANNEL** - Sin Release Channel configurado
@@ -81,7 +81,7 @@ python gcp_cluster_checker.py --max-workers 8
 
                            ☸️  GKE Clusters: my-project
 ┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┓
-┃ Cluster            ┃ Ubicación      ┃   Modo    ┃  Versión   ┃ Nodos ┃ Estado  ┃  Channel  ┃ Semáforo SRE   ┃
+┃ Cluster            ┃ Ubicación      ┃   Modo    ┃  Versión   ┃ Nodos ┃ Estado  ┃  Channel  ┃ Semáforo SCM   ┃
 ┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━┩
 │ gke-prod-cluster   │ us-central1    │ AUTOPILOT │ 1.29.1-gke │     0 │ RUNNING │  REGULAR  │ AUTOPILOT ✨   │
 │ gke-staging        │ us-east1-b     │ STANDARD  │ 1.28.5-gke │    12 │ RUNNING │  RAPID    │ HEALTHY ✅     │
@@ -99,7 +99,7 @@ Tip: Mantén tus clusters en un Release Channel para actualizaciones automática
 1. Usa `gcloud container clusters list` para obtener los clusters
 2. Extrae información de versión, modo, nodos y estado
 3. Evalúa la versión contra las recomendaciones actuales
-4. Aplica lógica de semáforo SRE basada en estado y versión
+4. Aplica lógica de semáforo SCM basada en estado y versión
 5. Muestra resultados en tabla formateada con Rich
 
 ## 📁 Formato de Exportación
@@ -143,4 +143,4 @@ Tip: Mantén tus clusters en un Release Channel para actualizaciones automática
 
 ## Licencia
 
-Internal SRE Tool - Softtek
+Internal SCM Tool - Softtek

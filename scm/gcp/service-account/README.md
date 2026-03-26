@@ -1,6 +1,6 @@
 # 🔐 GCP Service Account Checker
 
-Herramienta SRE para listar, analizar y auditar Service Accounts en Google Cloud Platform.
+Herramienta SCM para listar, analizar y auditar Service Accounts en Google Cloud Platform.
 
 ## 📋 Tabla de Contenidos
 

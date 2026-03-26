@@ -38,7 +38,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 def get_args():
@@ -49,8 +49,8 @@ def get_args():
     parser.add_argument(
         "--project", "-p",
         type=str,
-        default="cpl-xxxx-yyyy-zzzz-99999999",
-        help="ID del proyecto de GCP (Default: cpl-xxxx-yyyy-zzzz-99999999)"
+        default="cpl-corp-cial-prod-17042024",
+        help="ID del proyecto de GCP (Default: cpl-corp-cial-prod-17042024)"
     )
     parser.add_argument(
         "--debug",
@@ -94,9 +94,15 @@ def get_args():
     parser.add_argument(
         "--view", "-v",
         type=str,
-        choices=["all", "forwarding", "backends", "urlmaps", "healthchecks", "ssl"],
+        choices=["all", "forwarding", "backends", "urlmaps", "healthchecks", "ssl", "security", "cdn"],
         default="all",
-        help="Vista específica a mostrar (default: all)"
+        help="Vista específica a mostrar (default: all). 'security' muestra Cloud Armor, 'cdn' muestra configuración CDN"
+    )
+    parser.add_argument(
+        "--compare", "-c",
+        type=str,
+        metavar="PROJECT_B",
+        help="Compara el proyecto actual con otro proyecto GCP (ej: --compare cpl-otro-proyecto)"
     )
     return parser.parse_args()
 
@@ -284,6 +290,20 @@ def get_target_pools(project_id: str, debug: bool, console) -> List[Dict]:
 def get_target_instances(project_id: str, debug: bool, console) -> List[Dict]:
     """Obtiene target instances."""
     cmd = f'gcloud compute target-instances list --project={project_id} --format=json'
+    return run_gcloud_command(cmd, debug, console) or []
+
+
+# ============ SECURITY POLICIES (Cloud Armor) ============
+
+def get_security_policies(project_id: str, debug: bool, console) -> List[Dict]:
+    """Obtiene todas las Security Policies (Cloud Armor)."""
+    cmd = f'gcloud compute security-policies list --project={project_id} --format=json'
+    return run_gcloud_command(cmd, debug, console) or []
+
+
+def get_security_policy_rules(project_id: str, policy_name: str, debug: bool, console) -> List[Dict]:
+    """Obtiene las reglas de una Security Policy específica."""
+    cmd = f'gcloud compute security-policies rules list --security-policy={policy_name} --project={project_id} --format=json'
     return run_gcloud_command(cmd, debug, console) or []
 
 
@@ -610,6 +630,180 @@ def create_ssl_certificates_table(ssl_certs: List[Dict], console, tz_name: str) 
     return table
 
 
+def create_security_policies_table(policies: List[Dict], console) -> Table:
+    """Crea tabla de Security Policies (Cloud Armor)."""
+    table = Table(
+        title="🛡️ Security Policies (Cloud Armor)",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan"
+    )
+    
+    table.add_column("Nombre", style="white", no_wrap=True)
+    table.add_column("Tipo", style="yellow")
+    table.add_column("Rules", style="blue", justify="right")
+    table.add_column("Adaptive Protection", style="green")
+    table.add_column("Default Action", style="magenta")
+    table.add_column("Descripción", style="dim")
+    
+    for policy in policies:
+        name = policy.get('name', 'N/A')
+        policy_type = policy.get('type', 'CLOUD_ARMOR')
+        rules_count = len(policy.get('rules', []))
+        
+        adaptive = policy.get('adaptiveProtectionConfig', {})
+        layer7_config = adaptive.get('layer7DdosDefenseConfig', {})
+        adaptive_enabled = "[green]✓[/green]" if layer7_config.get('enable') else "[dim]✗[/dim]"
+        
+        rules = policy.get('rules', [])
+        default_action = "ALLOW"
+        for rule in rules:
+            if rule.get('priority') == 2147483647:
+                default_action = rule.get('action', 'ALLOW')
+                break
+        
+        if default_action == 'deny(403)':
+            default_action = "[red]DENY[/red]"
+        elif default_action == 'allow':
+            default_action = "[green]ALLOW[/green]"
+        
+        description = (policy.get('description', '') or '')[:30]
+        
+        table.add_row(name, policy_type, str(rules_count), adaptive_enabled, default_action, description)
+    
+    return table
+
+
+def create_cdn_config_table(backend_services: List[Dict], console) -> Table:
+    """Crea tabla de configuración CDN de backend services."""
+    table = Table(
+        title="🌐 CDN & Security Configuration",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan"
+    )
+    
+    table.add_column("Backend Service", style="white", no_wrap=True)
+    table.add_column("CDN", style="green")
+    table.add_column("Cache Mode", style="yellow")
+    table.add_column("Default TTL", style="blue")
+    table.add_column("Max TTL", style="cyan")
+    table.add_column("Security Policy", style="magenta")
+    table.add_column("IAP", style="white")
+    
+    for svc in backend_services:
+        name = svc.get('name', 'N/A')
+        cdn_enabled = "[green]✓[/green]" if svc.get('enableCDN') else "[dim]✗[/dim]"
+        
+        cdn_policy = svc.get('cdnPolicy', {})
+        cache_mode = cdn_policy.get('cacheMode', 'N/A') if cdn_policy else 'N/A'
+        default_ttl = cdn_policy.get('defaultTtl', '-') if cdn_policy else '-'
+        max_ttl = cdn_policy.get('maxTtl', '-') if cdn_policy else '-'
+        
+        security_policy = extract_name_from_url(svc.get('securityPolicy', ''))
+        if security_policy and security_policy != 'N/A':
+            security_policy = f"[cyan]{security_policy}[/cyan]"
+        else:
+            security_policy = "[dim]None[/dim]"
+        
+        iap_enabled = "[green]✓[/green]" if svc.get('iap', {}).get('enabled') else "[dim]✗[/dim]"
+        
+        table.add_row(name, cdn_enabled, cache_mode, str(default_ttl), str(max_ttl), security_policy, iap_enabled)
+    
+    return table
+
+
+def create_comparison_table(data_a: Dict, data_b: Dict, project_a: str, project_b: str, console) -> Table:
+    """Crea tabla comparativa entre dos proyectos."""
+    table = Table(
+        title=f"🔄 Comparación: {project_a} vs {project_b}",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan"
+    )
+    
+    table.add_column("Aspecto", style="white")
+    table.add_column(project_a[:25], style="cyan", justify="right")
+    table.add_column(project_b[:25], style="yellow", justify="right")
+    table.add_column("Match", style="green", justify="center")
+    
+    def get_match_icon(a, b):
+        return "[green]✓[/green]" if a == b else "[yellow]⚠[/yellow]"
+    
+    # Security Policies
+    sp_a = len(data_a.get('security_policies', []))
+    sp_b = len(data_b.get('security_policies', []))
+    table.add_row("Security Policies", str(sp_a), str(sp_b), get_match_icon(sp_a, sp_b))
+    
+    # Backend Services
+    bs_a = data_a.get('backend_services_global', []) + data_a.get('backend_services_regional', [])
+    bs_b = data_b.get('backend_services_global', []) + data_b.get('backend_services_regional', [])
+    table.add_row("Backend Services", str(len(bs_a)), str(len(bs_b)), get_match_icon(len(bs_a), len(bs_b)))
+    
+    # Backends con CDN
+    cdn_a = len([b for b in bs_a if b.get('enableCDN')])
+    cdn_b = len([b for b in bs_b if b.get('enableCDN')])
+    table.add_row("Backends con CDN", str(cdn_a), str(cdn_b), get_match_icon(cdn_a, cdn_b))
+    
+    # Backends con Security Policy
+    sec_a = len([b for b in bs_a if b.get('securityPolicy')])
+    sec_b = len([b for b in bs_b if b.get('securityPolicy')])
+    table.add_row("Backends con Cloud Armor", str(sec_a), str(sec_b), get_match_icon(sec_a, sec_b))
+    
+    # IAP enabled
+    iap_a = len([b for b in bs_a if b.get('iap', {}).get('enabled')])
+    iap_b = len([b for b in bs_b if b.get('iap', {}).get('enabled')])
+    table.add_row("Backends con IAP", str(iap_a), str(iap_b), get_match_icon(iap_a, iap_b))
+    
+    # Forwarding Rules
+    fr_a = len(data_a.get('forwarding_rules_global', [])) + len(data_a.get('forwarding_rules_regional', []))
+    fr_b = len(data_b.get('forwarding_rules_global', [])) + len(data_b.get('forwarding_rules_regional', []))
+    table.add_row("Forwarding Rules", str(fr_a), str(fr_b), get_match_icon(fr_a, fr_b))
+    
+    # SSL Certificates
+    ssl_a = len(data_a.get('ssl_certificates', []))
+    ssl_b = len(data_b.get('ssl_certificates', []))
+    table.add_row("SSL Certificates", str(ssl_a), str(ssl_b), get_match_icon(ssl_a, ssl_b))
+    
+    # Health Checks
+    hc_a = len(data_a.get('health_checks', []))
+    hc_b = len(data_b.get('health_checks', []))
+    table.add_row("Health Checks", str(hc_a), str(hc_b), get_match_icon(hc_a, hc_b))
+    
+    return table
+
+
+def create_security_diff_table(data_a: Dict, data_b: Dict, project_a: str, project_b: str, console) -> Table:
+    """Crea tabla detallada de diferencias en Security Policies."""
+    table = Table(
+        title="🔍 Detalle Security Policies",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan"
+    )
+    
+    table.add_column("Policy Name", style="white")
+    table.add_column(f"En {project_a[:15]}", style="cyan", justify="center")
+    table.add_column(f"En {project_b[:15]}", style="yellow", justify="center")
+    table.add_column("Rules A", style="blue", justify="right")
+    table.add_column("Rules B", style="blue", justify="right")
+    
+    policies_a = {p.get('name'): p for p in data_a.get('security_policies', [])}
+    policies_b = {p.get('name'): p for p in data_b.get('security_policies', [])}
+    
+    all_policies = set(policies_a.keys()) | set(policies_b.keys())
+    
+    for name in sorted(all_policies):
+        in_a = "[green]✓[/green]" if name in policies_a else "[red]✗[/red]"
+        in_b = "[green]✓[/green]" if name in policies_b else "[red]✗[/red]"
+        rules_a = str(len(policies_a.get(name, {}).get('rules', []))) if name in policies_a else "-"
+        rules_b = str(len(policies_b.get(name, {}).get('rules', []))) if name in policies_b else "-"
+        
+        table.add_row(name, in_a, in_b, rules_a, rules_b)
+    
+    return table
+
+
 def create_target_pools_table(target_pools: List[Dict], console) -> Table:
     """Crea tabla de target pools."""
     table = Table(
@@ -702,6 +896,19 @@ def create_summary_table(data: Dict, console) -> Table:
     # Backend Buckets
     bb = len(data.get('backend_buckets', []))
     table.add_row("Backend Buckets", str(bb), "-", str(bb))
+    
+    # Security Policies (Cloud Armor)
+    sp = len(data.get('security_policies', []))
+    table.add_row("Security Policies (Cloud Armor)", str(sp), "-", str(sp))
+    
+    # CDN Enabled backends
+    all_bs = data.get('backend_services_global', []) + data.get('backend_services_regional', [])
+    cdn_enabled = len([b for b in all_bs if b.get('enableCDN')])
+    table.add_row("Backends con CDN", str(cdn_enabled), "-", str(cdn_enabled))
+    
+    # Backends with Security Policy
+    sec_enabled = len([b for b in all_bs if b.get('securityPolicy')])
+    table.add_row("Backends con Cloud Armor", str(sec_enabled), "-", str(sec_enabled))
     
     return table
 
@@ -867,6 +1074,7 @@ def main():
                     executor.submit(get_ssl_policies, project_id, debug, console): 'ssl_policies',
                     executor.submit(get_target_pools, project_id, debug, console): 'target_pools',
                     executor.submit(get_target_instances, project_id, debug, console): 'target_instances',
+                    executor.submit(get_security_policies, project_id, debug, console): 'security_policies',
                 }
                 
                 for future in as_completed(futures):
@@ -893,6 +1101,7 @@ def main():
             data['ssl_policies'] = get_ssl_policies(project_id, debug, console)
             data['target_pools'] = get_target_pools(project_id, debug, console)
             data['target_instances'] = get_target_instances(project_id, debug, console)
+            data['security_policies'] = get_security_policies(project_id, debug, console)
     
     # Mostrar tablas según la vista seleccionada
     console.print()
@@ -928,6 +1137,65 @@ def main():
     if view == 'all' and data.get('target_pools'):
         console.print(create_target_pools_table(data['target_pools'], console))
         console.print()
+    
+    # Mostrar Security Policies (Cloud Armor)
+    if view in ['all', 'security'] and data.get('security_policies'):
+        console.print(create_security_policies_table(data['security_policies'], console))
+        console.print()
+    
+    # Mostrar CDN Configuration
+    if view in ['all', 'cdn'] and all_backends:
+        console.print(create_cdn_config_table(all_backends, console))
+        console.print()
+    
+    # Modo comparación con otro proyecto
+    if args.compare:
+        console.print()
+        console.print(Panel(
+            f"[bold yellow]Comparando con proyecto: {args.compare}[/bold yellow]",
+            border_style="yellow"
+        ))
+        
+        # Verificar acceso al segundo proyecto
+        if not check_gcp_connection(args.compare, console, debug):
+            console.print("[red]No se puede acceder al proyecto de comparación[/red]")
+        else:
+            # Recolectar datos del segundo proyecto
+            data_b = {}
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task(f"Recolectando datos de {args.compare}...", total=None)
+                
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures_b = {
+                        executor.submit(get_backend_services_global, args.compare, debug, console): 'backend_services_global',
+                        executor.submit(get_backend_services_regional, args.compare, debug, console): 'backend_services_regional',
+                        executor.submit(get_security_policies, args.compare, debug, console): 'security_policies',
+                        executor.submit(get_forwarding_rules_global, args.compare, debug, console): 'forwarding_rules_global',
+                        executor.submit(get_forwarding_rules_regional, args.compare, debug, console): 'forwarding_rules_regional',
+                        executor.submit(get_ssl_certificates, args.compare, debug, console): 'ssl_certificates',
+                        executor.submit(get_health_checks, args.compare, debug, console): 'health_checks',
+                    }
+                    
+                    for future in as_completed(futures_b):
+                        key = futures_b[future]
+                        try:
+                            data_b[key] = future.result()
+                        except Exception as e:
+                            console.print(f"[yellow]⚠️ Error obteniendo {key}: {e}[/yellow]")
+                            data_b[key] = []
+            
+            console.print()
+            console.print(create_comparison_table(data, data_b, project_id, args.compare, console))
+            console.print()
+            
+            # Mostrar detalle de Security Policies si hay diferencias
+            if data.get('security_policies') or data_b.get('security_policies'):
+                console.print(create_security_diff_table(data, data_b, project_id, args.compare, console))
+                console.print()
     
     # Exportar si se especificó
     if args.output:
