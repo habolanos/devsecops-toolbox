@@ -483,12 +483,36 @@ outcome/
 El script `make_dist.ps1` (ubicado en la raíz de `devsecops-toolbox/`) empaqueta todos los archivos del proyecto en un ZIP distribuible.
 
 ```powershell
-# Uso básico
+# Uso basico
 .\make_dist.ps1
 
 # Con carpeta de salida personalizada y lista de excluidos
 .\make_dist.ps1 -OutputDir "C:\entregas" -ShowExcluded
+
+# Generar ZIP y publicar release en GitHub
+.\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.4.0" -GitHubToken "ghp_xxxx"
+
+# Con titulo, notas y modo draft
+.\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.4.0" -ReleaseTitle "Release 1.4.0" -ReleaseNotes "Cambios incluidos..." -Draft
+
+# El token puede venir de una variable de entorno
+$env:GITHUB_TOKEN = "ghp_xxxx"
+.\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.4.0"
 ```
+
+**Parametros de GitHub Release:**
+
+| Parametro | Requerido | Descripcion |
+|---|---|---|
+| `-GitHubPublish` | Para publicar | Activa el flujo de publicacion en GitHub |
+| `-ReleaseTag` | Si usa `-GitHubPublish` | Tag de version (ej: `v1.4.0`) |
+| `-GitHubToken` | Si no hay `GITHUB_TOKEN` | PAT con scope `Contents: Read and Write` |
+| `-ReleaseTitle` | No | Titulo del release (default: mismo que el tag) |
+| `-ReleaseNotes` | No | Descripcion / changelog del release |
+| `-Draft` | No | Crear como borrador (no visible publicamente) |
+| `-Prerelease` | No | Marcar como pre-release |
+
+> El repositorio `owner/repo` se detecta automaticamente desde `git remote get-url origin`.
 
 **Exclusiones automáticas:**
 
@@ -523,5 +547,6 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 | 2026-03-25 | 1.1.0 | Refactor PR fetch: endpoint cross-project bulk (1 llamada vs N repos) | `azdo_pr_master_checker.py` |
 | 2026-03-25 | 1.1.0 | Pre-fetch paralelo de CD details; `DEFAULT_THREADS` aumentado a 16 | `azdo_pr_master_checker.py` |
 | 2026-03-25 | 1.0.1 | API version corregida a `7.1` para repos/políticas (fix HTTP 400) | `azdo_pr_master_checker.py`, `azdo_branch_policy_checker.py` |
-| 2026-03-25 | 1.3.1 | Script PowerShell `make_dist.ps1` para generar ZIP distribuible | `make_dist.ps1` (nuevo en raíz) |
+| 2026-03-26 | 1.4.0 | `make_dist.ps1` publica releases en GitHub via API (ZIP como asset) | `make_dist.ps1` |
+| 2026-03-25 | 1.3.1 | Script PowerShell `make_dist.ps1` para generar ZIP distribuible | `make_dist.ps1` (nuevo en raiz) |
 | 2026-03-25 | 1.0.1 | Default PR status cambiado de `all` a `active` | `azdo_pr_master_checker.py`, `config.json.template`, `tools.py` |

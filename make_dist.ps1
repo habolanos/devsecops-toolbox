@@ -17,15 +17,44 @@
 .PARAMETER ShowExcluded
     Muestra la lista detallada de archivos excluidos al finalizar.
 
+.PARAMETER GitHubPublish
+    Switch para activar la publicacion del release en GitHub.
+
+.PARAMETER GitHubToken
+    Personal Access Token con scope 'repo'. Si no se indica, se lee de la
+    variable de entorno GITHUB_TOKEN.
+
+.PARAMETER ReleaseTag
+    Tag de la version a crear (ej: v1.3.1). Obligatorio con -GitHubPublish.
+
+.PARAMETER ReleaseTitle
+    Titulo del release. Default: mismo valor que -ReleaseTag.
+
+.PARAMETER ReleaseNotes
+    Descripcion del release en texto plano o Markdown.
+
+.PARAMETER Draft
+    Crear el release como borrador (no visible publicamente).
+
+.PARAMETER Prerelease
+    Marcar el release como pre-release.
+
 .EXAMPLE
     .\make_dist.ps1
 
 .EXAMPLE
     .\make_dist.ps1 -OutputDir "C:\entregas" -ShowExcluded
 
+.EXAMPLE
+    .\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.3.1" -GitHubToken "ghp_xxx"
+
+.EXAMPLE
+    .\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.4.0" -ReleaseTitle "Release 1.4.0" -ReleaseNotes "Cambios: ..."
+
 .NOTES
     Autor  : Harold Adrian
     Salida : outcome\devsecops-toolbox_dist_<YYYYMMDD_HHMMSS>.zip
+    GitHub : requiere PAT con scope 'Contents: Read and Write' o 'repo'
     ENCODING: ASCII-only source (PowerShell 5.1 ANSI compat)
 #>
 
@@ -33,7 +62,14 @@
 param(
     [string]$OutputDir    = "$PSScriptRoot\outcome",
     [string]$ZipPrefix    = "devsecops-toolbox_dist",
-    [switch]$ShowExcluded
+    [switch]$ShowExcluded,
+    [switch]$GitHubPublish,
+    [string]$GitHubToken   = "",
+    [string]$ReleaseTag    = "",
+    [string]$ReleaseTitle  = "",
+    [string]$ReleaseNotes  = "",
+    [switch]$Draft,
+    [switch]$Prerelease
 )
 
 Set-StrictMode -Version Latest
@@ -85,6 +121,26 @@ $ExcludedNamePatterns = @(
     '*.origin.json',
     '*.tar.gz', '*.tar.bz2', '*.tar.xz', '*.tar.lz', '*.tar.lzma', '*.tar.lz4'
 )
+
+# ===============================================================================
+# FUNCION: Detectar repositorio GitHub desde git remote
+# ===============================================================================
+function Get-GitHubRepo {
+    try {
+        $remoteUrl = & git remote get-url origin 2>$null
+    } catch {
+        return $null
+    }
+    if (-not $remoteUrl) { return $null }
+
+    if ($remoteUrl -match "https://github\.com/([^/]+)/([^/]+?)(\.git)?$") {
+        return @{ Owner = $Matches[1]; Repo = $Matches[2] }
+    }
+    if ($remoteUrl -match "git@github\.com:([^/]+)/([^/]+?)(\.git)?$") {
+        return @{ Owner = $Matches[1]; Repo = $Matches[2] }
+    }
+    return $null
+}
 
 # ===============================================================================
 # FUNCIoN DE FILTRO
@@ -245,3 +301,103 @@ if ($ShowExcluded -and $Excluded.Count -gt 0) {
 Write-Host "  [OK] Distribucion generada exitosamente:" -ForegroundColor Green
 Write-Host "     $ZipPath"                             -ForegroundColor Yellow
 Write-Host ""
+
+# -- GitHub Release -----------------------------------------------------------
+if ($GitHubPublish) {
+
+    Write-Host "======================================================" -ForegroundColor Cyan
+    Write-Host "  GitHub Release Publisher                            " -ForegroundColor Cyan
+    Write-Host "======================================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Validar token
+    $ghToken = $GitHubToken
+    if (-not $ghToken) { $ghToken = $env:GITHUB_TOKEN }
+    if (-not $ghToken) {
+        Write-Host "  [!!] Token requerido: usa -GitHubToken o define la var GITHUB_TOKEN." -ForegroundColor Red
+        exit 1
+    }
+
+    # Validar tag
+    if (-not $ReleaseTag) {
+        Write-Host "  [!!] -ReleaseTag es obligatorio (ej: v1.3.1)." -ForegroundColor Red
+        exit 1
+    }
+
+    # Detectar repo
+    $ghRepo = Get-GitHubRepo
+    if (-not $ghRepo) {
+        Write-Host "  [!!] No se pudo detectar el repositorio desde git remote." -ForegroundColor Red
+        Write-Host "       Verifica que el origen sea github.com." -ForegroundColor DarkGray
+        exit 1
+    }
+
+    $owner  = $ghRepo.Owner
+    $repo   = $ghRepo.Repo
+    $title  = if ($ReleaseTitle) { $ReleaseTitle } else { $ReleaseTag }
+
+    Write-Host "  Repositorio : $owner/$repo" -ForegroundColor Gray
+    Write-Host "  Tag         : $ReleaseTag"  -ForegroundColor Gray
+    Write-Host "  Titulo      : $title"       -ForegroundColor Gray
+    if ($Draft)      { Write-Host "  Modo        : DRAFT"      -ForegroundColor Yellow }
+    if ($Prerelease) { Write-Host "  Modo        : PRE-RELEASE" -ForegroundColor Yellow }
+    Write-Host ""
+
+    $ghHeaders = @{
+        Authorization          = "Bearer $ghToken"
+        Accept                 = "application/vnd.github+json"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+
+    # Crear release
+    Write-Host "  >> Creando release $ReleaseTag ..." -NoNewline -ForegroundColor Yellow
+
+    $releasePayload = @{
+        tag_name   = $ReleaseTag
+        name       = $title
+        body       = $ReleaseNotes
+        draft      = [bool]$Draft
+        prerelease = [bool]$Prerelease
+    } | ConvertTo-Json -Compress
+
+    try {
+        $release = Invoke-RestMethod `
+            -Uri "https://api.github.com/repos/$owner/$repo/releases" `
+            -Method POST `
+            -Headers $ghHeaders `
+            -Body $releasePayload `
+            -ContentType "application/json"
+        Write-Host " OK" -ForegroundColor Green
+        Write-Host "  [OK] Release : $($release.html_url)" -ForegroundColor Green
+    } catch {
+        Write-Host " ERROR" -ForegroundColor Red
+        Write-Host "  [!!] $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+
+    # Subir ZIP como asset
+    Write-Host "  >> Subiendo asset ($ZipName) ..." -NoNewline -ForegroundColor Yellow
+
+    $uploadUri = "https://uploads.github.com/repos/$owner/$repo/releases/$($release.id)/assets?name=$ZipName"
+
+    try {
+        $fileBytes = [System.IO.File]::ReadAllBytes($ZipPath)
+        $asset = Invoke-RestMethod `
+            -Uri $uploadUri `
+            -Method POST `
+            -Headers $ghHeaders `
+            -Body $fileBytes `
+            -ContentType "application/zip"
+        Write-Host " OK" -ForegroundColor Green
+        Write-Host "  [OK] Asset   : $($asset.browser_download_url)" -ForegroundColor Green
+    } catch {
+        Write-Host " ERROR" -ForegroundColor Red
+        Write-Host "  [!!] $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "  [OK] Release publicado exitosamente en GitHub." -ForegroundColor Green
+    Write-Host "     URL  : $($release.html_url)" -ForegroundColor Yellow
+    Write-Host ""
+}
