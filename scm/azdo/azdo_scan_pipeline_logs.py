@@ -21,12 +21,21 @@ import requests
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+import time
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-__version__ = "1.1.0"
+try:
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TaskProgressColumn, TimeElapsedColumn
+    from rich.panel import Panel
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
+__version__ = "1.2.0"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1-preview.7"
@@ -322,57 +331,151 @@ def export_results(rows: List[Dict], output_format: str) -> None:
 
 
 def main() -> None:
+    start_time = time.time()
     args = get_args()
     base_session = build_session(args.pat, args.threads)
     all_rows: List[Dict] = []
+    console = Console() if RICH_AVAILABLE else None
+    matches_count = 0
 
-    print(f"Organización: {args.org}")
-    print(f"Proyecto: {args.project}")
-    print(f"Top runs por pipeline: {args.top_runs}")
-    print(f"Máximo de hilos: {args.threads}")
-    print(f"Términos de búsqueda: {', '.join(args.search_terms)}")
-    print("Iniciando consulta de pipelines CI...\n")
+    if RICH_AVAILABLE:
+        console.print(Panel.fit(
+            f"[bold cyan]Azure DevOps Pipeline Logs Scanner[/bold cyan]\n"
+            f"Org: [yellow]{args.org}[/yellow] | Project: [yellow]{args.project}[/yellow]\n"
+            f"Top runs: [green]{args.top_runs}[/green] | Threads: [green]{args.threads}[/green]\n"
+            f"Términos: [magenta]{', '.join(args.search_terms)}[/magenta]",
+            title="🔍 Scan Config"
+        ))
+    else:
+        print(f"Organización: {args.org}")
+        print(f"Proyecto: {args.project}")
+        print(f"Top runs por pipeline: {args.top_runs}")
+        print(f"Máximo de hilos: {args.threads}")
+        print(f"Términos de búsqueda: {', '.join(args.search_terms)}")
+        print("Iniciando consulta de pipelines CI...\n")
 
-    definitions = get_build_definitions(base_session, args.org, args.project)
-    print(f"Total pipelines encontrados: {len(definitions)}\n")
+    if RICH_AVAILABLE:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+            console=console,
+        ) as progress:
+            progress.add_task("[cyan]Obteniendo definiciones de pipelines...", total=None)
+            definitions = get_build_definitions(base_session, args.org, args.project)
+        console.print(f"✅ Pipelines encontrados: [bold green]{len(definitions)}[/bold green]")
+    else:
+        definitions = get_build_definitions(base_session, args.org, args.project)
+        print(f"Total pipelines encontrados: {len(definitions)}\n")
 
     work_items = []
-    for definition in definitions:
-        pipeline_name = definition.get("name", "")
-        definition_id = definition.get("id")
-        if args.debug:
-            print(f"[PIPELINE] Consultando ejecuciones de: {pipeline_name} (id={definition_id})")
-        try:
-            runs = get_build_runs(base_session, args.org, args.project, definition_id, args.top_runs)
+    
+    if RICH_AVAILABLE:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("[cyan]Consultando ejecuciones de pipelines...", total=len(definitions))
+            for definition in definitions:
+                pipeline_name = definition.get("name", "")
+                definition_id = definition.get("id")
+                progress.update(task, description=f"[cyan]Pipeline: {pipeline_name[:40]}...")
+                try:
+                    runs = get_build_runs(base_session, args.org, args.project, definition_id, args.top_runs)
+                    for run in runs:
+                        work_items.append((definition, run))
+                except Exception as e:
+                    if args.debug:
+                        console.print(f"[red]  ERROR: {pipeline_name}: {e}[/red]")
+                progress.advance(task)
+        console.print(f"✅ Ejecuciones a procesar: [bold green]{len(work_items)}[/bold green]")
+    else:
+        for definition in definitions:
+            pipeline_name = definition.get("name", "")
+            definition_id = definition.get("id")
             if args.debug:
-                print(f"  Ejecuciones encontradas: {len(runs)}")
-            for run in runs:
-                work_items.append((definition, run))
-        except Exception as e:
-            if args.debug:
-                print(f"  [ERROR] No fue posible obtener runs del pipeline {pipeline_name}: {e}")
-
-    print(f"Total de ejecuciones a procesar: {len(work_items)}\n")
-
-    with ThreadPoolExecutor(max_workers=args.threads) as executor:
-        future_map = {
-            executor.submit(analyze_single_run, args, definition, run): (definition.get("name", ""), run.get("id"))
-            for definition, run in work_items
-        }
-
-        for future in as_completed(future_map):
-            pipeline_name, run_id = future_map[future]
+                print(f"[PIPELINE] Consultando ejecuciones de: {pipeline_name} (id={definition_id})")
             try:
-                rows = future.result()
-                all_rows.extend(rows)
+                runs = get_build_runs(base_session, args.org, args.project, definition_id, args.top_runs)
                 if args.debug:
-                    print(f"[DONE] pipeline={pipeline_name} | run_id={run_id} | matches={len(rows)}")
+                    print(f"  Ejecuciones encontradas: {len(runs)}")
+                for run in runs:
+                    work_items.append((definition, run))
             except Exception as e:
                 if args.debug:
-                    print(f"[ERROR] pipeline={pipeline_name} | run_id={run_id} | error={e}")
+                    print(f"  [ERROR] No fue posible obtener runs del pipeline {pipeline_name}: {e}")
+        print(f"Total de ejecuciones a procesar: {len(work_items)}\n")
 
-    print("\n=== RESUMEN ===")
-    print(f"Total de registros encontrados: {len(all_rows)}")
+    if RICH_AVAILABLE:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("[green]Matches: {task.fields[matches]}[/green]"),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                "[cyan]Analizando logs de ejecuciones...", 
+                total=len(work_items),
+                matches=0
+            )
+            
+            with ThreadPoolExecutor(max_workers=args.threads) as executor:
+                future_map = {
+                    executor.submit(analyze_single_run, args, definition, run): (definition.get("name", ""), run.get("id"))
+                    for definition, run in work_items
+                }
+
+                for future in as_completed(future_map):
+                    pipeline_name, run_id = future_map[future]
+                    try:
+                        rows = future.result()
+                        all_rows.extend(rows)
+                        matches_count += len(rows)
+                        progress.update(task, matches=matches_count)
+                    except Exception as e:
+                        if args.debug:
+                            console.print(f"[red]ERROR: {pipeline_name} | run_id={run_id} | {e}[/red]")
+                    progress.advance(task)
+    else:
+        with ThreadPoolExecutor(max_workers=args.threads) as executor:
+            future_map = {
+                executor.submit(analyze_single_run, args, definition, run): (definition.get("name", ""), run.get("id"))
+                for definition, run in work_items
+            }
+
+            for future in as_completed(future_map):
+                pipeline_name, run_id = future_map[future]
+                try:
+                    rows = future.result()
+                    all_rows.extend(rows)
+                    if args.debug:
+                        print(f"[DONE] pipeline={pipeline_name} | run_id={run_id} | matches={len(rows)}")
+                except Exception as e:
+                    if args.debug:
+                        print(f"[ERROR] pipeline={pipeline_name} | run_id={run_id} | error={e}")
+
+    elapsed_time = time.time() - start_time
+    minutes, seconds = divmod(int(elapsed_time), 60)
+    time_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+    
+    if RICH_AVAILABLE:
+        console.print()
+        console.print(Panel.fit(
+            f"[bold]Total de coincidencias encontradas:[/bold] [green]{len(all_rows)}[/green]\n"
+            f"[bold]Tiempo de ejecución:[/bold] [cyan]{time_str}[/cyan]",
+            title="📊 Resumen"
+        ))
+    else:
+        print("\n=== RESUMEN ===")
+        print(f"Total de registros encontrados: {len(all_rows)}")
+        print(f"Tiempo de ejecución: {time_str}")
     
     if all_rows:
         results_table = pd.DataFrame(all_rows)
@@ -382,7 +485,10 @@ def main() -> None:
         if args.output:
             export_results(all_rows, args.output)
     else:
-        print("Sin coincidencias en logs")
+        if RICH_AVAILABLE:
+            console.print("[yellow]Sin coincidencias en logs[/yellow]")
+        else:
+            print("Sin coincidencias en logs")
 
 
 if __name__ == "__main__":

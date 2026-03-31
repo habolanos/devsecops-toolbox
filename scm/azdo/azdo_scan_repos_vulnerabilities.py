@@ -20,11 +20,20 @@ import requests
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict, List, Optional, Tuple, Set
 
-__version__ = "1.1.0"
+try:
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TaskProgressColumn, TimeElapsedColumn
+    from rich.panel import Panel
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
+__version__ = "1.2.0"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1-preview.1"
@@ -304,99 +313,210 @@ def collect_rows(args) -> Tuple[List[Dict], pd.DataFrame]:
     headers = get_headers(args.pat)
     session = build_session(headers)
     rows: List[Dict] = []
+    console = Console() if RICH_AVAILABLE else None
+    matches_count = 0
 
-    print(f"Organización: {args.org}")
-    print(f"Proyecto: {args.project}")
-    print(f"Ramas objetivo: {', '.join(args.branches)}")
-    print(f"Dependencias a buscar: {', '.join(args.targets.keys())}")
-    if args.repo:
-        print(f"Filtro de repositorio: {args.repo}")
-    print("Iniciando consulta...\n")
+    if RICH_AVAILABLE:
+        console.print(Panel.fit(
+            f"[bold cyan]Azure DevOps Repo Vulnerabilities Scanner[/bold cyan]\n"
+            f"Org: [yellow]{args.org}[/yellow] | Project: [yellow]{args.project}[/yellow]\n"
+            f"Ramas: [green]{', '.join(args.branches)}[/green]\n"
+            f"Targets: [magenta]{', '.join(args.targets.keys())}[/magenta]"
+            + (f"\nFiltro repo: [blue]{args.repo}[/blue]" if args.repo else ""),
+            title="🛡️ Scan Config"
+        ))
+    else:
+        print(f"Organización: {args.org}")
+        print(f"Proyecto: {args.project}")
+        print(f"Ramas objetivo: {', '.join(args.branches)}")
+        print(f"Dependencias a buscar: {', '.join(args.targets.keys())}")
+        if args.repo:
+            print(f"Filtro de repositorio: {args.repo}")
+        print("Iniciando consulta...\n")
 
-    repositories = get_repositories(session, args.org, args.project)
+    if RICH_AVAILABLE:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+            console=console,
+        ) as progress:
+            progress.add_task("[cyan]Obteniendo lista de repositorios...", total=None)
+            repositories = get_repositories(session, args.org, args.project)
+    else:
+        repositories = get_repositories(session, args.org, args.project)
     
     if args.repo:
         repositories = [r for r in repositories if args.repo.lower() in r["name"].lower()]
     
-    print(f"Total repositorios a revisar: {len(repositories)}\n")
+    if RICH_AVAILABLE:
+        console.print(f"✅ Repositorios a revisar: [bold green]{len(repositories)}[/bold green]")
+    else:
+        print(f"Total repositorios a revisar: {len(repositories)}\n")
 
-    for repo in repositories:
-        repo_name = repo["name"]
-        repo_id = repo["id"]
-        repo_url = repo.get("webUrl") or get_repo_url(args.org, args.project, repo_name)
+    if RICH_AVAILABLE:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("[green]Matches: {task.fields[matches]}[/green]"),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                "[cyan]Escaneando repositorios...", 
+                total=len(repositories),
+                matches=0
+            )
+            
+            for repo in repositories:
+                repo_name = repo["name"]
+                repo_id = repo["id"]
+                repo_url = repo.get("webUrl") or get_repo_url(args.org, args.project, repo_name)
+                
+                progress.update(task, description=f"[cyan]Repo: {repo_name[:35]}...")
 
-        print(f"Repositorio: {repo_name}")
+                existing_branches = []
+                for branch in args.branches:
+                    try:
+                        if branch_exists(session, args.org, args.project, repo_id, branch):
+                            existing_branches.append(branch)
+                    except Exception as e:
+                        if args.debug:
+                            console.print(f"[red]  Error rama {branch}: {e}[/red]")
 
-        existing_branches = []
-        for branch in args.branches:
-            try:
-                if branch_exists(session, args.org, args.project, repo_id, branch):
-                    existing_branches.append(branch)
-            except Exception as e:
-                if args.debug:
-                    print(f"  Error consultando rama {branch}: {e}")
+                if not existing_branches:
+                    progress.advance(task)
+                    continue
 
-        if not existing_branches:
-            print(f"  No existen ramas {', '.join(args.branches)} en este repo\n")
-            continue
+                for branch in existing_branches:
+                    try:
+                        items = list_repo_items(session, args.org, args.project, repo_id, branch)
+                    except Exception as e:
+                        if args.debug:
+                            console.print(f"[red]  Error listando {branch}: {e}[/red]")
+                        continue
 
-        print(f"  Ramas a revisar: {', '.join(existing_branches)}")
+                    package_files = [
+                        item["path"]
+                        for item in items
+                        if item.get("gitObjectType") == "blob" and item["path"].endswith("package.json")
+                    ]
 
-        for branch in existing_branches:
-            if args.debug:
-                print(f"  Consultando rama: {branch}")
-            try:
-                items = list_repo_items(session, args.org, args.project, repo_id, branch)
-            except Exception as e:
-                if args.debug:
-                    print(f"    Error listando archivos en rama {branch}: {e}")
-                continue
+                    if not package_files:
+                        continue
 
-            package_files = [
-                item["path"]
-                for item in items
-                if item.get("gitObjectType") == "blob" and item["path"].endswith("package.json")
-            ]
+                    for package_path in package_files:
+                        try:
+                            content = get_file_content(session, args.org, args.project, repo_id, package_path, branch)
+                            if not content:
+                                continue
 
-            if not package_files:
-                if args.debug:
-                    print(f"    Sin package.json en rama {branch}")
-                continue
+                            findings = analyze_package_json(content, args.targets)
 
-            if args.debug:
-                print(f"    package.json encontrados: {len(package_files)}")
+                            if not findings:
+                                continue
 
-            for package_path in package_files:
+                            for finding in findings:
+                                row = {
+                                    "organization": args.org,
+                                    "project": args.project,
+                                    "repository": repo_name,
+                                    "branch": branch,
+                                    "package_json_path": package_path,
+                                    "dependency": finding["dependency"],
+                                    "version_found": finding["version_found"],
+                                    "normalized_version": finding["normalized_version"],
+                                    "dependency_section": finding["dependency_section"],
+                                    "repository_url": repo_url,
+                                }
+                                rows.append(row)
+                                matches_count += 1
+                                progress.update(task, matches=matches_count)
+                        except Exception as e:
+                            if args.debug:
+                                console.print(f"[red]  Error {package_path}: {e}[/red]")
+
+                progress.advance(task)
+    else:
+        for repo in repositories:
+            repo_name = repo["name"]
+            repo_id = repo["id"]
+            repo_url = repo.get("webUrl") or get_repo_url(args.org, args.project, repo_name)
+
+            print(f"Repositorio: {repo_name}")
+
+            existing_branches = []
+            for branch in args.branches:
                 try:
-                    content = get_file_content(session, args.org, args.project, repo_id, package_path, branch)
-                    if not content:
-                        continue
-
-                    findings = analyze_package_json(content, args.targets)
-
-                    if not findings:
-                        continue
-
-                    for finding in findings:
-                        row = {
-                            "organization": args.org,
-                            "project": args.project,
-                            "repository": repo_name,
-                            "branch": branch,
-                            "package_json_path": package_path,
-                            "dependency": finding["dependency"],
-                            "version_found": finding["version_found"],
-                            "normalized_version": finding["normalized_version"],
-                            "dependency_section": finding["dependency_section"],
-                            "repository_url": repo_url,
-                        }
-                        rows.append(row)
-                        print_row(row)
+                    if branch_exists(session, args.org, args.project, repo_id, branch):
+                        existing_branches.append(branch)
                 except Exception as e:
                     if args.debug:
-                        print(f"    Error procesando {package_path} en rama {branch}: {e}")
+                        print(f"  Error consultando rama {branch}: {e}")
 
-        print()
+            if not existing_branches:
+                print(f"  No existen ramas {', '.join(args.branches)} en este repo\n")
+                continue
+
+            print(f"  Ramas a revisar: {', '.join(existing_branches)}")
+
+            for branch in existing_branches:
+                if args.debug:
+                    print(f"  Consultando rama: {branch}")
+                try:
+                    items = list_repo_items(session, args.org, args.project, repo_id, branch)
+                except Exception as e:
+                    if args.debug:
+                        print(f"    Error listando archivos en rama {branch}: {e}")
+                    continue
+
+                package_files = [
+                    item["path"]
+                    for item in items
+                    if item.get("gitObjectType") == "blob" and item["path"].endswith("package.json")
+                ]
+
+                if not package_files:
+                    if args.debug:
+                        print(f"    Sin package.json en rama {branch}")
+                    continue
+
+                if args.debug:
+                    print(f"    package.json encontrados: {len(package_files)}")
+
+                for package_path in package_files:
+                    try:
+                        content = get_file_content(session, args.org, args.project, repo_id, package_path, branch)
+                        if not content:
+                            continue
+
+                        findings = analyze_package_json(content, args.targets)
+
+                        if not findings:
+                            continue
+
+                        for finding in findings:
+                            row = {
+                                "organization": args.org,
+                                "project": args.project,
+                                "repository": repo_name,
+                                "branch": branch,
+                                "package_json_path": package_path,
+                                "dependency": finding["dependency"],
+                                "version_found": finding["version_found"],
+                                "normalized_version": finding["normalized_version"],
+                                "dependency_section": finding["dependency_section"],
+                                "repository_url": repo_url,
+                            }
+                            rows.append(row)
+                            print_row(row)
+                    except Exception as e:
+                        if args.debug:
+                            print(f"    Error procesando {package_path} en rama {branch}: {e}")
+
+            print()
 
     results_table = pd.DataFrame(rows, columns=[
         "organization",
@@ -411,15 +531,31 @@ def collect_rows(args) -> Tuple[List[Dict], pd.DataFrame]:
         "repository_url",
     ]) if rows else pd.DataFrame()
     
-    return rows, results_table
+    return rows, results_table, console if RICH_AVAILABLE else None
 
 
 def main() -> None:
+    start_time = time.time()
     args = get_args()
-    rows, results_table = collect_rows(args)
+    result = collect_rows(args)
+    rows, results_table = result[0], result[1]
+    console = result[2] if len(result) > 2 else None
     
-    print("\n=== RESUMEN ===")
-    print(f"Total de registros encontrados: {len(rows)}")
+    elapsed_time = time.time() - start_time
+    minutes, seconds = divmod(int(elapsed_time), 60)
+    time_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+    
+    if RICH_AVAILABLE and console:
+        console.print()
+        console.print(Panel.fit(
+            f"[bold]Total de coincidencias encontradas:[/bold] [green]{len(rows)}[/green]\n"
+            f"[bold]Tiempo de ejecución:[/bold] [cyan]{time_str}[/cyan]",
+            title="📊 Resumen"
+        ))
+    else:
+        print("\n=== RESUMEN ===")
+        print(f"Total de registros encontrados: {len(rows)}")
+        print(f"Tiempo de ejecución: {time_str}")
     
     if not results_table.empty:
         print("\n=== TABLA FINAL ===")
@@ -428,7 +564,10 @@ def main() -> None:
         if args.output:
             export_results(rows, args.output)
     else:
-        print("Sin coincidencias")
+        if RICH_AVAILABLE and console:
+            console.print("[yellow]Sin coincidencias[/yellow]")
+        else:
+            print("Sin coincidencias")
 
 
 if __name__ == "__main__":

@@ -743,3 +743,4 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 | 2026-03-26 | 1.1.0 | Nueva herramienta 6: `azdo_task_validator.py` — Validación DevSecOps de releases | `azdo_task_validator.py` (nuevo), `tools.py`, `README.md` |
 | 2026-03-31 | 1.2.0 | Herramientas 7-8: Scanners de seguridad para logs y dependencias vulnerables | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |
 | 2026-03-31 | 1.3.0 | Scanners 7-8: Refactor con argumentos CLI y soporte config.json | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |
+| 2026-03-31 | 1.2.0 | Scanners 7-8: Barras de progreso con rich (spinner + progress bar) | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py` |
