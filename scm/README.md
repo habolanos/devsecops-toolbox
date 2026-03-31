@@ -155,7 +155,7 @@ scm/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
-| 2026-03-31 | 1.2.0 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |
+| 2026-03-31 | 1.4.1 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |
 | 2026-03-31 | 1.1.1 | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas (ver `ARCHITECTURE_ANALYSIS_PRO.md`) |
 | 2026-03-26 | 1.0.0 | Versión inicial - Launcher unificado para GCP y Azure DevOps |
 

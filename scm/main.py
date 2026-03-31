@@ -6,6 +6,7 @@ DevSecOps Toolbox - Main Launcher
 Punto de entrada unificado para acceder a las herramientas de:
 - Azure DevOps (azdo/tools.py)
 - Google Cloud Platform (gcp/tools.py)
+- Amazon Web Services (aws/tools.py)
 
 Uso:
     python main.py
@@ -31,7 +32,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.0"
+__version__ = "1.4.1"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -83,8 +84,8 @@ PLATFORMS = {
         "emoji": "🟠",
         "color": "yellow",
         "path": "aws/tools.py",
-        "description": "Herramientas para AWS (próximamente)",
-        "status": "coming_soon"
+        "description": "IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch (13 herramientas)",
+        "status": "ready"
     },
     "Q": {
         "name": "Salir",
@@ -295,7 +296,7 @@ def show_info():
         info_text.append("  • Azure DevOps: ", style="blue")
         info_text.append("PRs, políticas, releases\n", style="white")
         info_text.append("  • AWS: ", style="yellow")
-        info_text.append("Próximamente\n", style="dim")
+        info_text.append("13 herramientas DevSecOps\n", style="white")
         
         panel = Panel(info_text, title="ℹ️ Información", border_style="cyan", box=ROUNDED)
         console.print(panel)
