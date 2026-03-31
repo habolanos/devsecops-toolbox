@@ -132,6 +132,7 @@ scm/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-03-31 | 1.1.1 | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas (ver `ARCHITECTURE_ANALYSIS_PRO.md`) |
 | 2026-03-26 | 1.0.0 | Versión inicial - Launcher unificado para GCP y Azure DevOps |
 
 ---

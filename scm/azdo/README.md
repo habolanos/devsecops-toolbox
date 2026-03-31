@@ -15,6 +15,8 @@ devsecops-toolbox/scm/azdo/
 ├── azdo_pipeline_drift.py         # Herramienta 4 — Detección de drift en pipelines CD
 ├── azdo_release_deep_dive.py      # Herramienta 5 — Deep-dive por Release Definition ID
 ├── azdo_task_validator.py         # Herramienta 6 — Validación DevSecOps de releases
+├── azdo_scan_pipeline_logs.py     # Herramienta 7 — Scanner de logs de pipelines CI
+├── azdo_scan_repos_vulnerabilities.py # Herramienta 8 — Scanner de dependencias vulnerables
 ├── config.json.template           # Plantilla de configuración (copiala como config.json)
 ├── requirements.txt               # Dependencias Python compartidas
 └── outcome/                       # Carpeta autogenerada con los reportes exportados
@@ -98,6 +100,8 @@ Edita `config.json` con tus valores reales. **Este archivo está en `.gitignore`
 | `azdo_release_cd_health` | `Release (Read)` |
 | `azdo_pipeline_drift` | `Release (Read)` |
 | `azdo_task_validator` | `Release (Read, Write)` · `Build (Read)` · `Variable Groups (Read)` · `Code (Read)` |
+| `scan_pipeline_logs` | `Build (Read)` |
+| `scan_repos_vulnerabilities` | `Code (Read)` |
 
 > Un PAT con `Code (Read)` + `Release (Read, Write)` + `Build (Read)` + `Variable Groups (Read)` + `Project and Team (Read)` cubre **todas** las herramientas.
 
@@ -127,6 +131,8 @@ python tools.py
   4   🔍 Drift Analysis       Pipeline Drift Analyzer   Detecta drift en pipelines...
   5   🚀 Release Pipelines    Release Deep Dive         Análisis profundo por ID...
   6   ✅ Validación           Task Validator            Validación DevSecOps de releases
+  7   🛡️ Seguridad            Pipeline Logs Scanner     Escanea logs buscando vulnerabilidades
+  8   🛡️ Seguridad            Repo Vulnerabilities      Escanea package.json en repos
   A   ⚙️  Sistema              Ejecutar Todos            Ejecuta las herramientas 1-4
   Q   ⚙️  Sistema              Salir
 ```
@@ -500,6 +506,120 @@ python azdo_task_validator.py --find-rollback --release-id 123 --tag v1.0.0
 
 ---
 
+### 7 · Pipeline Logs Scanner — `azdo_scan_pipeline_logs.py`
+
+Escanea los logs de todos los pipelines CI del proyecto buscando términos específicos relacionados con vulnerabilidades de dependencias. Útil para detectar si alguna build ha reportado paquetes vulnerables.
+
+#### Argumentos CLI
+
+| Argumento | Corto | Requerido | Default | Descripción |
+|---|---|---|---|---|
+| `--pat` | — | ✅ | — | Personal Access Token |
+| `--org` | `-g` | — | desde config.json | Organización de Azure DevOps |
+| `--project` | `-p` | — | desde config.json | Proyecto a escanear |
+| `--search-terms` | — | — | `axios@1.14.1,axios@0.30.4,plain-crypto-js` | Términos a buscar (separados por coma) |
+| `--context-terms` | — | — | `vulnerab,npm audit,critical,high` | Términos de contexto |
+| `--top-runs` | — | — | `50` | Últimas N ejecuciones por pipeline |
+| `--threads` | — | — | `10` | Hilos paralelos |
+| `--output` | `-o` | — | — | Exportar: `json` / `csv` |
+| `--debug` | — | — | `false` | Modo debug |
+| `--help-config` | — | — | — | Mostrar ejemplo de config.json |
+
+#### Ejemplos
+
+```bash
+# Básico con PAT
+python azdo_scan_pipeline_logs.py --pat <PAT> --org Coppel-Retail --project MiProyecto
+
+# Términos personalizados + exportar CSV
+python azdo_scan_pipeline_logs.py --pat <PAT> --search-terms "lodash@4.17.20,moment" --output csv
+
+# Más ejecuciones por pipeline
+python azdo_scan_pipeline_logs.py --pat <PAT> --top-runs 100 --threads 15
+
+# Desde el launcher (opción 7)
+python tools.py
+```
+
+#### Configuración en config.json
+
+```json
+"scan_pipeline_logs": {
+    "top_runs": 50,
+    "threads": 10,
+    "search_terms": ["axios@1.14.1", "axios@0.30.4", "plain-crypto-js"],
+    "context_terms": ["vulnerab", "npm audit", "critical", "high"]
+}
+```
+
+#### Salida
+
+Tabla con columnas: `organization`, `project`, `pipeline_name`, `pipeline_id`, `run_id`, `run_name`, `source_branch`, `status`, `result`, `log_id`, `line_number`, `match_term`, `context_detected`, `matched_line`, `web_url`
+
+---
+
+### 8 · Repo Vulnerabilities Scanner — `azdo_scan_repos_vulnerabilities.py`
+
+Escanea todos los repositorios del proyecto buscando archivos `package.json` en las ramas críticas y detecta dependencias vulnerables específicas.
+
+#### Argumentos CLI
+
+| Argumento | Corto | Requerido | Default | Descripción |
+|---|---|---|---|---|
+| `--pat` | — | ✅ | — | Personal Access Token |
+| `--org` | `-g` | — | desde config.json | Organización de Azure DevOps |
+| `--project` | `-p` | — | desde config.json | Proyecto a escanear |
+| `--branches` | — | — | `develop,QA,master,main` | Ramas a revisar (separadas por coma) |
+| `--targets` | — | — | `axios:1.14.1\|0.30.4,plain-crypto-js` | Dependencias a buscar |
+| `--repo` | `-r` | — | — | Filtrar por nombre de repositorio |
+| `--output` | `-o` | — | — | Exportar: `json` / `csv` |
+| `--debug` | — | — | `false` | Modo debug |
+| `--help-config` | — | — | — | Mostrar ejemplo de config.json |
+
+#### Formato de targets
+
+- `paquete:version1|version2` — Detecta versiones específicas
+- `paquete` — Detecta cualquier versión del paquete
+
+#### Ejemplos
+
+```bash
+# Básico con PAT
+python azdo_scan_repos_vulnerabilities.py --pat <PAT> --org Coppel-Retail --project MiProyecto
+
+# Targets personalizados
+python azdo_scan_repos_vulnerabilities.py --pat <PAT> --targets "lodash:4.17.20|4.17.19,moment"
+
+# Filtrar por repo y exportar
+python azdo_scan_repos_vulnerabilities.py --pat <PAT> --repo ds-ppm --output csv
+
+# Solo ramas específicas
+python azdo_scan_repos_vulnerabilities.py --pat <PAT> --branches "master,main"
+
+# Desde el launcher (opción 8)
+python tools.py
+```
+
+#### Configuración en config.json
+
+```json
+"scan_repos_vulnerabilities": {
+    "branches": ["develop", "QA", "master", "main"],
+    "targets": {
+        "axios": ["1.14.1", "0.30.4"],
+        "plain-crypto-js": null
+    }
+}
+```
+
+> **Nota:** Si `targets[paquete]` es `null`, detecta cualquier versión del paquete.
+
+#### Salida
+
+Tabla con columnas: `organization`, `project`, `repository`, `branch`, `package_json_path`, `dependency`, `version_found`, `normalized_version`, `dependency_section`, `repository_url`
+
+---
+
 ## Exportación de resultados
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
@@ -621,3 +741,5 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 | 2026-03-25 | 1.3.1 | Script PowerShell `make_dist.ps1` para generar ZIP distribuible | `make_dist.ps1` (nuevo en raiz) |
 | 2026-03-25 | 1.0.1 | Default PR status cambiado de `all` a `active` | `azdo_pr_master_checker.py`, `config.json.template`, `tools.py` |
 | 2026-03-26 | 1.1.0 | Nueva herramienta 6: `azdo_task_validator.py` — Validación DevSecOps de releases | `azdo_task_validator.py` (nuevo), `tools.py`, `README.md` |
+| 2026-03-31 | 1.2.0 | Herramientas 7-8: Scanners de seguridad para logs y dependencias vulnerables | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |
+| 2026-03-31 | 1.3.0 | Scanners 7-8: Refactor con argumentos CLI y soporte config.json | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |

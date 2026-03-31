@@ -39,7 +39,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__     = "1.1.0"
+__version__     = "1.3.0"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -77,10 +77,11 @@ TOOL_GROUPS = {
     "release":    {"name": "Release Pipelines",  "emoji": "🚀", "color": "green"},
     "drift":      {"name": "Drift Analysis",     "emoji": "🔍", "color": "magenta"},
     "validation": {"name": "Validación",         "emoji": "✅", "color": "blue"},
+    "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
     "system":     {"name": "Sistema",            "emoji": "⚙️",  "color": "white"},
 }
 
-GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "system"]
+GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "system"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HERRAMIENTAS DISPONIBLES
@@ -138,6 +139,24 @@ TOOLS: Dict = {
                         "--image-actual", "--image-nueva", "--gcp-project",
                         "--group-id", "--artifact-name", "--namespace", "--output"],
         "group":       "validation",
+        "status":      "ready",
+    },
+    "7": {
+        "name":        "Pipeline Logs Scanner",
+        "description": "Escanea logs de pipelines CI buscando términos de vulnerabilidades (axios, plain-crypto-js)",
+        "path":        "azdo_scan_pipeline_logs.py",
+        "args":        ["--pat", "--org", "--project", "--search-terms", "--top-runs",
+                        "--threads", "--output"],
+        "group":       "security",
+        "status":      "ready",
+    },
+    "8": {
+        "name":        "Repo Vulnerabilities Scanner",
+        "description": "Escanea package.json en repositorios buscando dependencias vulnerables",
+        "path":        "azdo_scan_repos_vulnerabilities.py",
+        "args":        ["--pat", "--org", "--project", "--branches", "--targets",
+                        "--repo", "--output"],
+        "group":       "security",
         "status":      "ready",
     },
     "A": {
