@@ -730,17 +730,17 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
-| 2026-03-25 | 1.3.0 | Nueva herramienta 5: `azdo_release_deep_dive.py` — deep-dive por `--release-id` | `azdo_release_deep_dive.py` (nuevo), `tools.py` |
-| 2026-03-25 | 1.3.0 | Columna `Def ID` añadida a tabla Rich y salida texto de CD Health | `azdo_release_cd_health.py` |
-| 2026-03-25 | 1.2.0 | `--repo` / `-r` añadido como alias de `--filter` en tools 3 y 4 | `azdo_release_cd_health.py`, `azdo_pipeline_drift.py` |
-| 2026-03-25 | 1.2.0 | Corrección `--filter` → `--repo` en TOOLS dict de launcher; handler `--release-id` | `tools.py` |
-| 2026-03-25 | 1.1.0 | Refactor PR fetch: endpoint cross-project bulk (1 llamada vs N repos) | `azdo_pr_master_checker.py` |
-| 2026-03-25 | 1.1.0 | Pre-fetch paralelo de CD details; `DEFAULT_THREADS` aumentado a 16 | `azdo_pr_master_checker.py` |
-| 2026-03-25 | 1.0.1 | API version corregida a `7.1` para repos/políticas (fix HTTP 400) | `azdo_pr_master_checker.py`, `azdo_branch_policy_checker.py` |
 | 2026-03-26 | 1.4.0 | `make_dist.ps1` publica releases en GitHub via API (ZIP como asset) | `make_dist.ps1` |
 | 2026-03-25 | 1.3.1 | Script PowerShell `make_dist.ps1` para generar ZIP distribuible | `make_dist.ps1` (nuevo en raiz) |
-| 2026-03-25 | 1.0.1 | Default PR status cambiado de `all` a `active` | `azdo_pr_master_checker.py`, `config.json.template`, `tools.py` |
-| 2026-03-26 | 1.1.0 | Nueva herramienta 6: `azdo_task_validator.py` — Validación DevSecOps de releases | `azdo_task_validator.py` (nuevo), `tools.py`, `README.md` |
-| 2026-03-31 | 1.2.0 | Herramientas 7-8: Scanners de seguridad para logs y dependencias vulnerables | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |
 | 2026-03-31 | 1.3.0 | Scanners 7-8: Refactor con argumentos CLI y soporte config.json | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |
+| 2026-03-25 | 1.3.0 | Nueva herramienta 5: `azdo_release_deep_dive.py` — deep-dive por `--release-id` | `azdo_release_deep_dive.py` (nuevo), `tools.py` |
+| 2026-03-25 | 1.3.0 | Columna `Def ID` añadida a tabla Rich y salida texto de CD Health | `azdo_release_cd_health.py` |
 | 2026-03-31 | 1.2.0 | Scanners 7-8: Barras de progreso con rich (spinner + progress bar) | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py` |
+| 2026-03-31 | 1.2.0 | Herramientas 7-8: Scanners de seguridad para logs y dependencias vulnerables | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |
+| 2026-03-25 | 1.2.0 | `--repo` / `-r` añadido como alias de `--filter` en tools 3 y 4 | `azdo_release_cd_health.py`, `azdo_pipeline_drift.py` |
+| 2026-03-25 | 1.2.0 | Corrección `--filter` → `--repo` en TOOLS dict de launcher; handler `--release-id` | `tools.py` |
+| 2026-03-26 | 1.1.0 | Nueva herramienta 6: `azdo_task_validator.py` — Validación DevSecOps de releases | `azdo_task_validator.py` (nuevo), `tools.py`, `README.md` |
+| 2026-03-25 | 1.1.0 | Refactor PR fetch: endpoint cross-project bulk (1 llamada vs N repos) | `azdo_pr_master_checker.py` |
+| 2026-03-25 | 1.1.0 | Pre-fetch paralelo de CD details; `DEFAULT_THREADS` aumentado a 16 | `azdo_pr_master_checker.py` |
+| 2026-03-25 | 1.0.1 | Default PR status cambiado de `all` a `active` | `azdo_pr_master_checker.py`, `config.json.template`, `tools.py` |
+| 2026-03-25 | 1.0.1 | API version corregida a `7.1` para repos/políticas (fix HTTP 400) | `azdo_pr_master_checker.py`, `azdo_branch_policy_checker.py` |
