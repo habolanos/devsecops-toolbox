@@ -1,0 +1,21 @@
+{
+    "aws": {
+        "profile": "default",
+        "region": "us-east-1",
+        "account_id": ""
+    },
+    "defaults": {
+        "output_format": "json",
+        "output_dir": "outcome"
+    },
+    "eks": {
+        "cluster_name": "",
+        "namespace": "default"
+    },
+    "rds": {
+        "instance_identifier": ""
+    },
+    "ecr": {
+        "repository_name": ""
+    }
+}

@@ -9,7 +9,7 @@ Punto de entrada unificado para herramientas de múltiples plataformas cloud y D
 | `main.py` | Launcher principal - punto de entrada unificado |
 | `gcp/` | Herramientas SRE para Google Cloud Platform |
 | `azdo/` | Herramientas para Azure DevOps |
-| `aws/` | Herramientas para Amazon Web Services (próximamente) |
+| `aws/` | Herramientas DevSecOps para Amazon Web Services |
 
 ---
 
@@ -22,6 +22,7 @@ python main.py
 # O acceder directamente a una plataforma
 python gcp/tools.py
 python azdo/tools.py
+python aws/tools.py
 ```
 
 ---
@@ -57,7 +58,18 @@ python azdo/tools.py
 
 ### 🟠 Amazon Web Services (AWS)
 
-*Próximamente*
+| # | Herramienta | Descripción |
+|---|-------------|-------------|
+| 13 | DevSecOps Tools | IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch |
+
+**Grupos de herramientas:**
+- 🔐 IAM & Security (Users, Roles, ACM)
+- 💾 Database (RDS Instance, Storage)
+- 🌐 Networking (VPC, Security Groups, Load Balancers)
+- ☸️ Kubernetes (EKS Clusters)
+- 📦 Artifacts (ECR Repositories)
+- 💻 Compute (EC2, Lambda)
+- 📊 Monitoring (CloudWatch Alarms)
 
 ---
 
@@ -90,7 +102,7 @@ El launcher principal muestra un menú interactivo:
 ├────┼────────┼─────────────────────────┼──────────────────────┤
 │ 1  │ 🟢     │ ☁️ Google Cloud Platform │ Herramientas SRE...  │
 │ 2  │ 🟢     │ 🔷 Azure DevOps          │ PRs, políticas...    │
-│ 3  │ 🟡     │ 🟠 Amazon Web Services   │ Próximamente         │
+│ 3  │ �     │ 🟠 Amazon Web Services   │ IAM, RDS, VPC...     │
 │ Q  │ 🚪     │ 🚪 Salir                 │ Salir del launcher   │
 └────┴────────┴─────────────────────────┴──────────────────────┘
 ```
@@ -115,7 +127,18 @@ scm/
 │   ├── azdo_pr_master_checker.py
 │   ├── azdo_branch_policy_checker.py
 │   └── ...
-└── aws/                 # Amazon Web Services (próximamente)
+└── aws/                 # Amazon Web Services
+    ├── tools.py         # Launcher AWS (v1.0.0)
+    ├── iam/             # IAM Users & Roles Checker
+    ├── acm/             # ACM Certificate Checker
+    ├── rds/             # RDS Instance & Storage Checker
+    ├── vpc/             # VPC & Security Groups Checker
+    ├── elb/             # Load Balancer Checker
+    ├── eks/             # EKS Cluster Checker
+    ├── ecr/             # ECR Repository Checker
+    ├── ec2/             # EC2 Instances Checker
+    ├── lambda/          # Lambda Functions Checker
+    └── cloudwatch/      # CloudWatch Alarms Checker
 ```
 
 ---
@@ -132,6 +155,7 @@ scm/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-03-31 | 1.2.0 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |
 | 2026-03-31 | 1.1.1 | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas (ver `ARCHITECTURE_ANALYSIS_PRO.md`) |
 | 2026-03-26 | 1.0.0 | Versión inicial - Launcher unificado para GCP y Azure DevOps |
 
