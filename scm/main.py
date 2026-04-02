@@ -16,7 +16,9 @@ import os
 import sys
 import subprocess
 import platform
+import json
 from pathlib import Path
+from typing import Dict, Any, Optional
 
 try:
     from rich.console import Console
@@ -32,7 +34,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.4.1"
+__version__ = "1.5.0"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -42,6 +44,11 @@ console = Console() if RICH_AVAILABLE else None
 # Rutas
 BASE_DIR = Path(__file__).parent.absolute()
 HOST_PYTHON = sys.executable or "python"
+CONFIG_FILE = BASE_DIR / "config.json"
+CONFIG_TEMPLATE = BASE_DIR / "config.json.template"
+
+# Configuración global cargada
+_config: Optional[Dict[str, Any]] = None
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COLORES FALLBACK
@@ -107,6 +114,234 @@ STATUS_INDICATORS = {
     "error": ("🔴", "red", "Error"),
     "exit": ("🚪", "white", "Salir"),
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GESTIÓN DE CONFIGURACIÓN
+# ═══════════════════════════════════════════════════════════════════════════════
+def load_config() -> Optional[Dict[str, Any]]:
+    """Carga la configuración desde config.json."""
+    global _config
+    
+    if _config is not None:
+        return _config
+    
+    if not CONFIG_FILE.exists():
+        return None
+    
+    try:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            _config = json.load(f)
+        return _config
+    except json.JSONDecodeError as e:
+        if RICH_AVAILABLE and console:
+            console.print(f"[red]❌ Error al parsear config.json: {e}[/red]")
+        else:
+            print(f"❌ Error al parsear config.json: {e}")
+        return None
+    except Exception as e:
+        if RICH_AVAILABLE and console:
+            console.print(f"[red]❌ Error al cargar config.json: {e}[/red]")
+        else:
+            print(f"❌ Error al cargar config.json: {e}")
+        return None
+
+
+def get_platform_config(platform_key: str) -> Optional[Dict[str, Any]]:
+    """Obtiene la configuración específica de una plataforma."""
+    config = load_config()
+    if not config:
+        return None
+    
+    platform_map = {
+        "1": "gcp",
+        "2": "azdo",
+        "3": "aws"
+    }
+    
+    platform_name = platform_map.get(platform_key)
+    if not platform_name:
+        return None
+    
+    return config.get(platform_name)
+
+
+def is_platform_configured(platform_key: str) -> bool:
+    """Verifica si una plataforma tiene configuración válida."""
+    platform_config = get_platform_config(platform_key)
+    if not platform_config:
+        return False
+    
+    # Verificar si está habilitada
+    if not platform_config.get("enabled", True):
+        return False
+    
+    # Verificaciones específicas por plataforma
+    platform_map = {"1": "gcp", "2": "azdo", "3": "aws"}
+    platform_name = platform_map.get(platform_key)
+    
+    if platform_name == "azdo":
+        # AZDO requiere PAT y organización
+        return bool(platform_config.get("pat") and 
+                   platform_config.get("organization_url") and
+                   "<TU_" not in str(platform_config.get("pat", "")) and
+                   "<TU_" not in str(platform_config.get("organization_url", "")))
+    
+    elif platform_name == "gcp":
+        # GCP requiere project_id
+        return bool(platform_config.get("project_id") and
+                   "<TU_" not in str(platform_config.get("project_id", "")))
+    
+    elif platform_name == "aws":
+        # AWS requiere profile o credentials
+        creds = platform_config.get("credentials", {})
+        cred_type = creds.get("type", "profile")
+        if cred_type == "profile":
+            return bool(platform_config.get("profile"))
+        elif cred_type == "keys":
+            return bool(creds.get("access_key_id") and creds.get("secret_access_key"))
+        return True
+    
+    return True
+
+
+def get_config_status() -> Dict[str, str]:
+    """Obtiene el estado de configuración de cada plataforma."""
+    config = load_config()
+    status = {}
+    
+    for key in ["1", "2", "3"]:
+        if not config:
+            status[key] = "no_config"
+        elif is_platform_configured(key):
+            status[key] = "configured"
+        else:
+            status[key] = "incomplete"
+    
+    return status
+
+
+def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
+    """Prepara variables de entorno con la configuración de la plataforma."""
+    env = os.environ.copy()
+    config = load_config()
+    
+    if not config:
+        return env
+    
+    platform_config = get_platform_config(platform_key)
+    global_config = config.get("global", {})
+    
+    # Variables globales
+    if global_config.get("debug"):
+        env["DEVSECOPS_DEBUG"] = "1"
+    if global_config.get("verbose"):
+        env["DEVSECOPS_VERBOSE"] = "1"
+    if global_config.get("output_dir"):
+        env["DEVSECOPS_OUTPUT_DIR"] = global_config["output_dir"]
+    
+    # Proxy
+    proxy = global_config.get("proxy", {})
+    if proxy.get("enabled"):
+        if proxy.get("http"):
+            env["HTTP_PROXY"] = proxy["http"]
+        if proxy.get("https"):
+            env["HTTPS_PROXY"] = proxy["https"]
+        if proxy.get("no_proxy"):
+            env["NO_PROXY"] = ",".join(proxy["no_proxy"])
+    
+    if not platform_config:
+        return env
+    
+    # Variables específicas por plataforma
+    platform_map = {"1": "gcp", "2": "azdo", "3": "aws"}
+    platform_name = platform_map.get(platform_key)
+    
+    if platform_name == "azdo":
+        if platform_config.get("organization_url"):
+            env["AZDO_ORG_URL"] = platform_config["organization_url"]
+        if platform_config.get("project"):
+            env["AZDO_PROJECT"] = platform_config["project"]
+        if platform_config.get("pat"):
+            env["AZDO_PAT"] = platform_config["pat"]
+        defaults = platform_config.get("defaults", {})
+        if defaults.get("timezone"):
+            env["AZDO_TIMEZONE"] = defaults["timezone"]
+    
+    elif platform_name == "gcp":
+        if platform_config.get("project_id"):
+            env["GCP_PROJECT_ID"] = platform_config["project_id"]
+            env["CLOUDSDK_CORE_PROJECT"] = platform_config["project_id"]
+        if platform_config.get("region"):
+            env["GCP_REGION"] = platform_config["region"]
+        creds = platform_config.get("credentials", {})
+        if creds.get("service_account_key_path"):
+            env["GOOGLE_APPLICATION_CREDENTIALS"] = creds["service_account_key_path"]
+        k8s = platform_config.get("kubernetes", {})
+        if k8s.get("cluster_name"):
+            env["GKE_CLUSTER_NAME"] = k8s["cluster_name"]
+        if k8s.get("cluster_region"):
+            env["GKE_CLUSTER_REGION"] = k8s["cluster_region"]
+    
+    elif platform_name == "aws":
+        if platform_config.get("profile"):
+            env["AWS_PROFILE"] = platform_config["profile"]
+        if platform_config.get("region"):
+            env["AWS_DEFAULT_REGION"] = platform_config["region"]
+            env["AWS_REGION"] = platform_config["region"]
+        creds = platform_config.get("credentials", {})
+        if creds.get("type") == "keys":
+            if creds.get("access_key_id"):
+                env["AWS_ACCESS_KEY_ID"] = creds["access_key_id"]
+            if creds.get("secret_access_key"):
+                env["AWS_SECRET_ACCESS_KEY"] = creds["secret_access_key"]
+            if creds.get("session_token"):
+                env["AWS_SESSION_TOKEN"] = creds["session_token"]
+    
+    return env
+
+
+def print_config_status():
+    """Muestra el estado de configuración."""
+    config = load_config()
+    status = get_config_status()
+    
+    if RICH_AVAILABLE and console:
+        if not config:
+            console.print(Panel(
+                "[yellow]⚠️ No se encontró config.json[/yellow]\n"
+                f"[dim]Copia config.json.template a config.json y configura tus credenciales.[/dim]",
+                title="📋 Configuración",
+                border_style="yellow",
+                expand=False
+            ))
+        else:
+            status_lines = []
+            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS"}
+            for key, name in platform_names.items():
+                st = status.get(key, "no_config")
+                if st == "configured":
+                    status_lines.append(f"[green]✅ {name}[/green]")
+                elif st == "incomplete":
+                    status_lines.append(f"[yellow]⚠️ {name} (incompleto)[/yellow]")
+                else:
+                    status_lines.append(f"[dim]❌ {name}[/dim]")
+            
+            console.print(Panel(
+                "  ".join(status_lines),
+                title="📋 Estado de Configuración",
+                border_style="cyan",
+                expand=False
+            ))
+    else:
+        if not config:
+            print(f"{Colors.WARNING}⚠️ No se encontró config.json{Colors.ENDC}")
+        else:
+            print(f"{Colors.CYAN}Estado de configuración:{Colors.ENDC}")
+            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS"}.items():
+                st = status.get(key, "no_config")
+                symbol = "✅" if st == "configured" else "⚠️" if st == "incomplete" else "❌"
+                print(f"  {symbol} {name}")
 
 
 def clear_screen():
@@ -270,9 +505,12 @@ def launch_platform(platform_key: str):
     else:
         print(f"\n{Colors.CYAN}🚀 Lanzando {platform['emoji']} {platform['name']}...{Colors.ENDC}\n")
     
-    # Ejecutar el tools.py de la plataforma
+    # Preparar variables de entorno con configuración
+    env = prepare_env_for_platform(platform_key)
+    
+    # Ejecutar el tools.py de la plataforma con las variables de entorno
     try:
-        subprocess.run([HOST_PYTHON, str(tools_path)], check=False)
+        subprocess.run([HOST_PYTHON, str(tools_path)], check=False, env=env)
     except KeyboardInterrupt:
         print(f"\n{Colors.WARNING}Regresando al menú principal...{Colors.ENDC}")
     except Exception as e:
@@ -281,6 +519,65 @@ def launch_platform(platform_key: str):
         else:
             print(f"\n{Colors.FAIL}❌ Error al ejecutar: {e}{Colors.ENDC}")
         input("\nPresione Enter para continuar...")
+
+
+def show_config_details():
+    """Muestra detalles de la configuración actual."""
+    config = load_config()
+    
+    if RICH_AVAILABLE and console:
+        if not config:
+            console.print(Panel(
+                "[yellow]⚠️ No se encontró config.json[/yellow]\n\n"
+                f"[white]Para configurar el toolbox:[/white]\n"
+                f"  1. Copia [cyan]config.json.template[/cyan] a [cyan]config.json[/cyan]\n"
+                f"  2. Edita config.json con tus credenciales\n"
+                f"  3. Reinicia el launcher\n\n"
+                f"[dim]Ruta: {CONFIG_FILE}[/dim]",
+                title="📋 Configuración",
+                border_style="yellow",
+                expand=False
+            ))
+        else:
+            # Mostrar configuración por plataforma
+            table = Table(title="📋 Configuración Actual", box=ROUNDED, border_style="cyan")
+            table.add_column("Plataforma", style="bold white")
+            table.add_column("Estado", justify="center")
+            table.add_column("Detalles", style="dim")
+            
+            # GCP
+            gcp = config.get("gcp", {})
+            gcp_status = "✅" if is_platform_configured("1") else "⚠️"
+            gcp_details = f"Project: {gcp.get('project_id', 'N/A')[:30]}"
+            table.add_row("☁️ GCP", f"[green]{gcp_status}[/]" if gcp_status == "✅" else f"[yellow]{gcp_status}[/]", gcp_details)
+            
+            # AZDO
+            azdo = config.get("azdo", {})
+            azdo_status = "✅" if is_platform_configured("2") else "⚠️"
+            org_url = azdo.get("organization_url", "N/A")
+            azdo_details = f"Org: {org_url.replace('https://dev.azure.com/', '')[:25]}"
+            table.add_row("🔷 Azure DevOps", f"[green]{azdo_status}[/]" if azdo_status == "✅" else f"[yellow]{azdo_status}[/]", azdo_details)
+            
+            # AWS
+            aws = config.get("aws", {})
+            aws_status = "✅" if is_platform_configured("3") else "⚠️"
+            aws_details = f"Profile: {aws.get('profile', 'N/A')} | Region: {aws.get('region', 'N/A')}"
+            table.add_row("🟠 AWS", f"[green]{aws_status}[/]" if aws_status == "✅" else f"[yellow]{aws_status}[/]", aws_details)
+            
+            console.print(table)
+            console.print(f"\n[dim]Archivo de configuración: {CONFIG_FILE}[/dim]")
+    else:
+        if not config:
+            print(f"\n{Colors.WARNING}⚠️ No se encontró config.json{Colors.ENDC}")
+            print(f"Copia config.json.template a config.json y configura tus credenciales.")
+        else:
+            print(f"\n{Colors.BOLD}📋 Configuración Actual{Colors.ENDC}")
+            for name, key in [("GCP", "gcp"), ("AZDO", "azdo"), ("AWS", "aws")]:
+                plat = config.get(key, {})
+                status = "✅" if plat else "❌"
+                print(f"  {status} {name}")
+    
+    input("\nPresione Enter para continuar...")
 
 
 def show_info():
@@ -313,16 +610,20 @@ def main():
     while True:
         try:
             print_header()
+            print_config_status()
+            console.print() if RICH_AVAILABLE and console else print()
             print_menu()
             
             # Tip
             if RICH_AVAILABLE and console:
-                console.print("[dim]💡 Tip: Escriba 'info' para más información[/dim]\n")
+                console.print("[dim]💡 Tip: Escriba 'info' para más información | 'config' para ver configuración[/dim]\n")
             
             choice = input(f"{Colors.BOLD}Seleccione una opción: {Colors.ENDC}").strip().upper()
             
             if choice == "INFO":
                 show_info()
+            elif choice == "CONFIG":
+                show_config_details()
             elif choice in PLATFORMS:
                 launch_platform(choice)
             else:

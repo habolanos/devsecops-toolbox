@@ -27,6 +27,74 @@ python aws/tools.py
 
 ---
 
+## ⚙️ Configuración
+
+El toolbox utiliza un archivo `config.json` para gestionar tokens y credenciales de todas las plataformas.
+
+### Configuración Inicial
+
+```bash
+# 1. Copiar el template
+cp config.json.template config.json
+
+# 2. Editar con tus credenciales
+nano config.json  # o tu editor preferido
+```
+
+### Estructura del config.json
+
+```json
+{
+  "azdo": {
+    "enabled": true,
+    "organization_url": "https://dev.azure.com/TU_ORGANIZACION",
+    "project": "TU_PROYECTO",
+    "pat": "TU_PAT_TOKEN"
+  },
+  "gcp": {
+    "enabled": true,
+    "project_id": "TU_PROJECT_ID",
+    "region": "us-central1",
+    "credentials": {
+      "type": "adc",
+      "service_account_key_path": ""
+    }
+  },
+  "aws": {
+    "enabled": true,
+    "profile": "default",
+    "region": "us-east-1",
+    "credentials": {
+      "type": "profile"
+    }
+  },
+  "global": {
+    "debug": false,
+    "output_dir": "outcome"
+  }
+}
+```
+
+### Variables de Entorno Exportadas
+
+Al lanzar cada plataforma, el launcher configura automáticamente:
+
+| Plataforma | Variables |
+|------------|-----------|
+| **AZDO** | `AZDO_ORG_URL`, `AZDO_PROJECT`, `AZDO_PAT`, `AZDO_TIMEZONE` |
+| **GCP** | `GCP_PROJECT_ID`, `GCP_REGION`, `GOOGLE_APPLICATION_CREDENTIALS`, `GKE_CLUSTER_NAME` |
+| **AWS** | `AWS_PROFILE`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+
+### Comandos de Configuración
+
+En el menú principal:
+- Escriba `config` para ver el estado detallado de configuración
+- El estado se muestra automáticamente: ✅ configurado, ⚠️ incompleto, ❌ sin configurar
+
+> ⚠️ **IMPORTANTE**: Nunca subas `config.json` al repositorio. Ya está en `.gitignore`.
+
+---
+
 ## 🎯 Plataformas Disponibles
 
 ### ☁️ Google Cloud Platform (GCP)
@@ -155,6 +223,7 @@ scm/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-02 | 1.5.0 | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. |
 | 2026-03-31 | 1.4.1 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |
 | 2026-03-31 | 1.1.1 | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas (ver `ARCHITECTURE_ANALYSIS_PRO.md`) |
 | 2026-03-26 | 1.0.0 | Versión inicial - Launcher unificado para GCP y Azure DevOps |

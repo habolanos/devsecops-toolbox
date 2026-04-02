@@ -1,0 +1,72 @@
+{
+  "_info": "Template de configuración unificada para DevSecOps Toolbox. Copia como config.json y completa los valores. NUNCA subas config.json al repositorio.",
+  "_version": "1.0.0",
+
+  "azdo": {
+    "_info": "Configuración de Azure DevOps",
+    "enabled": true,
+    "organization_url": "https://dev.azure.com/<TU_ORGANIZACION>",
+    "project": "<TU_PROYECTO>",
+    "pat": "<TU_PAT_TOKEN>",
+    "defaults": {
+      "timezone": "America/Mazatlan",
+      "threads": 8,
+      "output_format": "csv"
+    }
+  },
+
+  "gcp": {
+    "_info": "Configuración de Google Cloud Platform",
+    "enabled": true,
+    "project_id": "<TU_PROJECT_ID>",
+    "region": "us-central1",
+    "credentials": {
+      "_info": "Opciones: 'adc' (Application Default Credentials), 'service_account', 'oauth'",
+      "type": "adc",
+      "service_account_key_path": "",
+      "impersonate_service_account": ""
+    },
+    "kubernetes": {
+      "cluster_name": "",
+      "cluster_region": "us-central1"
+    },
+    "defaults": {
+      "timezone": "America/Mazatlan",
+      "output_format": "json"
+    }
+  },
+
+  "aws": {
+    "_info": "Configuración de Amazon Web Services",
+    "enabled": true,
+    "profile": "default",
+    "region": "us-east-1",
+    "account_id": "",
+    "credentials": {
+      "_info": "Opciones: 'profile' (usa AWS CLI profile), 'keys' (access/secret keys), 'role' (assume role)",
+      "type": "profile",
+      "access_key_id": "",
+      "secret_access_key": "",
+      "session_token": "",
+      "role_arn": ""
+    },
+    "defaults": {
+      "output_format": "json",
+      "output_dir": "outcome"
+    }
+  },
+
+  "global": {
+    "_info": "Configuración global aplicable a todas las plataformas",
+    "debug": false,
+    "verbose": false,
+    "output_dir": "outcome",
+    "log_level": "INFO",
+    "proxy": {
+      "enabled": false,
+      "http": "",
+      "https": "",
+      "no_proxy": ["localhost", "127.0.0.1"]
+    }
+  }
+}
