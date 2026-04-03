@@ -37,8 +37,8 @@ class AWSMock:
                 "UserName": user_name,
                 "UserId": "AIDACKCEVSQ6C2EXAMPLE",
                 "Arn": f"arn:aws:iam::123456789012:user/{user_name}",
-                "CreateDate": datetime(2024, 1, 1, tzinfo=timezone.utc),
-                "PasswordLastUsed": datetime(2024, 1, 15, tzinfo=timezone.utc),
+                "CreateDate": "2024-01-01T00:00:00Z",
+                "PasswordLastUsed": "2024-01-15T00:00:00Z",
                 "Tags": [
                     {"Key": "Environment", "Value": "Test"},
                     {"Key": "Team", "Value": "DevOps"}
@@ -54,7 +54,7 @@ class AWSMock:
                 "RoleName": role_name,
                 "RoleId": "AROA1234567890EXAMPLE",
                 "Arn": f"arn:aws:iam::123456789012:role/{role_name}",
-                "CreateDate": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                "CreateDate": "2024-01-01T00:00:00Z",
                 "AssumeRolePolicyDocument": {
                     "Version": "2012-10-17",
                     "Statement": [
@@ -82,7 +82,7 @@ class AWSMock:
             "ImageId": "ami-12345678",
             "InstanceType": "t3.medium",
             "KeyName": "test-keypair",
-            "LaunchTime": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "LaunchTime": "2024-01-01T00:00:00Z",
             "Monitoring": {"State": "disabled"},
             "Placement": {
                 "AvailabilityZone": "us-east-1a",
@@ -103,7 +103,7 @@ class AWSMock:
                 {
                     "DeviceName": "/dev/xvda",
                     "Ebs": {
-                        "AttachTime": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                        "AttachTime": "2024-01-01T00:00:00Z",
                         "DeleteOnTermination": True,
                         "Status": "attached",
                         "VolumeId": "vol-12345678"
@@ -161,7 +161,7 @@ class AWSMock:
                 "HostedZoneId": "Z2R2ITUGPM61AM"
             },
             "AllocatedStorage": 100,
-            "InstanceCreateTime": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "InstanceCreateTime": "2024-01-01T00:00:00Z",
             "PreferredBackupWindow": "03:00-04:00",
             "BackupRetentionPeriod": 7,
             "DBSecurityGroups": [],
@@ -213,7 +213,7 @@ class AWSMock:
         """Retorna respuesta mock de bucket S3."""
         return {
             "Name": bucket_name,
-            "CreationDate": datetime(2024, 1, 1, tzinfo=timezone.utc)
+            "CreationDate": "2024-01-01T00:00:00Z"
         }
     
     def mock_s3_bucket_details(self, bucket_name: str = "test-bucket") -> Dict[str, Any]:
@@ -221,7 +221,7 @@ class AWSMock:
         return {
             "ResponseMetadata": {"HTTPStatusCode": 200},
             "Buckets": [
-                {"Name": bucket_name, "CreationDate": datetime(2024, 1, 1, tzinfo=timezone.utc)}
+                {"Name": bucket_name, "CreationDate": "2024-01-01T00:00:00Z"}
             ],
             "Owner": {
                 "DisplayName": "test-user",
@@ -271,7 +271,7 @@ class AWSMock:
             "cluster": {
                 "name": cluster_name,
                 "arn": f"arn:aws:eks:us-east-1:123456789012:cluster/{cluster_name}",
-                "createdAt": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                "createdAt": "2024-01-01T00:00:00Z",
                 "version": "1.28",
                 "endpoint": f"https://ABC123DEF456.yl4.us-east-1.eks.amazonaws.com",
                 "roleArn": "arn:aws:iam::123456789012:role/eks-cluster-role",
@@ -406,7 +406,7 @@ class AWSMock:
             "Serial": "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
             "Subject": "CN=example.com",
             "Issuer": "Amazon",
-            "CreatedAt": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "CreatedAt": "2024-01-01T00:00:00Z",
             "Status": "ISSUED",
             "Type": "AMAZON_ISSUED",
             "KeyAlgorithm": "RSA-2048",
@@ -416,8 +416,8 @@ class AWSMock:
                 f"arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/test-alb/50dc6c495c0c9188"
             ],
             "RenewalEligibility": "INELIGIBLE",
-            "NotBefore": datetime(2024, 1, 1, tzinfo=timezone.utc),
-            "NotAfter": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "NotBefore": "2024-01-01T00:00:00Z",
+            "NotAfter": "2025-01-01T00:00:00Z",
             "Tags": [
                 {"Key": "Environment", "Value": "Test"}
             ]

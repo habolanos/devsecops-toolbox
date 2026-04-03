@@ -152,6 +152,6 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 exclude = [
     "outcome",
-    "\.venv",
+    "\\.venv",
     "tests",
 ]
