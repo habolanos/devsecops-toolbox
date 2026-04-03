@@ -43,6 +43,18 @@ cache
 .bashrc
 .env
 
+#testing
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+tests/.pytest_cache/
+outcome/coverage_html/
+outcome/coverage.xml
+.tox/
+.nox/
+
 #Zip Files
 *.zip
 *.gz

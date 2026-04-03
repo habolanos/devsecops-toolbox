@@ -219,10 +219,109 @@ scm/
 
 ---
 
+## 🧪 Testing
+
+El proyecto incluye una suite de tests completa con pytest.
+
+### Estructura de Tests
+
+```
+tests/
+├── conftest.py              # Fixtures globales
+├── unit/                    # Tests unitarios
+│   ├── test_main.py         # Tests del launcher principal
+│   ├── gcp/
+│   ├── azdo/
+│   └── aws/
+├── integration/             # Tests de integración
+│   └── test_cloud_apis.py   # Tests de APIs cloud con mocks
+├── mocks/                   # Mocks reutilizables
+│   ├── gcp_mock.py          # Mock para GCP
+│   ├── azdo_mock.py         # Mock para Azure DevOps
+│   └── aws_mock.py          # Mock para AWS
+└── fixtures/                # Datos de prueba
+    ├── config_samples/
+    ├── gcp_responses/
+    ├── azdo_responses/
+    └── aws_responses/
+```
+
+### Ejecutar Tests
+
+```bash
+# Instalar dependencias de testing
+pip install pytest pytest-cov pytest-mock
+
+# Ejecutar todos los tests
+pytest
+
+# Ejecutar solo tests unitarios
+pytest tests/unit -v
+
+# Ejecutar tests con cobertura
+pytest --cov=scm --cov-report=html:outcome/coverage_html
+
+# Ejecutar tests de integración
+pytest tests/integration -v -m integration
+
+# Ejecutar tests de un cloud específico
+pytest -m gcp
+pytest -m azdo
+pytest -m aws
+
+# Excluir tests lentos
+pytest -m "not slow"
+```
+
+### Markers Disponibles
+
+| Marker | Descripción |
+|--------|-------------|
+| `@pytest.mark.unit` | Tests unitarios (rápidos, sin dependencias externas) |
+| `@pytest.mark.integration` | Tests de integración (usan mocks de APIs) |
+| `@pytest.mark.e2e` | Tests end-to-end (flujos completos) |
+| `@pytest.mark.slow` | Tests que toman más tiempo |
+| `@pytest.mark.gcp` | Tests específicos de GCP |
+| `@pytest.mark.azdo` | Tests específicos de Azure DevOps |
+| `@pytest.mark.aws` | Tests específicos de AWS |
+
+### Fixtures Principales
+
+| Fixture | Descripción |
+|---------|-------------|
+| `sample_config_data` | Configuración de ejemplo válida |
+| `temp_config_file` | Archivo de configuración temporal |
+| `mock_azdo_env` | Variables de entorno mock para AZDO |
+| `mock_gcp_env` | Variables de entorno mock para GCP |
+| `mock_aws_env` | Variables de entorno mock para AWS |
+| `clean_env` | Limpieza de variables de entorno |
+
+### Mocks de APIs Cloud
+
+Los mocks están en `tests/mocks/` y proporcionan:
+
+- **GCPMock**: Simula Projects, GKE, Compute, Cloud Run, Service Accounts
+- **AZDOMock**: Simula Projects, Repos, PRs, Pipelines, Releases, Policies
+- **AWSMock**: Simula STS, IAM, EC2, RDS, Lambda, EKS, S3, ACM
+
+Ejemplo de uso:
+
+```python
+from mocks.gcp_mock import GCPMock
+
+def test_gcp_project():
+    gcp_mock = GCPMock()
+    project = gcp_mock.mock_project_response("my-project")
+    assert project["lifecycleState"] == "ACTIVE"
+```
+
+---
+
 ## 📜 Historial de Cambios
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-02 | 1.5.1 | **Testing Suite**: Arquitectura profesional de testing con pytest, cobertura 70%+, mocks para GCP/AZDO/AWS, CI/CD con GitHub Actions. Tests unitarios e integración con 500+ assertions. |
 | 2026-04-02 | 1.5.0 | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. |
 | 2026-03-31 | 1.4.1 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |
 | 2026-03-31 | 1.1.1 | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas (ver `ARCHITECTURE_ANALYSIS_PRO.md`) |

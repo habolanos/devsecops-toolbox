@@ -1,0 +1,128 @@
+name: Tests - DevSecOps Toolbox
+
+on:
+  push:
+    branches: [master, main, develop]
+    paths:
+      - 'scm/**/*.py'
+      - 'tests/**/*.py'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+  pull_request:
+    branches: [master, main, develop]
+    paths:
+      - 'scm/**/*.py'
+      - 'tests/**/*.py'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        exclude:
+          # Reduce matrix size for faster CI
+          - os: windows-latest
+            python-version: '3.9'
+          - os: windows-latest
+            python-version: '3.10'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pip/cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-mock
+          # Instalar rich si está disponible
+          pip install rich || echo "Rich not available, continuing without it"
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit -v --tb=short -m "not integration and not e2e" --cov=scm --cov-report=xml --cov-report=term
+        env:
+          PYTHONPATH: ${{ github.workspace }}/scm:${{ github.workspace }}/tests
+
+      - name: Run integration tests with mocks
+        run: |
+          pytest tests/integration -v --tb=short --cov=scm --cov-report=xml --cov-append
+        env:
+          PYTHONPATH: ${{ github.workspace }}/scm:${{ github.workspace }}/tests
+          # Usar mocks, no credenciales reales
+          USE_MOCKS: 'true'
+
+      - name: Check code coverage
+        run: |
+          python -m coverage report --fail-under=50
+        continue-on-error: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            outcome/
+            coverage.xml
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linting tools
+        run: |
+          pip install flake8 black isort mypy
+
+      - name: Check code formatting with black
+        run: |
+          black --check --diff scm/ tests/
+        continue-on-error: true
+
+      - name: Check import sorting with isort
+        run: |
+          isort --check-only --diff scm/ tests/
+        continue-on-error: true
+
+      - name: Lint with flake8
+        run: |
+          flake8 scm/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        continue-on-error: true
+
+      - name: Type checking with mypy
+        run: |
+          mypy scm/ tests/ --ignore-missing-imports
+        continue-on-error: true
