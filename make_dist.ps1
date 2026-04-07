@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Empaqueta todos los archivos del toolbox respetando las exclusiones del .gitignore:
-    sin .git, venv, __pycache__, config.json (secretos), outcome/, archivos temporales, etc.
+    sin .git, venv, __pycache__, config.json (secretos), outcome/, tests/, archivos temporales, etc.
     El ZIP resultante se genera en la carpeta outcome/ con timestamp.
 
 .PARAMETER OutputDir
@@ -90,7 +90,8 @@ $ExcludedDirs = [System.Collections.Generic.HashSet[string]]::new(
     'outcome',
     'cache', '.cache',
     '.vscode', '.docker', '.config', '.npm', '.kube', '.ssh',
-    '.local', '.rustup', '.gemini'
+    '.local', '.rustup', '.gemini',
+    'tests', '__tests__', '__tests__e2e'
 ) | ForEach-Object { [void]$ExcludedDirs.Add($_) }
 
 # Nombres de archivo exactos excluidos
