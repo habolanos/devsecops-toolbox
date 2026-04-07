@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-# Asegurar que main.py está importable
-sys.path.insert(0, str(Path(__file__).parent.parent / "scm"))
+# Asegurar que scm está importable como paquete
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 class TestLoadConfig:
@@ -21,11 +21,11 @@ class TestLoadConfig:
     @pytest.mark.unit
     def test_load_config_success(self, tmp_path, sample_config_data):
         """Test: Cargar configuración válida exitosamente."""
-        from main import load_config, _config
+        from scm.main import load_config, _config
         
         # Limpiar cache
-        import main
-        main._config = None
+        import scm.main as main_module
+        main_module._config = None
         
         # Crear archivo de config temporal
         config_path = tmp_path / "config.json"
@@ -33,7 +33,7 @@ class TestLoadConfig:
             json.dump(sample_config_data, f)
         
         # Parchar la ruta del config
-        with patch("main.CONFIG_FILE", config_path):
+        with patch("scm.main.CONFIG_FILE", config_path):
             result = load_config()
         
         assert result is not None
@@ -44,14 +44,14 @@ class TestLoadConfig:
     @pytest.mark.unit
     def test_load_config_file_not_exists(self):
         """Test: Retornar None cuando el archivo no existe."""
-        from main import load_config
+        from scm.main import load_config
         
         # Limpiar cache
-        import main
-        main._config = None
+        import scm.main as main_module
+        main_module._config = None
         
         # Parchar con ruta inexistente
-        with patch("main.CONFIG_FILE", Path("/nonexistent/path/config.json")):
+        with patch("scm.main.CONFIG_FILE", Path("/nonexistent/path/config.json")):
             result = load_config()
         
         assert result is None
@@ -59,17 +59,17 @@ class TestLoadConfig:
     @pytest.mark.unit
     def test_load_config_invalid_json(self, tmp_path):
         """Test: Manejar JSON inválido correctamente."""
-        from main import load_config
+        from scm.main import load_config
         
         # Limpiar cache
-        import main
-        main._config = None
+        import scm.main as main_module
+        main_module._config = None
         
         # Crear archivo con JSON inválido
         config_path = tmp_path / "config.json"
         config_path.write_text("{invalid json", encoding="utf-8")
         
-        with patch("main.CONFIG_FILE", config_path):
+        with patch("scm.main.CONFIG_FILE", config_path):
             result = load_config()
         
         assert result is None
@@ -77,11 +77,11 @@ class TestLoadConfig:
     @pytest.mark.unit
     def test_load_config_uses_cache(self, tmp_path, sample_config_data):
         """Test: Usar cache en llamadas subsiguientes."""
-        from main import load_config
+        from scm.main import load_config
         
         # Limpiar cache
-        import main
-        main._config = sample_config_data  # Simular cache
+        import scm.main as main_module
+        main_module._config = sample_config_data  # Simular cache
         
         # No debería intentar leer el archivo
         with patch("builtins.open") as mock_open:
@@ -97,9 +97,9 @@ class TestGetPlatformConfig:
     @pytest.mark.unit
     def test_get_azdo_config(self, sample_config_data):
         """Test: Obtener configuración de AZDO."""
-        from main import get_platform_config
+        from scm.main import get_platform_config
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             result = get_platform_config("2")  # AZDO es "2"
         
         assert result is not None
@@ -109,9 +109,9 @@ class TestGetPlatformConfig:
     @pytest.mark.unit
     def test_get_gcp_config(self, sample_config_data):
         """Test: Obtener configuración de GCP."""
-        from main import get_platform_config
+        from scm.main import get_platform_config
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             result = get_platform_config("1")  # GCP es "1"
         
         assert result is not None
@@ -121,9 +121,9 @@ class TestGetPlatformConfig:
     @pytest.mark.unit
     def test_get_aws_config(self, sample_config_data):
         """Test: Obtener configuración de AWS."""
-        from main import get_platform_config
+        from scm.main import get_platform_config
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             result = get_platform_config("3")  # AWS es "3"
         
         assert result is not None
@@ -133,9 +133,9 @@ class TestGetPlatformConfig:
     @pytest.mark.unit
     def test_get_config_no_config(self):
         """Test: Retornar None cuando no hay configuración."""
-        from main import get_platform_config
+        from scm.main import get_platform_config
         
-        with patch("main.load_config", return_value=None):
+        with patch("scm.main.load_config", return_value=None):
             result = get_platform_config("1")
         
         assert result is None
@@ -143,9 +143,9 @@ class TestGetPlatformConfig:
     @pytest.mark.unit
     def test_get_config_invalid_key(self, sample_config_data):
         """Test: Retornar None para clave de plataforma inválida."""
-        from main import get_platform_config
+        from scm.main import get_platform_config
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             result = get_platform_config("invalid")
         
         assert result is None
@@ -157,9 +157,9 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_azdo_configured(self, sample_config_data):
         """Test: AZDO configurado correctamente."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             result = is_platform_configured("2")
         
         assert result is True
@@ -167,7 +167,7 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_azdo_not_configured_placeholder(self):
         """Test: AZDO no configurado (tiene placeholders)."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
         config = {
             "azdo": {
@@ -177,7 +177,7 @@ class TestIsPlatformConfigured:
             }
         }
         
-        with patch("main.load_config", return_value=config):
+        with patch("scm.main.load_config", return_value=config):
             result = is_platform_configured("2")
         
         assert result is False
@@ -185,7 +185,7 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_azdo_disabled(self):
         """Test: AZDO deshabilitado."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
         config = {
             "azdo": {
@@ -195,7 +195,7 @@ class TestIsPlatformConfigured:
             }
         }
         
-        with patch("main.load_config", return_value=config):
+        with patch("scm.main.load_config", return_value=config):
             result = is_platform_configured("2")
         
         assert result is False
@@ -203,9 +203,9 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_gcp_configured(self, sample_config_data):
         """Test: GCP configurado correctamente."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             result = is_platform_configured("1")
         
         assert result is True
@@ -213,7 +213,7 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_gcp_not_configured_placeholder(self):
         """Test: GCP no configurado (tiene placeholders)."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
         config = {
             "gcp": {
@@ -222,7 +222,7 @@ class TestIsPlatformConfigured:
             }
         }
         
-        with patch("main.load_config", return_value=config):
+        with patch("scm.main.load_config", return_value=config):
             result = is_platform_configured("1")
         
         assert result is False
@@ -230,9 +230,9 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_aws_configured_profile(self, sample_config_data):
         """Test: AWS configurado con profile."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             result = is_platform_configured("3")
         
         assert result is True
@@ -240,7 +240,7 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_aws_configured_keys(self):
         """Test: AWS configurado con access keys."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
         config = {
             "aws": {
@@ -253,7 +253,7 @@ class TestIsPlatformConfigured:
             }
         }
         
-        with patch("main.load_config", return_value=config):
+        with patch("scm.main.load_config", return_value=config):
             result = is_platform_configured("3")
         
         assert result is True
@@ -261,7 +261,7 @@ class TestIsPlatformConfigured:
     @pytest.mark.unit
     def test_aws_not_configured_missing_keys(self):
         """Test: AWS no configurado (faltan keys)."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
         config = {
             "aws": {
@@ -274,7 +274,7 @@ class TestIsPlatformConfigured:
             }
         }
         
-        with patch("main.load_config", return_value=config):
+        with patch("scm.main.load_config", return_value=config):
             result = is_platform_configured("3")
         
         assert result is False
@@ -286,9 +286,9 @@ class TestPrepareEnvForPlatform:
     @pytest.mark.unit
     def test_prepare_azdo_env(self, sample_config_data, clean_env):
         """Test: Preparar variables de entorno para AZDO."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             env = prepare_env_for_platform("2")
         
         assert env["AZDO_ORG_URL"] == "https://dev.azure.com/test-org"
@@ -299,9 +299,9 @@ class TestPrepareEnvForPlatform:
     @pytest.mark.unit
     def test_prepare_gcp_env(self, sample_config_data, clean_env):
         """Test: Preparar variables de entorno para GCP."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             env = prepare_env_for_platform("1")
         
         assert env["GCP_PROJECT_ID"] == "test-project-123"
@@ -312,9 +312,9 @@ class TestPrepareEnvForPlatform:
     @pytest.mark.unit
     def test_prepare_aws_env(self, sample_config_data, clean_env):
         """Test: Preparar variables de entorno para AWS."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             env = prepare_env_for_platform("3")
         
         assert env["AWS_PROFILE"] == "test-profile"
@@ -324,13 +324,13 @@ class TestPrepareEnvForPlatform:
     @pytest.mark.unit
     def test_prepare_env_with_global_settings(self, sample_config_data, clean_env):
         """Test: Incluir configuración global en variables de entorno."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         
         sample_config_data["global"]["debug"] = True
         sample_config_data["global"]["verbose"] = True
         sample_config_data["global"]["output_dir"] = "custom_output"
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             env = prepare_env_for_platform("1")
         
         assert env["DEVSECOPS_DEBUG"] == "1"
@@ -340,7 +340,7 @@ class TestPrepareEnvForPlatform:
     @pytest.mark.unit
     def test_prepare_env_with_proxy(self, sample_config_data, clean_env):
         """Test: Configurar variables de proxy."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         
         sample_config_data["global"]["proxy"] = {
             "enabled": True,
@@ -349,7 +349,7 @@ class TestPrepareEnvForPlatform:
             "no_proxy": ["localhost", "127.0.0.1", "internal.example.com"]
         }
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             env = prepare_env_for_platform("1")
         
         assert env["HTTP_PROXY"] == "http://proxy.example.com:8080"
@@ -359,12 +359,12 @@ class TestPrepareEnvForPlatform:
     @pytest.mark.unit
     def test_prepare_env_preserves_existing(self, sample_config_data):
         """Test: Preservar variables de entorno existentes."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         
         # Establecer variable previa
         os.environ["PRE_EXISTING_VAR"] = "should_remain"
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             env = prepare_env_for_platform("1")
         
         assert env["PRE_EXISTING_VAR"] == "should_remain"
@@ -376,10 +376,10 @@ class TestGetConfigStatus:
     @pytest.mark.unit
     def test_all_configured(self, sample_config_data):
         """Test: Todas las plataformas configuradas."""
-        from main import get_config_status
+        from scm.main import get_config_status
         
-        with patch("main.load_config", return_value=sample_config_data):
-            with patch("main.is_platform_configured", return_value=True):
+        with patch("scm.main.load_config", return_value=sample_config_data):
+            with patch("scm.main.is_platform_configured", return_value=True):
                 result = get_config_status()
         
         assert result["1"] == "configured"
@@ -389,9 +389,9 @@ class TestGetConfigStatus:
     @pytest.mark.unit
     def test_no_config(self):
         """Test: Sin archivo de configuración."""
-        from main import get_config_status
+        from scm.main import get_config_status
         
-        with patch("main.load_config", return_value=None):
+        with patch("scm.main.load_config", return_value=None):
             result = get_config_status()
         
         assert result["1"] == "no_config"
@@ -401,13 +401,13 @@ class TestGetConfigStatus:
     @pytest.mark.unit
     def test_mixed_status(self, sample_config_data):
         """Test: Estado mixto de configuración."""
-        from main import get_config_status
+        from scm.main import get_config_status
         
         def mock_is_configured(key):
             return key == "1"  # Solo GCP configurado
         
-        with patch("main.load_config", return_value=sample_config_data):
-            with patch("main.is_platform_configured", side_effect=mock_is_configured):
+        with patch("scm.main.load_config", return_value=sample_config_data):
+            with patch("scm.main.is_platform_configured", side_effect=mock_is_configured):
                 result = get_config_status()
         
         assert result["1"] == "configured"
@@ -421,11 +421,11 @@ class TestLaunchPlatform:
     @pytest.mark.unit
     def test_launch_configured_platform(self, sample_config_data, mock_subprocess_run):
         """Test: Lanzar plataforma configurada."""
-        from main import launch_platform
+        from scm.main import launch_platform
         
-        with patch("main.load_config", return_value=sample_config_data):
-            with patch("main.is_platform_configured", return_value=True):
-                with patch("main.BASE_DIR", Path("/fake/path")):
+        with patch("scm.main.load_config", return_value=sample_config_data):
+            with patch("scm.main.is_platform_configured", return_value=True):
+                with patch("scm.main.BASE_DIR", Path("/fake/path")):
                     with patch("builtins.input"):  # Mock input to avoid stdin issue
                         launch_platform("1")
         
@@ -435,7 +435,7 @@ class TestLaunchPlatform:
     @pytest.mark.unit
     def test_exit_option(self):
         """Test: Opción de salida termina el programa."""
-        from main import launch_platform
+        from scm.main import launch_platform
         
         with pytest.raises(SystemExit) as exc_info:
             launch_platform("Q")
@@ -445,7 +445,7 @@ class TestLaunchPlatform:
     @pytest.mark.unit
     def test_invalid_platform(self):
         """Test: Plataforma inválida muestra error."""
-        from main import launch_platform
+        from scm.main import launch_platform
         
         # No debería lanzar excepción, solo mostrar mensaje
         launch_platform("999")
@@ -458,10 +458,10 @@ class TestShowConfigDetails:
     @pytest.mark.unit
     def test_show_details_with_config(self, sample_config_data, capsys):
         """Test: Mostrar detalles con configuración existente."""
-        from main import show_config_details
+        from scm.main import show_config_details
         
-        with patch("main.load_config", return_value=sample_config_data):
-            with patch("main.is_platform_configured", return_value=True):
+        with patch("scm.main.load_config", return_value=sample_config_data):
+            with patch("scm.main.is_platform_configured", return_value=True):
                 with patch("builtins.input"):  # Mock input
                     show_config_details()
         
@@ -472,9 +472,9 @@ class TestShowConfigDetails:
     @pytest.mark.unit
     def test_show_details_no_config(self, capsys):
         """Test: Mostrar detalles sin configuración."""
-        from main import show_config_details
+        from scm.main import show_config_details
         
-        with patch("main.load_config", return_value=None):
+        with patch("scm.main.load_config", return_value=None):
             with patch("builtins.input"):
                 show_config_details()
         
@@ -489,15 +489,15 @@ class TestEdgeCases:
     @pytest.mark.unit
     def test_load_config_permission_error(self, tmp_path):
         """Test: Manejar error de permisos al leer config."""
-        from main import load_config
+        from scm.main import load_config
         
-        import main
-        main._config = None
+        import scm.main as main_module
+        main_module._config = None
         
         config_path = tmp_path / "config.json"
         config_path.write_text('{"test": "data"}')
         
-        with patch("main.CONFIG_FILE", config_path):
+        with patch("scm.main.CONFIG_FILE", config_path):
             with patch("builtins.open", side_effect=PermissionError("Access denied")):
                 result = load_config()
         
@@ -506,10 +506,10 @@ class TestEdgeCases:
     @pytest.mark.unit
     def test_unicode_in_config(self, tmp_path):
         """Test: Manejar caracteres unicode en configuración."""
-        from main import load_config
+        from scm.main import load_config
         
-        import main
-        main._config = None
+        import scm.main as main_module
+        main_module._config = None
         
         config_with_unicode = {
             "azdo": {
@@ -522,7 +522,7 @@ class TestEdgeCases:
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config_with_unicode, f, ensure_ascii=False)
         
-        with patch("main.CONFIG_FILE", config_path):
+        with patch("scm.main.CONFIG_FILE", config_path):
             result = load_config()
         
         assert result is not None
@@ -531,7 +531,7 @@ class TestEdgeCases:
     @pytest.mark.unit
     def test_empty_strings_in_config(self):
         """Test: Manejar strings vacíos en configuración."""
-        from main import is_platform_configured
+        from scm.main import is_platform_configured
         
         config = {
             "azdo": {
@@ -541,7 +541,7 @@ class TestEdgeCases:
             }
         }
         
-        with patch("main.load_config", return_value=config):
+        with patch("scm.main.load_config", return_value=config):
             result = is_platform_configured("2")
         
         assert result is False

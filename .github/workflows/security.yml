@@ -1,0 +1,224 @@
+name: Security Analysis
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main, develop]
+  schedule:
+    # Run at 00:00 UTC every Sunday
+    - cron: '0 0 * * 0'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  # =============================================================================
+  # JOB 1: CodeQL Analysis
+  # =============================================================================
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-extended,security-and-quality
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,test]"
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
+
+  # =============================================================================
+  # JOB 2: Dependency Review (PR only)
+  # =============================================================================
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          deny-licenses: 'GPL-2.0, GPL-3.0'
+
+  # =============================================================================
+  # JOB 3: Secret Scanning
+  # =============================================================================
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets with GitLeaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true
+
+      - name: Scan for secrets with TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+        continue-on-error: true
+
+  # =============================================================================
+  # JOB 4: Software Composition Analysis (SCA)
+  # =============================================================================
+  sca:
+    name: Software Composition Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || pip install -e "."
+
+      - name: Run pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit --format=json --output=pip-audit-report.json || true
+          pip-audit
+        continue-on-error: true
+
+      - name: Run Safety check
+        run: |
+          pip install safety
+          safety check --json --output=safety-report.json || true
+          safety check
+        continue-on-error: true
+
+      - name: Upload SCA reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sca-reports
+          path: |
+            pip-audit-report.json
+            safety-report.json
+
+  # =============================================================================
+  # JOB 5: Container Security (if Dockerfile exists)
+  # =============================================================================
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('**/Dockerfile') != '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t devsecops-toolbox:${{ github.sha }} .
+
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: devsecops-toolbox:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # =============================================================================
+  # JOB 6: SBOM Generation
+  # =============================================================================
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate SBOM with CycloneDX
+        run: |
+          pip install cyclonedx-bom
+          cyclonedx-py -r -o sbom.cyclonedx.json || true
+
+      - name: Generate SBOM with SPDX
+        run: |
+          pip install spdx-tools
+          python -m spdx_tools.py2spdx -o sbom.spdx.json || true
+        continue-on-error: true
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            sbom.cyclonedx.json
+            sbom.spdx.json
+
+  # =============================================================================
+  # JOB 7: Summary
+  # =============================================================================
+  summary:
+    name: Security Summary
+    needs: [codeql, secret-scan, sca]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# Security Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| CodeQL Analysis | ${{ needs.codeql.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Scanning | ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SCA | ${{ needs.sca.result }} |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ hashFiles('**/Dockerfile') != '' }}" ]; then
+            echo "| Container Scan | ${{ needs.container-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          fi

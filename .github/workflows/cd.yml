@@ -1,0 +1,322 @@
+name: CD - DevSecOps Toolbox Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (e.g., v1.5.1)'
+        required: true
+        type: string
+      draft:
+        description: 'Create as draft release'
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  # =============================================================================
+  # JOB 1: Validate Release
+  # =============================================================================
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.release_tag }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          
+          # Remove 'v' prefix for PyPI
+          PYPI_VERSION=${VERSION#v}
+          
+          # Check if pre-release (contains -alpha, -beta, -rc, etc.)
+          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "version=$PYPI_VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION (PyPI: $PYPI_VERSION)"
+
+      - name: Check CHANGELOG
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ -f "CHANGELOG.md" ]; then
+            if grep -q "$VERSION" CHANGELOG.md; then
+              echo "✓ Version found in CHANGELOG.md"
+            else
+              echo "⚠ Version $VERSION not found in CHANGELOG.md"
+            fi
+          fi
+
+  # =============================================================================
+  # JOB 2: Run Full CI
+  # =============================================================================
+  ci:
+    name: Run CI Pipeline
+    needs: [validate]
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  # =============================================================================
+  # JOB 3: Build Release Artifacts
+  # =============================================================================
+  build:
+    name: Build Release Artifacts
+    needs: [validate, ci]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build wheel and sdist
+        run: |
+          python -m build
+
+      - name: Upload Python package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+          retention-days: 30
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: dist/checksums.txt
+
+  # =============================================================================
+  # JOB 4: Create Distribution ZIP (Windows)
+  # =============================================================================
+  build-zip:
+    name: Build Windows Distribution
+    needs: [validate, ci]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run make_dist.ps1
+        shell: pwsh
+        run: |
+          $Version = "${{ needs.validate.outputs.version }}"
+          .\make_dist.ps1 -OutputDir outcome -ZipPrefix "devsecops-toolbox_v$Version"
+
+      - name: Calculate checksum
+        shell: pwsh
+        run: |
+          $zipFile = Get-ChildItem outcome\*.zip | Select-Object -First 1
+          $hash = Get-FileHash $zipFile -Algorithm SHA256
+          $hash.Hash | Out-File outcome\checksum_sha256.txt
+          Write-Host "SHA256: $($hash.Hash)"
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: |
+            outcome/*.zip
+            outcome/checksum_sha256.txt
+          retention-days: 30
+
+  # =============================================================================
+  # JOB 5: Create GitHub Release
+  # =============================================================================
+  release:
+    name: Create GitHub Release
+    needs: [validate, build, build-zip]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Organize artifacts
+        run: |
+          mkdir -p release-assets
+          cp artifacts/python-package/* release-assets/ || true
+          cp artifacts/checksums/* release-assets/ || true
+          cp artifacts/windows-zip/* release-assets/ || true
+          ls -la release-assets/
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            echo "## Changes since $LAST_TAG" > release_notes.md
+            git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" >> release_notes.md
+          else
+            echo "## Full Changelog" > release_notes.md
+            git log --pretty=format:"- %s (%h)" >> release_notes.md
+          fi
+          
+          echo "" >> release_notes.md
+          echo "## Artifacts" >> release_notes.md
+          echo "- Python wheel and source distribution" >> release_notes.md
+          echo "- Windows distribution ZIP with PowerShell tools" >> release_notes.md
+          echo "- SHA256 checksums included" >> release_notes.md
+          
+          cat release_notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push'
+        with:
+          files: release-assets/*
+          body_path: release_notes.md
+          draft: ${{ needs.validate.outputs.is_prerelease == 'true' }}
+          prerelease: ${{ needs.validate.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release (Manual)
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          files: release-assets/*
+          body_path: release_notes.md
+          draft: ${{ github.event.inputs.draft }}
+          prerelease: ${{ github.event.inputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # =============================================================================
+  # JOB 6: Publish to PyPI (Production)
+  # =============================================================================
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [validate, build, release]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/devsecops-toolbox
+    if: github.event_name == 'push' && needs.validate.outputs.is_prerelease == 'false'
+    steps:
+      - name: Download Python package
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+
+  # =============================================================================
+  # JOB 7: Publish to TestPyPI (Pre-releases)
+  # =============================================================================
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [validate, build, release]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/devsecops-toolbox
+    if: github.event_name == 'push' && needs.validate.outputs.is_prerelease == 'true'
+    steps:
+      - name: Download Python package
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          skip-existing: true
+
+  # =============================================================================
+  # JOB 8: Summary
+  # =============================================================================
+  summary:
+    name: CD Summary
+    needs: [validate, release, publish-pypi, publish-testpypi]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# CD Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.validate.outputs.is_prerelease }}" = "true" ]; then
+            echo "| Publish to TestPyPI | ${{ needs.publish-testpypi.result }} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Publish to PyPI | ${{ needs.publish-pypi.result }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- Python wheel (.whl)" >> $GITHUB_STEP_SUMMARY
+          echo "- Source distribution (.tar.gz)" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows ZIP distribution" >> $GITHUB_STEP_SUMMARY
+          echo "- SHA256 checksums" >> $GITHUB_STEP_SUMMARY

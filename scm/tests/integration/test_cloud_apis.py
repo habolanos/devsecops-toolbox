@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Asegurar importaciones
-devsecops_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(devsecops_root / "scm"))
-sys.path.insert(0, str(devsecops_root / "tests"))
+project_root = Path(__file__).parent.parent.parent.parent  # raíz del proyecto
+sys.path.insert(0, str(project_root))  # para importar scm como paquete
+sys.path.insert(0, str(project_root / "scm" / "tests"))  # para mocks
 
 
 class TestGCPIntegration:
@@ -322,9 +322,9 @@ class TestMultiCloudIntegration:
     @pytest.mark.integration
     def test_cross_cloud_config_loading(self, sample_config_data):
         """Test: Carga de configuración para múltiples clouds."""
-        from main import load_config, get_platform_config
+        from scm.main import load_config, get_platform_config
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             gcp_config = get_platform_config("1")
             azdo_config = get_platform_config("2")
             aws_config = get_platform_config("3")
@@ -340,10 +340,10 @@ class TestMultiCloudIntegration:
     @pytest.mark.integration
     def test_environment_variables_propagation(self, sample_config_data, clean_env):
         """Test: Propagación de variables de entorno a todos los clouds."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         import os
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             # Probar GCP
             gcp_env = prepare_env_for_platform("1")
             assert "GCP_PROJECT_ID" in gcp_env
@@ -362,13 +362,13 @@ class TestMultiCloudIntegration:
     @pytest.mark.integration
     def test_global_config_propagation(self, sample_config_data, clean_env):
         """Test: Propagación de configuración global."""
-        from main import prepare_env_for_platform
+        from scm.main import prepare_env_for_platform
         
         sample_config_data["global"]["debug"] = True
         sample_config_data["global"]["proxy"]["enabled"] = True
         sample_config_data["global"]["proxy"]["http"] = "http://proxy:8080"
         
-        with patch("main.load_config", return_value=sample_config_data):
+        with patch("scm.main.load_config", return_value=sample_config_data):
             env = prepare_env_for_platform("1")
         
         assert env["DEVSECOPS_DEBUG"] == "1"

@@ -1,0 +1,298 @@
+name: CI - DevSecOps Toolbox
+
+on:
+  push:
+    branches: [master, main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'scm/**/*.py'
+      - '.github/workflows/ci.yml'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+  pull_request:
+    branches: [master, main, develop]
+    paths:
+      - 'scm/**/*.py'
+      - '.github/workflows/ci.yml'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  # =============================================================================
+  # JOB 1: Lint and Format Check
+  # =============================================================================
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install black isort flake8 mypy
+
+      - name: Check code formatting with black
+        id: black
+        run: |
+          black --check --diff scm/
+        continue-on-error: true
+
+      - name: Check import sorting with isort
+        id: isort
+        run: |
+          isort --check-only --diff scm/
+        continue-on-error: true
+
+      - name: Lint with flake8
+        id: flake8
+        run: |
+          flake8 scm/ --count --max-complexity=15 --max-line-length=100 \
+            --extend-ignore=E203,W503 --statistics
+        continue-on-error: true
+
+      - name: Type checking with mypy
+        id: mypy
+        run: |
+          mypy scm/ --ignore-missing-imports --show-error-codes
+        continue-on-error: true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Lint Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Black: ${{ steps.black.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "- isort: ${{ steps.isort.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "- flake8: ${{ steps.flake8.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "- mypy: ${{ steps.mypy.outcome }}" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # JOB 2: Security Scanning
+  # =============================================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit[toml] safety
+
+      - name: Run Bandit (security linter)
+        id: bandit
+        run: |
+          bandit -r scm/ -f json -o bandit-report.json || true
+          bandit -r scm/ -f screen
+        continue-on-error: true
+
+      - name: Run Safety (dependency check)
+        id: safety
+        run: |
+          safety check --json --output safety-report.json || true
+          safety check
+        continue-on-error: true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Bandit: ${{ steps.bandit.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Safety: ${{ steps.safety.outcome }}" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # JOB 3: Test Matrix
+  # =============================================================================
+  test:
+    name: Test Matrix
+    needs: [lint]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        include:
+          - os: ubuntu-latest
+            python-version: '3.11'
+            coverage: true
+        exclude:
+          # Reduce matrix for faster CI
+          - os: macos-latest
+            python-version: '3.9'
+          - os: windows-latest
+            python-version: '3.10'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'pyproject.toml'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+      - name: Run unit tests
+        run: |
+          pytest scm/tests/unit -v --tb=short -m "not integration and not e2e" \
+            --cov=scm --cov-report=xml --cov-report=term
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Run integration tests
+        run: |
+          pytest scm/tests/integration -v --tb=short \
+            --cov=scm --cov-report=xml --cov-append
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          USE_MOCKS: 'true'
+
+      - name: Upload coverage to Codecov
+        if: matrix.coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            outcome/
+            coverage.xml
+            .pytest_cache/
+
+  # =============================================================================
+  # JOB 4: Build Package
+  # =============================================================================
+  build:
+    name: Build Package
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine check-wheel-contents
+
+      - name: Build package
+        run: |
+          python -m build
+
+      - name: Check wheel contents
+        run: |
+          check-wheel-contents dist/*.whl
+
+      - name: Check with twine
+        run: |
+          twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 5
+
+      - name: Summary
+        run: |
+          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+          ls -lh dist/ >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # JOB 5: Create Distribution ZIP
+  # =============================================================================
+  dist-zip:
+    name: Create Distribution ZIP
+    needs: [test, security]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run make_dist.ps1
+        shell: pwsh
+        run: |
+          .\make_dist.ps1 -OutputDir outcome
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-zip
+          path: outcome/*.zip
+          retention-days: 5
+
+  # =============================================================================
+  # JOB 6: Summary
+  # =============================================================================
+  summary:
+    name: CI Summary
+    needs: [lint, security, test, build, dist-zip]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Format | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Matrix | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Package | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dist ZIP | ${{ needs.dist-zip.result }} |" >> $GITHUB_STEP_SUMMARY

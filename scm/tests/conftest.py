@@ -19,10 +19,10 @@ import pytest
 # ═══════════════════════════════════════════════════════════════════════════════
 def pytest_configure(config):
     """Configuración inicial de pytest."""
-    # Agregar scm al path para importaciones
-    scm_path = Path(__file__).parent.parent / "scm"
-    if str(scm_path) not in sys.path:
-        sys.path.insert(0, str(scm_path))
+    # Agregar directorio raíz del proyecto al path para importar scm como paquete
+    project_root = Path(__file__).parent.parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -30,8 +30,8 @@ def pytest_configure(config):
 # ═══════════════════════════════════════════════════════════════════════════════
 @pytest.fixture(scope="session")
 def project_root() -> Path:
-    """Retorna la ruta raíz del proyecto."""
-    return Path(__file__).parent.parent
+    """Retorna la ruta raíz del proyecto (donde está .git)."""
+    return Path(__file__).parent.parent.parent
 
 
 @pytest.fixture(scope="session")
@@ -43,7 +43,7 @@ def scm_dir(project_root) -> Path:
 @pytest.fixture(scope="session")
 def tests_dir(project_root) -> Path:
     """Retorna la ruta del directorio de tests."""
-    return project_root / "tests"
+    return project_root / "scm" / "tests"
 
 
 @pytest.fixture(scope="session")

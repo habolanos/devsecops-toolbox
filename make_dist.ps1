@@ -91,7 +91,7 @@ $ExcludedDirs = [System.Collections.Generic.HashSet[string]]::new(
     'cache', '.cache',
     '.vscode', '.docker', '.config', '.npm', '.kube', '.ssh',
     '.local', '.rustup', '.gemini',
-    'tests', '__tests__', '__tests__e2e'
+    'tests', 'scm/tests', '__tests__', '__tests__e2e'
 ) | ForEach-Object { [void]$ExcludedDirs.Add($_) }
 
 # Nombres de archivo exactos excluidos
