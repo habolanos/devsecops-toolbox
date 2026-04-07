@@ -10,6 +10,8 @@ Punto de entrada unificado para herramientas de múltiples plataformas cloud y D
 | `gcp/` | Herramientas SRE para Google Cloud Platform |
 | `azdo/` | Herramientas para Azure DevOps |
 | `aws/` | Herramientas DevSecOps para Amazon Web Services |
+| [Testing](#-testing) | Guía paso a paso para ejecutar tests |
+| [Compilar](#-compilar-distribuible) | Guía para crear el ZIP distribuible |
 
 ---
 
@@ -246,31 +248,66 @@ tests/
     └── aws_responses/
 ```
 
-### Ejecutar Tests
+### 📝 Paso a Paso: Ejecutar Tests
+
+#### 1. Instalar dependencias de testing
 
 ```bash
-# Instalar dependencias de testing
+# Desde el directorio raíz del proyecto
 pip install pytest pytest-cov pytest-mock
+```
 
-# Ejecutar todos los tests
+#### 2. Ejecutar todos los tests
+
+```bash
+# Ejecutar todos los tests (unitarios + integración)
+python -m pytest tests
+
+# O simplemente
 pytest
+```
 
-# Ejecutar solo tests unitarios
+#### 3. Ejecutar tests por categoría
+
+```bash
+# Solo tests unitarios
 pytest tests/unit -v
 
-# Ejecutar tests con cobertura
+# Solo tests de integración (requiere ALLOW_INTEGRATION_TESTS=true en Linux/Mac)
+$env:ALLOW_INTEGRATION_TESTS="true"; pytest tests/integration -v
+
+# Tests específicos por plataforma cloud
+pytest -m gcp      # Tests de GCP
+pytest -m azdo     # Tests de Azure DevOps
+pytest -m aws      # Tests de AWS
+pytest -m unit     # Solo tests unitarios
+pytest -m "not slow"  # Excluir tests lentos
+```
+
+#### 4. Ejecutar tests con cobertura
+
+```bash
+# Reporte de cobertura en consola
+pytest --cov=scm
+
+# Reporte HTML detallado
 pytest --cov=scm --cov-report=html:outcome/coverage_html
 
-# Ejecutar tests de integración
-pytest tests/integration -v -m integration
+# Abrir reporte HTML (Windows)
+start outcome/coverage_html/index.html
+```
 
-# Ejecutar tests de un cloud específico
-pytest -m gcp
-pytest -m azdo
-pytest -m aws
+#### 5. Ver resultados detallados
 
-# Excluir tests lentos
-pytest -m "not slow"
+```bash
+# Mostrar traceback corto
+pytest -v --tb=short
+
+# Mostrar solo errores
+pytest --tb=line -q
+
+# Verbose máximo
+pytest -vvv
 ```
 
 ### Markers Disponibles
@@ -316,6 +353,83 @@ def test_gcp_project():
 ```
 
 ---
+
+## 📦 Compilar Distribuible
+
+El proyecto incluye un script PowerShell (`make_dist.ps1`) para generar un ZIP distribuible.
+
+### 📝 Paso a Paso: Crear Distribuible
+
+#### 1. Verificar ubicación
+
+```powershell
+# Navegar al directorio raíz del proyecto
+cd c:\Users\harold.bolanos\repos-publics\devsecops-toolbox
+```
+
+#### 2. Ejecutar script de empaquetado
+
+```powershell
+# Empaquetado básico (salida en outcome/)
+.\make_dist.ps1
+
+# Empaquetado con nombre personalizado
+.\make_dist.ps1 -ZipPrefix "devsecops-toolbox_v1.5.1"
+
+# Empaquetado mostrando archivos excluidos
+.\make_dist.ps1 -ShowExcluded
+
+# Empaquetado en directorio alternativo
+.\make_dist.ps1 -OutputDir "C:\\entregas"
+```
+
+#### 3. Verificar resultado
+
+```powershell
+# Listar archivos generados en outcome/
+ls outcome\*.zip
+
+# Ver contenido del ZIP (sin extraer)
+Expand-Archive -Path "outcome\devsecops-toolbox_dist_*.zip" -DestinationPath "temp_extract" -WhatIf
+```
+
+#### 4. Publicar en GitHub (opcional)
+
+```powershell
+# Crear release y subir ZIP (requiere token)
+.\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.5.1" -ReleaseTitle "Release 1.5.1" -ReleaseNotes "Nueva versión con testing suite"
+
+# Crear como borrador
+.\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.5.1" -Draft
+
+# Crear como pre-release
+.\make_dist.ps1 -GitHubPublish -ReleaseTag "v1.5.1-beta" -Prerelease
+```
+
+### Archivos Excluidos del Distribuible
+
+El ZIP de distribución **NO incluye**:
+- `.git/`, `.github/` - Control de versiones
+- `tests/`, `__tests__/` - Tests (código de desarrollo)
+- `.venv/`, `venv/` - Entornos virtuales
+- `outcome/` - Archivos de salida
+- `config.json` - Credenciales (solo se distribuye `config.json.template`)
+- `make_dist.ps1` - Script de empaquetado
+- Archivos temporales: `*.pyc`, `*.log`, `__pycache__/`
+
+### Estructura del ZIP Generado
+
+```
+devsecops-toolbox_dist_YYYYMMDD_HHMMSS.zip
+├── scm/
+│   ├── main.py              # Launcher principal
+│   ├── config.json.template # Template de configuración
+│   ├── gcp/                 # Herramientas GCP
+│   ├── azdo/                # Herramientas AZDO
+│   └── aws/                 # Herramientas AWS
+├── pyproject.toml           # Metadatos del proyecto
+└── pytest.ini              # Configuración de tests
+```
 
 ## 📜 Historial de Cambios
 
