@@ -143,16 +143,26 @@ jobs:
   container-scan:
     name: Container Security Scan
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('**/Dockerfile') != '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check if Dockerfile exists
+        id: check-dockerfile
+        run: |
+          if [ -f "Dockerfile" ] || [ -n "$(find . -name 'Dockerfile' -type f 2>/dev/null | head -1)" ]; then
+            echo "dockerfile_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "dockerfile_exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build Docker image
+        if: steps.check-dockerfile.outputs.dockerfile_exists == 'true'
         run: |
           docker build -t devsecops-toolbox:${{ github.sha }} .
 
       - name: Scan with Trivy
+        if: steps.check-dockerfile.outputs.dockerfile_exists == 'true'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: devsecops-toolbox:${{ github.sha }}
@@ -161,8 +171,8 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy results
+        if: steps.check-dockerfile.outputs.dockerfile_exists == 'true' && always()
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -205,7 +215,7 @@ jobs:
   # =============================================================================
   summary:
     name: Security Summary
-    needs: [codeql, secret-scan, sca]
+    needs: [codeql, secret-scan, sca, container-scan]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -218,7 +228,4 @@ jobs:
           echo "| CodeQL Analysis | ${{ needs.codeql.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Secret Scanning | ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| SCA | ${{ needs.sca.result }} |" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ hashFiles('**/Dockerfile') != '' }}" ]; then
-            echo "| Container Scan | ${{ needs.container-scan.result }} |" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "| Container Scan | ${{ needs.container-scan.result }} |" >> $GITHUB_STEP_SUMMARY
