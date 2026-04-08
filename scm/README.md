@@ -431,6 +431,49 @@ devsecops-toolbox_dist_YYYYMMDD_HHMMSS.zip
 └── pytest.ini              # Configuración de tests
 ```
 
+## 🏷️ Versionado Semántico (SemVer)
+
+Este proyecto sigue [Semantic Versioning 2.0.0](https://semver.org/lang/es/):
+
+```
+VERSION = MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
+
+MAJOR  - Cambios incompatibles con versiones anteriores
+MINOR  - Nuevas funcionalidades (compatibles hacia atrás)
+PATCH  - Correcciones de bugs (compatibles hacia atrás)
+```
+
+### Gestión de Versiones
+
+```bash
+# Ver versión actual
+python scripts/bump_version.py
+
+# Subir versión
+python scripts/bump_version.py patch   # 1.5.1 → 1.5.2
+python scripts/bump_version.py minor   # 1.5.2 → 1.6.0
+python scripts/bump_version.py major   # 1.6.0 → 2.0.0
+
+# Pre-releases
+python scripts/bump_version.py prerelease  # 2.0.0 → 2.0.0-alpha.1
+python scripts/bump_version.py finalize      # 2.0.0-alpha.1 → 2.0.0
+
+# Establecer versión explícita
+python scripts/bump_version.py 2.1.0
+
+# Validar consistencia
+python scripts/bump_version.py --validate
+```
+
+### Versiones Sincronizadas
+
+La versión se mantiene consistente en:
+- `VERSION` - Archivo fuente de verdad
+- `scm/__init__.py` - `__version__`
+- `pyproject.toml` - Metadatos del paquete
+
+---
+
 ## 📜 Historial de Cambios
 
 | Fecha | Versión | Descripción |

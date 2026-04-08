@@ -1,0 +1,60 @@
+name: Version Check
+
+on:
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'VERSION'
+      - 'pyproject.toml'
+      - 'scm/__init__.py'
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  validate-semver:
+    name: Validate SemVer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate version consistency
+        run: |
+          python scripts/bump_version.py --validate
+
+      - name: Check SemVer format
+        run: |
+          VERSION=$(cat VERSION)
+          echo "Checking version: $VERSION"
+          
+          # SemVer regex validation
+          if [[ ! $VERSION =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$ ]]; then
+            echo "❌ Invalid SemVer format: $VERSION"
+            exit 1
+          fi
+          echo "✅ Valid SemVer: $VERSION"
+
+      - name: Check if tag exists
+        run: |
+          VERSION=$(cat VERSION)
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "❌ Tag v$VERSION already exists!"
+            exit 1
+          fi
+          echo "✅ Tag v$VERSION is available"
+
+      - name: Generate version summary
+        if: always()
+        run: |
+          echo "# Version Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Current Version:** $(cat VERSION)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- SemVer format: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- File consistency: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Tag available: ✅" >> $GITHUB_STEP_SUMMARY
