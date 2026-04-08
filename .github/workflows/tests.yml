@@ -5,14 +5,14 @@ on:
     branches: [master, main, develop]
     paths:
       - 'scm/**/*.py'
-      - 'tests/**/*.py'
+      - 'scm/tests/**/*.py'
       - 'pyproject.toml'
       - 'pytest.ini'
   pull_request:
     branches: [master, main, develop]
     paths:
       - 'scm/**/*.py'
-      - 'tests/**/*.py'
+      - 'scm/tests/**/*.py'
       - 'pyproject.toml'
       - 'pytest.ini'
 
@@ -57,15 +57,15 @@ jobs:
 
       - name: Run unit tests
         run: |
-          pytest tests/unit -v --tb=short -m "not integration and not e2e" --cov=scm --cov-report=xml --cov-report=term
+          pytest scm/tests/unit -v --tb=short -m "not integration and not e2e" --cov=scm --cov-report=xml --cov-report=term
         env:
-          PYTHONPATH: ${{ github.workspace }}/scm:${{ github.workspace }}/tests
+          PYTHONPATH: ${{ github.workspace }}
 
       - name: Run integration tests with mocks
         run: |
-          pytest tests/integration -v --tb=short --cov=scm --cov-report=xml --cov-append
+          pytest scm/tests/integration -v --tb=short --cov=scm --cov-report=xml --cov-append
         env:
-          PYTHONPATH: ${{ github.workspace }}/scm:${{ github.workspace }}/tests
+          PYTHONPATH: ${{ github.workspace }}
           # Usar mocks, no credenciales reales
           USE_MOCKS: 'true'
 
@@ -109,20 +109,20 @@ jobs:
 
       - name: Check code formatting with black
         run: |
-          black --check --diff scm/ tests/
+          black --check --diff scm/
         continue-on-error: true
 
       - name: Check import sorting with isort
         run: |
-          isort --check-only --diff scm/ tests/
+          isort --check-only --diff scm/
         continue-on-error: true
 
       - name: Lint with flake8
         run: |
-          flake8 scm/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 scm/ --count --select=E9,F63,F7,F82 --show-source --statistics
         continue-on-error: true
 
       - name: Type checking with mypy
         run: |
-          mypy scm/ tests/ --ignore-missing-imports
+          mypy scm/ --ignore-missing-imports
         continue-on-error: true
