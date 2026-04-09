@@ -50,8 +50,10 @@ Thumbs.db
 # Docker
 Dockerfile
 docker-compose.yml
-docker-entrypoint.sh
 .dockerignore
+
+# Permitir entrypoint script
+!docker-entrypoint.sh
 
 # Scripts de empaquetado
 make_dist.ps1
