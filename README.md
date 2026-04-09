@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.5.2-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
 
 > **Caja de herramientas DevSecOps unificada para operaciones multi-cloud.**
