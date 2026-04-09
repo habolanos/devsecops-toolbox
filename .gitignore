@@ -9,6 +9,12 @@
 #Secrets
 *.origin.json
 config.json
+.env
+.env.local
+.env.*.local
+*.secret
+*.key
+secrets/
 
 #IAs
 .windsurf

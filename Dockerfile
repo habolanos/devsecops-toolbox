@@ -1,35 +1,40 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# DevSecOps Toolbox - Multi-Cloud CLI Container
+# DevSecOps Toolbox - Multi-Cloud CLI Container (Slim Edition)
 # ═══════════════════════════════════════════════════════════════════════════════
-# Incluye: Azure CLI, AWS CLI, Google Cloud SDK, kubectl, y herramientas netshoot
+# Imagen base: python:3.11-slim (ligera, ~60MB vs ~80MB de ubuntu:22.04)
+# Incluye: Azure CLI, AWS CLI, Google Cloud SDK, kubectl, helm, terraform
+# Netshoot: ping, dig, traceroute, tcpdump, nmap, netcat, etc.
+# Python: Todas las dependencias de requirements.txt de subfolders
 # ═══════════════════════════════════════════════════════════════════════════════
 
-FROM ubuntu:22.04
+FROM python:3.11-slim
 
-# Evitar prompts interactivos durante la instalación
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC
+# Evitar prompts interactivos
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LABELS
 # ═══════════════════════════════════════════════════════════════════════════════
 LABEL maintainer="Harold Adrian" \
-      version="1.0.0" \
-      description="Multi-cloud DevSecOps toolbox with Azure, AWS, GCP CLIs and netshoot tools"
+      version="1.5.2" \
+      description="Multi-cloud DevSecOps toolbox"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE DEPENDENCIAS BASE
+# DEPENDENCIAS DEL SISTEMA
 # ═══════════════════════════════════════════════════════════════════════════════
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     # Herramientas básicas
     curl \
     wget \
-    apt-transport-https \
     ca-certificates \
     gnupg \
     lsb-release \
-    software-properties-common \
-    # Herramientas de red (netshoot)
+    # Herramientas de red (netshoot esenciales)
     iputils-ping \
     dnsutils \
     net-tools \
@@ -38,138 +43,110 @@ RUN apt-get update && apt-get install -y \
     mtr \
     iperf3 \
     nmap \
-    socat \
     netcat-openbsd \
     iproute2 \
-    bridge-utils \
-    ethtool \
-    conntrack \
-    ngrep \
-    # Herramientas de análisis
+    socat \
+    # Utilidades
     jq \
-    yq \
     git \
-    vim \
-    nano \
     unzip \
-    zip \
-    tar \
-    gzip \
-    bzip2 \
-    # Python y pip
-    python3 \
-    python3-pip \
-    python3-venv \
-    # Otras utilidades
-    sudo \
     openssh-client \
-    sshpass \
-    rsync \
-    && rm -rf /var/lib/apt/lists/*
+    # Limpieza
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE AZURE CLI
+# AZURE CLI
 # ═══════════════════════════════════════════════════════════════════════════════
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE AWS CLI (v2)
+# AWS CLI v2
 # ═══════════════════════════════════════════════════════════════════════════════
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
-    && unzip awscliv2.zip \
+    && unzip -q awscliv2.zip \
     && ./aws/install \
     && rm -rf awscliv2.zip aws/
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE GOOGLE CLOUD SDK
+# GOOGLE CLOUD SDK (solo componentes esenciales)
 # ═══════════════════════════════════════════════════════════════════════════════
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | \
     tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
-    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
-    apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - \
+    && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+    gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
     && apt-get update \
-    && apt-get install -y google-cloud-sdk \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends google-cloud-sdk \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE KUBECTL
+# KUBECTL
 # ═══════════════════════════════════════════════════════════════════════════════
-RUN curl -LO "https://dl.k8s/release/$(curl -L -s https://dl.k8s/release/stable.txt)/bin/linux/amd64/kubectl" \
-    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
-    && rm kubectl
+RUN curl -fsSL "https://dl.k8s/release/$(curl -L -s https://dl.k8s/release/stable.txt)/bin/linux/amd64/kubectl" \
+    -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE HELM
+# HELM
 # ═══════════════════════════════════════════════════════════════════════════════
-RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+RUN curl -fsSL https://get.helm.sh/helm-v3.13.3-linux-amd64.tar.gz | tar -xz \
+    && mv linux-amd64/helm /usr/local/bin/helm \
+    && rm -rf linux-amd64
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE TERRAFORM
+# TERRAFORM
 # ═══════════════════════════════════════════════════════════════════════════════
-RUN wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
-    tee /etc/apt/sources.list.d/hashicorp.list \
-    && apt-get update \
-    && apt-get install -y terraform \
-    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip -o terraform.zip \
+    && unzip -q terraform.zip \
+    && mv terraform /usr/local/bin/ \
+    && rm terraform.zip
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INSTALACIÓN DE HERRAMIENTAS ADICIONALES DE NETSHOOT
+# PYTHON DEPENDENCIES - Instalar TODOS los requirements.txt
 # ═══════════════════════════════════════════════════════════════════════════════
-RUN apt-get update && apt-get install -y \
-    # Análisis de red adicional
-    tshark \
-    termshark \
-    arping \
-    fping \
-    hping3 \
-    masscan \
-    # Inspección de tráfico
-    iftop \
-    nethogs \
-    bmon \
-    slurm \
-    tcptrack \
-    # DNS tools
-    ldnsutils \
-    # HTTP tools
-    httpie \
-    siege \
-    # SSL/TLS
-    openssl \
-    sslscan \
-    # Utilidades de sistema
-    htop \
-    atop \
-    glances \
-    lsof \
-    strace \
-    ltrace \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /tmp/requirements
+
+# Copiar todos los requirements.txt de subfolders
+COPY scm/aws/requirements.txt ./aws.txt
+COPY scm/azdo/requirements.txt ./azdo.txt
+COPY scm/gcp/requirements.txt ./gcp.txt
+COPY scm/gcp/artifact-registry/requirements.txt ./gcp-artifact.txt
+COPY scm/gcp/certificate-manager/requirements.txt ./gcp-cert.txt
+COPY scm/gcp/cloud-armor/requirements.txt ./gcp-armor.txt
+COPY scm/gcp/cloud-sql/requirements.txt ./gcp-sql.txt
+COPY scm/gcp/cluster-gke/requirements.txt ./gcp-gke.txt
+COPY scm/gcp/gateway-services/requirements.txt ./gcp-gateway.txt
+COPY scm/gcp/monitoring/requirements.txt ./gcp-monitor.txt
+COPY scm/gcp/reports-viewer/requirements.txt ./gcp-reports.txt
+COPY scm/gcp/rolesypermisos/requirements.txt ./gcp-roles.txt
+COPY scm/gcp/secrets-configmaps/requirements.txt ./gcp-secrets.txt
+COPY scm/gcp/vpc-networks/requirements.txt ./gcp-vpc.txt
+
+# Combinar todos los requirements y eliminar duplicados
+RUN cat *.txt 2>/dev/null | grep -v "^#" | grep -v "^$" | sort -u > /tmp/all-requirements.txt \
+    && pip install --no-cache-dir -r /tmp/all-requirements.txt \
+    && rm -rf /tmp/requirements /tmp/all-requirements.txt
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CONFIGURACIÓN DEL PROYECTO SCM
+# CONFIGURACIÓN DEL PROYECTO
 # ═══════════════════════════════════════════════════════════════════════════════
 WORKDIR /app
 
-# Copiar el código fuente
+# Copiar solo el código fuente necesario (sin tests, docs, etc.)
 COPY scm/ /app/scm/
 COPY VERSION /app/VERSION
-COPY README.md /app/README.md
-
-# Instalar dependencias Python del proyecto
-RUN pip3 install --no-cache-dir -r /app/scm/requirements.txt || echo "No requirements.txt found"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CONFIGURACIÓN DE USUARIO Y PERMISOS
+# USUARIO NO-ROOT
 # ═══════════════════════════════════════════════════════════════════════════════
 RUN groupadd -r devsecops && useradd -r -g devsecops -m -s /bin/bash devsecops \
-    && echo "devsecops ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    && chown -R devsecops:devsecops /app
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # VARIABLES DE ENTORNO
 # ═══════════════════════════════════════════════════════════════════════════════
-ENV PATH="/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/gcloud/google-cloud-sdk/bin" \
+ENV PATH="/usr/local/bin:/usr/local/sbin:/usr/local/gcloud/google-cloud-sdk/bin:${PATH}" \
     PYTHONPATH="/app" \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
@@ -177,18 +154,17 @@ ENV PATH="/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
 # ═══════════════════════════════════════════════════════════════════════════════
 # HEALTHCHECK
 # ═══════════════════════════════════════════════════════════════════════════════
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD az version && aws --version && gcloud version && kubectl version --client || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD az version >/dev/null 2>&1 && aws --version >/dev/null 2>&1 && gcloud version >/dev/null 2>&1 || exit 1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENTRYPOINT
 # ═══════════════════════════════════════════════════════════════════════════════
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 USER devsecops
 WORKDIR /home/devsecops
-
-# Script de inicio
-COPY --chown=devsecops:devsecops docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/bin/bash"]

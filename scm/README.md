@@ -435,7 +435,16 @@ devsecops-toolbox_dist_YYYYMMDD_HHMMSS.zip
 
 ## 🐳 Docker Container
 
-El proyecto incluye un **Dockerfile** para crear un contenedor completo con todas las herramientas necesarias para operaciones multi-cloud.
+El proyecto incluye un **Dockerfile** optimizado para crear un contenedor liviano (~400MB vs ~1.5GB con Ubuntu) con todas las herramientas necesarias para operaciones multi-cloud.
+
+### Características
+
+| Característica | Descripción |
+|----------------|-------------|
+| **Imagen Base** | `python:3.11-slim` (~60MB base) vs Ubuntu 22.04 (~80MB) |
+| **Python** | 3.11 pre-instalado con todas las dependencias de `requirements.txt` |
+| **Tamaño Final** | ~400-500MB (vs 1.5GB+ con Ubuntu) |
+| **Auto-Instalación** | Detecta e instala automáticamente todos los `requirements.txt` de subfolders |
 
 ### Herramientas Incluidas
 
@@ -446,8 +455,31 @@ El proyecto incluye un **Dockerfile** para crear un contenedor completo con toda
 | **Google Cloud SDK** | Latest | Gestión de GCP (gcloud) |
 | **kubectl** | Latest | Gestión de clusters Kubernetes |
 | **Helm** | Latest | Package manager para Kubernetes |
-| **Terraform** | Latest | Infraestructura como código |
-| **Netshoot Tools** | - | ping, dig, traceroute, tcpdump, nmap, netcat, etc. |
+| **Terraform** | 1.6.6 | Infraestructura como código |
+| **Netshoot Tools** | - | ping, dig, traceroute, tcpdump, nmap, netcat, socat, iperf3 |
+
+### Dependencias Python Automáticas
+
+El Dockerfile detecta e instala automáticamente todas las dependencias de los siguientes archivos:
+
+```
+scm/
+├── aws/requirements.txt
+├── azdo/requirements.txt
+└── gcp/
+    ├── requirements.txt
+    ├── artifact-registry/requirements.txt
+    ├── certificate-manager/requirements.txt
+    ├── cloud-armor/requirements.txt
+    ├── cloud-sql/requirements.txt
+    ├── cluster-gke/requirements.txt
+    ├── gateway-services/requirements.txt
+    ├── monitoring/requirements.txt
+    ├── reports-viewer/requirements.txt
+    ├── rolesypermisos/requirements.txt
+    ├── secrets-configmaps/requirements.txt
+    └── vpc-networks/requirements.txt
+```
 
 ### Construir la Imagen
 
@@ -551,6 +583,172 @@ docker tag devsecops-toolbox:latest <usuario>/devsecops-toolbox:$(cat VERSION)
 # Push a Docker Hub
 docker push <usuario>/devsecops-toolbox:latest
 docker push <usuario>/devsecops-toolbox:$(cat VERSION)
+```
+
+---
+
+## 🐳 Docker Compose
+
+El proyecto incluye un `docker-compose.yml` para facilitar la ejecución del toolbox con configuración de credenciales y persistencia de datos.
+
+### Servicios Disponibles
+
+| Servicio | Descripción | Uso |
+|----------|-------------|-----|
+| `toolbox` | Servicio principal para uso interactivo | Desarrollo y operaciones |
+| `toolbox-dev` | Con código fuente montado (live reload) | Desarrollo del toolbox |
+| `toolbox-cmd` | Ejecuta un comando y termina | Automatización CI/CD |
+
+### Configuración Inicial
+
+```bash
+# 1. Copiar el archivo de ejemplo de variables de entorno
+cp .env.example .env
+
+# 2. Editar .env con tus credenciales (nunca subir este archivo a git)
+nano .env
+```
+
+### Uso Básico
+
+```bash
+# Construir y ejecutar el servicio principal
+docker-compose up -d toolbox
+
+# Entrar al contenedor interactivo
+docker-compose exec toolbox bash
+
+# Ver logs
+docker-compose logs -f toolbox
+
+# Detener y eliminar contenedores
+docker-compose down
+```
+
+### Uso con Credenciales
+
+#### Opción 1: Usando archivo .env (recomendado)
+
+```bash
+# Configurar credenciales en .env
+echo "AZURE_CLIENT_ID=xxx" >> .env
+echo "AWS_ACCESS_KEY_ID=xxx" >> .env
+
+# Ejecutar - las credenciales se cargan automáticamente
+docker-compose up -d toolbox
+docker-compose exec toolbox bash
+```
+
+#### Opción 2: Variables de entorno directas
+
+```bash
+AZURE_CLIENT_ID=xxx AWS_ACCESS_KEY_ID=yyy docker-compose up -d toolbox
+```
+
+#### Opción 3: Usando credenciales locales (montaje de volúmenes)
+
+```bash
+# Si ya tienes configuradas las credenciales en tu máquina local:
+# - ~/.azure para Azure CLI
+# - ~/.aws para AWS CLI
+# - ~/.config/gcloud para GCP
+# - ~/.kube para Kubernetes
+
+# El docker-compose.yml monta estos directorios automáticamente
+docker-compose up -d toolbox
+docker-compose exec toolbox az login  # o usa las credenciales existentes
+```
+
+### Modo Desarrollo
+
+```bash
+# Ejecutar en modo desarrollo (código fuente montado con live reload)
+docker-compose --profile dev up -d toolbox-dev
+
+# Los cambios en el código fuente local se reflejan inmediatamente
+docker-compose exec toolbox-dev bash
+
+# Ejecutar tests
+docker-compose exec toolbox-dev pytest scm/tests/ -v
+```
+
+### Ejecutar Comandos Específicos
+
+```bash
+# Ejecutar un comando y salir (útil para CI/CD)
+docker-compose --profile cmd run --rm toolbox-cmd az version
+
+# Ejecutar script de GCP
+docker-compose --profile cmd run --rm toolbox-cmd python scm/gcp/tools.py
+
+# Ejecutar kubectl
+docker-compose --profile cmd run --rm toolbox-cmd kubectl get nodes
+```
+
+### Persistencia de Datos
+
+Los siguientes directorios se persisten entre ejecuciones:
+
+| Directorio Local | Directorio en Contenedor | Descripción |
+|------------------|--------------------------|-------------|
+| `./outcome` | `/home/devsecops/outcome` | Resultados de reportes y exports |
+| `./workspace` | `/home/devsecops/workspace` | Archivos de trabajo |
+| `~/.azure` | `/home/devsecops/.azure` | Credenciales Azure CLI |
+| `~/.aws` | `/home/devsecops/.aws` | Credenciales AWS CLI |
+| `~/.config/gcloud` | `/home/devsecops/.config/gcloud` | Credenciales GCP |
+| `~/.kube` | `/home/devsecops/.kube` | Configuración de Kubernetes |
+
+### Ejemplos de Uso Completo
+
+```bash
+# Ejemplo 1: Analizar recursos GCP con reporte exportado
+docker-compose up -d toolbox
+docker-compose exec toolbox bash -c "
+  cd scm/gcp &&
+  python tools.py &&
+  # Seleccionar opción de reporte
+"
+# El reporte queda en ./outcome/
+
+# Ejemplo 2: Ejecutar checker de pods de Kubernetes
+docker-compose --profile cmd run --rm toolbox-cmd \
+  python scm/gcp/connectivity/pod_connectivity_checker.py
+
+# Ejemplo 3: Usar herramientas de red (netshoot)
+docker-compose exec toolbox bash -c "
+  ping -c 4 google.com &&
+  dig cloud.google.com &&
+  traceroute 8.8.8.8
+"
+
+# Ejemplo 4: Terraform con credenciales de AWS
+docker-compose exec toolbox bash -c "
+  cd workspace/terraform &&
+  terraform init &&
+  terraform plan
+"
+```
+
+### Recursos del Contenedor
+
+Por defecto, el contenedor tiene estos límites:
+
+| Recurso | Límite | Reserva |
+|---------|--------|---------|
+| CPU | 2 cores | 0.5 cores |
+| Memoria | 2 GB | 512 MB |
+
+Para modificar, edita el `docker-compose.yml` o usa overrides:
+
+```yaml
+# docker-compose.override.yml
+services:
+  toolbox:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
 ```
 
 ---

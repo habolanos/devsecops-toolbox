@@ -1,0 +1,181 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Docker Compose - DevSecOps Toolbox
+# ═══════════════════════════════════════════════════════════════════════════════
+# Servicios para ejecutar el toolbox en contenedores con configuración
+# de credenciales multi-cloud y persistencia de datos.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Servicio Principal - Toolbox CLI
+  # ═══════════════════════════════════════════════════════════════════════════
+  toolbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: devsecops-toolbox:latest
+    container_name: devsecops-toolbox
+    
+    # Configuración del contenedor
+    stdin_open: true
+    tty: true
+    
+    # Variables de entorno para credenciales (opcional)
+    environment:
+      # Azure (opcional - se configuran en tiempo de ejecución)
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-}
+      
+      # AWS (opcional)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      
+      # GCP (opcional)
+      - GCP_SERVICE_ACCOUNT_KEY=${GCP_SERVICE_ACCOUNT_KEY:-}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-}
+      
+      # Kubernetes (opcional)
+      - KUBECONFIG_CONTENT=${KUBECONFIG_CONTENT:-}
+      
+      # Configuración general
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    
+    # Volúmenes para persistencia
+    volumes:
+      # Configuración de las clouds (monta tus credenciales locales)
+      - ~/.azure:/home/devsecops/.azure:ro
+      - ~/.aws:/home/devsecops/.aws:ro
+      - ~/.config/gcloud:/home/devsecops/.config/gcloud:ro
+      - ~/.kube:/home/devsecops/.kube:ro
+      
+      # Directorio de trabajo compartido
+      - ./outcome:/home/devsecops/outcome
+      - ./workspace:/home/devsecops/workspace
+      
+      # Scripts y herramientas personalizadas
+      - ./scripts:/home/devsecops/scripts:ro
+    
+    # Red
+    networks:
+      - toolbox-network
+    
+    # Recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Reinicio automático
+    restart: unless-stopped
+    
+    # Comando por defecto (puede sobrescribirse)
+    command: ["/bin/bash"]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Servicio de Desarrollo - Con código fuente montado
+  # ═══════════════════════════════════════════════════════════════════════════
+  toolbox-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: devsecops-toolbox:latest
+    container_name: devsecops-toolbox-dev
+    
+    stdin_open: true
+    tty: true
+    
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+      - DEV_MODE=true
+    
+    # En desarrollo, montamos el código fuente completo
+    volumes:
+      - .:/app:cached
+      - ~/.azure:/home/devsecops/.azure:ro
+      - ~/.aws:/home/devsecops/.aws:ro
+      - ~/.config/gcloud:/home/devsecops/.config/gcloud:ro
+      - ~/.kube:/home/devsecops/.kube:ro
+      - ./outcome:/home/devsecops/outcome
+      - ./workspace:/home/devsecops/workspace
+    
+    networks:
+      - toolbox-network
+    
+    # En desarrollo, ejecutamos como root para facilitar modificaciones
+    user: root
+    
+    command: ["/bin/bash"]
+    
+    profiles:
+      - dev
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Servicio para Ejecutar Comandos Específicos
+  # ═══════════════════════════════════════════════════════════════════════════
+  toolbox-cmd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: devsecops-toolbox:latest
+    container_name: devsecops-toolbox-cmd
+    
+    # No mantiene el contenedor corriendo
+    stdin_open: false
+    tty: false
+    
+    environment:
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - GCP_SERVICE_ACCOUNT_KEY=${GCP_SERVICE_ACCOUNT_KEY:-}
+    
+    volumes:
+      - ~/.azure:/home/devsecops/.azure:ro
+      - ~/.aws:/home/devsecops/.aws:ro
+      - ~/.config/gcloud:/home/devsecops/.config/gcloud:ro
+      - ~/.kube:/home/devsecops/.kube:ro
+      - ./outcome:/home/devsecops/outcome
+    
+    networks:
+      - toolbox-network
+    
+    # El comando se pasa al ejecutar
+    # docker-compose run --rm toolbox-cmd az version
+    
+    profiles:
+      - cmd
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REDES
+# ═══════════════════════════════════════════════════════════════════════════════
+networks:
+  toolbox-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VOLÚMENES (opcional - para persistencia avanzada)
+# ═══════════════════════════════════════════════════════════════════════════════
+volumes:
+  toolbox-data:
+    driver: local
+  toolbox-cache:
+    driver: local
