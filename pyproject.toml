@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "devsecops-toolbox"
-version = "1.5.1"
+version = "1.5.2"
 description = "DevSecOps Toolbox - Herramientas unificadas para GCP, Azure DevOps y AWS"
 readme = "scm/README.md"
 requires-python = ">=3.8"

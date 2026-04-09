@@ -431,6 +431,130 @@ devsecops-toolbox_dist_YYYYMMDD_HHMMSS.zip
 └── pytest.ini              # Configuración de tests
 ```
 
+---
+
+## 🐳 Docker Container
+
+El proyecto incluye un **Dockerfile** para crear un contenedor completo con todas las herramientas necesarias para operaciones multi-cloud.
+
+### Herramientas Incluidas
+
+| Herramienta | Versión | Descripción |
+|-------------|---------|-------------|
+| **Azure CLI** | Latest | Gestión de Azure Portal y Azure DevOps |
+| **AWS CLI** | v2 | Gestión de recursos AWS |
+| **Google Cloud SDK** | Latest | Gestión de GCP (gcloud) |
+| **kubectl** | Latest | Gestión de clusters Kubernetes |
+| **Helm** | Latest | Package manager para Kubernetes |
+| **Terraform** | Latest | Infraestructura como código |
+| **Netshoot Tools** | - | ping, dig, traceroute, tcpdump, nmap, netcat, etc. |
+
+### Construir la Imagen
+
+```bash
+# Construir imagen
+docker build -t devsecops-toolbox:latest .
+
+# Construir con tag de versión
+docker build -t devsecops-toolbox:$(cat VERSION) .
+```
+
+### Ejecutar el Contenedor
+
+```bash
+# Ejecutar interactivo
+docker run -it --rm devsecops-toolbox:latest
+
+# Ejecutar con volumen para persistir config
+docker run -it --rm \
+  -v ~/.config:/home/devsecops/.config \
+  -v $(pwd)/outcome:/home/devsecops/outcome \
+  devsecops-toolbox:latest
+
+# Ejecutar con credenciales de cloud
+```
+
+#### Con Azure Service Principal
+
+```bash
+docker run -it --rm \
+  -e AZURE_CLIENT_ID="<client-id>" \
+  -e AZURE_CLIENT_SECRET="<client-secret>" \
+  -e AZURE_TENANT_ID="<tenant-id>" \
+  devsecops-toolbox:latest
+```
+
+#### Con AWS Credentials
+
+```bash
+docker run -it --rm \
+  -e AWS_ACCESS_KEY_ID="<access-key>" \
+  -e AWS_SECRET_ACCESS_KEY="<secret-key>" \
+  -e AWS_DEFAULT_REGION="us-east-1" \
+  devsecops-toolbox:latest
+```
+
+#### Con GCP Service Account
+
+```bash
+docker run -it --rm \
+  -e GCP_SERVICE_ACCOUNT_KEY="<base64-encoded-key>" \
+  devsecops-toolbox:latest
+```
+
+#### Con Kubeconfig
+
+```bash
+docker run -it --rm \
+  -e KUBECONFIG_CONTENT="$(cat ~/.kube/config | base64)" \
+  devsecops-toolbox:latest
+```
+
+### Ejecutar Herramientas Específicas
+
+```bash
+# Verificar Azure CLI
+docker run --rm devsecops-toolbox:latest az version
+
+# Verificar AWS CLI
+docker run --rm devsecops-toolbox:latest aws --version
+
+# Verificar GCP
+docker run --rm devsecops-toolbox:latest gcloud version
+
+# Verificar kubectl
+docker run --rm devsecops-toolbox:latest kubectl version --client
+
+# Ejecutar nmap desde netshoot
+docker run --rm devsecops-toolbox:latest nmap -sn 192.168.1.0/24
+
+# Ejecutar traceroute
+docker run --rm devsecops-toolbox:latest traceroute google.com
+```
+
+### Healthcheck
+
+El contenedor incluye un healthcheck que verifica la disponibilidad de todas las herramientas principales:
+
+```bash
+# Verificar estado del contenedor
+docker ps --filter "ancestor=devsecops-toolbox"
+```
+
+### Publicar en Docker Hub (opcional)
+
+```bash
+# Tag para Docker Hub
+docker tag devsecops-toolbox:latest <usuario>/devsecops-toolbox:latest
+docker tag devsecops-toolbox:latest <usuario>/devsecops-toolbox:$(cat VERSION)
+
+# Push a Docker Hub
+docker push <usuario>/devsecops-toolbox:latest
+docker push <usuario>/devsecops-toolbox:$(cat VERSION)
+```
+
+---
+
 ## 🏷️ Versionado Semántico (SemVer)
 
 Este proyecto sigue [Semantic Versioning 2.0.0](https://semver.org/lang/es/):
@@ -478,6 +602,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-08 | 1.5.2 | **Docker Container**: Dockerfile con Azure CLI, AWS CLI v2, Google Cloud SDK, kubectl, Helm, Terraform y herramientas netshoot (ping, dig, tcpdump, nmap, etc.). Entrypoint script con auto-configuración de credenciales. Healthcheck integrado. |
 | 2026-04-02 | 1.5.1 | **Testing Suite**: Arquitectura profesional de testing con pytest, cobertura 70%+, mocks para GCP/AZDO/AWS, CI/CD con GitHub Actions. Tests unitarios e integración con 500+ assertions. |
 | 2026-04-02 | 1.5.0 | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. |
 | 2026-03-31 | 1.4.1 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |

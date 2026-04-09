@@ -1,0 +1,70 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Docker Ignore - Archivos excluidos de la imagen Docker
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# GitHub
+.github
+
+# Entornos virtuales
+.venv
+venv
+env
+ENV
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Tests
+tests
+scm/tests
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.nox
+
+# Outcome y logs
+outcome
+logs
+*.log
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.windsurf
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose.yml
+docker-entrypoint.sh
+.dockerignore
+
+# Scripts de empaquetado
+make_dist.ps1
+scripts
+
+# Configuración local (credenciales)
+config.json
+*.secret
+*.key
+
+# Documentación
+*.md
+!scm/README.md
+
+# CI/CD
+.github/workflows
