@@ -23,7 +23,7 @@ Herramienta para monitorear el uso de disco de bases de datos Cloud SQL en proye
 - **Monitoreo en tiempo real** - Consulta la API de Cloud Monitoring para obtener el uso actual del disco
 - **Ejecución paralela** - Procesa múltiples instancias simultáneamente con ThreadPoolExecutor
 - **Medición de tiempo** - Muestra tabla de tiempo de ejecución al finalizar (inicio, fin, duración)
-- **Sistema de Semáforo SCM** - Indicadores visuales de estado:
+- **Sistema de Semáforo SRE** - Indicadores visuales de estado:
   - 🟢 **HEALTHY** - Operación normal
   - 🔵 **MANUAL OK** - Auto-resize deshabilitado pero saludable
   - 🟡 **WARNING** - Utilización ≥ 75%
@@ -90,7 +90,7 @@ python gcp_disk_checker.py -o json
 
                          📊 Database Storage Health: cpl-xxxx-yyyy-zzzz-99999999
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ Instancia DB                    ┃   Motor   ┃ Capacidad ┃ Uso actual (%) ┃ Auto-Resize ┃ Semaforo SCM ┃
+┃ Instancia DB                    ┃   Motor   ┃ Capacidad ┃ Uso actual (%) ┃ Auto-Resize ┃ Semaforo SRE ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
 │ csql-mssql-prod-01              │ SQLSERVER │  40715 GB │         65.32% │   ENABLED   │  HEALTHY ✅  │
 │ csql-mysql-prod-01              │   MYSQL   │    300 GB │         78.45% │   ENABLED   │  WARNING ⚠️  │
@@ -269,7 +269,7 @@ python connectivity-checker.py \
 
 ## Licencia
 
-Internal SCM Tool - Softtek
+Internal SRE Tool - Softtek
 
 ---
 

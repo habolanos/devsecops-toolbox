@@ -55,14 +55,14 @@ def get_args():
     parser.add_argument(
         "--project",
         type=str,
-        default="cpl-xxxx-yyyy-zzzz-99999999",
-        help="ID del proyecto de GCP (Default: cpl-xxxx-yyyy-zzzz-99999999)"
+        default="cpl-corp-cial-prod-17042024",
+        help="ID del proyecto de GCP (Default: cpl-corp-cial-prod-17042024)"
     )
     parser.add_argument(
         "--cluster",
         type=str,
-        default="gke-aaaaa-bbbbb-ccccc-99",
-        help="Nombre del cluster GKE (Default: gke-aaaaa-bbbbb-ccccc-99)"
+        default="gke-corp-cial-prod-01",
+        help="Nombre del cluster GKE (Default: gke-corp-cial-prod-01)"
     )
     parser.add_argument(
         "--region",

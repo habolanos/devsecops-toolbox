@@ -416,8 +416,8 @@ def get_args():
     parser.add_argument(
         "--project", "-p",
         type=str,
-        default="cpl-xxxx-yyyy-zzzz-99999999",
-        help="ID del proyecto GCP (Default: cpl-xxxx-yyyy-zzzz-99999999)"
+        default="cpl-corp-cial-prod-17042024",
+        help="ID del proyecto GCP (Default: cpl-corp-cial-prod-17042024)"
     )
     parser.add_argument(
         "--debug",

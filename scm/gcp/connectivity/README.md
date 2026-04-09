@@ -1,6 +1,6 @@
-# Pod Connectivity Checker
+# Connectivity Tools
 
-Herramienta para validar la conectividad desde un Pod de GKE hasta una instancia de Cloud SQL, verificando todos los elementos involucrados en la cadena de conectividad.
+Herramientas para validar conectividad, configuración y dependencias de Deployments en GKE.
 
 ## 📋 Contenido
 
@@ -8,7 +8,113 @@ Herramienta para validar la conectividad desde un Pod de GKE hasta una instancia
 |---------|-------------|
 | `pod_connectivity_checker.py` | Valida conectividad Pod → Cloud SQL |
 | `deploy_dependency_checker.py` | Detecta dependencias de un Deployment (ConfigMaps) y valida conectividad DB |
+| `deployment_validator.py` | **NUEVO** - Valida ConfigMaps, Secrets y conectividad de un Deployment |
 | `README.md` | Documentación detallada |
+
+---
+
+## 🛡️ Deployment Validator (NUEVO)
+
+Herramienta completa para validar deployments de Kubernetes:
+- ✅ Valida existencia y contenido de **ConfigMaps** y **Secrets** referenciados
+- ✅ Detecta valores vacíos, placeholders o mal configurados
+- ✅ Extrae cadenas de conexión a bases de datos
+- ✅ Valida conectividad TCP usando pod temporal con `nettools`
+- ✅ Genera reportes detallados con recomendaciones
+
+### Uso Básico
+
+```bash
+# Validar todo (ConfigMaps, Secrets, Conectividad)
+python deployment_validator.py --deployment my-app --namespace production
+
+# Solo validar Secrets
+python deployment_validator.py -d my-app -n prod --validate secrets
+
+# Solo validar conectividad
+python deployment_validator.py -d my-app --validate connectivity
+
+# Exportar reporte a JSON
+python deployment_validator.py -d my-app -o json
+```
+
+### Argumentos
+
+| Argumento | Descripción | Default |
+|-----------|-------------|---------|
+| `--project, -p` | ID del proyecto GCP | `cpl-corp-cial-prod-17042024` |
+| `--cluster, -c` | Nombre del cluster GKE | `gke-corp-cial-prod-01` |
+| `--region, -r` | Región del cluster GKE | `us-central1` |
+| `--deployment, -d` | Nombre del deployment a validar | `ds-ppm-pricing-discount` |
+| `--namespace, -n` | Namespace (auto-detecta si se omite) | Auto |
+| `--validate` | Tipo: `all`, `secrets`, `configmaps`, `connectivity` | `all` |
+| `--probe-image` | Imagen para pod temporal | `jrecord/nettools:latest` |
+| `--timeout` | Timeout para pruebas TCP (segundos) | `5` |
+| `--output, -o` | Exportar a `json` o `csv` | - |
+| `--severity` | Filtrar: `critical`, `warning`, `info`, `all` | `all` |
+| `--debug` | Modo debug | `false` |
+
+### Flujo de Validación
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    DEPLOYMENT VALIDATOR                              │
+├─────────────────────────────────────────────────────────────────────┤
+│ 1. DISCOVERY                                                         │
+│    └─ Obtener manifiesto del Deployment                             │
+│    └─ Extraer referencias a ConfigMaps y Secrets                    │
+├─────────────────────────────────────────────────────────────────────┤
+│ 2. SECRETS VALIDATION                                                │
+│    └─ Verificar existencia de cada Secret                           │
+│    └─ Detectar claves con valores vacíos (base64 → "")              │
+│    └─ Clasificar severidad (CRITICAL para claves sensibles)         │
+├─────────────────────────────────────────────────────────────────────┤
+│ 3. CONFIGMAPS VALIDATION                                             │
+│    └─ Verificar existencia de cada ConfigMap                        │
+│    └─ Detectar claves vacías o placeholder                          │
+│    └─ Parsear cadenas de conexión (JDBC, MongoDB, Redis)            │
+├─────────────────────────────────────────────────────────────────────┤
+│ 4. CONNECTIVITY TEST                                                 │
+│    └─ kubectl run validator-probe-xxx --image=jrecord/nettools      │
+│    └─ nc -zv <host> <port> para cada endpoint                       │
+│    └─ Reportar latencia y estado (OK/TIMEOUT/UNREACHABLE)           │
+│    └─ Cleanup automático del pod temporal                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Severidades
+
+| Severidad | Emoji | Descripción |
+|-----------|-------|-------------|
+| CRITICAL | 🔴 | Secret/ConfigMap faltante, clave sensible vacía |
+| WARNING | 🟡 | Valores placeholder, timeouts de conexión |
+| INFO | 🔵 | Datos binarios, información general |
+| OK | 🟢 | Validación exitosa |
+
+### Ejemplo de Salida
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    📋 Hallazgos de Validación                        │
+├──────┬────────────┬─────────────────────────┬────────────────────────┤
+│ Sev  │ Tipo       │ Recurso                 │ Mensaje                │
+├──────┼────────────┼─────────────────────────┼────────────────────────┤
+│ 🔴   │ Secret     │ db-credentials          │ Clave sensible vacía   │
+│ 🟡   │ ConfigMap  │ app-config              │ Valor placeholder      │
+│ 🔵   │ Secret     │ tls-cert                │ Datos binarios         │
+└──────┴────────────┴─────────────────────────┴────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    🔌 Validación de Conectividad                     │
+├──────────┬────────────────────┬────────────────────┬────────┬────────┤
+│ Origen   │ Recurso            │ Host               │ Puerto │ Estado │
+├──────────┼────────────────────┼────────────────────┼────────┼────────┤
+│ ConfigMap│ db-config          │ 10.128.0.5         │ 5432   │ ✅ OK  │
+│ ConfigMap│ redis-config       │ 10.128.0.10        │ 6379   │ ❌ FAIL│
+└──────────┴────────────────────┴────────────────────┴────────┴────────┘
+```
+
+---
 
 ## Arquitectura de Conectividad
 
@@ -360,19 +466,25 @@ Nueva herramienta que inspecciona los ConfigMaps referenciados por un Deployment
 ### Opciones Clave
 | Parámetro | Default | Descripción |
 |-----------|---------|-------------|
-| `--project` | `cpl-xxxx-yyyy-zzzz-99999999` | Proyecto donde reside el cluster |
-| `--deployment` | `ds-ppm-pricing-discount` | Deployment objetivo |
+| `--project, -p` | `cpl-corp-cial-prod-17042024` | Proyecto donde reside el cluster |
+| `--cluster, -c` | `gke-corp-cial-prod-01` | Nombre del cluster GKE |
+| `--region, -r` | `us-central1` | Región del cluster GKE |
+| `--deployment, -d` | `ds-ppm-pricing-discount` | Deployment objetivo |
 | `--probe-mode` | `pod` | `pod`: crea un pod temporal dentro del namespace del deployment para emular la subnet de pods. `local`: usa sockets del host |
 | `--probe-image` | `jrecord/nettools:latest` | Imagen utilizada para el pod temporal (incluye `nc`) |
 | `--timeout` | `5` | Timeout en segundos para cada intento |
 
-> Cuando `--probe-mode=pod`, el script crea `nettools-scm-<timestamp>` usando el mismo `serviceAccountName` del deployment para respetar NetworkPolicies/Workload Identity. Si falla la creación, cambia automáticamente a modo `local` y notifica un warning.
+> Cuando `--probe-mode=pod`, el script crea `nettools-sre-<timestamp>` usando el mismo `serviceAccountName` del deployment para respetar NetworkPolicies/Workload Identity. Si falla la creación, cambia automáticamente a modo `local` y notifica un warning.
 
 ### Ejemplo (modo pod por defecto)
 
 ```bash
 python deploy_dependency_checker.py \
-  --deployment ds-ppm-pricing-discount \
+  --project cpl-cs-wms-qa-30112023 \
+  --cluster gke-cs-wms-qa-01 \
+  --region us-central1 \
+  --deployment bs-wms-preship-store \
+  --namespace wms \
   --probe-mode pod \
   --output json
 ```
@@ -476,6 +588,7 @@ gcloud services vpc-peerings connect \
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-03-26 | 1.4.0 | Agregar `--cluster` y `--region` a deployment_validator.py y deploy_dependency_checker.py para configurar contexto kubectl automáticamente |
 | 2026-03-09 | 1.3.0 | Nuevo deploy_dependency_checker.py con `--probe-mode` (default pod) para validar dependencias de ConfigMaps y conexiones DB |
 | 2026-02-19 | 1.2.0 | Validación de conexión GCP al inicio, renombrado a pod_connectivity_checker.py |
 | 2026-02-16 | 1.1.0 | Timezone configurable con America/Mazatlan como default |
@@ -491,4 +604,4 @@ gcloud services vpc-peerings connect \
 
 ## Licencia
 
-Internal SCM Tool - Softtek
+Internal SRE Tool - Softtek

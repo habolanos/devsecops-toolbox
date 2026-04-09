@@ -1,12 +1,12 @@
 # GCP Certificate Manager Checker
 
-Herramienta SCM para monitorear certificados en Google Cloud Certificate Manager.
+Herramienta SRE para monitorear certificados en Google Cloud Certificate Manager.
 
 ## 🔐 Características
 
 - **Monitoreo de certificados** - Lista todos los certificados del proyecto
 - **Control de expiración** - Calcula días restantes hasta la expiración
-- **Sistema de Semáforo SCM** - Indicadores visuales de estado:
+- **Sistema de Semáforo SRE** - Indicadores visuales de estado:
   - 🟢 **HEALTHY** - Más de 60 días para expirar
   - 🔵 **ATTENTION** - Entre 30 y 60 días para expirar
   - 🟡 **WARNING** - Menos de 30 días para expirar
@@ -53,7 +53,7 @@ python gcp_certificate_checker.py -o json
 
 | Argumento | Descripción | Default |
 |-----------|-------------|---------|
-| `--project` | ID del proyecto GCP | `cpl-xxxx-yyyy-zzzz-99999999` |
+| `--project` | ID del proyecto GCP | `cpl-corp-cial-prod-17042024` |
 | `--debug` | Activa modo debug para diagnóstico | `False` |
 | `--output`, `-o` | Exporta resultados (`csv` o `json`) | `None` |
 | `--timezone`, `-tz` | Zona horaria para mostrar fechas | `America/Mazatlan` (Culiacán) |
@@ -67,7 +67,7 @@ python gcp_certificate_checker.py -o json
 
                     🔒 Certificate Manager: my-project
 ┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ Certificado          ┃   Tipo    ┃ Dominios          ┃ Estado  ┃ Expiración ┃ Días Rest.┃ Semáforo SCM ┃
+┃ Certificado          ┃   Tipo    ┃ Dominios          ┃ Estado  ┃ Expiración ┃ Días Rest.┃ Semáforo SRE ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
 │ cert-api-prod        │  MANAGED  │ api.example.com   │ ACTIVE  │ 2026-06-15 │       138 │  HEALTHY ✅  │
 │ cert-web-staging     │  MANAGED  │ web.example.com   │ ACTIVE  │ 2026-02-20 │        23 │  WARNING ⚠️  │
@@ -85,7 +85,7 @@ Tip: Los certificados con menos de 30 días para expirar requieren atención.
 1. Usa `gcloud certificate-manager certificates list` para obtener los certificados
 2. Extrae información de dominios, tipo y estado
 3. Calcula días restantes hasta la expiración
-4. Aplica lógica de semáforo SCM basada en días restantes
+4. Aplica lógica de semáforo SRE basada en días restantes
 5. Muestra resultados en tabla formateada con Rich
 
 ## 📁 Formato de Exportación
@@ -115,4 +115,4 @@ Tip: Los certificados con menos de 30 días para expirar requieren atención.
 
 ## Licencia
 
-Internal SCM Tool - Softtek
+Internal SRE Tool - Softtek

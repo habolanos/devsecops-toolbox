@@ -41,7 +41,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas GCP"
 
@@ -54,6 +54,7 @@ console = Console() if RICH_AVAILABLE else None
 TOOL_GROUPS = {
     "monitoring": {"name": "Monitoreo", "emoji": "📊", "color": "cyan"},
     "iam": {"name": "IAM & Security", "emoji": "🔐", "color": "yellow"},
+    "security": {"name": "Security", "emoji": "🛡️", "color": "red"},
     "database": {"name": "Database", "emoji": "💾", "color": "magenta"},
     "network": {"name": "Networking", "emoji": "🌐", "color": "blue"},
     "kubernetes": {"name": "Kubernetes", "emoji": "☸️", "color": "green"},
@@ -95,7 +96,9 @@ DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 
 # Definición de las herramientas disponibles (con grupo asignado)
+# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), reports(21)
 TOOLS = {
+    # ══════════ MONITORING (1-2) ══════════
     "1": {
         "name": "Monitoreo de Recursos GCP",
         "description": "Monitorea recursos GCP (CPU, memoria, SQL, etc.)",
@@ -114,6 +117,7 @@ TOOLS = {
         "group": "monitoring",
         "status": "ready"
     },
+    # ══════════ IAM & SECURITY (3-5) ══════════
     "3": {
         "name": "Reporte de Roles y Permisos IAM",
         "description": "Genera un reporte detallado de roles y permisos IAM",
@@ -141,7 +145,18 @@ TOOLS = {
         "group": "iam",
         "status": "ready"
     },
+    # ══════════ SECURITY (6) ══════════
     "6": {
+        "name": "Cloud Armor Checker",
+        "description": "Audita Security Policies (WAF/DDoS), cobertura de backends y gaps de seguridad",
+        "path": "cloud-armor/gcp_cloud_armor_checker.py",
+        "args": ["--project", "--view", "--audit", "--severity", "--compare", "--output"],
+        "requirements": "cloud-armor/requirements.txt",
+        "group": "security",
+        "status": "ready"
+    },
+    # ══════════ DATABASE (7-9) ══════════
+    "7": {
         "name": "Cloud SQL Disk Monitor",
         "description": "Monitorea uso de disco en instancias Cloud SQL",
         "path": "cloud-sql/gcp_disk_checker.py",
@@ -150,7 +165,7 @@ TOOLS = {
         "group": "database",
         "status": "ready"
     },
-    "7": {
+    "8": {
         "name": "Cloud SQL Database Checker",
         "description": "Lista bases de datos por instancia de Cloud SQL",
         "path": "cloud-sql/gcp_database_checker.py",
@@ -159,97 +174,7 @@ TOOLS = {
         "group": "database",
         "status": "ready"
     },
-    "8": {
-        "name": "VPC Networks Checker",
-        "description": "Visualiza VPC, subnets, IPs, CIDR, firewall y rutas",
-        "path": "vpc-networks/gcp_vpc_networks_checker.py",
-        "args": ["--project", "-o"],
-        "requirements": "vpc-networks/requirements.txt",
-        "group": "network",
-        "status": "ready"
-    },
     "9": {
-        "name": "Gateway Services Checker",
-        "description": "Monitorea Gateways, Routes, Services y Policies en GKE",
-        "path": "gateway-services/gcp_gateway_checker.py",
-        "args": ["--project", "--cluster", "--namespace", "--view", "-o"],
-        "requirements": "gateway-services/requirements.txt",
-        "group": "network",
-        "status": "ready"
-    },
-    "10": {
-        "name": "Load Balancer Checker",
-        "description": "Analiza Load Balancers, Backend Services, Health Checks y SSL",
-        "path": "load-balancer/gcp_load_balancer_checker.py",
-        "args": ["--project", "--view", "-o"],
-        "requirements": None,
-        "group": "network",
-        "status": "ready"
-    },
-    "11": {
-        "name": "IP Addresses Checker",
-        "description": "Analiza capacidad de red de clusters GKE (IPs de pods y servicios)",
-        "path": "vpc-networks/gcp_ip_addresses_checker.py",
-        "args": ["--project", "--cluster", "--region", "-o"],
-        "requirements": None,
-        "group": "network",
-        "status": "ready"
-    },
-    "12": {
-        "name": "GKE Cluster Checker",
-        "description": "Monitorea clusters GKE, versiones, nodos y pods",
-        "path": "cluster-gke/gcp_cluster_checker.py",
-        "args": ["--project", "--output"],
-        "requirements": None,
-        "group": "kubernetes",
-        "status": "ready"
-    },
-    "13": {
-        "name": "Secrets & ConfigMaps Checker",
-        "description": "Valida referencias de Secrets y ConfigMaps en GKE",
-        "path": "secrets-configmaps/gcp_secrets_configmaps_checker.py",
-        "args": ["--project", "--cluster", "--output"],
-        "requirements": None,
-        "group": "kubernetes",
-        "status": "ready"
-    },
-    "14": {
-        "name": "Pod Connectivity Checker",
-        "description": "Valida conectividad desde un Pod GKE hasta Cloud SQL",
-        "path": "connectivity/pod_connectivity_checker.py",
-        "args": ["--deployment", "--sql-instance"],
-        "requirements": None,
-        "group": "kubernetes",
-        "status": "ready"
-    },
-    "15": {
-        "name": "Artifact Registry Tag Filter",
-        "description": "Filtra y exporta imágenes de Artifact Registry a Excel",
-        "path": "artifact-registry/tag_filter.py",
-        "args": ["--csv-file"],
-        "requirements": "artifact-registry/requirements.txt",
-        "group": "artifacts",
-        "status": "ready"
-    },
-    "16": {
-        "name": "Visualizar Reportes JSON",
-        "description": "Genera graficos HTML desde reportes JSON de los checkers",
-        "path": "reports-viewer/gcp_reports_viewer.py",
-        "args": [],
-        "requirements": "reports-viewer/requirements.txt",
-        "group": "reports",
-        "status": "ready"
-    },
-    "17": {
-        "name": "Deploy Dependency Checker",
-        "description": "Analiza ConfigMaps de un deployment y valida conexiones a bases de datos",
-        "path": "connectivity/deploy_dependency_checker.py",
-        "args": ["--project", "--deployment", "--namespace", "--probe-mode", "--probe-image", "--timeout", "-o"],
-        "requirements": None,
-        "group": "kubernetes",
-        "status": "ready"
-    },
-    "18": {
         "name": "Cloud SQL Comparator",
         "description": "Compara instancias Cloud SQL (edición, tipo, puertos, IPs) entre dos proyectos GCP",
         "path": "cloud-sql/gcp_sql_comparator.py",
@@ -258,7 +183,81 @@ TOOLS = {
         "group": "database",
         "status": "ready"
     },
-    "19": {
+    # ══════════ NETWORKING (10-13) ══════════
+    "10": {
+        "name": "VPC Networks Checker",
+        "description": "Visualiza VPC, subnets, IPs, CIDR, firewall y rutas",
+        "path": "vpc-networks/gcp_vpc_networks_checker.py",
+        "args": ["--project", "-o"],
+        "requirements": "vpc-networks/requirements.txt",
+        "group": "network",
+        "status": "ready"
+    },
+    "11": {
+        "name": "Gateway Services Checker",
+        "description": "Monitorea Gateways, Routes, Services y Policies en GKE",
+        "path": "gateway-services/gcp_gateway_checker.py",
+        "args": ["--project", "--cluster", "--namespace", "--view", "-o"],
+        "requirements": "gateway-services/requirements.txt",
+        "group": "network",
+        "status": "ready"
+    },
+    "12": {
+        "name": "Load Balancer Checker",
+        "description": "Analiza Load Balancers, Backend Services, Health Checks y SSL",
+        "path": "load-balancer/gcp_load_balancer_checker.py",
+        "args": ["--project", "--view", "-o"],
+        "requirements": None,
+        "group": "network",
+        "status": "ready"
+    },
+    "13": {
+        "name": "IP Addresses Checker",
+        "description": "Analiza capacidad de red de clusters GKE (IPs de pods y servicios)",
+        "path": "vpc-networks/gcp_ip_addresses_checker.py",
+        "args": ["--project", "--cluster", "--region", "-o"],
+        "requirements": None,
+        "group": "network",
+        "status": "ready"
+    },
+    # ══════════ KUBERNETES (14-19) ══════════
+    "14": {
+        "name": "GKE Cluster Checker",
+        "description": "Monitorea clusters GKE, versiones, nodos y pods",
+        "path": "cluster-gke/gcp_cluster_checker.py",
+        "args": ["--project", "--output"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "15": {
+        "name": "Secrets & ConfigMaps Checker",
+        "description": "Valida referencias de Secrets y ConfigMaps en GKE",
+        "path": "secrets-configmaps/gcp_secrets_configmaps_checker.py",
+        "args": ["--project", "--cluster", "--output"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "16": {
+        "name": "Pod Connectivity Checker",
+        "description": "Valida conectividad desde un Pod GKE hasta Cloud SQL",
+        "path": "connectivity/pod_connectivity_checker.py",
+        "args": ["--deployment", "--sql-instance"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "17": {
+        "name": "Deploy Dependency Checker",
+        "description": "Analiza ConfigMaps de un deployment y valida conexiones a bases de datos",
+        "path": "connectivity/deploy_dependency_checker.py",
+        "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--probe-mode", "--probe-image", "--timeout", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "18": {
         "name": "Cloud Run Checker",
         "description": "Analiza servicios Cloud Run, revisiones, Jobs, IAM y networking",
         "path": "cloud-run/gcp_cloudrun_checker.py",
@@ -267,10 +266,40 @@ TOOLS = {
         "group": "kubernetes",
         "status": "ready"
     },
+    "19": {
+        "name": "Deployment Validator",
+        "description": "Valida ConfigMaps, Secrets y conectividad de un Deployment",
+        "path": "connectivity/deployment_validator.py",
+        "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--validate", "--probe-image", "--timeout", "--severity", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    # ══════════ ARTIFACTS (20) ══════════
+    "20": {
+        "name": "Artifact Registry Tag Filter",
+        "description": "Filtra y exporta imágenes de Artifact Registry a Excel",
+        "path": "artifact-registry/tag_filter.py",
+        "args": ["--csv-file"],
+        "requirements": "artifact-registry/requirements.txt",
+        "group": "artifacts",
+        "status": "ready"
+    },
+    # ══════════ REPORTS (21) ══════════
+    "21": {
+        "name": "Visualizar Reportes JSON",
+        "description": "Genera graficos HTML desde reportes JSON de los checkers",
+        "path": "reports-viewer/gcp_reports_viewer.py",
+        "args": [],
+        "requirements": "reports-viewer/requirements.txt",
+        "group": "reports",
+        "status": "ready"
+    },
+    # ══════════ SYSTEM (A, Q) ══════════
     "A": {
         "name": "Ejecutar Todos (Checkers)",
         "description": "Ejecuta todos los checkers con proyecto default y output JSON",
-        "auto_tools": ["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"],
+        "auto_tools": ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"],
         "excluded_reason": "Excluye: Pod Connectivity (requiere deployment), Artifact Registry (requiere CSV)",
         "group": "system",
         "status": "ready"
@@ -356,11 +385,13 @@ def get_status_indicator(status: str) -> tuple:
     return STATUS_INDICATORS.get(status, ("⚪", "white", "Desconocido"))
 
 def _menu_sort_key(key: str) -> tuple:
+    """Ordena claves numéricamente."""
     if key.isdigit():
         return (0, int(key))
     return (1, key)
 
 def get_menu_order(include_exit: bool = True) -> List[str]:
+    """Retorna las claves del menú ordenadas por grupo y numéricamente dentro de cada grupo."""
     ordered: List[str] = []
     for group_key in GROUP_ORDER:
         group_keys = [
@@ -615,6 +646,22 @@ def run_tool(tool_key: str):
             print(f"{Colors.GREEN}Usando proyecto: {project}{Colors.ENDC}")
         args.extend(["--project", project])
 
+    if "--cluster" in tool_args:
+        print(f"\n{Colors.BOLD}Ingrese el nombre del cluster [{Colors.CYAN}{DEFAULT_CLUSTER_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        cluster = input().strip()
+        if not cluster:
+            cluster = DEFAULT_CLUSTER_ID
+            print(f"{Colors.GREEN}Usando cluster: {cluster}{Colors.ENDC}")
+        args.extend(["--cluster", cluster])
+
+    if "--region" in tool_args:
+        print(f"\n{Colors.BOLD}Ingrese la región del cluster [us-central1]:{Colors.ENDC} ", end="")
+        region = input().strip()
+        if not region:
+            region = "us-central1"
+            print(f"{Colors.GREEN}Usando región: {region}{Colors.ENDC}")
+        args.extend(["--region", region])
+
     if "--project1" in tool_args:
         print(f"\n{Colors.BOLD}Proyecto GCP 1 - referencia [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         project1 = input().strip()
@@ -658,27 +705,12 @@ def run_tool(tool_key: str):
             return
         args.append(csv_file)  # Este script usa argumento posicional
     
-    if "--cluster" in tool_args:
-        print(f"\n{Colors.BOLD}Ingrese el nombre del cluster [{Colors.CYAN}{DEFAULT_CLUSTER_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
-        cluster = input().strip()
-        if not cluster:
-            cluster = DEFAULT_CLUSTER_ID
-            print(f"{Colors.GREEN}Usando cluster: {cluster}{Colors.ENDC}")
-        args.extend(["--cluster", cluster])
-
-    if "--region" in tool_args:
-        print(f"\n{Colors.BOLD}Ingrese la región del cluster [us-central1]:{Colors.ENDC} ", end="")
-        region = input().strip()
-        if not region:
-            region = "us-central1"
-            print(f"{Colors.GREEN}Usando región: {region}{Colors.ENDC}")
-        args.extend(["--region", region])
-    
     if "--namespace" in tool_args:
         print(f"\n{Colors.BOLD}Ingrese el namespace (vacío para todos):{Colors.ENDC} ", end="")
         namespace = input().strip()
         if namespace:
             args.extend(["--namespace", namespace])
+
     
     if "--probe-mode" in tool_args:
         print(f"\n{Colors.BOLD}Seleccione modo de validación (pod/local) [pod]:{Colors.ENDC} ", end="")
@@ -716,6 +748,9 @@ def run_tool(tool_key: str):
         elif "load-balancer" in tool.get("path", ""):
             view_options = "all/forwarding/backends/urlmaps/healthchecks/ssl/security/cdn"
             valid_views = ["all", "forwarding", "backends", "urlmaps", "healthchecks", "ssl", "security", "cdn"]
+        elif "cloud-armor" in tool.get("path", ""):
+            view_options = "all/policies/rules/backends/gaps"
+            valid_views = ["all", "policies", "rules", "backends", "gaps"]
         else:
             view_options = "all/gateways/routes/services/policies"
             valid_views = ["all", "gateways", "routes", "services", "policies"]
@@ -724,6 +759,18 @@ def run_tool(tool_key: str):
         view = input().strip().lower()
         if view and view in valid_views:
             args.extend(["--view", view])
+    
+    if "--audit" in tool_args:
+        print(f"\n{Colors.BOLD}¿Ejecutar auditoría completa de seguridad? (s/n) [s]:{Colors.ENDC} ", end="")
+        run_audit = input().strip().lower()
+        if run_audit != "n":
+            args.append("--audit")
+    
+    if "--severity" in tool_args:
+        print(f"\n{Colors.BOLD}Filtrar hallazgos por severidad (all/critical/warning/info) [all]:{Colors.ENDC} ", end="")
+        severity = input().strip().lower()
+        if severity and severity in ["all", "critical", "warning", "info"]:
+            args.extend(["--severity", severity])
     
     if "--compare" in tool_args:
         print(f"\n{Colors.BOLD}Comparar con otro proyecto (vacío para omitir):{Colors.ENDC} ", end="")

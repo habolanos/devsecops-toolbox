@@ -172,4 +172,4 @@ reports-viewer/
 
 ## Licencia
 
-Internal SCM Tool - Softtek
+Internal SRE Tool - Softtek

@@ -1,6 +1,6 @@
 # GCP Cloud Run Checker
 
-Herramienta SCM para monitorear y analizar servicios Cloud Run en Google Cloud Platform.
+Herramienta SRE para monitorear y analizar servicios Cloud Run en Google Cloud Platform.
 
 ## 📋 Contenido
 

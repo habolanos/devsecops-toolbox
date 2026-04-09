@@ -75,7 +75,7 @@ chmod +x extract-v2.sh
 
 | Opción | Alias | Descripción | Valor por defecto |
 |--------|-------|-------------|-------------------|
-| `--project` | `-p` | ID del proyecto en GCP | `cpl-xxxx-yyyy-zzzz-99999999` |
+| `--project` | `-p` | ID del proyecto en GCP | `cpl-cs-wms-prod-30112023` |
 | `--repository` | `-r` | Nombre del repositorio | *Menú interactivo* |
 | `--location` | `-l` | Región del repositorio | `us-central1` |
 | `--all-csv-in-excel` | - | Generar un solo Excel con todos los CSVs | `false` |

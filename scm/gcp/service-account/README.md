@@ -1,6 +1,6 @@
 # 🔐 GCP Service Account Checker
 
-Herramienta SCM para listar, analizar y auditar Service Accounts en Google Cloud Platform.
+Herramienta SRE para listar, analizar y auditar Service Accounts en Google Cloud Platform.
 
 ## 📋 Tabla de Contenidos
 
@@ -122,7 +122,7 @@ python gcp_service_account_checker.py --help
 
 | Parámetro | Corto | Descripción | Default |
 |-----------|-------|-------------|---------|
-| `--project` | `-p` | ID del proyecto GCP | `cpl-xxxx-yyyy-zzzz-99999999` |
+| `--project` | `-p` | ID del proyecto GCP | `cpl-corp-cial-prod-17042024` |
 | `--output` | `-o` | Formato de exportación: `txt`, `csv`, `json` | `txt` |
 | `--debug` | | Activa modo debug | `false` |
 | `--no-keys` | | No consultar keys (más rápido) | `false` |

@@ -30,7 +30,9 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-DEFAULT_PROJECT_ID = "cpl-xxxx-yyyy-zzzz-99999999"
+DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
+DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
+DEFAULT_REGION = "us-central1"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_PROBE_IMAGE = "jrecord/nettools:latest"
@@ -46,13 +48,25 @@ def get_args():
         add_help=False
     )
     parser.add_argument(
-        "--project",
+        "--project", "-p",
         type=str,
         default=DEFAULT_PROJECT_ID,
         help=f"ID del proyecto de GCP (Default: {DEFAULT_PROJECT_ID})"
     )
     parser.add_argument(
-        "--deployment",
+        "--cluster", "-c",
+        type=str,
+        default=DEFAULT_CLUSTER_ID,
+        help=f"Nombre del cluster GKE (Default: {DEFAULT_CLUSTER_ID})"
+    )
+    parser.add_argument(
+        "--region", "-r",
+        type=str,
+        default=DEFAULT_REGION,
+        help=f"Región del cluster GKE (Default: {DEFAULT_REGION})"
+    )
+    parser.add_argument(
+        "--deployment", "-d",
         type=str,
         default=DEFAULT_DEPLOYMENT,
         help=f"Nombre del deployment a analizar (Default: {DEFAULT_DEPLOYMENT})"
@@ -142,6 +156,38 @@ def run_command(cmd: List[str], debug: bool = False, timeout: Optional[int] = No
         stdout = (exc.stdout or "").strip()
         stderr = (exc.stderr or f"Timeout tras {timeout}s")
         return 124, stdout, stderr
+
+
+def configure_kubectl_context(project: str, cluster: str, region: str, 
+                               console: Optional[Console] = None, debug: bool = False) -> bool:
+    """Configura el contexto de kubectl para el cluster GKE especificado."""
+    if RICH_AVAILABLE and console:
+        console.print(f"[dim]⚙️ Configurando contexto kubectl para cluster {cluster}...[/]")
+    else:
+        print(f"⚙️ Configurando kubectl para cluster {cluster}...")
+    
+    cmd = [
+        'gcloud', 'container', 'clusters', 'get-credentials', cluster,
+        '--region', region,
+        '--project', project
+    ]
+    
+    code, stdout, stderr = run_command(cmd, debug, timeout=60)
+    
+    if code != 0:
+        error_msg = stderr or stdout or "Error configurando kubectl"
+        if RICH_AVAILABLE and console:
+            console.print(f"[red]❌ {error_msg}[/]")
+        else:
+            print(f"❌ {error_msg}")
+        return False
+    
+    if RICH_AVAILABLE and console:
+        console.print(f"[dim]✅ Contexto kubectl configurado[/]")
+    else:
+        print(f"✅ Contexto kubectl configurado")
+    
+    return True
 
 
 def check_gcp_connection(project_id: str, console: Optional[Console], debug: bool = False) -> bool:
@@ -258,12 +304,15 @@ def parse_connection_values(value: str) -> List[Tuple[str, int, str, str]]:
         normalized = raw_url
         if normalized.lower().startswith('jdbc:'):
             normalized = normalized[5:]
+        # Limpiar parámetros JDBC de SQL Server (;param=value)
+        if ';' in normalized:
+            normalized = normalized.split(';')[0]
         parsed = urlparse(normalized)
         host = parsed.hostname
         port = parsed.port
         if host and port:
             results.append((host, port, raw_url, db_type.lower()))
-    # host:puerto planos
+    # host:puerto planos (formato estandar host:port)
     for match in HOST_PORT_PATTERN.findall(value):
         host, port = match
         try:
@@ -272,6 +321,21 @@ def parse_connection_values(value: str) -> List[Tuple[str, int, str, str]]:
             continue
         if 0 < port_int < 65536:
             results.append((host, port_int, f"{host}:{port}", 'unknown'))
+    # SQL Server connection strings: Server=hostname,port;Database=...
+    sqlserver_pattern = re.compile(
+        r'Server\s*=\s*([^,;\s]+)\s*,\s*(\d{2,5})',
+        re.IGNORECASE
+    )
+    for match in sqlserver_pattern.finditer(value):
+        host = match.group(1).strip()
+        port_str = match.group(2).strip()
+        try:
+            port_int = int(port_str)
+        except ValueError:
+            continue
+        if 0 < port_int < 65536:
+            raw_conn = f"Server={host},{port_int}"
+            results.append((host, port_int, raw_conn, 'mssql'))
     return results
 
 
@@ -396,21 +460,53 @@ def export_results(connections: List[Dict], filepath: str, export_format: str, m
             json.dump(export_data, f, indent=2, ensure_ascii=False)
 
 
+def get_connection_type(raw_value: str) -> str:
+    """Detecta el tipo de conexión basado en la cadena de conexión."""
+    if not raw_value:
+        return "unknown"
+    raw_lower = raw_value.lower()
+    if raw_lower.startswith("jdbc:"):
+        return "JDBC"
+    elif raw_lower.startswith(("http://", "https://")):
+        return "HTTP"
+    elif raw_lower.startswith(("mongodb://", "mongodb+srv://")):
+        return "MongoDB"
+    elif raw_lower.startswith("redis://"):
+        return "Redis"
+    elif raw_lower.startswith("amqp://"):
+        return "AMQP"
+    elif raw_lower.startswith(("postgres://", "postgresql://")):
+        return "PostgreSQL"
+    elif raw_lower.startswith("mysql://"):
+        return "MySQL"
+    elif raw_lower.startswith("sqlserver://"):
+        return "SQLServer"
+    elif "server=" in raw_lower and "," in raw_value:
+        # SQL Server connection string: Server=host,port
+        return "SQLServer"
+    elif ":" in raw_value and raw_value.replace(".", "").split(":")[0].isdigit():
+        return "TCP"
+    return "TCP"
+
+
 def print_results(console: Optional[Console], connections: List[Dict]):
     if RICH_AVAILABLE and console:
         table = Table(title="🔌 Resultados de Conectividad", title_style="bold magenta", header_style="bold cyan", border_style="dim")
         table.add_column("ConfigMap", style="white")
         table.add_column("Key", style="white")
-        table.add_column("Tipo", justify="left")
+        table.add_column("Conexión", justify="center", width=10)
+        table.add_column("Tipo DB", justify="left")
         table.add_column("Host", justify="left")
         table.add_column("Puerto", justify="center")
         table.add_column("Estado", justify="center")
         table.add_column("Mensaje", justify="left", max_width=50)
         for conn in connections:
             status_style = 'green' if conn['status'] == 'OK' else 'yellow' if conn['status'] == 'TIMEOUT' else 'red'
+            conn_type = get_connection_type(conn.get('raw_value', ''))
             table.add_row(
                 conn['configmap'],
                 conn['key'],
+                f"[cyan]{conn_type}[/]",
                 conn.get('db_type', 'unknown'),
                 conn['host'],
                 str(conn['port']),
@@ -419,9 +515,10 @@ def print_results(console: Optional[Console], connections: List[Dict]):
             )
         console.print(table)
     else:
-        print("ConfigMap\tKey\tHost\tPort\tStatus\tMessage")
+        print("ConfigMap\tKey\tConexión\tTipo\tHost\tPort\tStatus\tMessage")
         for conn in connections:
-            print(f"{conn['configmap']}\t{conn['key']}\t{conn['host']}\t{conn['port']}\t{conn['status']}\t{conn['message']}")
+            conn_type = get_connection_type(conn.get('raw_value', ''))
+            print(f"{conn['configmap']}\t{conn['key']}\t{conn_type}\t{conn.get('db_type', 'unknown')}\t{conn['host']}\t{conn['port']}\t{conn['status']}\t{conn['message']}")
 
 
 def print_summary_counts(console: Optional[Console], connections: List[Dict]):
@@ -500,6 +597,10 @@ def main():
 
     try:
         if not check_gcp_connection(project_id, console, args.debug):
+            return 1
+
+        # Configurar contexto kubectl para el cluster
+        if not configure_kubectl_context(project_id, args.cluster, args.region, console, args.debug):
             return 1
 
         effective_namespace = namespace_arg or get_current_namespace(args.debug)

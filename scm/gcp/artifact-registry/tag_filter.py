@@ -5,8 +5,16 @@ from openpyxl.styles import Font, Alignment
 import openpyxl
 
 if len(sys.argv) > 1:
-    csv_file = sys.argv[1]
+    csv_file = os.path.expanduser(sys.argv[1])  # Expandir ~ a ruta completa
     file_ne = os.path.splitext(os.path.basename(csv_file))[0]
+else:
+    print("Error: Se requiere la ruta al archivo CSV como argumento.")
+    print("Uso: python tag_filter.py <ruta_archivo.csv>")
+    sys.exit(1)
+
+if not os.path.isfile(csv_file):
+    print(f"Error: El archivo '{csv_file}' no existe o no es un archivo válido.")
+    sys.exit(1)
 
 df = pd.read_csv(csv_file)
 df_filtrado = df[~((df['version'] == 'version') & (df['tag'] == 'tag'))]

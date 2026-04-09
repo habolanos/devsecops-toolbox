@@ -1,6 +1,6 @@
 # GCP Gateway Services Checker
 
-Herramienta SCM para monitorear y diagnosticar **Gateways, Routes, Services y Policies** en clusters GKE usando la API de Kubernetes Gateway.
+Herramienta SRE para monitorear y diagnosticar **Gateways, Routes, Services y Policies** en clusters GKE usando la API de Kubernetes Gateway.
 
 ## Descripción
 
@@ -39,7 +39,7 @@ python gcp_gateway_checker.py
 python gcp_gateway_checker.py --project mi-proyecto-gcp
 
 # Escanear solo un cluster específico
-python gcp_gateway_checker.py --project mi-proyecto-gcp --cluster gke-aaaaa-bbbbb-ccccc-99
+python gcp_gateway_checker.py --project mi-proyecto-gcp --cluster gke-corp-cial-prod-01
 
 # Escanear un namespace específico
 python gcp_gateway_checker.py --namespace importacion
@@ -77,7 +77,7 @@ python gcp_gateway_checker.py --debug
 
 | Parámetro | Descripción | Default |
 |-----------|-------------|---------|
-| `--project` | ID del proyecto GCP | cpl-xxxx-yyyy-zzzz-99999999 |
+| `--project` | ID del proyecto GCP | cpl-corp-cial-prod-17042024 |
 | `--cluster` | Nombre del cluster GKE específico | Todos los clusters |
 | `--namespace` | Namespace específico | Todos |
 | `--view` | Vista específica (all, gateways, routes, services, policies) | all |
@@ -89,7 +89,7 @@ python gcp_gateway_checker.py --debug
 | `--max-workers` | Número máximo de workers paralelos | 4 |
 | `--help, -h` | Muestra esta ayuda | - |
 
-## Semáforo SCM
+## Semáforo SRE
 
 ### Gateways
 

@@ -4,7 +4,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Valores por defecto
-DEFAULT_PROJECT_ID="cpl-xxxx-yyyy-zzzz-99999999"
+DEFAULT_PROJECT_ID="cpl-corp-cial-prod-17042024"
 DEFAULT_LOCATION="us-central1"
 
 # Inicializar variables

@@ -1,6 +1,6 @@
 # GCP Load Balancer Checker
 
-Herramienta SCM para monitorear y analizar Load Balancers en Google Cloud Platform.
+Herramienta SRE para monitorear y analizar Load Balancers en Google Cloud Platform.
 
 ## 📋 Contenido
 

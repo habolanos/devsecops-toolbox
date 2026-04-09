@@ -1,6 +1,6 @@
 # GCP Secrets & ConfigMaps Checker
 
-Herramienta SCM para identificar y validar referencias de Secrets y ConfigMaps en Deployments de GKE.
+Herramienta SRE para identificar y validar referencias de Secrets y ConfigMaps en Deployments de GKE.
 
 ## 🔍 Características
 
@@ -60,7 +60,7 @@ python gcp_secrets_configmaps_checker.py --details
 
 | Argumento | Descripción | Default |
 |-----------|-------------|---------|
-| `--project` | ID del proyecto GCP | `cpl-xxxx-yyyy-zzzz-99999999` |
+| `--project` | ID del proyecto GCP | `cpl-corp-cial-prod-17042024` |
 | `--cluster` | Nombre del cluster GKE específico | Todos los clusters |
 | `--namespace` | Namespace específico a analizar | Todos los namespaces |
 | `--debug` | Activa modo debug para diagnóstico | `False` |
@@ -164,4 +164,4 @@ Con el parámetro `--details` se muestra una columna adicional indicando qué de
 
 ## Licencia
 
-Internal SCM Tool - Softtek
+Internal SRE Tool - Softtek

@@ -510,7 +510,7 @@ def main():
     parser.add_argument(
         "--project-id",
         required=True,
-        help="ID del proyecto GCP (por ejemplo: cpl-xxxx-yyyy-zzzz-99999999)",
+        help="ID del proyecto GCP (por ejemplo: cpl-corp-cial-prod-17042024)",
     )
     parser.add_argument(
         "--output-dir",

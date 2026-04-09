@@ -1,7 +1,7 @@
 bash -c '
-CLUSTER="gke-aaaaa-bbbbb-ccccc-99"
+CLUSTER="gke-corp-cial-prod-01"
 REGION="us-central1"
-PROJECT="cpl-xxxx-yyyy-zzzz-99999999"
+PROJECT="cpl-corp-cial-prod-17042024"
 
 # 1. Obtener metadatos de red desde GCP
 INFO=$(gcloud container clusters describe $CLUSTER --region $REGION --project $PROJECT \

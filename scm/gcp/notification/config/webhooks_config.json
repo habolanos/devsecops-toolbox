@@ -1,0 +1,53 @@
+{
+  "webhook": {
+    "url": "https://chat.googleapis.com/v1/spaces/AAQAAwrKz7U/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Jg86Nq9MLD-P_h7Yus0tB_G4pqWT1s10wIFo8BT06zk",
+    "description": "GUARDIA - INTERNO - Alertas SRE / Producción"
+  },
+  "settings": {
+    "timezone": "America/Mazatlan",
+    "reporter": "SRE Equipo Softtek - Harold Adrian",
+    "excluded_namespace_prefixes": ["gke-", "datadog", "kube-", "default"]
+  },
+  "contexts": [
+    {
+      "name": "COMERCIAL",
+      "context": "gke_cpl-corp-cial-prod-17042024_us-central1_gke-corp-cial-prod-01",
+      "description": "Cluster Comercial Producción"
+    },
+    {
+      "name": "CIAL-ITEMS",
+      "context": "gke_cpl-cial-items-prod-24062025_us-central1_gke-items-prod-01",
+      "description": "Cluster Items Producción"
+    },
+    {
+      "name": "CIAL-PRIPROM",
+      "context": "gke_cpl-cial-priprom-prod-24062025_us-central1_gke-priprom-prod-01",
+      "description": "Cluster Pricing/Promotions Producción"
+    },
+    {
+      "name": "CIAL-RST",
+      "context": "gke_cpl-cial-rst-prod-18092025_us-central1_gke-cial-rst-dr-01",
+      "description": "Cluster RST DR Producción"
+    },
+    {
+      "name": "CIAL-STRPLAN",
+      "context": "gke_cpl-cial-strplan-prod-24062025_us-central1_gke-strplan-prod-01",
+      "description": "Cluster Strategic Planning Producción"
+    },
+    {
+      "name": "CIAL-SUPP",
+      "context": "gke_cpl-cial-supp-prod-24062025_us-central1_gke-supp-prod-01",
+      "description": "Cluster Suppliers Producción"
+    },
+    {
+      "name": "TIENDAS",
+      "context": "gke_cpl-rt-npv-prod-14052024_us-central1_gke-rt-npv-prod-02",
+      "description": "Cluster NPV Producción"
+    },
+    {
+      "name": "CONTACMX",
+      "context": "gke_cpl-sf-contacmx-prod-05092024_us-central1_gke-sf-contacmx-prod-03",
+      "description": "Cluster ContacMX Producción"
+    }
+  ]
+}

@@ -134,7 +134,7 @@ El script utiliza **Application Default Credentials (ADC)**.
    Ejemplo:
 
    ```bash
-   gcloud auth application-default set-quota-project cpl-xxxx-yyyy-zzzz-99999999
+   gcloud auth application-default set-quota-project cpl-corp-cial-prod-17042024
    ```
 
 3. Verifica que no tengas variables de entorno conflictivas:
@@ -154,7 +154,7 @@ El script utiliza **Application Default Credentials (ADC)**.
 
 - `--project-id` (**obligatorio**)  
   ID del proyecto GCP a analizar.  
-  Ejemplo: `cpl-xxxx-yyyy-zzzz-99999999`
+  Ejemplo: `cpl-corp-cial-prod-17042024`
 
 - `--output-dir` (**opcional**, default: `outcome`)  
   Directorio donde se guardarán los archivos de salida.
@@ -165,7 +165,7 @@ El script utiliza **Application Default Credentials (ADC)**.
 
 ```bash
 python3 gcp_iam_roles_report.py \
-  --project-id cpl-xxxx-yyyy-zzzz-99999999
+  --project-id cpl-corp-cial-prod-17042024
 ```
 
 Esto generará los archivos bajo el directorio `outcome/`.  
@@ -175,7 +175,7 @@ Si la carpeta no existe, el script la crea automáticamente.
 
 ```bash
 python3 gcp_iam_roles_report.py \
-  --project-id cpl-xxxx-yyyy-zzzz-99999999 \
+  --project-id cpl-corp-cial-prod-17042024 \
   --output-dir reports
 ```
 
@@ -191,13 +191,13 @@ python3 gcp_iam_roles_report.py --help
 
 ## Archivos generados
 
-Para un proyecto `cpl-xxxx-yyyy-zzzz-99999999` ejecutado en `2025-01-15 10:30:45`, se generarán nombres similares a:
+Para un proyecto `cpl-corp-cial-prod-17042024` ejecutado en `2025-01-15 10:30:45`, se generarán nombres similares a:
 
-- `gcp_iam_roles_cpl-xxxx-yyyy-zzzz-99999999_20250115_103045.txt`
-- `gcp_iam_roles_cpl-xxxx-yyyy-zzzz-99999999_20250115_103045_summary.csv`
-- `gcp_iam_roles_cpl-xxxx-yyyy-zzzz-99999999_20250115_103045_permissions.csv`
-- `gcp_iam_roles_cpl-xxxx-yyyy-zzzz-99999999_20250115_103045.json`
-- `gcp_iam_roles_cpl-xxxx-yyyy-zzzz-99999999_20250115_103045.log`
+- `gcp_iam_roles_cpl-corp-cial-prod-17042024_20250115_103045.txt`
+- `gcp_iam_roles_cpl-corp-cial-prod-17042024_20250115_103045_summary.csv`
+- `gcp_iam_roles_cpl-corp-cial-prod-17042024_20250115_103045_permissions.csv`
+- `gcp_iam_roles_cpl-corp-cial-prod-17042024_20250115_103045.json`
+- `gcp_iam_roles_cpl-corp-cial-prod-17042024_20250115_103045.log`
 
 ### 1. Archivo `.txt` (resumen)
 
@@ -259,8 +259,8 @@ Ejemplo:
 
 ```text
 project_id,project_number,role_name,title,role_type,permission,generated_at
-cpl-xxxx-yyyy-zzzz-99999999,123456789012,roles/viewer,Viewer,basic,compute.instances.get,2025-01-15T10:30:45+00:00
-cpl-xxxx-yyyy-zzzz-99999999,123456789012,roles/viewer,Viewer,basic,resourcemanager.projects.get,2025-01-15T10:30:45+00:00
+cpl-corp-cial-prod-17042024,123456789012,roles/viewer,Viewer,basic,compute.instances.get,2025-01-15T10:30:45+00:00
+cpl-corp-cial-prod-17042024,123456789012,roles/viewer,Viewer,basic,resourcemanager.projects.get,2025-01-15T10:30:45+00:00
 ...
 ```
 
@@ -271,11 +271,11 @@ Estructura principal:
 ```json
 {
   "generated_at": "2025-01-15T10:30:45+00:00",
-  "project_id": "cpl-xxxx-yyyy-zzzz-99999999",
+  "project_id": "cpl-corp-cial-prod-17042024",
   "project_number": "123456789012",
   "roles": [
     {
-      "project_id": "cpl-xxxx-yyyy-zzzz-99999999",
+      "project_id": "cpl-corp-cial-prod-17042024",
       "project_number": "123456789012",
       "role_name": "roles/viewer",
       "role_type": "basic",
@@ -321,7 +321,7 @@ Generado: 2025-01-15T10:30:45+00:00
         Para ver permisos de roles org-level, pide el rol
         'roles/iam.securityReviewer' o similar a nivel de organización.
 [WARN] Sin permisos para rol: organizations/123456789012/roles/customOrgRole
-[INFO] Proyecto real: cpl-xxxx-yyyy-zzzz-99999999 (número: 123456789012)
+[INFO] Proyecto real: cpl-corp-cial-prod-17042024 (número: 123456789012)
 [INFO] Roles distintos encontrados en bindings de IAM: 18
 ```
 

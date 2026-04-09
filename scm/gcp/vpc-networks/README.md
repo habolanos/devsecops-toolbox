@@ -1,16 +1,16 @@
 ## Herramientas Disponibles
 
 ### 1. gcp_vpc_networks_checker.py
-Herramienta SCM para visualizar información detallada de VPC Networks en Google Cloud Platform.
+Herramienta SRE para visualizar información detallada de VPC Networks en Google Cloud Platform.
 
 ### 2. gcp_ip_addresses_checker.py
-Herramienta SCM para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
+Herramienta SRE para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
 
 ---
 
 # GCP VPC Networks Checker
 
-Herramienta SCM para visualizar información detallada de VPC Networks en Google Cloud Platform.
+Herramienta SRE para visualizar información detallada de VPC Networks en Google Cloud Platform.
 
 ## Descripción
 
@@ -256,7 +256,7 @@ Verifica que tu cuenta tenga los permisos IAM necesarios listados arriba.
 
 # GCP IP Addresses Checker
 
-Herramienta SCM para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
+Herramienta SRE para analizar la capacidad de red de clusters GKE, verificando la utilización de IPs para pods y servicios.
 
 ## Descripción
 
@@ -301,7 +301,7 @@ python gcp_ip_addresses_checker.py --project <PROJECT_ID> --cluster <CLUSTER_NAM
 ### Ejemplos
 
 ```bash
-# Cluster default (cpl-xxxx-yyyy-zzzz-99999999, gke-aaaaa-bbbbb-ccccc-99, us-central1)
+# Cluster default (cpl-corp-cial-prod-17042024, gke-corp-cial-prod-01, us-central1)
 python gcp_ip_addresses_checker.py
 
 # Cluster específico
@@ -318,8 +318,8 @@ python gcp_ip_addresses_checker.py --debug
 
 | Argumento | Descripción | Valor por defecto |
 |-----------|-------------|-------------------|
-| `--project` | ID del proyecto GCP | cpl-xxxx-yyyy-zzzz-99999999 |
-| `--cluster` | Nombre del cluster GKE | gke-aaaaa-bbbbb-ccccc-99 |
+| `--project` | ID del proyecto GCP | cpl-corp-cial-prod-17042024 |
+| `--cluster` | Nombre del cluster GKE | gke-corp-cial-prod-01 |
 | `--region` | Región del cluster GKE | us-central1 |
 | `--output`, `-o` | Formato de exportación: csv, json | - |
 | `--timezone`, `-tz` | Zona horaria para mostrar fechas | America/Mazatlan |
