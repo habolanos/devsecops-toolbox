@@ -10,6 +10,7 @@ Colección de herramientas Python para auditoría y análisis de pipelines, pol�
 devsecops-toolbox/scm/azdo/
 ├── tools.py                       # Launcher interactivo unificado (punto de entrada)
 ├── azdo_pr_master_checker.py      # Herramienta 1 — PRs hacia master + validación CD
+├── azdo_pr_pipeline_analyzer.py   # Herramienta 1b — Análisis PRs multi-rama + CD + releases
 ├── azdo_branch_policy_checker.py  # Herramienta 2 — Auditoría de políticas de ramas
 ├── azdo_release_cd_health.py      # Herramienta 3 — Score de salud de Release Pipelines
 ├── azdo_pipeline_drift.py         # Herramienta 4 — Detección de drift en pipelines CD
@@ -96,6 +97,7 @@ Edita `config.json` con tus valores reales. **Este archivo está en `.gitignore`
 | Herramienta | Permisos requeridos |
 |---|---|
 | `azdo_pr_master_checker` | `Code (Read)` · `Release (Read)` |
+| `azdo_pr_pipeline_analyzer` | `Code (Read)` · `Release (Read)` |
 | `azdo_branch_policy_checker` | `Code (Read)` · `Project and Team (Read)` |
 | `azdo_release_cd_health` | `Release (Read)` |
 | `azdo_pipeline_drift` | `Release (Read)` |
@@ -188,6 +190,112 @@ python azdo_pr_master_checker.py --pat <PAT> --stage-name qa-gate
   Repositorio         PR   Autor       Rama origen       CD Pipeline          Stage validador
   ds-ppm-pricing      42   jlopez      feature/JIRA-123  ds-ppm-pricing-cd    ✅ Encontrado
   ds-sap-supplier      7   mgarcia     hotfix/fix-null   ds-sap-supplier-cd   ❌ No encontrado
+```
+
+---
+
+### 1b · PR Pipeline Analyzer — `azdo_pr_pipeline_analyzer.py`
+
+Analiza Pull Requests de múltiples ramas destino (`dev`, `QA`, `master`, `release*`), los organiza por fecha descendente y cruza la información con pipelines CD y últimos releases. Incluye reporte de tiempos de ejecución.
+
+#### Flujo de trabajo
+
+1. **Descargar PRs** de las ramas seleccionadas (único o todas)
+2. **Organizar por fecha** descendente y mostrar en tabla
+3. **Agrupar por repositorio** y mostrar resumen
+4. **Descargar pipelines CD** para los repositorios con PRs
+5. **Descargar últimos releases** por cada repositorio
+6. **Reporte de tiempos** de cada paso
+
+#### Argumentos CLI
+
+| Argumento | Corto | Requerido | Default | Descripción |
+|---|---|---|---|---|
+| `--pat` | — | ✅ | — | Personal Access Token |
+| `--org` | `-g` | — | `https://dev.azure.com/Coppel-Retail` | URL de la organización |
+| `--project` | `-p` | — | `Cadena_de_Suministros` | Nombre del proyecto |
+| `--branches` | `-b` | — | `master` | Ramas a analizar: `dev`, `QA`, `master`, `release`, o `all` |
+| `--status` | `-s` | — | `active` | Estado de PRs: `active` / `completed` / `abandoned` / `all` |
+| `--output` | `-o` | — | — | Exportar: `json` / `csv` / `excel` |
+| `--timezone` | `-tz` | — | `America/Mazatlan` | Zona horaria para fechas |
+| `--top` | — | — | `500` | Máximo de PRs por consulta |
+| `--threads` | — | — | `16` | Hilos paralelos para releases |
+| `--debug` | — | — | `false` | Mostrar errores HTTP detallados |
+| `--list-cds` | — | — | `false` | Listar todos los CDs disponibles y salir (diagnóstico) |
+
+#### Ejemplos
+
+```bash
+# Analizar PRs activos hacia master (default)
+python azdo_pr_pipeline_analyzer.py --pat <PAT>
+
+# Todas las ramas
+python azdo_pr_pipeline_analyzer.py --pat <PAT> --branches all
+
+# Solo ramas QA y master
+python azdo_pr_pipeline_analyzer.py --pat <PAT> --branches QA master
+
+# PRs completados (mergeados)
+python azdo_pr_pipeline_analyzer.py --pat <PAT> --status completed
+
+# Todos los PRs sin filtro de estado
+python azdo_pr_pipeline_analyzer.py --pat <PAT> --status all
+
+# Exportar a Excel
+python azdo_pr_pipeline_analyzer.py --pat <PAT> --output excel
+
+# Listar todos los CDs disponibles (diagnóstico)
+python azdo_pr_pipeline_analyzer.py --pat <PAT> --list-cds
+```
+
+#### Salida en consola
+
+```
+🔧 Configuración:
+   Org: https://dev.azure.com/Coppel-Retail
+   Project: Cadena_de_Suministros
+   Ramas: master
+   Estado PRs: active
+
+📥 Paso 1: Descargando PRs...
+   ✅ 45 PRs activos encontrados
+
+[Tabla de PRs ordenados por fecha]
+
+📁 Paso 2: Resumen por Repositorio (23 repos)
+┌───────────────────────────────────┬──────┬──────────┬──────────────┬──────────────┐
+│ Repositorio                       │ Total│ 🟢 Activos│ ✅ Completados│ ❌ Abandonados│
+├───────────────────────────────────┼──────┼──────────┼──────────────┼──────────────┤
+│ wms-proc-shipconfirm              │    5 │        5 │           —  │           —  │
+│ tms-front-transportationapp       │    4 │        4 │           —  │           —  │
+│ iwms-tiendavirtual                │    3 │        3 │           —  │           —  │
+│ legacy-frontend-uc-login          │    2 │        2 │           —  │           —  │
+│ ...                               │  ... │      ... │          ... │          ... │
+├───────────────────────────────────┼──────┼──────────┼──────────────┼──────────────┤
+│ TOTAL                             │   45 │       45 │           —  │           —  │
+└───────────────────────────────────┴──────┴──────────┴──────────────┴──────────────┘
+
+🚀 Paso 3: Buscando pipelines CD...
+   Candidatos encontrados: 120 CDs únicos (de 500 totales)
+   Descargando detalles de 120 CDs... ✓ (118 cargados)
+   ✅ CD encontrados: 38/42
+
+📦 Paso 4: Descargando últimos releases...
+   ✅ Releases encontrados: 35/38
+
+[Tabla de CD y releases]
+
+⏱️ Tiempos de Ejecución
+┌──────────────────────────┬────────────┬──────────┐
+│ Paso                     │ Tiempo (s) │ % Total  │
+├──────────────────────────┼────────────┼──────────┤
+│ 1. Descargar PRs         │     45.23s │    32.5% │
+│ 2. Agrupar por repo      │      0.15s │     0.1% │
+│ 3. Descargar CD pipelines│     78.45s │    56.3% │
+│ 4. Descargar releases    │     15.42s │    11.1% │
+├──────────────────────────┼────────────┼──────────┤
+│ TOTAL                    │    139.25s │   100.0% │
+└──────────────────────────┴────────────┴──────────┘
 ```
 
 ---
@@ -730,6 +838,10 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-04-10 | 1.6.2 | Paso 3 optimizado: busca candidatos por nombre primero, descarga solo detalles de candidatos (vs 500 CDs completos). Usa `vsrm.dev.azure.com` para Release APIs | `azdo_pr_pipeline_analyzer.py`, `README.md` |
+| 2026-04-10 | 1.3.1 | Launcher: herramienta 1b `azdo_pr_pipeline_analyzer.py` añadida al menú con prompts interactivos | `tools.py`, `README.md` |
+| 2026-04-10 | 1.6.1 | Fix Release APIs: usa `vsrm.dev.azure.com` en lugar de `dev.azure.com`. Default threads=20 | `azdo_pr_pipeline_analyzer.py` |
+| 2026-04-10 | 1.6.0 | Nueva herramienta 1b: `azdo_pr_pipeline_analyzer.py` — Análisis PRs multi-rama + CD + releases con reporte de tiempos | `azdo_pr_pipeline_analyzer.py` (nuevo), `README.md` |
 | 2026-03-26 | 1.4.0 | `make_dist.ps1` publica releases en GitHub via API (ZIP como asset) | `make_dist.ps1` |
 | 2026-03-25 | 1.3.1 | Script PowerShell `make_dist.ps1` para generar ZIP distribuible | `make_dist.ps1` (nuevo en raiz) |
 | 2026-03-31 | 1.3.0 | Scanners 7-8: Refactor con argumentos CLI y soporte config.json | `azdo_scan_pipeline_logs.py`, `azdo_scan_repos_vulnerabilities.py`, `tools.py`, `README.md` |
@@ -740,6 +852,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 | 2026-03-25 | 1.2.0 | `--repo` / `-r` añadido como alias de `--filter` en tools 3 y 4 | `azdo_release_cd_health.py`, `azdo_pipeline_drift.py` |
 | 2026-03-25 | 1.2.0 | Corrección `--filter` → `--repo` en TOOLS dict de launcher; handler `--release-id` | `tools.py` |
 | 2026-03-26 | 1.1.0 | Nueva herramienta 6: `azdo_task_validator.py` — Validación DevSecOps de releases | `azdo_task_validator.py` (nuevo), `tools.py`, `README.md` |
+| 2026-04-10 | 1.2.0 | CD fetching optimizado: candidatos por nombre primero, descarga solo candidatos, artifact source matching, threads=20, paginación release defs | `azdo_pr_master_checker.py`, `README.md` |
 | 2026-03-25 | 1.1.0 | Refactor PR fetch: endpoint cross-project bulk (1 llamada vs N repos) | `azdo_pr_master_checker.py` |
 | 2026-03-25 | 1.1.0 | Pre-fetch paralelo de CD details; `DEFAULT_THREADS` aumentado a 16 | `azdo_pr_master_checker.py` |
 | 2026-03-25 | 1.0.1 | Default PR status cambiado de `all` a `active` | `azdo_pr_master_checker.py`, `config.json.template`, `tools.py` |

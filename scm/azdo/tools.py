@@ -96,6 +96,15 @@ TOOLS: Dict = {
         "group":       "pr",
         "status":      "ready",
     },
+    "1b": {
+        "name":        "PR Pipeline Analyzer",
+        "description": "Analiza PRs de múltiples ramas y cruza con CD pipelines y releases",
+        "path":        "azdo_pr_pipeline_analyzer.py",
+        "args":        ["--pat", "--org", "--project", "--branches", "--status",
+                        "--threads", "--output", "--list-cds", "--debug"],
+        "group":       "pr",
+        "status":      "ready",
+    },
     "2": {
         "name":        "Branch Policy Checker",
         "description": "Audita políticas de rama (master/main, QA, develop) por repositorio",
@@ -363,7 +372,19 @@ def _print_config_status():
 
 
 def _menu_sort_key(k: str):
-    return (0, int(k)) if k.isdigit() else (1, k)
+    if k.isdigit():
+        return (0, int(k), 0)
+    # Handle keys like "1b", "2a", etc.
+    base = ""
+    suffix = ""
+    for c in k:
+        if c.isdigit():
+            base += c
+        else:
+            suffix += c
+    if base:
+        return (0, int(base), ord(suffix) if suffix else 0)
+    return (1, 0, ord(k))
 
 
 def get_menu_order() -> List[str]:
@@ -538,11 +559,35 @@ def run_tool(tool_key: str):
         val = prompt("Branch destino de los PRs", default=cfg_branch)
         extra += ["--branch", val]
 
+    if "--branches" in tool_args:
+        cfg_branches = config_get(cfg, "tools", "pr_pipeline_analyzer", "branches", default="master")
+        print(f"{Colors.BOLD}Ramas destino (dev/QA/master/release/all, separadas por espacio) [{Colors.CYAN}{cfg_branches}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        val = input().strip() or cfg_branches
+        extra += ["--branches"] + val.split()
+
     if "--status" in tool_args:
         cfg_status = config_get(cfg, "tools", "pr_master_checker", "pr_status", default="active")
         print(f"{Colors.BOLD}Estado de PRs (all/active/completed/abandoned) [{Colors.CYAN}{cfg_status}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         val = input().strip() or cfg_status
         extra += ["--status", val]
+
+    if "--threads" in tool_args:
+        cfg_threads = config_get(cfg, "tools", "pr_pipeline_analyzer", "threads", default="20")
+        print(f"{Colors.BOLD}Hilos paralelos [{Colors.CYAN}{cfg_threads}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        val = input().strip() or cfg_threads
+        extra += ["--threads", val]
+
+    if "--list-cds" in tool_args:
+        print(f"{Colors.BOLD}¿Listar todos los CDs disponibles? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--list-cds")
+
+    if "--debug" in tool_args:
+        print(f"{Colors.BOLD}¿Modo debug? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--debug")
 
     if "--stage-name" in tool_args:
         cfg_stage = config_get(cfg, "tools", "pr_master_checker", "stage_name", default="validador")
@@ -765,12 +810,15 @@ def main():
             else:
                 print(f"{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
 
-            choice = input().strip().upper()
+            choice = input().strip()
 
-            if choice == "A":
+            # Normalizar: "A"/"Q" en mayúsculas, claves como "1b" en minúsculas
+            choice_norm = choice.upper() if choice.isalpha() else choice.lower()
+
+            if choice_norm == "A":
                 run_all_tools()
-            elif choice in TOOLS:
-                run_tool(choice)
+            elif choice_norm in TOOLS:
+                run_tool(choice_norm)
             else:
                 print(f"\n{Colors.FAIL}Opción no válida.{Colors.ENDC}")
                 input("\nPresione Enter para continuar...")

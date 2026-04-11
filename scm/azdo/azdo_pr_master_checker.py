@@ -29,8 +29,8 @@ import base64
 import csv
 import json
 import os
+import re
 import time
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
 from datetime import datetime, timezone
@@ -67,7 +67,7 @@ DEFAULT_PR_STATUS = "active"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_STAGE_NAME = "validador"
 DEFAULT_TOP = 500
-DEFAULT_THREADS = 16
+DEFAULT_THREADS = 20
 API_VERSION = "7.1"
 
 
@@ -242,12 +242,23 @@ def get_all_pull_requests(
 def get_release_definitions_list(
     org: str, project: str, headers: Dict, debug: bool = False
 ) -> List[Dict]:
-    """Lista resumida de release definitions (ID + nombre)."""
+    """Lista resumida de release definitions (ID + nombre). Paginado."""
     base = vsrm_base(org)
     url = f"{base}/{quote(project, safe='')}/_apis/release/definitions"
-    params = {"api-version": "7.2-preview.4", "$top": 500}
-    data = api_get(url, headers, params, debug)
-    return data.get("value", []) if data else []
+    all_defs: List[Dict] = []
+    skip = 0
+    page_size = 500
+    while True:
+        params = {"api-version": "7.2-preview.4", "$top": page_size, "$skip": skip}
+        data = api_get(url, headers, params, debug)
+        if not data:
+            break
+        batch = data.get("value", [])
+        all_defs.extend(batch)
+        if len(batch) < page_size:
+            break
+        skip += page_size
+    return all_defs
 
 
 def get_release_definition_detail(
@@ -267,33 +278,141 @@ def normalize(name: str) -> str:
     return name.lower().strip().replace("-", "").replace("_", "").replace(" ", "").replace(".", "")
 
 
-def find_cd_for_repo(repo_name: str, release_defs: List[Dict]) -> Optional[Dict]:
+def find_cd_candidates_for_repo(repo_name: str, release_defs: List[Dict], debug: bool = False) -> List[Tuple[int, int]]:
     """
-    Busca la release definition más afín al nombre del repo.
-    Prioridad: coincidencia exacta > contiene > score de similitud >= 0.5
+    Busca CDs candidatos para un repositorio por nombre (sin descargar detalles).
+    Retorna lista de (cd_id, score) ordenada por score descendente.
     """
+    repo_lower = repo_name.lower()
     repo_norm = normalize(repo_name)
 
-    exact = next((rd for rd in release_defs if normalize(rd.get("name", "")) == repo_norm), None)
-    if exact:
-        return exact
-
-    best_match: Optional[Dict] = None
-    best_score = 0.0
+    candidates = []
 
     for rd in release_defs:
-        rd_norm = normalize(rd.get("name", ""))
-        if not rd_norm:
-            continue
-        if repo_norm in rd_norm or rd_norm in repo_norm:
-            short = min(len(repo_norm), len(rd_norm))
-            long_ = max(len(repo_norm), len(rd_norm))
-            score = short / long_ if long_ > 0 else 0
-            if score > best_score:
-                best_score = score
-                best_match = rd
+        cd_name = rd.get("name", "").lower()
+        cd_norm = normalize(cd_name)
+        score = 0
 
-    return best_match if best_score >= 0.5 else None
+        # Heurística 1: Match exacto o contiene
+        if cd_name == repo_lower:
+            score = 100
+        elif cd_name.startswith(repo_lower):
+            score = 90
+        elif repo_lower in cd_name:
+            score = 70
+        elif repo_norm in cd_norm or cd_norm in repo_norm:
+            score = 60
+
+        # Heurística 2: Palabras compartidas (3+ caracteres)
+        if score < 50:
+            repo_words = set(w for w in re.split(r'[-_\s\.]+', repo_lower) if len(w) >= 3)
+            cd_words = set(w for w in re.split(r'[-_\s\.]+', cd_name) if len(w) >= 3)
+            shared = repo_words & cd_words
+            generic = {'api', 'svc', 'service', 'web', 'app', 'frontend', 'backend', 'legacy', 'uc', 'wm', 'wms', 'tms', 'iwms'}
+            specific_shared = shared - generic
+            if len(specific_shared) >= 1:
+                score = 40 + len(specific_shared) * 10
+            elif len(shared) >= 2:
+                score = 30
+
+        if score > 0:
+            candidates.append((rd["id"], score))
+
+    candidates.sort(key=lambda x: x[1], reverse=True)
+
+    if debug and candidates:
+        cd_names = {rd["id"]: rd["name"] for rd in release_defs}
+        print(f"[DEBUG] CD candidates for '{repo_name}' ({len(candidates)}):")
+        for i, (cd_id, s) in enumerate(candidates[:5], 1):
+            marker = " ✅ TOP" if i == 1 else ""
+            print(f"  {i}. '{cd_names.get(cd_id, '?')}' (score: {s}){marker}")
+
+    return candidates
+
+
+def find_cd_by_artifact_source(repo_name: str, cd_details_map: Dict[int, Dict], debug: bool = False) -> Optional[Dict]:
+    """Busca CD por nombre exacto del repositorio en artifact source."""
+    repo_lower = repo_name.lower()
+
+    for cd_id, cd_detail in cd_details_map.items():
+        for artifact in cd_detail.get("artifacts", []):
+            if artifact.get("type") == "Git":
+                artifact_repo_name = (
+                    artifact.get("definitionReference", {})
+                    .get("definition", {})
+                    .get("name", "")
+                    .lower()
+                )
+                if artifact_repo_name == repo_lower:
+                    if debug:
+                        print(f"[DEBUG] ✅ Match por artifact source: '{cd_detail.get('name')}' (ID: {cd_id})")
+                    return cd_detail
+
+    return None
+
+
+def find_cd_for_repo_with_details(
+    repo_name: str,
+    release_defs: List[Dict],
+    cd_details_map: Dict[int, Dict],
+    debug: bool = False
+) -> Optional[Dict]:
+    """
+    Busca CD pipeline para un repositorio usando detalles descargados:
+    1. Artifact source (más preciso)
+    2. Nombre del CD (fallback con scoring)
+    """
+    # PASO 1: Artifact source (más preciso)
+    cd_match = find_cd_by_artifact_source(repo_name, cd_details_map, debug)
+    if cd_match:
+        return cd_match
+
+    # PASO 2: Fallback por nombre con scoring
+    repo_lower = repo_name.lower()
+    repo_norm = normalize(repo_name)
+    best_match = None
+    best_score = 0
+
+    for rd in release_defs:
+        cd_id = rd.get("id")
+        if cd_id not in cd_details_map:
+            continue
+
+        cd_name = rd.get("name", "").lower()
+        cd_norm = normalize(cd_name)
+        score = 0
+
+        if cd_name == repo_lower:
+            score = 100
+        elif cd_name.startswith(repo_lower):
+            score = 90
+        elif repo_lower in cd_name:
+            score = 70
+        elif repo_norm in cd_norm or cd_norm in repo_norm:
+            score = 60
+        else:
+            repo_words = set(w for w in re.split(r'[-_\s\.]+', repo_lower) if len(w) >= 3)
+            cd_words = set(w for w in re.split(r'[-_\s\.]+', cd_name) if len(w) >= 3)
+            shared = repo_words & cd_words
+            generic = {'api', 'svc', 'service', 'web', 'app', 'frontend', 'backend', 'legacy', 'uc', 'wm', 'wms', 'tms', 'iwms'}
+            specific_shared = shared - generic
+            if len(specific_shared) >= 1:
+                score = 40 + len(specific_shared) * 10
+            elif len(shared) >= 2:
+                score = 30
+
+        if score > best_score:
+            best_score = score
+            best_match = rd
+
+    if best_match and best_score >= 30:
+        cd_id = best_match.get("id")
+        cd_detail = cd_details_map.get(cd_id, best_match)
+        if debug:
+            print(f"[DEBUG] ✅ Match por nombre: '{best_match.get('name')}' (score: {best_score})")
+        return cd_detail
+
+    return None
 
 
 def has_stage(release_def_detail: Dict, stage_name: str) -> bool:
@@ -328,85 +447,6 @@ def get_pr_date(pr: Dict, tz_name: str) -> str:
 def build_pr_url(org: str, project: str, repo_name: str, pr_id: int) -> str:
     base = org.rstrip("/")
     return f"{base}/{project}/_git/{repo_name}/pullrequest/{pr_id}"
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PER-REPO PROCESSING
-# ═══════════════════════════════════════════════════════════════════════════════
-def process_repo(
-    repo: Dict,
-    org: str,
-    project: str,
-    headers: Dict,
-    target_branch: str,
-    status: str,
-    top: int,
-    tz_name: str,
-    release_defs_list: List[Dict],
-    cd_detail_cache: Dict[int, Optional[Dict]],
-    cache_lock,
-    stage_name: str,
-    debug: bool,
-) -> List[Dict]:
-    repo_name = repo["name"]
-    repo_id = repo["id"]
-
-    prs = get_pull_requests(org, project, repo_id, target_branch, status, top, headers, debug)
-    if not prs:
-        return []
-
-    # Buscar CD para este repo
-    cd_summary = find_cd_for_repo(repo_name, release_defs_list)
-    has_cd = cd_summary is not None
-    cd_name: Optional[str] = None
-    cd_has_stage = False
-
-    if cd_summary:
-        def_id = cd_summary["id"]
-        cd_name = cd_summary["name"]
-
-        # Obtener detalle (con caché para no llamar 2 veces al mismo CD)
-        with cache_lock:
-            if def_id not in cd_detail_cache:
-                cd_detail_cache[def_id] = None  # marca como en proceso
-                fetch = True
-            else:
-                fetch = False
-
-        if fetch:
-            detail = get_release_definition_detail(org, project, def_id, headers, debug)
-            with cache_lock:
-                cd_detail_cache[def_id] = detail
-        else:
-            # Espera mínima por si otro hilo está fetching el mismo
-            for _ in range(20):
-                with cache_lock:
-                    if cd_detail_cache[def_id] is not None:
-                        break
-                time.sleep(0.05)
-            with cache_lock:
-                detail = cd_detail_cache.get(def_id)
-
-        if detail:
-            cd_has_stage = has_stage(detail, stage_name)
-
-    rows = []
-    for pr in prs:
-        pr_id = pr.get("pullRequestId")
-        rows.append({
-            "repository": repo_name,
-            "pr_id": pr_id,
-            "title": pr.get("title", ""),
-            "status": pr.get("status", ""),
-            "created_by": pr.get("createdBy", {}).get("displayName", ""),
-            "date": get_pr_date(pr, tz_name),
-            "url": build_pr_url(org, project, repo_name, pr_id),
-            "has_cd": has_cd,
-            "cd_name": cd_name or "—",
-            "cd_has_stage": cd_has_stage,
-        })
-
-    return rows
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -632,16 +672,27 @@ def main():
 
     console.print() if console else None
 
-    # ── 4. Pre-fetch CD details solo para repos con PRs ───────────────────────
+    # ── 4. Buscar CD candidates y descargar solo sus detalles ────────────────
     repos_with_prs_names = {pr.get("repository", {}).get("name", "") for pr in prs_in_scope}
-    cd_for_repo: Dict[str, Optional[Dict]] = {
-        name: find_cd_for_repo(name, release_defs_list)
-        for name in repos_with_prs_names
-    }
-    cd_ids_needed = {cd["id"] for cd in cd_for_repo.values() if cd}
 
+    # 4a. Buscar candidatos por nombre (local, sin API calls)
+    candidate_ids_per_repo: Dict[str, List[Tuple[int, int]]] = {}
+    all_candidate_ids: set = set()
+
+    for name in repos_with_prs_names:
+        candidates = find_cd_candidates_for_repo(name, release_defs_list, args.debug)
+        candidate_ids_per_repo[name] = candidates
+        for cd_id, score in candidates:
+            all_candidate_ids.add(cd_id)
+
+    if RICH_AVAILABLE and console:
+        console.print(f"[dim]🔍 Candidatos CD: {len(all_candidate_ids)} únicos (de {len(release_defs_list)} totales)[/]")
+    else:
+        print(f"  Candidatos CD: {len(all_candidate_ids)} únicos (de {len(release_defs_list)} totales)")
+
+    # 4b. Descargar detalles solo de los candidatos en paralelo
     cd_details: Dict[int, Optional[Dict]] = {}
-    if cd_ids_needed:
+    if all_candidate_ids:
         if RICH_AVAILABLE and console:
             with Progress(
                 SpinnerColumn(),
@@ -650,39 +701,47 @@ def main():
                 TaskProgressColumn(),
                 console=console,
             ) as p:
-                t = p.add_task(f"Cargando detalles de {len(cd_ids_needed)} pipelines CD...", total=len(cd_ids_needed))
+                t = p.add_task(f"Cargando detalles de {len(all_candidate_ids)} CDs candidatos...", total=len(all_candidate_ids))
                 with ThreadPoolExecutor(max_workers=args.threads) as executor:
                     futs = {
                         executor.submit(
                             get_release_definition_detail,
-                            args.org, args.project, def_id, headers, args.debug,
-                        ): def_id
-                        for def_id in cd_ids_needed
+                            args.org, args.project, cd_id, headers, args.debug,
+                        ): cd_id
+                        for cd_id in all_candidate_ids
                     }
                     for fut in as_completed(futs):
-                        def_id = futs[fut]
+                        cd_id = futs[fut]
                         try:
-                            cd_details[def_id] = fut.result()
+                            cd_details[cd_id] = fut.result()
                         except Exception:
-                            cd_details[def_id] = None
+                            cd_details[cd_id] = None
                         p.advance(t)
         else:
-            print(f"  Cargando detalles de {len(cd_ids_needed)} pipelines CD...", end="", flush=True)
+            print(f"  Cargando detalles de {len(all_candidate_ids)} CDs candidatos...", end="", flush=True)
             with ThreadPoolExecutor(max_workers=args.threads) as executor:
                 futs = {
                     executor.submit(
                         get_release_definition_detail,
-                        args.org, args.project, def_id, headers, args.debug,
-                    ): def_id
-                    for def_id in cd_ids_needed
+                        args.org, args.project, cd_id, headers, args.debug,
+                    ): cd_id
+                    for cd_id in all_candidate_ids
                 }
                 for fut in as_completed(futs):
-                    def_id = futs[fut]
+                    cd_id = futs[fut]
                     try:
-                        cd_details[def_id] = fut.result()
+                        cd_details[cd_id] = fut.result()
                     except Exception:
-                        cd_details[def_id] = None
-            print(f"\r  ✅ {len(cd_ids_needed)} pipelines CD cargados                              ")
+                        cd_details[cd_id] = None
+            print(f"\r  ✅ {len(all_candidate_ids)} CDs candidatos cargados                              ")
+
+    # 4c. Matching final: artifact source + nombre fallback
+    cd_for_repo: Dict[str, Optional[Dict]] = {}
+    for name in repos_with_prs_names:
+        repo_candidate_ids = {cd_id for cd_id, _ in candidate_ids_per_repo.get(name, [])}
+        repo_cd_details = {k: v for k, v in cd_details.items() if k in repo_candidate_ids}
+        repo_release_defs = [rd for rd in release_defs_list if rd["id"] in repo_candidate_ids]
+        cd_for_repo[name] = find_cd_for_repo_with_details(name, repo_release_defs, repo_cd_details, args.debug)
 
     console.print() if console else None
 
@@ -693,14 +752,12 @@ def main():
         repo_name = repo_info.get("name", "")
         pr_id = pr.get("pullRequestId")
 
-        cd_summary = cd_for_repo.get(repo_name)
-        has_cd = cd_summary is not None
-        cd_name = cd_summary["name"] if cd_summary else "—"
+        cd_detail = cd_for_repo.get(repo_name)
+        has_cd = cd_detail is not None
+        cd_name = cd_detail.get("name", "—") if cd_detail else "—"
         cd_has_stage = False
-        if cd_summary:
-            detail = cd_details.get(cd_summary["id"])
-            if detail:
-                cd_has_stage = has_stage(detail, args.stage_name)
+        if cd_detail:
+            cd_has_stage = has_stage(cd_detail, args.stage_name)
 
         all_rows.append({
             "repository": repo_name,

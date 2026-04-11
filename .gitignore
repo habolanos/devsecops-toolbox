@@ -75,3 +75,5 @@ outcome/coverage.xml
 #files offimatic
 *.xlsx
 *.docx
+
+debug*.txt
