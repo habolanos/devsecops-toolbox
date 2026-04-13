@@ -27,6 +27,7 @@ Autor: Harold Adrian
 import argparse
 import base64
 import csv
+import fnmatch
 import json
 import os
 import re
@@ -96,7 +97,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--branch", "-b",
         default=DEFAULT_TARGET_BRANCH,
-        help=f"Rama destino del PR (default: {DEFAULT_TARGET_BRANCH})"
+        help=f"Rama destino del PR (acepta wildcards: release/*, release/v*) (default: {DEFAULT_TARGET_BRANCH})"
     )
     parser.add_argument(
         "--status", "-s",
@@ -208,6 +209,11 @@ def vsrm_base(org_url: str) -> str:
     return org_url.replace("dev.azure.com", "vsrm.dev.azure.com")
 
 
+def is_wildcard_branch(branch: str) -> bool:
+    """Retorna True si el branch contiene wildcards (* o ?)."""
+    return '*' in branch or '?' in branch
+
+
 def get_all_pull_requests(
     org: str, project: str,
     target_branch: str, status: str, top: int,
@@ -215,19 +221,23 @@ def get_all_pull_requests(
 ) -> List[Dict]:
     """Descarga todos los PRs del proyecto en bloque (cross-repo, paginado).
     1-N llamadas en lugar de 1 por repositorio.
+    Si target_branch contiene wildcards, no filtra por branch en la API
+    (la API no soporta wildcards) y se filtra localmente después.
     """
     url = f"{org}/{quote(project, safe='')}/_apis/git/pullrequests"
     all_prs: List[Dict] = []
     skip = 0
     page_size = min(top, 1000)
+    wildcard = is_wildcard_branch(target_branch)
     while True:
         params = {
-            "searchCriteria.targetRefName": f"refs/heads/{target_branch}",
             "searchCriteria.status": status,
             "$top": page_size,
             "$skip": skip,
             "api-version": API_VERSION,
         }
+        if not wildcard:
+            params["searchCriteria.targetRefName"] = f"refs/heads/{target_branch}"
         data = api_get(url, headers, params, debug)
         if not data:
             break
@@ -237,6 +247,19 @@ def get_all_pull_requests(
             break
         skip += page_size
     return all_prs[:top]
+
+
+def filter_prs_by_branch_wildcard(prs: List[Dict], branch_pattern: str) -> List[Dict]:
+    """Filtra PRs localmente usando fnmatch sobre el target branch.
+    branch_pattern puede contener * y ? (ej: 'release/*', 'release/v*').
+    """
+    if not is_wildcard_branch(branch_pattern):
+        return prs
+    pattern = f"refs/heads/{branch_pattern}"
+    return [
+        pr for pr in prs
+        if fnmatch.fnmatch(pr.get("targetRefName", ""), pattern)
+    ]
 
 
 def get_release_definitions_list(
@@ -657,6 +680,13 @@ def main():
 
     # ── 3. PRs en bloque (cross-project) ───────────────────────────────────────
     repo_ids_in_scope = {r["id"] for r in repos}
+    wildcard_mode = is_wildcard_branch(args.branch)
+
+    if wildcard_mode:
+        if console:
+            console.print(f"[dim]🌿 Branch con wildcard: '{args.branch}' — se descargan todos los PRs y se filtra localmente[/]")
+        else:
+            print(f"  Branch con wildcard: '{args.branch}' — se descargan todos los PRs y se filtra localmente")
 
     if RICH_AVAILABLE and console:
         with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
@@ -664,15 +694,21 @@ def main():
             raw_prs = get_all_pull_requests(
                 args.org, args.project, args.branch, args.status, args.top, headers, args.debug
             )
+            # Filtrar por wildcard si aplica
+            if wildcard_mode:
+                raw_prs = filter_prs_by_branch_wildcard(raw_prs, args.branch)
             prs_in_scope = [pr for pr in raw_prs if pr.get("repository", {}).get("id") in repo_ids_in_scope]
-            p.update(t, description=f"✅ {len(prs_in_scope)} PRs encontrados ({len(raw_prs)} totales en proyecto)")
+            branch_label = args.branch if not wildcard_mode else f"{args.branch} (wildcard)"
+            p.update(t, description=f"✅ {len(prs_in_scope)} PRs → {branch_label} ({len(raw_prs)} totales en proyecto)")
     else:
         print("  Descargando PRs del proyecto en bloque...", end="", flush=True)
         raw_prs = get_all_pull_requests(
             args.org, args.project, args.branch, args.status, args.top, headers, args.debug
         )
+        if wildcard_mode:
+            raw_prs = filter_prs_by_branch_wildcard(raw_prs, args.branch)
         prs_in_scope = [pr for pr in raw_prs if pr.get("repository", {}).get("id") in repo_ids_in_scope]
-        print(f"\r  ✅ {len(prs_in_scope)} PRs encontrados ({len(raw_prs)} totales en proyecto)          ")
+        print(f"\r  ✅ {len(prs_in_scope)} PRs → {args.branch} ({len(raw_prs)} totales en proyecto)          ")
 
     console.print() if console else None
 

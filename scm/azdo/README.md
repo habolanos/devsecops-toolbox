@@ -852,6 +852,8 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 | 2026-03-25 | 1.2.0 | `--repo` / `-r` añadido como alias de `--filter` en tools 3 y 4 | `azdo_release_cd_health.py`, `azdo_pipeline_drift.py` |
 | 2026-03-25 | 1.2.0 | Corrección `--filter` → `--repo` en TOOLS dict de launcher; handler `--release-id` | `tools.py` |
 | 2026-03-26 | 1.1.0 | Nueva herramienta 6: `azdo_task_validator.py` — Validación DevSecOps de releases | `azdo_task_validator.py` (nuevo), `tools.py`, `README.md` |
+| 2026-04-13 | 1.2.1 | Wildcard en `--branch`: soporta `release/*`, `release/v*` etc. Descarga PRs sin filtro de branch y filtra localmente con `fnmatch` | `azdo_pr_master_checker.py`, `README.md` |
+| 2026-04-13 | 1.2.0-fix | Skip None cd_detail en artifact source matching (fix AttributeError) | `azdo_pr_master_checker.py`, `azdo_pr_pipeline_analyzer.py` |
 | 2026-04-10 | 1.2.0 | CD fetching optimizado: candidatos por nombre primero, descarga solo candidatos, artifact source matching, threads=20, paginación release defs | `azdo_pr_master_checker.py`, `README.md` |
 | 2026-03-25 | 1.1.0 | Refactor PR fetch: endpoint cross-project bulk (1 llamada vs N repos) | `azdo_pr_master_checker.py` |
 | 2026-03-25 | 1.1.0 | Pre-fetch paralelo de CD details; `DEFAULT_THREADS` aumentado a 16 | `azdo_pr_master_checker.py` |
