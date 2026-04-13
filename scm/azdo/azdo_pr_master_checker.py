@@ -335,6 +335,8 @@ def find_cd_by_artifact_source(repo_name: str, cd_details_map: Dict[int, Dict], 
     repo_lower = repo_name.lower()
 
     for cd_id, cd_detail in cd_details_map.items():
+        if not cd_detail:
+            continue
         for artifact in cd_detail.get("artifacts", []):
             if artifact.get("type") == "Git":
                 artifact_repo_name = (
@@ -408,6 +410,8 @@ def find_cd_for_repo_with_details(
     if best_match and best_score >= 30:
         cd_id = best_match.get("id")
         cd_detail = cd_details_map.get(cd_id, best_match)
+        if not cd_detail:
+            cd_detail = best_match
         if debug:
             print(f"[DEBUG] ✅ Match por nombre: '{best_match.get('name')}' (score: {best_score})")
         return cd_detail

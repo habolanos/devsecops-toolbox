@@ -409,6 +409,8 @@ def find_cd_by_artifact_source(repo_name: str, cd_details_map: Dict[int, Dict], 
     repo_lower = repo_name.lower()
     
     for cd_id, cd_detail in cd_details_map.items():
+        if not cd_detail:
+            continue
         for artifact in cd_detail.get("artifacts", []):
             if artifact.get("type") == "Git":
                 artifact_repo_name = (
