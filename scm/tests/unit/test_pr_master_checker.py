@@ -11,7 +11,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scm.azdo.azdo_pr_master_checker import (
     is_wildcard_branch,
-    filter_prs_by_branch_wildcard,
+    parse_branches,
+    needs_local_branch_filter,
+    filter_prs_by_branches,
     normalize,
     find_cd_candidates_for_repo,
     find_cd_by_artifact_source,
@@ -55,18 +57,94 @@ class TestIsWildcardBranch:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# filter_prs_by_branch_wildcard
+# parse_branches
 # ═══════════════════════════════════════════════════════════════════════════════
-class TestFilterPrsByBranchWildcard:
+class TestParseBranches:
 
     @pytest.mark.unit
-    def test_exact_branch_passthrough(self):
+    def test_single_branch(self):
+        assert parse_branches("master") == ["master"]
+
+    @pytest.mark.unit
+    def test_comma_separated(self):
+        assert parse_branches("master,QA,release/*") == ["master", "QA", "release/*"]
+
+    @pytest.mark.unit
+    def test_comma_with_spaces(self):
+        assert parse_branches("master, QA, release/*") == ["master", "QA", "release/*"]
+
+    @pytest.mark.unit
+    def test_all_keyword(self):
+        assert parse_branches("all") == ["all"]
+
+    @pytest.mark.unit
+    def test_all_uppercase(self):
+        assert parse_branches("ALL") == ["all"]
+
+    @pytest.mark.unit
+    def test_all_with_spaces(self):
+        assert parse_branches("  all  ") == ["all"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# needs_local_branch_filter
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestNeedsLocalBranchFilter:
+
+    @pytest.mark.unit
+    def test_single_exact(self):
+        assert needs_local_branch_filter(["master"]) is False
+
+    @pytest.mark.unit
+    def test_single_wildcard(self):
+        assert needs_local_branch_filter(["release/*"]) is True
+
+    @pytest.mark.unit
+    def test_all(self):
+        assert needs_local_branch_filter(["all"]) is True
+
+    @pytest.mark.unit
+    def test_multiple_exact(self):
+        assert needs_local_branch_filter(["master", "QA"]) is True
+
+    @pytest.mark.unit
+    def test_multiple_with_wildcard(self):
+        assert needs_local_branch_filter(["master", "release/*"]) is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# filter_prs_by_branches
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestFilterPrsByBranches:
+
+    @pytest.mark.unit
+    def test_all_no_filter(self):
         prs = [
             {"targetRefName": "refs/heads/master"},
             {"targetRefName": "refs/heads/QA"},
         ]
-        result = filter_prs_by_branch_wildcard(prs, "master")
-        assert len(result) == 2  # no filtering for exact branch
+        result = filter_prs_by_branches(prs, ["all"])
+        assert len(result) == 2
+
+    @pytest.mark.unit
+    def test_single_exact_match(self):
+        prs = [
+            {"targetRefName": "refs/heads/master"},
+            {"targetRefName": "refs/heads/QA"},
+        ]
+        result = filter_prs_by_branches(prs, ["master"])
+        assert len(result) == 1
+        assert result[0]["targetRefName"] == "refs/heads/master"
+
+    @pytest.mark.unit
+    def test_multiple_exact(self):
+        prs = [
+            {"targetRefName": "refs/heads/master"},
+            {"targetRefName": "refs/heads/QA"},
+            {"targetRefName": "refs/heads/develop"},
+        ]
+        result = filter_prs_by_branches(prs, ["master", "QA"])
+        assert len(result) == 2
 
     @pytest.mark.unit
     def test_wildcard_release_star(self):
@@ -76,48 +154,52 @@ class TestFilterPrsByBranchWildcard:
             {"targetRefName": "refs/heads/master"},
             {"targetRefName": "refs/heads/QA"},
         ]
-        result = filter_prs_by_branch_wildcard(prs, "release/*")
+        result = filter_prs_by_branches(prs, ["release/*"])
         assert len(result) == 2
-        assert all("release/" in pr["targetRefName"] for pr in result)
 
     @pytest.mark.unit
-    def test_wildcard_release_v_star(self):
+    def test_mixed_exact_and_wildcard(self):
         prs = [
+            {"targetRefName": "refs/heads/master"},
             {"targetRefName": "refs/heads/release/v1.0"},
             {"targetRefName": "refs/heads/release/v2.0"},
-            {"targetRefName": "refs/heads/release/hotfix"},
-            {"targetRefName": "refs/heads/master"},
+            {"targetRefName": "refs/heads/develop"},
         ]
-        result = filter_prs_by_branch_wildcard(prs, "release/v*")
-        assert len(result) == 2
-        assert all("release/v" in pr["targetRefName"] for pr in result)
+        result = filter_prs_by_branches(prs, ["master", "release/*"])
+        assert len(result) == 3
 
     @pytest.mark.unit
-    def test_wildcard_no_match(self):
+    def test_no_match(self):
         prs = [
             {"targetRefName": "refs/heads/master"},
             {"targetRefName": "refs/heads/QA"},
         ]
-        result = filter_prs_by_branch_wildcard(prs, "release/*")
+        result = filter_prs_by_branches(prs, ["release/*"])
         assert len(result) == 0
 
     @pytest.mark.unit
-    def test_wildcard_empty_target_ref(self):
+    def test_empty_target_ref(self):
         prs = [
             {"targetRefName": ""},
             {"targetRefName": "refs/heads/release/v1.0"},
         ]
-        result = filter_prs_by_branch_wildcard(prs, "release/*")
+        result = filter_prs_by_branches(prs, ["release/*"])
         assert len(result) == 1
 
     @pytest.mark.unit
-    def test_wildcard_missing_target_ref(self):
+    def test_missing_target_ref(self):
         prs = [
             {"otherField": "value"},
             {"targetRefName": "refs/heads/release/v1.0"},
         ]
-        result = filter_prs_by_branch_wildcard(prs, "release/*")
+        result = filter_prs_by_branches(prs, ["release/*"])
         assert len(result) == 1
+
+    @pytest.mark.unit
+    def test_empty_branches_list(self):
+        prs = [{"targetRefName": "refs/heads/master"}]
+        result = filter_prs_by_branches(prs, [])
+        assert len(result) == 1  # empty list = no filter
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

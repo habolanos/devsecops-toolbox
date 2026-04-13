@@ -556,7 +556,7 @@ def run_tool(tool_key: str):
 
     if "--branch" in tool_args:
         cfg_branch = config_get(cfg, "tools", "pr_master_checker", "target_branch", default="master")
-        val = prompt("Branch destino de los PRs", default=cfg_branch)
+        val = prompt("Branch destino (develop/QA/release/*/master/all, comas para varias)", default=cfg_branch)
         extra += ["--branch", val]
 
     if "--branches" in tool_args:
