@@ -9,6 +9,9 @@
 
 FROM python:3.11-slim
 
+# Build argument for version
+ARG VERSION=1.5.2
+
 # Evitar prompts interactivos
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC \
@@ -21,8 +24,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # LABELS
 # ═══════════════════════════════════════════════════════════════════════════════
 LABEL maintainer="Harold Adrian" \
-      version="1.5.2" \
-      description="Multi-cloud DevSecOps toolbox"
+      version="${VERSION}" \
+      description="Multi-cloud DevSecOps toolbox" \
+      org.opencontainers.image.source="https://github.com/haroldadrian/devsecops-toolbox" \
+      org.opencontainers.image.title="devsecops-toolbox" \
+      org.opencontainers.image.version="${VERSION}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEPENDENCIAS DEL SISTEMA

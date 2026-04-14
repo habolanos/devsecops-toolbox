@@ -12,10 +12,10 @@ services:
   # Servicio Principal - Toolbox CLI
   # ═══════════════════════════════════════════════════════════════════════════
   toolbox:
+    image: habolanos/devsecops-toolbox:latest
     build:
       context: .
       dockerfile: Dockerfile
-    image: devsecops-toolbox:latest
     container_name: devsecops-toolbox
     
     # Configuración del contenedor
@@ -89,8 +89,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: devsecops-toolbox:latest
-    container_name: devsecops-toolbox-dev
+    image: habolanos/devsecops-toolbox:latest
     
     stdin_open: true
     tty: true
@@ -129,8 +128,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: devsecops-toolbox:latest
-    container_name: devsecops-toolbox-cmd
+    image: habolanos/devsecops-toolbox:latest
     
     # No mantiene el contenedor corriendo
     stdin_open: false
