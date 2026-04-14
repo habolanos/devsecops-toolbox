@@ -84,14 +84,21 @@ $ExcludedDirs = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
 @(
+    # --- VCS / IDE / Dev environment ---
     '.git', '.github', '.windsurf',
     '.venv', 'venv', 'env',
     '__pycache__',
-    'outcome',
-    'cache', '.cache',
-    '.vscode', '.docker', '.config', '.npm', '.kube', '.ssh',
-    '.local', '.rustup', '.gemini',
-    'tests', 'scm/tests', '__tests__', '__tests__e2e'
+    '.vscode', '.idea',
+    'cache', '.cache', '.pytest_cache',
+    # --- Build / Output ---
+    'outcome', 'dist', 'build', 'egg-info',
+    # --- Docker (no se distribuye) ---
+    '.docker',
+    # --- Tests (no se distribuyen) ---
+    'tests', '__tests__', '__tests__e2e',
+    # --- System / Temp ---
+    '.config', '.npm', '.kube', '.ssh',
+    '.local', '.rustup', '.gemini'
 ) | ForEach-Object { [void]$ExcludedDirs.Add($_) }
 
 # Nombres de archivo exactos excluidos
@@ -99,11 +106,24 @@ $ExcludedFileNames = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
 @(
+    # --- Secretos / Credenciales ---
     'config.json',                   # Secretos - distribuir solo config.json.template
+    '.env',                          # Variables de entorno con secretos
+    # --- Docker (no se distribuye) ---
+    'Dockerfile',                    # Imagen Docker - no para distribucion Python
+    'docker-compose.yml',            # Compose para desarrollo local
+    'docker-entrypoint.sh',          # Entrypoint del contenedor
+    '.dockerignore',                 # Exclusiones Docker
+    # --- Build / Empaquetado ---
     'make_dist.ps1',                 # Script de empaquetado - no incluir en el distribuible
+    # --- Git / System ---
     '.gitignore', '.gitconfig',
     '.bash_history', '.bash_logout', '.bashrc', '.profile',
-    '.env', 'taged.cache', '.lesshst', '.viminfo'
+    'taged.cache', '.lesshst', '.viminfo',
+    # --- Debug / Temp ---
+    'debug-v4.txt',                  # Archivo de debug temporal
+    # --- Legacy (portado a Python) ---
+    'azdo-task-validador-optimized.sh'  # Ya portado a azdo_task_validator.py
 ) | ForEach-Object { [void]$ExcludedFileNames.Add($_) }
 
 # Extensiones excluidas
@@ -111,16 +131,21 @@ $ExcludedExtensions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
 @(
+    # --- Python bytecode ---
     '.pyc', '.pyd', '.pyo',
-    '.zip', '.gz', '.tar',
+    # --- Archivos comprimidos (no redistribuir) ---
+    '.zip', '.gz', '.tar', '.rar', '.7z',
+    # --- Office (generados, no fuente) ---
     '.xlsx', '.xls', '.docx',
+    # --- Logs ---
     '.log'
 ) | ForEach-Object { [void]$ExcludedExtensions.Add($_) }
 
 # Patrones wildcard de nombre de archivo
 $ExcludedNamePatterns = @(
     '*.origin.json',
-    '*.tar.gz', '*.tar.bz2', '*.tar.xz', '*.tar.lz', '*.tar.lzma', '*.tar.lz4'
+    '*.tar.gz', '*.tar.bz2', '*.tar.xz', '*.tar.lz', '*.tar.lzma', '*.tar.lz4',
+    'debug-*'
 )
 
 # ===============================================================================
