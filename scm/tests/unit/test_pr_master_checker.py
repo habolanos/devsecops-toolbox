@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -14,6 +15,8 @@ from scm.azdo.azdo_pr_master_checker import (
     parse_branches,
     needs_local_branch_filter,
     filter_prs_by_branches,
+    search_release_definitions,
+    search_cds_for_repos,
     normalize,
     find_cd_candidates_for_repo,
     find_cd_by_artifact_source,
@@ -200,6 +203,60 @@ class TestFilterPrsByBranches:
         prs = [{"targetRefName": "refs/heads/master"}]
         result = filter_prs_by_branches(prs, [])
         assert len(result) == 1  # empty list = no filter
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# search_release_definitions (mocked)
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestSearchReleaseDefinitions:
+
+    @pytest.mark.unit
+    def test_search_returns_results(self):
+        mock_data = {
+            "value": [
+                {"id": 1, "name": "my-repo-cd"},
+                {"id": 2, "name": "my-repo-release"},
+            ]
+        }
+        with patch("scm.azdo.azdo_pr_master_checker.api_get", return_value=mock_data):
+            result = search_release_definitions("org", "proj", "my-repo", {})
+        assert len(result) == 2
+
+    @pytest.mark.unit
+    def test_search_no_results(self):
+        with patch("scm.azdo.azdo_pr_master_checker.api_get", return_value=None):
+            result = search_release_definitions("org", "proj", "nonexistent", {})
+        assert result == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# search_cds_for_repos (mocked)
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestSearchCdsForRepos:
+
+    @pytest.mark.unit
+    def test_search_multiple_repos(self):
+        def mock_search(org, project, search_text, headers, debug=False):
+            return [{"id": hash(search_text) % 1000, "name": f"{search_text}-cd"}]
+
+        with patch("scm.azdo.azdo_pr_master_checker.search_release_definitions", side_effect=mock_search):
+            result = search_cds_for_repos("org", "proj", ["repo-a", "repo-b"], {}, threads=2)
+        assert "repo-a" in result
+        assert "repo-b" in result
+
+    @pytest.mark.unit
+    def test_search_deduplicates(self):
+        call_count = {"n": 0}
+
+        def mock_search(org, project, search_text, headers, debug=False):
+            call_count["n"] += 1
+            # Same CD returned for different search terms
+            return [{"id": 1, "name": "my-repo-cd"}]
+
+        with patch("scm.azdo.azdo_pr_master_checker.search_release_definitions", side_effect=mock_search):
+            result = search_cds_for_repos("org", "proj", ["my-repo"], {}, threads=1)
+        # Should deduplicate: repo name search + parts
+        assert "my-repo" in result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

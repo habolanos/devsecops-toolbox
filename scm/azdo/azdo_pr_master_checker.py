@@ -296,26 +296,63 @@ def filter_prs_by_branches(prs: List[Dict], branches: List[str]) -> List[Dict]:
     return result
 
 
-def get_release_definitions_list(
-    org: str, project: str, headers: Dict, debug: bool = False
+def search_release_definitions(
+    org: str, project: str, search_text: str, headers: Dict, debug: bool = False
 ) -> List[Dict]:
-    """Lista resumida de release definitions (ID + nombre). Paginado."""
+    """Busca release definitions por nombre usando searchText de la API.
+    Retorna lista resumida (ID + nombre) que contienen search_text.
+    """
     base = vsrm_base(org)
     url = f"{base}/{quote(project, safe='')}/_apis/release/definitions"
-    all_defs: List[Dict] = []
-    skip = 0
-    page_size = 500
-    while True:
-        params = {"api-version": "7.2-preview.4", "$top": page_size, "$skip": skip}
-        data = api_get(url, headers, params, debug)
-        if not data:
-            break
-        batch = data.get("value", [])
-        all_defs.extend(batch)
-        if len(batch) < page_size:
-            break
-        skip += page_size
-    return all_defs
+    params = {
+        "api-version": "7.2-preview.4",
+        "searchText": search_text,
+        "$top": 50,
+    }
+    data = api_get(url, headers, params, debug)
+    return data.get("value", []) if data else []
+
+
+def search_cds_for_repos(
+    org: str, project: str, repo_names: List[str],
+    headers: Dict, threads: int, debug: bool = False,
+) -> Dict[str, List[Dict]]:
+    """Busca CDs candidatos para cada repo en paralelo usando searchText.
+    Retorna {repo_name: [release_def_summary, ...]}.
+    """
+    results: Dict[str, List[Dict]] = {}
+
+    def _search_one(name: str) -> Tuple[str, List[Dict]]:
+        # Buscar por nombre exacto y por nombre normalizado (sin guiones)
+        found = search_release_definitions(org, project, name, headers, debug)
+        # También buscar variaciones del nombre
+        name_parts = re.split(r'[-_]', name)
+        extra_searches = set()
+        if len(name_parts) > 1:
+            # Buscar por cada parte significativa (>=3 chars)
+            for part in name_parts:
+                if len(part) >= 3:
+                    extra_searches.add(part)
+        for term in extra_searches:
+            extra = search_release_definitions(org, project, term, headers, debug)
+            # Deduplicar por ID
+            existing_ids = {rd["id"] for rd in found}
+            for rd in extra:
+                if rd["id"] not in existing_ids:
+                    found.append(rd)
+                    existing_ids.add(rd["id"])
+        return (name, found)
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futs = {executor.submit(_search_one, name): name for name in repo_names}
+        for fut in as_completed(futs):
+            try:
+                name, found = fut.result()
+                results[name] = found
+            except Exception:
+                results[futs[fut]] = []
+
+    return results
 
 
 def get_release_definition_detail(
@@ -526,6 +563,7 @@ def print_rich_table(console: "Console", rows: List[Dict], stage_name: str, bran
     table.add_column("Repositorio", style="bold white", min_width=22)
     table.add_column("PR", justify="center", width=7)
     table.add_column("Estado", justify="center", width=11)
+    table.add_column("Rama Destino", justify="center", min_width=14)
     table.add_column("Fecha/Hora", justify="center", width=20)
     table.add_column("Autor", min_width=14)
     table.add_column("Título", min_width=22)
@@ -556,6 +594,7 @@ def print_rich_table(console: "Console", rows: List[Dict], stage_name: str, bran
             row["repository"],
             str(row["pr_id"]),
             f"[{st_color}]{st}[/{st_color}]",
+            row["target_branch"],
             row["date"],
             row["created_by"],
             row["title"],
@@ -700,19 +739,7 @@ def main():
         if console:
             console.print(f"[dim]🔍 Repos filtrados: {len(repos)} (contienen '{args.repo}')[/]")
 
-    # ── 2. Release Definitions (CD) ──────────────────────────────────────────
-    if RICH_AVAILABLE and console:
-        with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
-            t = p.add_task("Obteniendo pipelines CD (release definitions)...", total=None)
-            release_defs_list = get_release_definitions_list(args.org, args.project, headers, args.debug)
-            p.update(t, description=f"✅ {len(release_defs_list)} release definitions encontradas")
-    else:
-        release_defs_list = get_release_definitions_list(args.org, args.project, headers, args.debug)
-        print(f"{len(release_defs_list)} release definitions encontradas")
-
-    console.print() if console else None
-
-    # ── 3. PRs en bloque (cross-project) ───────────────────────────────────────
+    # ── 2. PRs en bloque (cross-project) ───────────────────────────────────────
     repo_ids_in_scope = {r["id"] for r in repos}
     branches = parse_branches(args.branch)
     local_filter = needs_local_branch_filter(branches)
@@ -729,11 +756,10 @@ def main():
             raw_prs = get_all_pull_requests(
                 args.org, args.project, args.branch, args.status, args.top, headers, args.debug
             )
-            # Filtrar localmente si hay multiples ramas, wildcard o 'all'
             if local_filter:
                 raw_prs = filter_prs_by_branches(raw_prs, branches)
             prs_in_scope = [pr for pr in raw_prs if pr.get("repository", {}).get("id") in repo_ids_in_scope]
-            branch_label = args.branch if not local_filter else f"{args.branch}"
+            branch_label = args.branch
             p.update(t, description=f"✅ {len(prs_in_scope)} PRs → {branch_label} ({len(raw_prs)} totales en proyecto)")
     else:
         print("  Descargando PRs del proyecto en bloque...", end="", flush=True)
@@ -747,25 +773,52 @@ def main():
 
     console.print() if console else None
 
-    # ── 4. Buscar CD candidates y descargar solo sus detalles ────────────────
-    repos_with_prs_names = {pr.get("repository", {}).get("name", "") for pr in prs_in_scope}
+    if not prs_in_scope:
+        msg = f"⚠️ No se encontraron PRs hacia '{args.branch}' con status '{args.status}'."
+        if console:
+            console.print(f"[yellow]{msg}[/]")
+        else:
+            print(msg)
+        return
 
-    # 4a. Buscar candidatos por nombre (local, sin API calls)
+    # ── 3. Buscar CDs por repo (searchText API, paralelo) ──────────────────────
+    repos_with_prs_names = list({pr.get("repository", {}).get("name", "") for pr in prs_in_scope})
+
+    if RICH_AVAILABLE and console:
+        with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
+            t = p.add_task(f"Buscando CDs para {len(repos_with_prs_names)} repos...", total=None)
+            repo_cds_map = search_cds_for_repos(
+                args.org, args.project, repos_with_prs_names, headers, args.threads, args.debug
+            )
+            total_cds = sum(len(v) for v in repo_cds_map.values())
+            p.update(t, description=f"✅ {total_cds} CDs candidatos encontrados para {len(repos_with_prs_names)} repos")
+    else:
+        print(f"  Buscando CDs para {len(repos_with_prs_names)} repos...", end="", flush=True)
+        repo_cds_map = search_cds_for_repos(
+            args.org, args.project, repos_with_prs_names, headers, args.threads, args.debug
+        )
+        total_cds = sum(len(v) for v in repo_cds_map.values())
+        print(f"\r  ✅ {total_cds} CDs candidatos encontrados para {len(repos_with_prs_names)} repos          ")
+
+    console.print() if console else None
+
+    # ── 4. Scoring + descargar detalles de candidatos ───────────────────────────
+    # 4a. Scoring local sobre los resultados de searchText
     candidate_ids_per_repo: Dict[str, List[Tuple[int, int]]] = {}
     all_candidate_ids: set = set()
 
     for name in repos_with_prs_names:
-        candidates = find_cd_candidates_for_repo(name, release_defs_list, args.debug)
+        candidates = find_cd_candidates_for_repo(name, repo_cds_map.get(name, []), args.debug)
         candidate_ids_per_repo[name] = candidates
         for cd_id, score in candidates:
             all_candidate_ids.add(cd_id)
 
     if RICH_AVAILABLE and console:
-        console.print(f"[dim]🔍 Candidatos CD: {len(all_candidate_ids)} únicos (de {len(release_defs_list)} totales)[/]")
+        console.print(f"[dim]🔍 CDs con score >= 30: {len(all_candidate_ids)} únicos[/]")
     else:
-        print(f"  Candidatos CD: {len(all_candidate_ids)} únicos (de {len(release_defs_list)} totales)")
+        print(f"  CDs con score >= 30: {len(all_candidate_ids)} únicos")
 
-    # 4b. Descargar detalles solo de los candidatos en paralelo
+    # 4b. Descargar detalles solo de los candidatos con score en paralelo
     cd_details: Dict[int, Optional[Dict]] = {}
     if all_candidate_ids:
         if RICH_AVAILABLE and console:
@@ -776,7 +829,7 @@ def main():
                 TaskProgressColumn(),
                 console=console,
             ) as p:
-                t = p.add_task(f"Cargando detalles de {len(all_candidate_ids)} CDs candidatos...", total=len(all_candidate_ids))
+                t = p.add_task(f"Cargando detalles de {len(all_candidate_ids)} CDs...", total=len(all_candidate_ids))
                 with ThreadPoolExecutor(max_workers=args.threads) as executor:
                     futs = {
                         executor.submit(
@@ -815,7 +868,7 @@ def main():
     for name in repos_with_prs_names:
         repo_candidate_ids = {cd_id for cd_id, _ in candidate_ids_per_repo.get(name, [])}
         repo_cd_details = {k: v for k, v in cd_details.items() if k in repo_candidate_ids}
-        repo_release_defs = [rd for rd in release_defs_list if rd["id"] in repo_candidate_ids]
+        repo_release_defs = [rd for rd in repo_cds_map.get(name, []) if rd["id"] in repo_candidate_ids]
         cd_for_repo[name] = find_cd_for_repo_with_details(name, repo_release_defs, repo_cd_details, args.debug)
 
     console.print() if console else None
@@ -834,11 +887,15 @@ def main():
         if cd_detail:
             cd_has_stage = has_stage(cd_detail, args.stage_name)
 
+        target_ref = pr.get("targetRefName", "")
+        target_branch_name = target_ref.replace("refs/heads/", "") if target_ref.startswith("refs/heads/") else target_ref
+
         all_rows.append({
             "repository": repo_name,
             "pr_id": pr_id,
             "title": pr.get("title", ""),
             "status": pr.get("status", ""),
+            "target_branch": target_branch_name,
             "created_by": pr.get("createdBy", {}).get("displayName", ""),
             "date": get_pr_date(pr, tz_name),
             "url": build_pr_url(args.org, args.project, repo_name, pr_id),
