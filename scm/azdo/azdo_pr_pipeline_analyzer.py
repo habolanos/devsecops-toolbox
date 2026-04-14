@@ -231,22 +231,88 @@ def get_pull_requests_for_branch(
     return data.get("value", []) if data else []
 
 
-def get_release_definitions_list(
-    org: str, 
-    project: str, 
-    headers: Dict[str, str], 
-    debug: bool = False
+def search_release_definitions(
+    org: str, project: str, search_text: str, headers: Dict[str, str], debug: bool = False
 ) -> List[Dict]:
-    """Obtiene lista de release definitions (CD pipelines) usando VSRM endpoint."""
+    """Busca release definitions por nombre usando searchText de la API.
+    Retorna lista resumida (ID + nombre) que contienen search_text.
+    """
     base = vsrm_base(org)
-    data = http_get(
-        f"{base}/{quote(project, safe='')}/_apis/release/definitions",
-        headers,
-        params={"api-version": "7.2-preview.4", "$top": DEFAULT_TOP},
-        debug=debug,
-        silent=False
-    )
+    url = f"{base}/{quote(project, safe='')}/_apis/release/definitions"
+    params = {
+        "api-version": "7.2-preview.4",
+        "searchText": search_text,
+        "$top": 50,
+    }
+    data = http_get(url, headers, params=params, debug=debug)
     return data.get("value", []) if data else []
+
+
+def search_cds_for_repos(
+    org: str, project: str, repo_names: List[str],
+    headers: Dict[str, str], threads: int, debug: bool = False,
+) -> Dict[str, List[Dict]]:
+    """Busca CDs candidatos para cada repo en paralelo usando searchText.
+    Retorna {repo_name: [release_def_summary, ...]}.
+    """
+    results: Dict[str, List[Dict]] = {}
+
+    def _search_one(name: str) -> Tuple[str, List[Dict]]:
+        # Buscar por nombre exacto y por nombre normalizado (sin guiones)
+        found = search_release_definitions(org, project, name, headers, debug)
+        # También buscar variaciones del nombre
+        name_parts = re.split(r'[-_]', name)
+        extra_searches = set()
+        if len(name_parts) > 1:
+            # Buscar por cada parte significativa (>=3 chars)
+            for part in name_parts:
+                if len(part) >= 3:
+                    extra_searches.add(part)
+        for term in extra_searches:
+            extra = search_release_definitions(org, project, term, headers, debug)
+            # Deduplicar por ID
+            existing_ids = {rd["id"] for rd in found}
+            for rd in extra:
+                if rd["id"] not in existing_ids:
+                    found.append(rd)
+                    existing_ids.add(rd["id"])
+        return (name, found)
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futs = {executor.submit(_search_one, name): name for name in repo_names}
+        for fut in as_completed(futs):
+            try:
+                name, found = fut.result()
+                results[name] = found
+            except Exception:
+                results[futs[fut]] = []
+
+    return results
+
+
+def _get_release_definitions_paginated(
+    org: str, project: str, headers: Dict[str, str], debug: bool = False
+) -> List[Dict]:
+    """Lista paginada de release definitions (solo para --list-cds diagnóstico).
+    ADVERTENCIA: Puede tardar mucho si hay miles de definitions.
+    """
+    base = vsrm_base(org)
+    url = f"{base}/{quote(project, safe='')}/_apis/release/definitions"
+    all_defs: List[Dict] = []
+    skip = 0
+    page_size = 500
+    while True:
+        params = {"api-version": "7.2-preview.4", "$top": page_size, "$skip": skip}
+        data = http_get(url, headers, params=params, debug=debug, silent=False)
+        if not data:
+            break
+        batch = data.get("value", [])
+        all_defs.extend(batch)
+        if len(batch) < page_size:
+            break
+        skip += page_size
+        print(f"   ... {len(all_defs)} definitions cargadas", flush=True)
+    return all_defs
 
 
 def get_release_definition_detail(
@@ -911,7 +977,7 @@ def list_all_cds(
     print(f"   Org: {org}")
     print()
     
-    release_defs = get_release_definitions_list(org, project, headers, debug)
+    release_defs = _get_release_definitions_paginated(org, project, headers, debug)
     
     if not release_defs:
         print("⚠️ No se encontraron pipelines CD.")
@@ -1071,32 +1137,38 @@ def main():
     step_start = time.time()
     print("\n🚀 Paso 3: Buscando pipelines CD...")
     
-    # 1. Obtener lista básica de CDs (solo id y name, 1 llamada API)
+    # 1. Buscar CDs por repo usando searchText API (paralelo)
     if console:
-        with console.status("[bold green]Obteniendo lista de pipelines CD..."):
-            release_defs = get_release_definitions_list(args.org, args.project, headers, args.debug)
+        with console.status("[bold green]Buscando pipelines CD por repositorio..."):
+            repo_cds_map = search_cds_for_repos(
+                args.org, args.project, list(repos_with_prs), headers, args.threads, args.debug
+            )
     else:
-        print("   Obteniendo lista de pipelines CD...", end="", flush=True)
-        release_defs = get_release_definitions_list(args.org, args.project, headers, args.debug)
-        print(f" {len(release_defs)} encontrados")
-    
-    if not release_defs:
+        print(f"   Buscando CDs para {len(repos_with_prs)} repos...", end="", flush=True)
+        repo_cds_map = search_cds_for_repos(
+            args.org, args.project, list(repos_with_prs), headers, args.threads, args.debug
+        )
+        total_cds = sum(len(v) for v in repo_cds_map.values())
+        print(f" {total_cds} candidatos encontrados")
+
+    total_cds = sum(len(v) for v in repo_cds_map.values())
+    if total_cds == 0:
         print("   ⚠️ No hay pipelines CD disponibles")
         repo_cds = {repo: None for repo in repos_with_prs}
         repo_releases = {repo: None for repo in repos_with_prs}
     else:
-        # 2. Buscar candidatos por nombre para cada repo (local, sin API calls)
-        print(f"   Buscando candidatos por nombre para {len(repos_with_prs)} repos...")
+        # 2. Scoring local sobre los resultados de searchText
+        print(f"   Scoring de candidatos para {len(repos_with_prs)} repos...")
         candidate_ids_per_repo: Dict[str, List[Tuple[int, int]]] = {}
         all_candidate_ids: Set[int] = set()
-        
+
         for repo_name in repos_with_prs:
-            candidates = find_cd_candidates_for_repo(repo_name, release_defs, args.debug)
+            candidates = find_cd_candidates_for_repo(repo_name, repo_cds_map.get(repo_name, []), args.debug)
             candidate_ids_per_repo[repo_name] = candidates
             for cd_id, score in candidates:
                 all_candidate_ids.add(cd_id)
-        
-        print(f"   Candidatos encontrados: {len(all_candidate_ids)} CDs únicos (de {len(release_defs)} totales)")
+
+        print(f"   CDs con score >= 30: {len(all_candidate_ids)} únicos")
         
         # 3. Descargar detalles solo de los candidatos en paralelo
         cd_details_map: Dict[int, Dict] = {}
@@ -1159,7 +1231,7 @@ def main():
             # Solo considerar CDs candidatos para este repo
             repo_candidate_ids = {cd_id for cd_id, _ in candidate_ids_per_repo.get(repo_name, [])}
             repo_cd_details = {k: v for k, v in cd_details_map.items() if k in repo_candidate_ids}
-            repo_release_defs = [rd for rd in release_defs if rd["id"] in repo_candidate_ids]
+            repo_release_defs = [rd for rd in repo_cds_map.get(repo_name, []) if rd["id"] in repo_candidate_ids]
             
             cd = find_cd_for_repo_with_details(repo_name, repo_release_defs, repo_cd_details, args.debug)
             repo_cds[repo_name] = cd
@@ -1167,7 +1239,7 @@ def main():
         # Diagnóstico
         matched_count = sum(1 for cd in repo_cds.values() if cd is not None)
         if args.debug:
-            print(f"\n[DEBUG] Total CDs disponibles: {len(release_defs)}")
+            print(f"\n[DEBUG] Total CDs candidatos: {total_cds}")
             print(f"[DEBUG] CDs candidatos descargados: {len(cd_details_map)}")
             print(f"[DEBUG] CDs encontrados para repos: {matched_count}/{len(repos_with_prs)}")
     
