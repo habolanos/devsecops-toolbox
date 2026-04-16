@@ -22,6 +22,7 @@ Este directorio contiene herramientas y scripts para interactuar con Google Clou
 | **[reports-viewer/](reports-viewer/README.md)** | Visualizador de reportes JSON con gráficos HTML interactivos |
 | **[cloud-run/](cloud-run/README.md)** | Checker de Cloud Run: services, revisions, jobs, IAM y networking |
 | **[cloud-armor/](cloud-armor/README.md)** | Auditoría de Security Policies (WAF/DDoS), cobertura de backends y gaps de seguridad |
+| **[inventory/](inventory/README.md)** | Inventario consolidado de recursos GCP (GKE, Cloud SQL, Cloud Run, Pub/Sub) con Excel y gráficos radar |
 | **[tools.py](tools.py)** | Lanzador unificado de herramientas GCP con menú interactivo |
 
 ## 🚀 GCP Tools Launcher
@@ -56,6 +57,7 @@ python tools.py
 | 18 | Kubernetes | Cloud Run Checker | Analiza servicios Cloud Run, revisiones, Jobs, IAM y networking |
 | 19 | Kubernetes | **Deployment Validator** | **Valida ConfigMaps, Secrets y conectividad de un Deployment** |
 | 20 | Artifacts | Artifact Registry Tag Filter | Filtra y exporta imágenes de Artifact Registry a Excel |
+| 22 | Inventory | Inventario GKE + Cloud SQL | Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar) |
 | 21 | Reports | Visualizar Reportes JSON | Genera dashboard HTML con gráficos desde reportes JSON |
 | A | Sistema | Ejecutar Todos (Checkers) | Corre automáticamente los checkers soportados |
 | Q | Sistema | Salir | Cierra el menú (atajo Q/q) |
@@ -101,6 +103,8 @@ gcp/
 ├── service-account/          # Service accounts (templates)
 ├── vpc-networks/             # Checker de VPC Networks, subnets, IPs, CIDR
 ├── gateway-services/         # Checker de Gateway API (Gateways, Routes, Services, Policies)
+├── cloud-armor/              # Checker de Cloud Armor
+├── inventory/                # Inventario consolidado GKE + Cloud SQL (CSV + Excel)
 ├── gcp_tools_launcher.py     # Launcher principal
 └── README.md                 # Este archivo
 ```
@@ -116,6 +120,7 @@ gcp/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-16 | 1.9.0 | Nueva herramienta: Inventario GKE + Cloud SQL - Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar) |
 | 2026-03-26 | 1.8.0 | Nueva herramienta: Deployment Validator - Valida ConfigMaps, Secrets y conectividad de Deployments |
 | 2026-03-25 | 1.7.0 | Nueva herramienta: Cloud Run Checker para analizar servicios, revisiones, jobs, IAM y networking |
 | 2026-03-09 | 1.6.1 | Menú reorganizado por grupos (Monitoreo → Sistema) y documentación actualizada (Deploy Dependency Checker) |

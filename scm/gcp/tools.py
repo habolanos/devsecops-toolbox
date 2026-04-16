@@ -41,7 +41,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.0"
+__version__ = "1.9.0"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas GCP"
 
@@ -59,6 +59,7 @@ TOOL_GROUPS = {
     "network": {"name": "Networking", "emoji": "🌐", "color": "blue"},
     "kubernetes": {"name": "Kubernetes", "emoji": "☸️", "color": "green"},
     "artifacts": {"name": "Artifacts", "emoji": "📦", "color": "red"},
+    "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
     "reports": {"name": "Reports", "emoji": "📈", "color": "bright_white"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
@@ -96,7 +97,7 @@ DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 
 # Definición de las herramientas disponibles (con grupo asignado)
-# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), reports(21)
+# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
 TOOLS = {
     # ══════════ MONITORING (1-2) ══════════
     "1": {
@@ -285,6 +286,16 @@ TOOLS = {
         "group": "artifacts",
         "status": "ready"
     },
+    # ══════════ INVENTORY (22) ══════════
+    "22": {
+        "name": "Inventario GKE + Cloud SQL",
+        "description": "Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar)",
+        "path": "inventory/run_inventory.py",
+        "args": [],
+        "requirements": "inventory/requirements.txt",
+        "group": "inventory",
+        "status": "ready"
+    },
     # ══════════ REPORTS (21) ══════════
     "21": {
         "name": "Visualizar Reportes JSON",
@@ -300,7 +311,7 @@ TOOLS = {
         "name": "Ejecutar Todos (Checkers)",
         "description": "Ejecuta todos los checkers con proyecto default y output JSON",
         "auto_tools": ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"],
-        "excluded_reason": "Excluye: Pod Connectivity (requiere deployment), Artifact Registry (requiere CSV)",
+        "excluded_reason": "Excluye: Pod Connectivity (requiere deployment), Artifact Registry (requiere CSV), Inventario (pipeline propio)",
         "group": "system",
         "status": "ready"
     },
