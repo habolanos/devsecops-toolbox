@@ -294,7 +294,8 @@ devsecops-toolbox/
 ├── VERSION                      # Versión actual (SemVer)
 ├── scripts/                     # Scripts de utilidad
 │   ├── bump_version.py          # Gestión de versiones SemVer
-│   └── sync-gcp.ps1             # Sincronización entre repos
+│   └── sync-gcp.ps1             # Sincronización GCP entre repos (PowerShell)
+├── sync_repos.py                 # Sincronización completa toolbox ↔ azdo (Python)
 └── README.md                     # Este archivo
 ```
 
@@ -357,6 +358,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-16 | 1.5.3 | **Sync Repos**: Script `sync_repos.py` para sincronización bidireccional toolbox ↔ azdo con commit automático. Nueva herramienta Inventario GKE+Cloud SQL (opción 22). |
 | 2026-04-08 | 1.5.2 | **Docker Container**: Dockerfile slim con Azure/AWS/GCP CLI, kubectl, Helm, Terraform, netshoot. Docker Compose con 3 servicios. Entrypoint script con auto-configuración. |
 | 2026-04-02 | 1.5.1 | **Testing Suite**: Arquitectura profesional de testing con pytest, cobertura 70%+, mocks para GCP/AZDO/AWS, CI/CD con GitHub Actions. Tests unitarios e integración con 500+ assertions. |
 | 2026-04-02 | 1.5.0 | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. |
