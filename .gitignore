@@ -40,7 +40,6 @@ cache
 .npm
 .vscode
 .docker
-.config
 .viminfo
 .gemini
 .ssh
@@ -48,6 +47,7 @@ cache
 .bash_logout
 .bashrc
 .env
+*.config
 
 #testing
 .coverage

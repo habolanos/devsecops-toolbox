@@ -60,6 +60,7 @@ make_dist.ps1
 scripts
 
 # Configuración local (credenciales)
+*.config
 config.json
 *.secret
 *.key
