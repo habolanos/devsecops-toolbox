@@ -1,0 +1,9 @@
+# Proyectos GCP (uno por línea)
+cpl-xxxxx-dev-12062025
+cpl-xxxxx-qa-19062025
+
+# Namespaces a excluir del inventario K8s (deployments, services, ingress)
+[exclude-namespaces]
+datadog
+kube-system
+gmp-system
