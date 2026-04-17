@@ -31,14 +31,19 @@ def _ensure_rich():
     except ImportError:
         pass
 
-    print("📦 Instalando rich para interfaz moderna...")
+    # Leer paquetes desde requirements.txt
+    req_file = Path(__file__).parent / "requirements.txt"
+    pip_args = [sys.executable, "-m", "pip", "install", "-q"]
+    if req_file.exists():
+        pip_args += ["-r", str(req_file)]
+        print("📦 Instalando dependencias desde requirements.txt...")
+    else:
+        print("📦 Instalando rich para interfaz moderna...")
+        pip_args.append("rich")
+
     try:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "rich>=13.0.0", "-q"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        print("✅ rich instalado correctamente.\n")
+        subprocess.check_call(pip_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("✅ Dependencias instaladas correctamente.\n")
         return True
     except subprocess.CalledProcessError:
         print("⚠️  No se pudo instalar rich. Se usará interfaz básica.\n")

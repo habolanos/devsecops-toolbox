@@ -1,0 +1,3 @@
+# Requirements para DevSecOps Toolbox - Launcher Principal
+# Interfaz moderna de terminal
+rich>=13.0.0
