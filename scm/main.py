@@ -25,8 +25,11 @@ try:
     from rich.table import Table
     from rich.panel import Panel
     from rich.text import Text
+    from rich.style import Style
     from rich.box import ROUNDED, DOUBLE_EDGE, HEAVY
     from rich.align import Align
+    from rich.prompt import Prompt
+    from rich.status import Status
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
@@ -34,7 +37,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -73,7 +76,7 @@ PLATFORMS = {
         "emoji": "☁️",
         "color": "cyan",
         "path": "gcp/tools.py",
-        "description": "Herramientas SRE para monitoreo, IAM, networking, Kubernetes y más",
+        "description": "22 herramientas SRE: monitoreo, IAM, networking, K8s, inventario y más",
         "status": "ready"
     },
     "2": {
@@ -360,21 +363,28 @@ def print_header_rich():
     title.append("🛡️  ", style="bold white")
     title.append("DevSecOps Toolbox", style="bold cyan")
     title.append("  🛡️", style="bold white")
+
+    subtitle = Text()
+    subtitle.append(f"v{__version__}", style="bold green")
+    subtitle.append(" | ", style="dim")
+    subtitle.append(f"by {__author__}", style="italic yellow")
     
     panel = Panel(
         Align.center(
             Text.assemble(
                 title,
                 "\n",
+                subtitle,
+                "\n",
                 Text(__description__, style="dim white")
             )
         ),
         box=DOUBLE_EDGE,
-        border_style="white",
+        border_style="cyan",
         padding=(1, 2),
         expand=False,
     )
-    console.print(Align.center(panel))
+    console.print(Align.left(panel))
     console.print()
 
 
@@ -397,25 +407,27 @@ def print_header():
 
 def print_menu_rich():
     """Muestra el menú con Rich."""
+    config_status = get_config_status()
+    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS"}
+
     table = Table(
         title="🚀 Seleccione una Plataforma",
         title_style="bold white",
         box=ROUNDED,
         header_style="bold cyan",
         border_style="blue",
-        show_lines=True,
+        show_lines=False,
         pad_edge=True,
         expand=False,
     )
     
     table.add_column("#", justify="center", style="bold white", width=4)
-    table.add_column("Estado", justify="center", width=8)
-    table.add_column("Plataforma", justify="left", width=25)
+    table.add_column("Plataforma", justify="left", width=28)
+    table.add_column("Config", justify="center", width=8)
     table.add_column("Descripción", justify="left", style="dim", min_width=45)
     
     for key, platform in PLATFORMS.items():
         status = platform.get("status", "ready")
-        indicator = STATUS_INDICATORS.get(status, STATUS_INDICATORS["ready"])
         
         # Estilo según estado
         if status == "coming_soon":
@@ -430,10 +442,24 @@ def print_menu_rich():
         
         platform_name = f"{platform['emoji']} {platform['name']}"
         
+        # Config status badge
+        if key in platform_map:
+            cfg = config_status.get(key, "no_config")
+            if cfg == "configured":
+                config_badge = "[green]✅[/green]"
+            elif cfg == "incomplete":
+                config_badge = "[yellow]⚠️[/yellow]"
+            else:
+                config_badge = "[dim]—[/dim]"
+        elif status == "exit":
+            config_badge = ""
+        else:
+            config_badge = ""
+        
         table.add_row(
             f"[{key_style}]{key}[/{key_style}]",
-            indicator[0],
             f"[{name_style}]{platform_name}[/{name_style}]",
+            config_badge,
             platform.get("description", "")
         )
     
@@ -472,13 +498,19 @@ def print_menu():
 def launch_platform(platform_key: str):
     """Lanza el tools.py de la plataforma seleccionada."""
     if platform_key not in PLATFORMS:
-        print(f"{Colors.FAIL}Opción no válida.{Colors.ENDC}")
+        if RICH_AVAILABLE and console:
+            console.print("[red]❌ Opción no válida.[/red]")
+        else:
+            print(f"{Colors.FAIL}Opción no válida.{Colors.ENDC}")
         return
     
     platform = PLATFORMS[platform_key]
     
     if platform_key == "Q":
-        print(f"\n{Colors.GREEN}Saliendo...{Colors.ENDC}")
+        if RICH_AVAILABLE and console:
+            console.print("\n[bold green]👋 Saliendo...[/bold green]")
+        else:
+            print(f"\n{Colors.GREEN}Saliendo...{Colors.ENDC}")
         sys.exit(0)
     
     if platform.get("status") == "coming_soon":
@@ -499,20 +531,25 @@ def launch_platform(platform_key: str):
         input("\nPresione Enter para continuar...")
         return
     
-    # Mostrar mensaje de transición
-    if RICH_AVAILABLE and console:
-        console.print(f"\n[bold cyan]🚀 Lanzando {platform['emoji']} {platform['name']}...[/bold cyan]\n")
-    else:
-        print(f"\n{Colors.CYAN}🚀 Lanzando {platform['emoji']} {platform['name']}...{Colors.ENDC}\n")
-    
     # Preparar variables de entorno con configuración
     env = prepare_env_for_platform(platform_key)
+    
+    # Mostrar mensaje de transición con spinner
+    if RICH_AVAILABLE and console:
+        with console.status(f"[bold cyan]🚀 Lanzando {platform['emoji']} {platform['name']}...[/bold cyan]", spinner="dots"):
+            pass
+        console.print(f"[bold cyan]🚀 Lanzando {platform['emoji']} {platform['name']}...[/bold cyan]\n")
+    else:
+        print(f"\n{Colors.CYAN}🚀 Lanzando {platform['emoji']} {platform['name']}...{Colors.ENDC}\n")
     
     # Ejecutar el tools.py de la plataforma con las variables de entorno
     try:
         subprocess.run([HOST_PYTHON, str(tools_path)], check=False, env=env)
     except KeyboardInterrupt:
-        print(f"\n{Colors.WARNING}Regresando al menú principal...{Colors.ENDC}")
+        if RICH_AVAILABLE and console:
+            console.print("\n[yellow]↩️  Regresando al menú principal...[/yellow]")
+        else:
+            print(f"\n{Colors.WARNING}Regresando al menú principal...{Colors.ENDC}")
     except Exception as e:
         if RICH_AVAILABLE and console:
             console.print(f"\n[red]❌ Error al ejecutar: {e}[/red]")
@@ -589,7 +626,7 @@ def show_info():
         info_text.append("para múltiples plataformas cloud y DevOps.\n\n", style="white")
         info_text.append("Plataformas soportadas:\n", style="bold white")
         info_text.append("  • GCP: ", style="cyan")
-        info_text.append("19+ herramientas SRE\n", style="white")
+        info_text.append("22 herramientas SRE\n", style="white")
         info_text.append("  • Azure DevOps: ", style="blue")
         info_text.append("PRs, políticas, releases\n", style="white")
         info_text.append("  • AWS: ", style="yellow")
@@ -616,9 +653,10 @@ def main():
             
             # Tip
             if RICH_AVAILABLE and console:
-                console.print("[dim]💡 Tip: Escriba 'info' para más información | 'config' para ver configuración[/dim]\n")
-            
-            choice = input(f"{Colors.BOLD}Seleccione una opción: {Colors.ENDC}").strip().upper()
+                console.print("[dim]💡 Tip: 'info' = información | 'config' = estado de configuración[/dim]\n")
+                choice = Prompt.ask("[bold cyan]Seleccione una opción[/]", default="Q").strip().upper()
+            else:
+                choice = input(f"{Colors.BOLD}Seleccione una opción: {Colors.ENDC}").strip().upper()
             
             if choice == "INFO":
                 show_info()
@@ -627,14 +665,23 @@ def main():
             elif choice in PLATFORMS:
                 launch_platform(choice)
             else:
-                print(f"\n{Colors.FAIL}Opción no válida. Por favor, intente de nuevo.{Colors.ENDC}")
+                if RICH_AVAILABLE and console:
+                    console.print("[red]❌ Opción no válida. Intente de nuevo.[/red]")
+                else:
+                    print(f"\n{Colors.FAIL}Opción no válida. Por favor, intente de nuevo.{Colors.ENDC}")
                 input("\nPresione Enter para continuar...")
                 
         except KeyboardInterrupt:
-            print(f"\n{Colors.WARNING}Saliendo...{Colors.ENDC}")
+            if RICH_AVAILABLE and console:
+                console.print("\n[bold yellow]👋 Saliendo...[/bold yellow]")
+            else:
+                print(f"\n{Colors.WARNING}Saliendo...{Colors.ENDC}")
             sys.exit(0)
         except Exception as e:
-            print(f"\n{Colors.FAIL}Error inesperado: {e}{Colors.ENDC}")
+            if RICH_AVAILABLE and console:
+                console.print(f"\n[red]❌ Error inesperado: {e}[/red]")
+            else:
+                print(f"\n{Colors.FAIL}Error inesperado: {e}{Colors.ENDC}")
             input("\nPresione Enter para continuar...")
 
 
