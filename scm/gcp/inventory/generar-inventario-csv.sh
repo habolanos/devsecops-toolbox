@@ -129,7 +129,10 @@ echo -e "${CYN}╔════════════════════�
 echo -e "${CYN}║${RST}  ${BOLD}${WHT}📋 INVENTARIO GKE + CLOUD SQL${RST}                              ${CYN}║${RST}"
 echo -e "${CYN}╠══════════════════════════════════════════════════════════════╣${RST}"
 echo -e "${CYN}║${RST}  ${GRB}Separador${RST}    : ${YLW}'${DELIMITER}'${RST}"
-echo -e "${CYN}║${RST}  ${GRB}Proyectos${RST}    : ${WHT}${PROJECTS[*]}${RST}"
+echo -e "${CYN}║${RST}  ${GRB}Proyectos${RST}    : ${WHT}${#PROJECTS[@]}${RST}"
+for p in "${PROJECTS[@]}"; do
+  echo -e "${CYN}║${RST}    ${DIM}• ${p}${RST}"
+done
 echo -e "${CYN}║${RST}  ${GRB}NS excluidos${RST} : ${DIM}${EXCLUDE_NS[*]:-ninguno}${RST}"
 echo -e "${CYN}║${RST}  ${GRB}Hilos${RST}        : ${BLU}${MAX_PARALLEL}${RST}"
 echo -e "${CYN}║${RST}  ${GRB}Output${RST}       : ${GRN}${OUTCOME_DIR}/${RST}"
@@ -190,42 +193,37 @@ show_dashboard() {
   echo -e "${DIM}  └─────────────────────────────────────────────────┘${RST}"
 }
 
-# Monitor en vivo (corre en background)
-MONITOR_PID=""
-start_monitor() {
-  if [ "$SEQUENTIAL" = true ] || [ ${#PROJECTS[@]} -le 1 ]; then return; fi
-  (
-    while [ -d "$PROGRESS_DIR" ]; do
-      sleep 2
-      # Mostrar mini-dashboard
-      echo ""
-      show_dashboard
-      # Detalle por proyecto
-      for pf in "${PROGRESS_DIR}"/*.progress; do
-        [ -f "$pf" ] || continue
-        local proj=$(basename "$pf" .progress)
-        local info=$(cat "$pf")
-        local step=$(echo "$info" | cut -d'|' -f1)
-        local sname=$(echo "$info" | cut -d'|' -f2)
-        local status=$(echo "$info" | cut -d'|' -f3)
-        local bar=$(progress_bar $step $TOTAL_STEPS 12)
-        if [ "$status" = "done" ]; then
-          echo -e "  ${GRN}✅${RST} ${WHT}${proj}${RST} ${GRN}${bar}${RST} ${DIM}completado${RST}"
-        else
-          echo -e "  ${BLU}🔄${RST} ${WHT}${proj}${RST} ${CYN}${bar}${RST} ${YLW}${step}/${TOTAL_STEPS}${RST} ${DIM}${sname}${RST}"
-        fi
-      done
-      echo -e "${DIM}─────────────────────────────────────────────────────${RST}"
-    done
-  ) &
-  MONITOR_PID=$!
-}
+# Contador de proyectos completados (archivo compartido)
+COMPLETED_FILE="${PROGRESS_DIR}/completed.count"
+PREV_COMPLETED=0
 
-stop_monitor() {
-  if [ -n "$MONITOR_PID" ]; then
-    kill "$MONITOR_PID" 2>/dev/null || true
-    rm -rf "$PROGRESS_DIR" 2>/dev/null
+# Mostrar resumen compacto de progreso (una sola línea por proyecto activo)
+show_progress_line() {
+  local completed=$(cat "$COMPLETED_FILE" 2>/dev/null || echo 0)
+  local total=${#PROJECTS[@]}
+  local bar=$(progress_bar $completed $total 20)
+
+  # Solo mostrar cuando cambia el estado
+  if [ "$completed" -ne "$PREV_COMPLETED" ]; then
+    echo -e "  ${DIM}│${RST} ${GRN}${bar}${RST} ${WHT}${completed}/${total}${RST} completados"
+    PREV_COMPLETED=$completed
   fi
+
+  # Línea por cada proyecto en ejecución
+  for pf in "${PROGRESS_DIR}"/*.progress; do
+    [ -f "$pf" ] || continue
+    local proj=$(basename "$pf" .progress)
+    local info=$(cat "$pf")
+    local step=$(echo "$info" | cut -d'|' -f1)
+    local sname=$(echo "$info" | cut -d'|' -f2)
+    local status=$(echo "$info" | cut -d'|' -f3)
+    if [ "$status" = "done" ]; then
+      echo -e "  ${GRN}✅${RST} ${DIM}${proj}${RST} ${GRN}completado${RST}"
+    else
+      local bar=$(progress_bar $step $TOTAL_STEPS 10)
+      echo -e "  ${BLU}🔄${RST} ${WHT}${proj}${RST} ${CYN}${bar}${RST} ${YLW}${step}/${TOTAL_STEPS}${RST} ${DIM}${sname}${RST}"
+    fi
+  done
 }
 
 # =============================================================================
@@ -451,8 +449,13 @@ except: pass
   rm -f "$KUBECONFIG"
 
   update_progress "$PROJECT_ID" 8 "completado" "done"
+  # Incrementar contador compartido
+  local count=$(cat "$COMPLETED_FILE" 2>/dev/null || echo 0)
+  echo $((count + 1)) > "$COMPLETED_FILE"
   local PROJECT_TIME=$(( $(date +%s) - PROJECT_START ))
   echo -e "${BOLD}${GRN}✅${RST} ${BOLD}[${PROJECT_ID}]${RST} Completado en ${YLW}$(format_time "$PROJECT_TIME")${RST} → ${DIM}${PROJECT_OUT_DIR}/${RST}"
+  # Mostrar resumen compacto de progreso
+  show_progress_line
 }
 
 # =============================================================================
@@ -460,8 +463,8 @@ except: pass
 # =============================================================================
 PIDS=()
 
-# Iniciar monitor de progreso en vivo
-start_monitor
+# Inicializar contador de completados
+echo 0 > "$COMPLETED_FILE"
 
 for PROJECT_ID in "${PROJECTS[@]}"; do
   if [ "$SEQUENTIAL" = true ]; then
@@ -481,14 +484,15 @@ done
 # Esperar a que todos los hilos terminen
 if [ ${#PIDS[@]} -gt 0 ]; then
   echo ""
-  echo -e "${BLU}⏳${RST} Esperando ${BOLD}${#PIDS[@]}${RST} hilo(s) en ejecución..."
+  echo -e "${BLU}⏳${RST} Esperando ${BOLD}${#PIDS[@]}${RST} hilo(s) restantes..."
   for pid in "${PIDS[@]}"; do
     wait "$pid" 2>/dev/null || true
   done
 fi
 
-# Detener monitor
-stop_monitor
+# Resumen final de progreso
+show_progress_line
+rm -rf "$PROGRESS_DIR" 2>/dev/null
 
 TOTAL_TIME=$(( $(date +%s) - START_TOTAL ))
 echo ""
