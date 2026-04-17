@@ -20,7 +20,34 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-try:
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTO-INSTALACIÓN DE RICH
+# ═══════════════════════════════════════════════════════════════════════════════
+def _ensure_rich():
+    """Verifica si rich está instalado; si no, lo instala automáticamente."""
+    try:
+        import rich  # noqa: F401
+        return True
+    except ImportError:
+        pass
+
+    print("📦 Instalando rich para interfaz moderna...")
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "rich>=13.0.0", "-q"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print("✅ rich instalado correctamente.\n")
+        return True
+    except subprocess.CalledProcessError:
+        print("⚠️  No se pudo instalar rich. Se usará interfaz básica.\n")
+        return False
+
+RICH_AVAILABLE = _ensure_rich()
+
+# Importar rich (ya garantizado si RICH_AVAILABLE)
+if RICH_AVAILABLE:
     from rich.console import Console
     from rich.table import Table
     from rich.panel import Panel
@@ -30,9 +57,6 @@ try:
     from rich.align import Align
     from rich.prompt import Prompt
     from rich.status import Status
-    RICH_AVAILABLE = True
-except ImportError:
-    RICH_AVAILABLE = False
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
