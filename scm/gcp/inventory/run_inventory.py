@@ -13,6 +13,7 @@ Uso:
     python run_inventory.py [--skip-csv]
 """
 
+import importlib
 import subprocess
 import sys
 from pathlib import Path
@@ -27,28 +28,6 @@ except ImportError:
     RICH_AVAILABLE = False
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-
-
-def run_step_rich(console: Console, desc: str, cmd: list, cwd: str) -> bool:
-    with console.status(f"[bold cyan]⏳ {desc}[/bold cyan]", spinner="dots"):
-        result = subprocess.run(cmd, cwd=cwd)
-    if result.returncode != 0:
-        console.print(f"[red]❌ Error en: {desc} (código {result.returncode})[/red]")
-        return False
-    console.print(f"[green]✅ {desc} completado.[/green]")
-    return True
-
-
-def run_step_fallback(desc: str, cmd: list, cwd: str) -> bool:
-    print(f"\n{'='*60}")
-    print(f"  {desc}")
-    print(f"{'='*60}")
-    result = subprocess.run(cmd, cwd=cwd)
-    if result.returncode != 0:
-        print(f"\n❌ Error en: {desc} (código {result.returncode})")
-        return False
-    print(f"✅ {desc} completado.")
-    return True
 
 
 def main():
@@ -68,38 +47,60 @@ def main():
     else:
         print("📋 Inventario GKE + Cloud SQL - Launcher")
 
+    # ── Paso 1: Generar CSVs ──────────────────────────────────────────────
     if not skip_csv:
-        csv_script = SCRIPT_DIR / "generar-inventario-csv.py"
-        if not csv_script.exists():
-            # Fallback al script bash si existe
-            bash_script = SCRIPT_DIR / "generar-inventario-csv.sh"
-            if bash_script.exists():
-                csv_script = bash_script
-                cmd = ["bash", str(csv_script)]
-            else:
-                print(f"❌ No se encontró: generar-inventario-csv.py ni .sh")
+        csv_py = SCRIPT_DIR / "generar-inventario-csv.py"
+        csv_sh = SCRIPT_DIR / "generar-inventario-csv.sh"
+
+        if csv_py.exists():
+            # Importar y ejecutar directamente (mismo proceso → Rich funciona)
+            # Filtrar args para paso 1
+            csv_args = [a for a in sys.argv[1:] if a != "--skip-csv"]
+            saved_argv = sys.argv
+            sys.argv = [str(csv_py)] + csv_args
+            try:
+                mod = importlib.import_module("generar-inventario-csv")
+                mod.main()
+            except SystemExit as e:
+                if e.code and e.code != 0:
+                    sys.argv = saved_argv
+                    sys.exit(e.code)
+            except Exception as e:
+                sys.argv = saved_argv
+                if RICH_AVAILABLE:
+                    console.print(f"[red]❌ Error en CSVs: {e}[/red]")
+                else:
+                    print(f"❌ Error en CSVs: {e}")
                 sys.exit(1)
-        else:
-            cmd = [sys.executable, str(csv_script)]
-            # Pasar argumentos extra (excepto --skip-csv)
+            finally:
+                sys.argv = saved_argv
+        elif csv_sh.exists():
+            # Fallback a bash
+            cmd = ["bash", str(csv_sh)]
             extra_args = [a for a in sys.argv[1:] if a != "--skip-csv"]
             cmd.extend(extra_args)
-
-        if RICH_AVAILABLE:
-            if not run_step_rich(console, "Paso 1/2 – Generando CSVs de inventario", cmd, str(SCRIPT_DIR)):
+            result = subprocess.run(cmd, cwd=str(SCRIPT_DIR))
+            if result.returncode != 0:
+                print(f"❌ Error en bash script (código {result.returncode})")
                 sys.exit(1)
         else:
-            if not run_step_fallback("Paso 1/2 – Generando CSVs de inventario", cmd, str(SCRIPT_DIR)):
-                sys.exit(1)
+            print("❌ No se encontró: generar-inventario-csv.py ni .sh")
+            sys.exit(1)
 
+    # ── Paso 2: Consolidar Excel ───────────────────────────────────────────
     excel_script = SCRIPT_DIR / "generar-inventario-csv-combinar-a-excel.py"
     if not excel_script.exists():
         print(f"❌ No se encontró: {excel_script}")
         sys.exit(1)
 
     if RICH_AVAILABLE:
-        if not run_step_rich(console, "Paso 2/2 – Consolidando CSVs en Excel",
-                             [sys.executable, str(excel_script)], str(SCRIPT_DIR)):
+        with console.status("[bold cyan]⏳ Paso 2/2 – Consolidando CSVs en Excel[/bold cyan]", spinner="dots"):
+            result = subprocess.run(
+                [sys.executable, str(excel_script)],
+                cwd=str(SCRIPT_DIR),
+            )
+        if result.returncode != 0:
+            console.print(f"[red]❌ Error consolidando Excel (código {result.returncode})[/red]")
             sys.exit(1)
         console.print()
         console.print(Panel(
@@ -107,8 +108,15 @@ def main():
             border_style="green", box=HEAVY, padding=(1, 2), expand=False,
         ))
     else:
-        if not run_step_fallback("Paso 2/2 – Consolidando CSVs en Excel",
-                                 [sys.executable, str(excel_script)], str(SCRIPT_DIR)):
+        print(f"\n{'='*60}")
+        print("  Paso 2/2 – Consolidando CSVs en Excel")
+        print(f"{'='*60}")
+        result = subprocess.run(
+            [sys.executable, str(excel_script)],
+            cwd=str(SCRIPT_DIR),
+        )
+        if result.returncode != 0:
+            print(f"❌ Error consolidando Excel (código {result.returncode})")
             sys.exit(1)
         print(f"\n{'='*60}")
         print("  ✅ Inventario completado exitosamente")
