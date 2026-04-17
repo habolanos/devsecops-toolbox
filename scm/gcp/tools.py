@@ -573,17 +573,20 @@ def install_requirements(requirements_path: str, python_exec: str, force: bool =
     
     # Verificar si ya están instaladas (usar caché)
     if not force and requirements_path in get_installed_requirements():
-        # Verificar que plotly realmente esté instalado si es reports-viewer
+        # Verificar que los paquetes clave realmente estén instalados
+        needs_reinstall = False
         if "reports-viewer" in requirements_path:
             if not verify_package_installed(python_exec, "plotly"):
                 print(f"{Colors.WARNING}Plotly no encontrado, reinstalando...{Colors.ENDC}")
-                force = True
-            else:
-                print(f"{Colors.GREEN}Dependencias de {requirements_path} ya instaladas (usando caché).{Colors.ENDC}")
-                return True
-        else:
+                needs_reinstall = True
+        if "inventory" in requirements_path:
+            if not verify_package_installed(python_exec, "rich"):
+                print(f"{Colors.WARNING}Rich no encontrado, reinstalando...{Colors.ENDC}")
+                needs_reinstall = True
+        if not needs_reinstall:
             print(f"{Colors.GREEN}Dependencias de {requirements_path} ya instaladas (usando caché).{Colors.ENDC}")
             return True
+        force = True
         
     print(f"\n{Colors.CYAN}Instalando dependencias de {req_file} en el venv...{Colors.ENDC}")
     try:
