@@ -12,11 +12,27 @@ Uso:
     python run_inventory.py [--skip-csv]
 """
 
+import os
 import subprocess
 import sys
+import platform
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
+
+
+def ensure_unix_line_endings(filepath: Path) -> None:
+    """Convierte CRLF (Windows) a LF (Unix) si es necesario.
+    Esto evita errores $'\r': command not found al ejecutar .sh en WSL/Linux.
+    """
+    if platform.system() == "Windows":
+        return
+    try:
+        raw = filepath.read_bytes()
+        if b"\r\n" in raw:
+            filepath.write_bytes(raw.replace(b"\r\n", b"\n"))
+    except Exception:
+        pass
 
 
 def run_step(desc: str, cmd: list, cwd: str) -> bool:
@@ -39,6 +55,8 @@ def main():
         if not bash_script.exists():
             print(f"❌ No se encontró: {bash_script}")
             sys.exit(1)
+        ensure_unix_line_endings(bash_script)
+        os.chmod(bash_script, 0o755)
         if not run_step(
             "Paso 1/2 – Generando CSVs de inventario",
             ["bash", str(bash_script)],
