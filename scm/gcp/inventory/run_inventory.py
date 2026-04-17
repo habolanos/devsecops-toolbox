@@ -13,7 +13,8 @@ Uso:
     python run_inventory.py [--skip-csv]
 """
 
-import importlib
+import importlib.util
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -53,13 +54,14 @@ def main():
         csv_sh = SCRIPT_DIR / "generar-inventario-csv.sh"
 
         if csv_py.exists():
-            # Importar y ejecutar directamente (mismo proceso → Rich funciona)
-            # Filtrar args para paso 1
+            # Cargar módulo por ruta de archivo (mismo proceso → Rich funciona)
             csv_args = [a for a in sys.argv[1:] if a != "--skip-csv"]
             saved_argv = sys.argv
             sys.argv = [str(csv_py)] + csv_args
             try:
-                mod = importlib.import_module("generar-inventario-csv")
+                spec = importlib.util.spec_from_file_location("generar_inventario_csv", str(csv_py))
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
                 mod.main()
             except SystemExit as e:
                 if e.code and e.code != 0:
