@@ -23,6 +23,7 @@ secrets/
 .gitconfig
 
 #app
+**/outcome
 outcome/
 *.log
 
