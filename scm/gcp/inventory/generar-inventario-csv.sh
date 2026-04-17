@@ -7,12 +7,30 @@
 
 set -euo pipefail
 
+# === COLORES ANSI ===
+RST='\033[0m'       # Reset
+BOLD='\033[1m'      # Bold
+DIM='\033[2m'       # Dim
+RED='\033[91m'      # Red bright
+GRN='\033[92m'      # Green bright
+YLW='\033[93m'     # Yellow bright
+BLU='\033[94m'     # Blue bright
+MGN='\033[95m'     # Magenta bright
+CYN='\033[96m'     # Cyan bright
+WHT='\033[97m'     # White bright
+GRB='\033[90m'     # Gray
+BG_BLU='\033[44m'  # BG Blue
+BG_GRN='\033[42m'  # BG Green
+BG_YLW='\033[43m'  # BG Yellow
+
 # === RUTAS ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${SCRIPT_DIR}/generar-inventario-csv.config"
 OUTCOME_DIR="${SCRIPT_DIR}/outcome"
 DELIMITER=";"
 MAX_PARALLEL=4
+PROGRESS_DIR="/tmp/inventario-progress-$$"
+TOTAL_STEPS=8
 
 # Función para mostrar tiempo
 format_time() {
@@ -25,15 +43,15 @@ format_time() {
 }
 
 usage() {
-  echo "Uso: ./generar-inventario-csv.sh [opciones] [PROYECTO1 ...]"
+  echo -e "${CYN}Uso:${RST} ./generar-inventario-csv.sh [opciones] [PROYECTO1 ...]"
   echo ""
-  echo "Opciones:"
-  echo "  --delimiter=CHAR   Separador CSV (default: ;)"
-  echo "  --threads=N        Hilos paralelos (default: 4)"
-  echo "  --sequential       Deshabilitar paralelismo"
+  echo -e "  ${WHT}Opciones:${RST}"
+  echo -e "  ${GRB}--delimiter=CHAR${RST}   Separador CSV (default: ;)"
+  echo -e "  ${GRB}--threads=N${RST}        Hilos paralelos (default: 4)"
+  echo -e "  ${GRB}--sequential${RST}       Deshabilitar paralelismo"
   echo ""
-  echo "Config : ${CONFIG_FILE}"
-  echo "Output : ${OUTCOME_DIR}/"
+  echo -e "  ${DIM}Config : ${CONFIG_FILE}${RST}"
+  echo -e "  ${DIM}Output : ${OUTCOME_DIR}/${RST}"
   exit 1
 }
 
@@ -80,10 +98,10 @@ fi
 
 if [ ${#PROJECTS[@]} -eq 0 ]; then
   if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: No se encontró $CONFIG_FILE"
+    echo -e "${RED}✘ Error:${RST} No se encontró $CONFIG_FILE"
     usage
   fi
-  echo "Leyendo proyectos desde: $CONFIG_FILE"
+  echo -e "${CYN}▸${RST} Leyendo proyectos desde: ${DIM}${CONFIG_FILE}${RST}"
   in_exclude=false
   while IFS= read -r line || [ -n "$line" ]; do
     line=$(echo "$line" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
@@ -103,26 +121,110 @@ if [ ${#PROJECTS[@]} -eq 0 ]; then
 fi
 
 mkdir -p "$OUTCOME_DIR"
+rm -rf "$PROGRESS_DIR" 2>/dev/null; mkdir -p "$PROGRESS_DIR"
 
 START_TOTAL=$(date +%s)
 
-echo "========================================================"
-echo "INVENTARIO GKE + CLOUD SQL - CSV"
-echo "Separador       : '$DELIMITER'"
-echo "Proyectos       : ${PROJECTS[*]}"
-echo "NS excluidos    : ${EXCLUDE_NS[*]}"
-echo "Hilos           : $MAX_PARALLEL"
-echo "Output          : $OUTCOME_DIR"
-echo "========================================================"
+echo -e "${CYN}╔══════════════════════════════════════════════════════════════╗${RST}"
+echo -e "${CYN}║${RST}  ${BOLD}${WHT}📋 INVENTARIO GKE + CLOUD SQL${RST}                              ${CYN}║${RST}"
+echo -e "${CYN}╠══════════════════════════════════════════════════════════════╣${RST}"
+echo -e "${CYN}║${RST}  ${GRB}Separador${RST}    : ${YLW}'${DELIMITER}'${RST}"
+echo -e "${CYN}║${RST}  ${GRB}Proyectos${RST}    : ${WHT}${PROJECTS[*]}${RST}"
+echo -e "${CYN}║${RST}  ${GRB}NS excluidos${RST} : ${DIM}${EXCLUDE_NS[*]:-ninguno}${RST}"
+echo -e "${CYN}║${RST}  ${GRB}Hilos${RST}        : ${BLU}${MAX_PARALLEL}${RST}"
+echo -e "${CYN}║${RST}  ${GRB}Output${RST}       : ${GRN}${OUTCOME_DIR}/${RST}"
+echo -e "${CYN}╚══════════════════════════════════════════════════════════════╝${RST}"
 
 # =============================================================================
-# Función auxiliar: filtrar namespaces excluidos de stdin a stdout
+# Funciones de progreso y dashboard
 # =============================================================================
 filter_ns() {
   if [ -n "$EXCLUDE_PATTERN" ]; then
     grep -vE "^[[:space:]]*(${EXCLUDE_PATTERN})[[:space:]]" || true
   else
     cat
+  fi
+}
+
+# Barra de progreso ASCII: progress_bar CURRENT TOTAL WIDTH
+progress_bar() {
+  local cur=$1 tot=$2 w=${3:-20}
+  local filled=$(( cur * w / tot ))
+  local empty=$(( w - filled ))
+  local bar=""
+  for ((i=0; i<filled; i++)); do bar+="█"; done
+  for ((i=0; i<empty; i++)); do bar+="░"; done
+  echo "$bar"
+}
+
+# Actualizar archivo de progreso de un proyecto
+update_progress() {
+  local PROJECT_ID="$1"
+  local STEP="$2"
+  local STEP_NAME="$3"
+  local STATUS="$4"  # running|done|error
+  echo "${STEP}|${STEP_NAME}|${STATUS}|$(date +%s)" > "${PROGRESS_DIR}/${PROJECT_ID}.progress"
+}
+
+# Dashboard en vivo: muestra progreso de todos los hilos
+show_dashboard() {
+  local completed=0
+  local running=0
+  for pf in "${PROGRESS_DIR}"/*.progress; do
+    [ -f "$pf" ] || continue
+    local proj=$(basename "$pf" .progress)
+    local info=$(cat "$pf")
+    local step=$(echo "$info" | cut -d'|' -f1)
+    local sname=$(echo "$info" | cut -d'|' -f2)
+    local status=$(echo "$info" | cut -d'|' -f3)
+    if [ "$status" = "done" ]; then
+      completed=$((completed + 1))
+    else
+      running=$((running + 1))
+    fi
+  done
+  local total=${#PROJECTS[@]}
+  local bar=$(progress_bar $completed $total 25)
+  echo -e "${DIM}  ┌─────────────────────────────────────────────────┐${RST}"
+  echo -e "${DIM}  │${RST} ${BOLD}Progreso${RST} ${GRN}${bar}${RST} ${WHT}${completed}/${total}${RST} proyectos  ${DIM}│${RST}"
+  echo -e "${DIM}  └─────────────────────────────────────────────────┘${RST}"
+}
+
+# Monitor en vivo (corre en background)
+MONITOR_PID=""
+start_monitor() {
+  if [ "$SEQUENTIAL" = true ] || [ ${#PROJECTS[@]} -le 1 ]; then return; fi
+  (
+    while [ -d "$PROGRESS_DIR" ]; do
+      sleep 2
+      # Mostrar mini-dashboard
+      echo ""
+      show_dashboard
+      # Detalle por proyecto
+      for pf in "${PROGRESS_DIR}"/*.progress; do
+        [ -f "$pf" ] || continue
+        local proj=$(basename "$pf" .progress)
+        local info=$(cat "$pf")
+        local step=$(echo "$info" | cut -d'|' -f1)
+        local sname=$(echo "$info" | cut -d'|' -f2)
+        local status=$(echo "$info" | cut -d'|' -f3)
+        local bar=$(progress_bar $step $TOTAL_STEPS 12)
+        if [ "$status" = "done" ]; then
+          echo -e "  ${GRN}✅${RST} ${WHT}${proj}${RST} ${GRN}${bar}${RST} ${DIM}completado${RST}"
+        else
+          echo -e "  ${BLU}🔄${RST} ${WHT}${proj}${RST} ${CYN}${bar}${RST} ${YLW}${step}/${TOTAL_STEPS}${RST} ${DIM}${sname}${RST}"
+        fi
+      done
+      echo -e "${DIM}─────────────────────────────────────────────────────${RST}"
+    done
+  ) &
+  MONITOR_PID=$!
+}
+
+stop_monitor() {
+  if [ -n "$MONITOR_PID" ]; then
+    kill "$MONITOR_PID" 2>/dev/null || true
+    rm -rf "$PROGRESS_DIR" 2>/dev/null
   fi
 }
 
@@ -142,13 +244,15 @@ process_project() {
   local PROJECT_OUT_DIR="${OUTCOME_DIR}/inventario-${PROJECT_ID}-${TIMESTAMP}"
   mkdir -p "$PROJECT_OUT_DIR"
 
-  echo ""
-  echo "▶ [$PROJECT_ID] Iniciando..."
-  echo "------------------------------------------------"
+  update_progress "$PROJECT_ID" 0 "iniciando" "running"
+  echo -e ""
+  echo -e "${BOLD}${BLU}▶${RST} ${BOLD}${WHT}[${PROJECT_ID}]${RST} Iniciando inventario..."
+  echo -e "${DIM}─────────────────────────────────────────────────────────${RST}"
 
   # 1. Clusters GKE (JSON → Python csv.writer para CSV robusto)
   local SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] clusters.csv"
+  update_progress "$PROJECT_ID" 1 "clusters" "running"
+  echo -e "  ${CYN}❶${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}clusters.csv${RST}"
   gcloud container clusters list --project="$PROJECT_ID" --format=json --quiet 2>/dev/null | \
     DELIM="$DELIM" python3 -c "
 import json,sys,csv,os
@@ -164,11 +268,12 @@ try:
    w.writerow([c.get('name',''),c.get('location',''),c.get('currentMasterVersion',''),c.get('currentMasterVersion',''),c.get('status',''),mt])
 except: pass
 " > "$PROJECT_OUT_DIR/clusters.csv"
-  echo "   └─ [$PROJECT_ID] clusters: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] clusters: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # 2. Deployments
   SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] deployments.csv"
+  update_progress "$PROJECT_ID" 2 "deployments" "running"
+  echo -e "  ${CYN}❷${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}deployments.csv${RST}"
   echo "NAMESPACE${DELIM}CLUSTER${DELIM}DEPLOYMENT${DELIM}IMAGES" > "$PROJECT_OUT_DIR/deployments.csv"
 
   local CLUSTERS=$(gcloud container clusters list --project="$PROJECT_ID" --format="value(name,location)" --quiet 2>/dev/null || true)
@@ -187,11 +292,12 @@ except: pass
         done || true
     done
   fi
-  echo "   └─ [$PROJECT_ID] deployments: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] deployments: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # 3. Services
   SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] services.csv"
+  update_progress "$PROJECT_ID" 3 "services" "running"
+  echo -e "  ${CYN}❸${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}services.csv${RST}"
   echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}TYPE${DELIM}CLUSTER-IP${DELIM}EXTERNAL-IP${DELIM}PORTS" > "$PROJECT_OUT_DIR/services.csv"
 
   if [ -n "$CLUSTERS" ]; then
@@ -210,19 +316,20 @@ except: pass
         done || true
     done
   fi
-  echo "   └─ [$PROJECT_ID] services: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] services: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # 4. Cloud SQL
   SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] cloudsql.csv"
+  update_progress "$PROJECT_ID" 4 "cloudsql" "running"
+  echo -e "  ${MGN}❹${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}cloudsql.csv${RST}"
   local INSTANCE_COUNT=$(gcloud sql instances list --project="$PROJECT_ID" --quiet --format="value(name)" | wc -l)
 
   if [ "$INSTANCE_COUNT" -eq 0 ]; then
-    echo "  (No se encontraron instancias Cloud SQL)"
+    echo -e "  ${DIM}  (Sin instancias Cloud SQL)${RST}"
     echo "NAME${DELIM}DATABASE_VERSION${DELIM}REGION${DELIM}TIER${DELIM}STATE${DELIM}PUBLIC_IP${DELIM}PRIVATE_IP${DELIM}AUTO_RESIZE${DELIM}BACKUP_ENABLED" > "$PROJECT_OUT_DIR/cloudsql.csv"
     echo "Sin instancias${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-" >> "$PROJECT_OUT_DIR/cloudsql.csv"
   else
-    echo "  Encontradas $INSTANCE_COUNT instancia(s) Cloud SQL..."
+    echo -e "  ${GRN}  ✓${RST} ${INSTANCE_COUNT} instancia(s) Cloud SQL encontradas${RST}"
     gcloud sql instances list \
       --project="$PROJECT_ID" \
       --format="csv[no-heading,separator=$DELIM](name,databaseVersion,region,settings.tier,state,settings.ipConfiguration.ipv4Enabled,ipAddresses[0].ipAddress,settings.storageAutoResize,settings.backupConfiguration.enabled)" \
@@ -235,11 +342,12 @@ except: pass
 
     sed -i '/^$/d' "$PROJECT_OUT_DIR/cloudsql.csv"
   fi
-  echo "   └─ [$PROJECT_ID] cloudsql: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] cloudsql: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # 5. Cloud SQL Databases (bases de datos dentro de cada instancia)
   SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] clouddatabases.csv"
+  update_progress "$PROJECT_ID" 5 "clouddatabases" "running"
+  echo -e "  ${MGN}❺${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}clouddatabases.csv${RST}"
   echo "INSTANCE${DELIM}DATABASE${DELIM}CHARSET${DELIM}COLLATION" > "$PROJECT_OUT_DIR/clouddatabases.csv"
 
   if [ "$INSTANCE_COUNT" -gt 0 ]; then
@@ -260,11 +368,12 @@ except: pass
   else
     echo "Sin instancias${DELIM}-${DELIM}-${DELIM}-" >> "$PROJECT_OUT_DIR/clouddatabases.csv"
   fi
-  echo "   └─ [$PROJECT_ID] clouddatabases: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] clouddatabases: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # 6. Ingress (K8s)
   SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] ingress.csv"
+  update_progress "$PROJECT_ID" 6 "ingress" "running"
+  echo -e "  ${BLU}❻${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}ingress.csv${RST}"
   echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}HOSTS${DELIM}ADDRESS${DELIM}PORTS" > "$PROJECT_OUT_DIR/ingress.csv"
 
   if [ -n "$CLUSTERS" ]; then
@@ -285,11 +394,12 @@ except: pass
     done
   fi
   sed -i '/^$/d' "$PROJECT_OUT_DIR/ingress.csv"
-  echo "   └─ [$PROJECT_ID] ingress: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] ingress: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # 7. Cloud Run Services (JSON → Python csv.writer para CSV robusto)
   SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] cloudrun.csv"
+  update_progress "$PROJECT_ID" 7 "cloudrun" "running"
+  echo -e "  ${YLW}❼${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}cloudrun.csv${RST}"
   gcloud run services list --project="$PROJECT_ID" --platform=managed --format=json --quiet 2>/dev/null | \
     DELIM="$DELIM" python3 -c "
 import json,sys,csv,os,re
@@ -311,11 +421,12 @@ try:
    w.writerow([name,region,url,ts,image])
 except: pass
 " > "$PROJECT_OUT_DIR/cloudrun.csv"
-  echo "   └─ [$PROJECT_ID] cloudrun: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] cloudrun: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # 8. Pub/Sub Topics (JSON → Python csv.writer para CSV robusto)
   SECTION_START=$(date +%s)
-  echo "→ [$PROJECT_ID] pubsub.csv"
+  update_progress "$PROJECT_ID" 8 "pubsub" "running"
+  echo -e "  ${YLW}❽${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}pubsub.csv${RST}"
   gcloud pubsub topics list --project="$PROJECT_ID" --format=json --quiet 2>/dev/null | \
     DELIM="$DELIM" python3 -c "
 import json,sys,csv,os
@@ -334,19 +445,23 @@ try:
    w.writerow([name,lbl])
 except: pass
 " > "$PROJECT_OUT_DIR/pubsub.csv"
-  echo "   └─ [$PROJECT_ID] pubsub: $(format_time $(( $(date +%s) - SECTION_START )))"
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] pubsub: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
   # Cleanup kubeconfig aislado
   rm -f "$KUBECONFIG"
 
+  update_progress "$PROJECT_ID" 8 "completado" "done"
   local PROJECT_TIME=$(( $(date +%s) - PROJECT_START ))
-  echo "✓ [$PROJECT_ID] Completado en $(format_time "$PROJECT_TIME") → $PROJECT_OUT_DIR/"
+  echo -e "${BOLD}${GRN}✅${RST} ${BOLD}[${PROJECT_ID}]${RST} Completado en ${YLW}$(format_time "$PROJECT_TIME")${RST} → ${DIM}${PROJECT_OUT_DIR}/${RST}"
 }
 
 # =============================================================================
 # Ejecución: paralela o secuencial
 # =============================================================================
 PIDS=()
+
+# Iniciar monitor de progreso en vivo
+start_monitor
 
 for PROJECT_ID in "${PROJECTS[@]}"; do
   if [ "$SEQUENTIAL" = true ]; then
@@ -366,17 +481,22 @@ done
 # Esperar a que todos los hilos terminen
 if [ ${#PIDS[@]} -gt 0 ]; then
   echo ""
-  echo "⏳ Esperando ${#PIDS[@]} hilo(s) en ejecución..."
+  echo -e "${BLU}⏳${RST} Esperando ${BOLD}${#PIDS[@]}${RST} hilo(s) en ejecución..."
   for pid in "${PIDS[@]}"; do
     wait "$pid" 2>/dev/null || true
   done
 fi
 
+# Detener monitor
+stop_monitor
+
 TOTAL_TIME=$(( $(date +%s) - START_TOTAL ))
 echo ""
-echo "========================================================"
-echo "¡Proceso COMPLETO finalizado exitosamente!"
-echo "Tiempo total : $(format_time "$TOTAL_TIME")"
-echo "Hilos usados : $MAX_PARALLEL"
-echo "Carpeta      : $OUTCOME_DIR"
-echo "========================================================"
+echo -e "${GRN}╔══════════════════════════════════════════════════════════════╗${RST}"
+echo -e "${GRN}║${RST}  ${BOLD}${WHT}🎉 ¡Proceso COMPLETO finalizado exitosamente!${RST}              ${GRN}║${RST}"
+echo -e "${GRN}╠══════════════════════════════════════════════════════════════╣${RST}"
+echo -e "${GRN}║${RST}  ${GRB}Tiempo total${RST} : ${YLW}$(format_time "$TOTAL_TIME")${RST}"
+echo -e "${GRN}║${RST}  ${GRB}Hilos usados${RST} : ${BLU}${MAX_PARALLEL}${RST}"
+echo -e "${GRN}║${RST}  ${GRB}Proyectos${RST}    : ${WHT}${#PROJECTS[@]}${RST}"
+echo -e "${GRN}║${RST}  ${GRB}Carpeta${RST}      : ${CYN}${OUTCOME_DIR}/${RST}"
+echo -e "${GRN}╚══════════════════════════════════════════════════════════════╝${RST}"
