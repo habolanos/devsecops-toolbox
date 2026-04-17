@@ -4,7 +4,7 @@
     Genera un ZIP distribuible del proyecto devsecops-toolbox.
 
 .DESCRIPTION
-    Empaqueta todos los archivos del toolbox respetando las exclusiones del .gitignore:
+    Empaqueta solo el folder scm/ del toolbox, respetando las exclusiones del .gitignore:
     sin .git, venv, __pycache__, config.json (secretos), outcome/, tests/, archivos temporales, etc.
     El ZIP resultante se genera en la carpeta outcome/ con timestamp.
 
@@ -76,77 +76,91 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # ===============================================================================
-# CONFIGURACIoN DE EXCLUSIONES
+# CONFIGURACIoN DE EXCLUSIONES (leidas desde .gitignore)
 # ===============================================================================
 
 # Carpetas: si algun segmento del path relativo coincide, se excluye el archivo
 $ExcludedDirs = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
-@(
-    # --- VCS / IDE / Dev environment ---
-    '.git', '.github', '.windsurf',
-    '.venv', 'venv', 'env',
-    '__pycache__',
-    '.vscode', '.idea',
-    'cache', '.cache', '.pytest_cache',
-    # --- Build / Output ---
-    'outcome', 'dist', 'build', 'egg-info',
-    # --- Docker (no se distribuye) ---
-    '.docker',
-    # --- Tests (no se distribuyen) ---
-    'tests', '__tests__', '__tests__e2e',
-    # --- System / Temp ---
-    '.config', '.npm', '.kube', '.ssh',
-    '.local', '.rustup', '.gemini'
-) | ForEach-Object { [void]$ExcludedDirs.Add($_) }
 
 # Nombres de archivo exactos excluidos
 $ExcludedFileNames = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
-@(
-    # --- Secretos / Credenciales ---
-    'config.json',                   # Secretos - distribuir solo config.json.template
-    '.env',                          # Variables de entorno con secretos
-    # --- Docker (no se distribuye) ---
-    'Dockerfile',                    # Imagen Docker - no para distribucion Python
-    'docker-compose.yml',            # Compose para desarrollo local
-    'docker-entrypoint.sh',          # Entrypoint del contenedor
-    '.dockerignore',                 # Exclusiones Docker
-    # --- Build / Empaquetado ---
-    'make_dist.ps1',                 # Script de empaquetado - no incluir en el distribuible
-    # --- Git / System ---
-    '.gitignore', '.gitconfig',
-    '.bash_history', '.bash_logout', '.bashrc', '.profile',
-    'taged.cache', '.lesshst', '.viminfo',
-    # --- Debug / Temp ---
-    'debug-v4.txt',                  # Archivo de debug temporal
-    # --- Legacy (portado a Python) ---
-    'azdo-task-validador-optimized.sh'  # Ya portado a azdo_task_validator.py
-) | ForEach-Object { [void]$ExcludedFileNames.Add($_) }
 
 # Extensiones excluidas
 $ExcludedExtensions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
-@(
-    # --- Python bytecode ---
-    '.pyc', '.pyd', '.pyo',
-    # --- Archivos comprimidos (no redistribuir) ---
-    '.zip', '.gz', '.tar', '.rar', '.7z',
-    # --- Office (generados, no fuente) ---
-    '.xlsx', '.xls', '.docx',
-    # --- Logs ---
-    '.log'
-) | ForEach-Object { [void]$ExcludedExtensions.Add($_) }
 
 # Patrones wildcard de nombre de archivo
-$ExcludedNamePatterns = @(
-    '*.origin.json',
-    '*.tar.gz', '*.tar.bz2', '*.tar.xz', '*.tar.lz', '*.tar.lzma', '*.tar.lz4',
-    'debug-*'
-)
+$ExcludedNamePatterns = [System.Collections.Generic.List[string]]::new()
+
+# --- Leer exclusiones desde .gitignore ---
+$GitignorePath = Join-Path $PSScriptRoot '.gitignore'
+if (Test-Path $GitignorePath) {
+    $gitignoreLines = Get-Content $GitignorePath -Encoding UTF8 | Where-Object {
+        $_ -and -not $_.StartsWith('#')
+    }
+    foreach ($line in $gitignoreLines) {
+        $pattern = $line.Trim()
+        if (-not $pattern) { continue }
+
+        # Directorios: pattern que termina en / o es un nombre simple sin wildcards
+        if ($pattern -match '^.+/$') {
+            $dirName = $pattern.TrimEnd('/')
+            # Solo nombres simples (sin / ni *)
+            if ($dirName -notmatch '[/*]') {
+                [void]$ExcludedDirs.Add($dirName)
+            }
+            continue
+        }
+
+        # Extensiones: *.ext
+        if ($pattern -match '^\*\.(\w+)$') {
+            [void]$ExcludedExtensions.Add(".$($Matches[1])")
+            continue
+        }
+
+        # Patrones con wildcards
+        if ($pattern -match '[*?]') {
+            # Convertir patrones tipo **/x o x/** a nombre simple si aplica
+            $cleanPattern = $pattern -replace '^\*\*/', '' -replace '/\*\*$', ''
+            if ($cleanPattern -match '[*?]') {
+                $ExcludedNamePatterns.Add($cleanPattern)
+            }
+            continue
+        }
+
+        # Nombres simples de archivo o carpeta
+        if ($pattern -notmatch '[/\\]') {
+            # Si parece extension (.xxx)
+            if ($pattern -match '^\.\w+$') {
+                [void]$ExcludedFileNames.Add($pattern)
+            } else {
+                # Podria ser archivo o carpeta, agregar a ambos
+                [void]$ExcludedFileNames.Add($pattern)
+                [void]$ExcludedDirs.Add($pattern)
+            }
+        }
+    }
+}
+
+# --- Exclusiones adicionales (no en .gitignore pero necesarias para dist) ---
+@(
+    '.git', '.github', '.windsurf',
+    '.idea',
+    'dist', 'build', 'egg-info',
+    'tests', '__tests__', '__tests__e2e',
+    # Docker (no se distribuye)
+    'Dockerfile', 'docker-compose.yml', 'docker-entrypoint.sh', '.dockerignore',
+    # Build script
+    'make_dist.ps1'
+) | ForEach-Object {
+    [void]$ExcludedDirs.Add($_)
+    [void]$ExcludedFileNames.Add($_)
+}
 
 # ===============================================================================
 # FUNCION: Detectar repositorio GitHub desde git remote
@@ -199,7 +213,8 @@ function Test-IsExcluded {
 # ===============================================================================
 # INICIO
 # ===============================================================================
-$SourceRoot = $PSScriptRoot
+$ProjectRoot = $PSScriptRoot
+$SourceRoot  = Join-Path $ProjectRoot 'scm'
 $Timestamp  = Get-Date -Format "yyyyMMdd_HHmmss"
 $ZipName    = "${ZipPrefix}_${Timestamp}.zip"
 $ZipPath    = Join-Path $OutputDir $ZipName
@@ -258,7 +273,8 @@ $zip = [System.IO.Compression.ZipFile]::Open(
 )
 try {
     foreach ($file in $Included) {
-        $entryName = $file.FullName.Substring($SourceRoot.Length + 1).Replace([char]92, '/')
+        $relInScm = $file.FullName.Substring($SourceRoot.Length + 1).Replace([char]92, '/')
+        $entryName = "scm/$relInScm"
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
             $zip,
             $file.FullName,
@@ -296,11 +312,11 @@ $groupCounts = @{}
 foreach ($file in $Included) {
     $rel   = $file.FullName.Substring($SourceRoot.Length + 1)
     $parts = $rel.Split([char[]](47, 92))
-    $key   = "raiz"
+    $key   = "scm"
     if ($parts.Length -ge 3) {
-        $key = $parts[0] + $bslash + $parts[1]
+        $key = "scm" + $bslash + $parts[0] + $bslash + $parts[1]
     } elseif ($parts.Length -ge 2) {
-        $key = $parts[0]
+        $key = "scm" + $bslash + $parts[0]
     }
     if ($groupCounts.ContainsKey($key)) {
         $groupCounts[$key]++
