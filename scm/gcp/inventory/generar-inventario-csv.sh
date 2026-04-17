@@ -125,18 +125,35 @@ rm -rf "$PROGRESS_DIR" 2>/dev/null; mkdir -p "$PROGRESS_DIR"
 
 START_TOTAL=$(date +%s)
 
-echo -e "${CYN}╔══════════════════════════════════════════════════════════════╗${RST}"
-echo -e "${CYN}║${RST}  ${BOLD}${WHT}📋 INVENTARIO GKE + CLOUD SQL${RST}                              ${CYN}║${RST}"
-echo -e "${CYN}╠══════════════════════════════════════════════════════════════╣${RST}"
-echo -e "${CYN}║${RST}  ${GRB}Separador${RST}    : ${YLW}'${DELIMITER}'${RST}"
-echo -e "${CYN}║${RST}  ${GRB}Proyectos${RST}    : ${WHT}${#PROJECTS[@]}${RST}"
+# Ancho interior del cuadro (sin bordes ║)
+BOX_W=58
+
+# Rellenar línea a ancho fijo (strip ANSI para medir, preserva colores)
+pad_line() {
+  local text="$1"
+  # Medir largo visible (sin códigos ANSI)
+  local visible=$(echo -e "$text" | sed $'s/\x1b\\[[0-9;]*m//g' | wc -c)
+  visible=$((visible - 1))  # wc -c incluye \n
+  local pad=$((BOX_W - visible))
+  [ $pad -lt 0 ] && pad=0
+  echo -e "${text}$(printf '%*s' $pad '')${CYN}║${RST}"
+}
+
+# Output path relativo
+OUTCOME_SHORT="outcome/"
+
+echo -e "${CYN}╔$(printf '═%.0s' $(seq 1 $BOX_W))╗${RST}"
+pad_line "  ${BOLD}${WHT}📋 INVENTARIO GKE + CLOUD SQL${RST}"
+echo -e "${CYN}╠$(printf '═%.0s' $(seq 1 $BOX_W))╣${RST}"
+pad_line "  ${GRB}Separador${RST}    : ${YLW}'${DELIMITER}'${RST}"
+pad_line "  ${GRB}Proyectos${RST}    : ${WHT}${#PROJECTS[@]}${RST}"
 for p in "${PROJECTS[@]}"; do
-  echo -e "${CYN}║${RST}    ${DIM}• ${p}${RST}"
+  pad_line "    ${DIM}• ${p}${RST}"
 done
-echo -e "${CYN}║${RST}  ${GRB}NS excluidos${RST} : ${DIM}${EXCLUDE_NS[*]:-ninguno}${RST}"
-echo -e "${CYN}║${RST}  ${GRB}Hilos${RST}        : ${BLU}${MAX_PARALLEL}${RST}"
-echo -e "${CYN}║${RST}  ${GRB}Output${RST}       : ${GRN}${OUTCOME_DIR}/${RST}"
-echo -e "${CYN}╚══════════════════════════════════════════════════════════════╝${RST}"
+pad_line "  ${GRB}NS excluidos${RST} : ${DIM}${EXCLUDE_NS[*]:-ninguno}${RST}"
+pad_line "  ${GRB}Hilos${RST}        : ${BLU}${MAX_PARALLEL}${RST}"
+pad_line "  ${GRB}Output${RST}       : ${GRN}${OUTCOME_SHORT}${RST}"
+echo -e "${CYN}╚$(printf '═%.0s' $(seq 1 $BOX_W))╝${RST}"
 
 # =============================================================================
 # Funciones de progreso y dashboard
