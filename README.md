@@ -359,6 +359,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-19 | 1.6.4 | **Validación de plataforma**: tools.py ahora detecta si se ejecuta en Windows y muestra un diálogo informativo cuando se intenta usar herramientas exclusivas de Linux (scripts .sh), sugiriendo WSL/Git Bash como alternativas. |
 | 2026-04-19 | 1.6.3 | **Certificate TLS Report**: Nueva herramienta (23) para validar certificados SSL/TLS remotos desde GKE con valores reales de TLS version y cipher. Integrada en tools.py con soporte para scripts shell. |
 | 2026-04-18 | 1.6.2 | **Cross-platform venv**: Valida que el python del venv funcione antes de usarlo; si fue creado en otra plataforma (Linux/WSL vs Windows), lo recrea automáticamente y limpia caché de requirements. |
 | 2026-04-17 | 1.6.1 | **make_dist.ps1**: Solo empaqueta folder `scm/`, lee exclusiones dinámicamente desde `.gitignore` en vez de hardcodearlas. |

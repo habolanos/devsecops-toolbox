@@ -41,7 +41,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.9.0"
+__version__ = "1.9.1"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas GCP"
 
@@ -681,12 +681,26 @@ def run_tool(tool_key: str):
     # Detectar si es script shell (.sh) o Python
     is_shell_script = str(script_path).endswith('.sh')
     if is_shell_script:
+        # Validar que no estemos en Windows (scripts shell requieren Linux/WSL/Git Bash)
+        if platform.system() == "Windows":
+            print(f"\n{Colors.FAIL}{'='*60}{Colors.ENDC}")
+            print(f"{Colors.FAIL}  ⚠️  HERRAMIENTA NO COMPATIBLE CON WINDOWS{Colors.ENDC}")
+            print(f"{Colors.FAIL}{'='*60}{Colors.ENDC}")
+            print(f"\n{Colors.WARNING}La herramienta '{tool['name']}' es un script shell (.sh){Colors.ENDC}")
+            print(f"{Colors.WARNING}y solo puede ejecutarse en sistemas Linux/Unix.{Colors.ENDC}")
+            print(f"\n{Colors.CYAN}Opciones para usar esta herramienta:{Colors.ENDC}")
+            print(f"  1. Ejecutar este launcher en {Colors.BOLD}WSL (Windows Subsystem for Linux){Colors.ENDC}")
+            print(f"  2. Usar {Colors.BOLD}Git Bash{Colors.ENDC} si está disponible")
+            print(f"  3. Ejecutar desde una máquina Linux nativa")
+            print(f"\n{Colors.FAIL}Abortando ejecución.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
         # Para scripts shell, usar sh directamente (no requiere venv)
         cmd = ["sh", str(script_path)]
     else:
         # Para scripts Python, usar el Python del venv
         cmd = [venv_python, str(script_path)]
-
+    
     # Añadir argumentos necesarios
     args = []
     tool_args = tool.get("args", [])
