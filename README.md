@@ -358,6 +358,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-18 | 1.6.2 | **Cross-platform venv**: Valida que el python del venv funcione antes de usarlo; si fue creado en otra plataforma (Linux/WSL vs Windows), lo recrea automáticamente y limpia caché de requirements. |
 | 2026-04-17 | 1.6.1 | **make_dist.ps1**: Solo empaqueta folder `scm/`, lee exclusiones dinámicamente desde `.gitignore` en vez de hardcodearlas. |
 | 2026-04-16 | 1.6.0 | **Rich UI Inventory**: Reescritura de `generar-inventario-csv.sh` a Python con Rich (spinners, barras de progreso por hilo, Panel/Tabla). Auto-instalación de rich en venv. Launcher `run_inventory.py` con importación directa (no subprocess). |
 | 2026-04-16 | 1.5.3 | **Sync Repos**: Script `sync_repos.py` para sincronización bidireccional toolbox ↔ azdo con commit automático. Nueva herramienta Inventario GKE+Cloud SQL (opción 22). |
