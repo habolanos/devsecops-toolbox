@@ -150,6 +150,7 @@ docker-compose exec toolbox bash
 Herramientas especializadas para operaciones SRE en GCP:
 
 - Artifact Registry Manager
+- **Certificate TLS Report** - Valida certificados SSL/TLS remotos desde GKE (CN, emisor, expiración, chain, TLS version, cipher reales)
 - Certificate Manager
 - Cloud Armor Configurator
 - Cloud SQL Manager
@@ -358,6 +359,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-19 | 1.6.3 | **Certificate TLS Report**: Nueva herramienta (23) para validar certificados SSL/TLS remotos desde GKE con valores reales de TLS version y cipher. Integrada en tools.py con soporte para scripts shell. |
 | 2026-04-18 | 1.6.2 | **Cross-platform venv**: Valida que el python del venv funcione antes de usarlo; si fue creado en otra plataforma (Linux/WSL vs Windows), lo recrea automáticamente y limpia caché de requirements. |
 | 2026-04-17 | 1.6.1 | **make_dist.ps1**: Solo empaqueta folder `scm/`, lee exclusiones dinámicamente desde `.gitignore` en vez de hardcodearlas. |
 | 2026-04-16 | 1.6.0 | **Rich UI Inventory**: Reescritura de `generar-inventario-csv.sh` a Python con Rich (spinners, barras de progreso por hilo, Panel/Tabla). Auto-instalación de rich en venv. Launcher `run_inventory.py` con importación directa (no subprocess). |

@@ -97,7 +97,7 @@ DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 
 # Definición de las herramientas disponibles (con grupo asignado)
-# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
+# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6,23), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
 TOOLS = {
     # ══════════ MONITORING (1-2) ══════════
     "1": {
@@ -284,6 +284,15 @@ TOOLS = {
         "args": ["--csv-file"],
         "requirements": "artifact-registry/requirements.txt",
         "group": "artifacts",
+        "status": "ready"
+    },
+    # ══════════ CERTIFICATES (23) ══════════
+    "23": {
+        "name": "Certificate TLS Report",
+        "description": "Valida certificados SSL/TLS remotos desde GKE (CN, emisor, expiración, chain, TLS version, cipher)",
+        "path": "scripts-console/check-certificate-report.sh",
+        "args": ["--host", "--port"],
+        "group": "security",
         "status": "ready"
     },
     # ══════════ INVENTORY (22) ══════════
@@ -669,7 +678,14 @@ def run_tool(tool_key: str):
         input("\nPresione Enter para continuar...")
         return
 
-    cmd = [venv_python, str(script_path)]
+    # Detectar si es script shell (.sh) o Python
+    is_shell_script = str(script_path).endswith('.sh')
+    if is_shell_script:
+        # Para scripts shell, usar sh directamente (no requiere venv)
+        cmd = ["sh", str(script_path)]
+    else:
+        # Para scripts Python, usar el Python del venv
+        cmd = [venv_python, str(script_path)]
 
     # Añadir argumentos necesarios
     args = []
@@ -748,7 +764,25 @@ def run_tool(tool_key: str):
         if namespace:
             args.extend(["--namespace", namespace])
 
-    
+    if "--host" in tool_args:
+        print(f"\n{Colors.BOLD}Ingrese el host a validar (ej: api.ejemplo.com):{Colors.ENDC} ", end="")
+        host = input().strip()
+        if not host:
+            print(f"{Colors.FAIL}Se requiere el host para validar el certificado.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        args.append(host)  # Script shell usa argumento posicional para host
+
+    if "--port" in tool_args:
+        print(f"\n{Colors.BOLD}Ingrese el puerto [443]:{Colors.ENDC} ", end="")
+        port = input().strip()
+        if not port:
+            port = "443"
+            print(f"{Colors.GREEN}Usando puerto: {port}{Colors.ENDC}")
+        else:
+            print(f"{Colors.GREEN}Usando puerto: {port}{Colors.ENDC}")
+        args.append(port)  # Script shell usa argumento posicional para puerto
+
     if "--probe-mode" in tool_args:
         print(f"\n{Colors.BOLD}Seleccione modo de validación (pod/local) [pod]:{Colors.ENDC} ", end="")
         probe_mode = input().strip().lower()
