@@ -506,11 +506,34 @@ def get_venv_python() -> Optional[str]:
     else:
         venv_python = VENV_DIR / "bin" / "python"
 
-    # Si ya existe el ejecutable del venv, lo usamos
+    # Si ya existe el ejecutable del venv, verificar que funcione
+    # (un venv creado en Linux/WSL no funciona en Windows nativo y viceversa)
     if venv_python.exists():
-        return str(venv_python)
+        try:
+            result = subprocess.run(
+                [str(venv_python), "--version"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                return str(venv_python)
+            else:
+                print(f"{Colors.WARNING}Venv existente no es funcional, recreando...{Colors.ENDC}")
+        except (subprocess.SubprocessError, OSError):
+            print(f"{Colors.WARNING}Venv existente no es funcional (creado en otra plataforma?), recreando...{Colors.ENDC}")
+        # Eliminar venv corrupto/incompatible y su caché de requirements
+        try:
+            import shutil
+            shutil.rmtree(str(VENV_DIR), ignore_errors=True)
+        except Exception:
+            pass
+        # Limpiar marker de requirements instalados (el venv nuevo no tiene paquetes)
+        try:
+            if INSTALLED_MARKER.exists():
+                INSTALLED_MARKER.unlink()
+        except Exception:
+            pass
 
-    # Si no existe, creamos el venv
+    # Si no existe o no funciona, creamos el venv
     print(f"{Colors.CYAN}Creando entorno virtual en {VENV_DIR}...{Colors.ENDC}")
     try:
         subprocess.check_call([HOST_PYTHON, "-m", "venv", str(VENV_DIR)])
