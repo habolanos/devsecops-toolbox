@@ -127,7 +127,7 @@ PLATFORMS = {
         "status": "ready"
     },
     "4": {
-        "name": "Terminal / Scripts Universales",
+        "name": "Terminal Scripts",
         "short": "TERMINAL",
         "emoji": "🐧",
         "color": "gray",

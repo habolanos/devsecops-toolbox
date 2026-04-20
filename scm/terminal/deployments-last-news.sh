@@ -7,8 +7,8 @@
 # =============================================================================
 # Agnostic: Kubernetes (kubectl) - Works with any K8s cluster
 
-NUM=${1:-15}
-TZ_ZONE="America/Mazatlan"
+NUM=${1:-${TERMINAL_K8S_LIMIT:-15}}
+TZ_ZONE=${TERMINAL_TIMEZONE:-"America/Mazatlan"}
 
 echo "============================================================="
 echo "  Deployments más recientes (ordenados por creación)"

@@ -14,10 +14,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Timeout en segundos para cada intento de conexión
-TIMEOUT=5
+# Timeout en segundos para cada intento de conexión (puede sobrescribirse via TERMINAL_TIMEOUT)
+TIMEOUT=${TERMINAL_TIMEOUT:-5}
 
 # Lista de conexiones (nombre y URL JDBC) - MODIFICAR SEGÚN NECESIDAD
+# O usar TERMINAL_DB_URLS_JSON para pasar desde config.json
 declare -A DB_URLS=(
     ["example-db1"]="jdbc:postgresql://10.0.0.1:5432/database1?currentSchema=public"
     ["example-db2"]="jdbc:postgresql://10.0.0.2:5432/database2?currentSchema=public"

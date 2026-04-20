@@ -59,6 +59,44 @@ __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
 console = Console() if RICH_AVAILABLE else None
 BASE_DIR = Path(__file__).parent.absolute()
+CONFIG_FILE = BASE_DIR / "config.json"
+CONFIG_TEMPLATE = BASE_DIR / "config.json.template"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GESTIÓN DE CONFIGURACIÓN
+# ═══════════════════════════════════════════════════════════════════════════════
+def load_config() -> Dict:
+    """Carga la configuración desde config.json si existe."""
+    if CONFIG_FILE.exists():
+        try:
+            import json
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def prepare_env_from_config() -> Dict[str, str]:
+    """Prepara variables de entorno desde la configuración."""
+    env = os.environ.copy()
+    config = load_config()
+    
+    # Variables globales
+    if config.get("timezone"):
+        env["TERMINAL_TIMEZONE"] = config["timezone"]
+    if config.get("timeout"):
+        env["TERMINAL_TIMEOUT"] = str(config["timeout"])
+    if config.get("default_namespace"):
+        env["TERMINAL_NAMESPACE"] = config["default_namespace"]
+    
+    # Variables de K8s
+    k8s_config = config.get("kubernetes", {})
+    if k8s_config.get("default_limit"):
+        env["TERMINAL_K8S_LIMIT"] = str(k8s_config["default_limit"])
+    if k8s_config.get("context"):
+        env["TERMINAL_K8S_CONTEXT"] = k8s_config["context"]
+    
+    return env
 
 class Colors:
     HEADER = '\033[95m'
@@ -263,8 +301,11 @@ def run_script(script_key: str):
     
     print(f"\n{Colors.CYAN}Ejecutando: {' '.join(cmd)}{Colors.ENDC}\n")
     
+    # Preparar variables de entorno con configuración
+    env = prepare_env_from_config()
+    
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, env=env)
     except subprocess.CalledProcessError as e:
         print(f"\n{Colors.FAIL}Error al ejecutar el script: {e}{Colors.ENDC}")
     except KeyboardInterrupt:

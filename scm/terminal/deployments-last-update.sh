@@ -10,9 +10,9 @@
 # =============================================================================
 # Agnostic: Kubernetes (kubectl) - Works with GKE, EKS, AKS, OpenShift, etc.
 
-TZ_ZONE="America/Mazatlan"
-NUM=${1:-10}                     # Por defecto top 10
-NS_FILTER=${2:-}                 # Namespace opcional
+TZ_ZONE=${TERMINAL_TIMEZONE:-"America/Mazatlan"}
+NUM=${1:-${TERMINAL_K8S_LIMIT:-10}}                     # Por defecto top 10
+NS_FILTER=${2:-${TERMINAL_NAMESPACE:-}}                 # Namespace opcional
 
 echo "============================================================="
 echo "  Deployments ordenados por ÚLTIMA ACTUALIZACIÓN (rollout más reciente)"

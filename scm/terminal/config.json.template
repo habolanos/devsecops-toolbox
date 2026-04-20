@@ -1,0 +1,28 @@
+{
+  "_description": "Configuración para scripts universales de Terminal (agnostic cloud)",
+  "_note": "Copia este archivo a config.json y personaliza los valores",
+  
+  "timezone": "America/Mazatlan",
+  "timeout": 5,
+  "default_namespace": "default",
+  
+  "db_connections": {
+    "_description": "Configuración de conexiones PostgreSQL para db-connections-checker.sh",
+    "connections": [
+      {
+        "name": "example-db1",
+        "url": "jdbc:postgresql://10.0.0.1:5432/database1?currentSchema=public"
+      },
+      {
+        "name": "example-db2", 
+        "url": "jdbc:postgresql://10.0.0.2:5432/database2?currentSchema=public"
+      }
+    ]
+  },
+  
+  "kubernetes": {
+    "_description": "Configuración por defecto para scripts de K8s",
+    "default_limit": 15,
+    "context": ""
+  }
+}

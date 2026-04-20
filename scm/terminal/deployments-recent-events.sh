@@ -16,11 +16,11 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Parámetros opcionales
-NUM_EVENTS=${1:-20}               # Por defecto muestra los últimos 20
-NAMESPACE_FILTER=${2:-}             # Si pasas un namespace, filtra solo ese
+NUM_EVENTS=${1:-${TERMINAL_K8S_LIMIT:-20}}               # Por defecto muestra los últimos 20
+NAMESPACE_FILTER=${2:-${TERMINAL_NAMESPACE:-}}             # Si pasas un namespace, filtra solo ese
 
 # Zona horaria deseada
-TZ_ZONE="America/Mazatlan"
+TZ_ZONE=${TERMINAL_TIMEZONE:-"America/Mazatlan"}
 
 # Función para convertir timestamp Kubernetes a hora local
 convert_to_local() {
