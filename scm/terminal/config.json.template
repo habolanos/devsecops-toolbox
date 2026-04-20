@@ -11,23 +11,40 @@
     "_mode": "Si hay 'connections[]' se usan todas. Si hay 'single' se usa esa única.",
     "connections": [
       {
-        "name": "example-db1",
-        "url": "jdbc:postgresql://10.0.0.1:5432/database1?currentSchema=public"
+        "name": "postgres-prod",
+        "url": "jdbc:postgresql://prod-db.company.com:5432/production?currentSchema=public"
       },
       {
-        "name": "example-db2", 
-        "url": "jdbc:postgresql://10.0.0.2:5432/database2?currentSchema=public"
+        "name": "postgres-qa", 
+        "url": "jdbc:postgresql://qa-db.company.com:5432/qa?currentSchema=public"
+      },
+      {
+        "name": "postgres-dev",
+        "url": "jdbc:postgresql://dev-db.company.com:5432/development?currentSchema=public"
+      },
+      {
+        "name": "legacy-mysql",
+        "url": "jdbc:mysql://legacy-db.company.com:3306/legacydb?useSSL=true"
       }
     ],
     "single": {
-      "name": "local-db",
-      "url": "jdbc:postgresql://localhost:5432/postgres"
+      "name": "local-postgres",
+      "url": "jdbc:postgresql://localhost:5432/postgres?currentSchema=public"
     }
   },
   
   "kubernetes": {
-    "_description": "Configuración por defecto para scripts de K8s",
-    "default_limit": 15,
+    "_description": "Configuración por defecto para scripts de K8s (deployments-last-news.sh, deployments-last-update.sh, deployments-recent-events.sh)",
+    "default_limit": 20,
     "context": ""
+  },
+  
+  "tls_certificates": {
+    "_description": "Hosts por defecto para check-certificate-report.sh",
+    "default_hosts": [
+      {"host": "google.com", "port": 443},
+      {"host": "github.com", "port": 443},
+      {"host": "api.company.com", "port": 443}
+    ]
   }
 }
