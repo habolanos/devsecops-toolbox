@@ -10,6 +10,7 @@ Punto de entrada unificado para herramientas de múltiples plataformas cloud y D
 | `gcp/` | Herramientas SRE para Google Cloud Platform |
 | `azdo/` | Herramientas para Azure DevOps |
 | `aws/` | Herramientas DevSecOps para Amazon Web Services |
+| `terminal/` | Scripts universales agnósticos de cloud (K8s, TLS, DBs) |
 | [Testing](#-testing) | Guía paso a paso para ejecutar tests |
 | [Compilar](#-compilar-distribuible) | Guía para crear el ZIP distribuible |
 
@@ -25,6 +26,7 @@ python main.py
 python gcp/tools.py
 python azdo/tools.py
 python aws/tools.py
+python terminal/tools.py  # Scripts universales
 ```
 
 ---
@@ -86,6 +88,7 @@ Al lanzar cada plataforma, el launcher configura automáticamente:
 | **AZDO** | `AZDO_ORG_URL`, `AZDO_PROJECT`, `AZDO_PAT`, `AZDO_TIMEZONE` |
 | **GCP** | `GCP_PROJECT_ID`, `GCP_REGION`, `GOOGLE_APPLICATION_CREDENTIALS`, `GKE_CLUSTER_NAME` |
 | **AWS** | `AWS_PROFILE`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| **Terminal** | No requiere configuración especial (usa kubectl, openssl, nc) |
 
 ### Comandos de Configuración
 

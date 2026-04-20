@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
 # =============================================================================
-# Script: deployments_recent_events_list.sh
+# Script: deployments-recent-events.sh
 # Descripción: Muestra los eventos más recientes relacionados con Deployments
-#              en el clúster Kubernetes, con fechas convertidas a America/Mazatlán
-# Uso: ./deployments_recent_events_list.sh [número de eventos] [namespace opcional]
-# Ejemplo: ./deployments_recent_events_list.sh 20 prod
+#              en el clúster Kubernetes, con fechas convertidas a zona local
+# Uso: ./deployments-recent-events.sh [número de eventos] [namespace opcional]
+# Ejemplo: ./deployments-recent-events.sh 20 prod
 # =============================================================================
+# Agnostic: Kubernetes (kubectl) - Works with any K8s cluster
 
 # Colores para la salida
 GREEN='\033[0;32m'
@@ -16,13 +17,13 @@ NC='\033[0m' # No Color
 
 # Parámetros opcionales
 NUM_EVENTS=${1:-20}               # Por defecto muestra los últimos 20
-NAMESPACE_FILTER=${2:-}           # Si pasas un namespace, filtra solo ese
+NAMESPACE_FILTER=${2:-}             # Si pasas un namespace, filtra solo ese
 
 # Zona horaria deseada
 TZ_ZONE="America/Mazatlan"
 
-# Función para convertir timestamp Kubernetes a hora local Mazatlán
-convert_to_mazatlan() {
+# Función para convertir timestamp Kubernetes a hora local
+convert_to_local() {
     local utc_time="$1"
     # date -d espera formato ISO, Kubernetes usa Z (UTC)
     TZ="$TZ_ZONE" date -d "$utc_time" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo "Invalid time"
@@ -30,7 +31,7 @@ convert_to_mazatlan() {
 
 echo "============================================================="
 echo "  Últimos eventos relacionados con Deployments"
-echo "  Zona horaria: America/Mazatlan (UTC-7)"
+echo "  Zona horaria: ${TZ_ZONE} (UTC-7)"
 echo "  Mostrando: $NUM_EVENTS eventos"
 if [ -n "$NAMESPACE_FILTER" ]; then
     echo "  Filtrando namespace: $NAMESPACE_FILTER"
@@ -51,7 +52,7 @@ $CMD -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.involvedObject.n
     | sort -k3 -r \
     | head -n "$NUM_EVENTS" \
     | while read -r ns deploy ts type reason msg; do
-        local_time=$(convert_to_mazatlan "$ts")
+        local_time=$(convert_to_local "$ts")
         color="$NC"
         case "$type" in
             "Normal")   color="$GREEN" ;;

@@ -126,6 +126,15 @@ PLATFORMS = {
         "description": "IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch (13 herramientas)",
         "status": "ready"
     },
+    "4": {
+        "name": "Terminal / Scripts Universales",
+        "short": "TERMINAL",
+        "emoji": "🐧",
+        "color": "gray",
+        "path": "terminal/tools.py",
+        "description": "Scripts shell agnósticos: certificados TLS, DB connections, K8s deployments (5 herramientas)",
+        "status": "ready"
+    },
     "Q": {
         "name": "Salir",
         "short": "EXIT",
@@ -188,7 +197,8 @@ def get_platform_config(platform_key: str) -> Optional[Dict[str, Any]]:
     platform_map = {
         "1": "gcp",
         "2": "azdo",
-        "3": "aws"
+        "3": "aws",
+        "4": "terminal"
     }
     
     platform_name = platform_map.get(platform_key)
@@ -209,7 +219,7 @@ def is_platform_configured(platform_key: str) -> bool:
         return False
     
     # Verificaciones específicas por plataforma
-    platform_map = {"1": "gcp", "2": "azdo", "3": "aws"}
+    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal"}
     platform_name = platform_map.get(platform_key)
     
     if platform_name == "azdo":
@@ -234,6 +244,10 @@ def is_platform_configured(platform_key: str) -> bool:
             return bool(creds.get("access_key_id") and creds.get("secret_access_key"))
         return True
     
+    elif platform_name == "terminal":
+        # Terminal no requiere configuración especial
+        return True
+    
     return True
 
 
@@ -242,7 +256,7 @@ def get_config_status() -> Dict[str, str]:
     config = load_config()
     status = {}
     
-    for key in ["1", "2", "3"]:
+    for key in ["1", "2", "3", "4"]:
         if not config:
             status[key] = "no_config"
         elif is_platform_configured(key):
@@ -286,7 +300,7 @@ def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
         return env
     
     # Variables específicas por plataforma
-    platform_map = {"1": "gcp", "2": "azdo", "3": "aws"}
+    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal"}
     platform_name = platform_map.get(platform_key)
     
     if platform_name == "azdo":
@@ -349,7 +363,7 @@ def print_config_status():
             ))
         else:
             status_lines = []
-            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS"}
+            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL"}
             for key, name in platform_names.items():
                 st = status.get(key, "no_config")
                 if st == "configured":
@@ -370,7 +384,7 @@ def print_config_status():
             print(f"{Colors.WARNING}⚠️ No se encontró config.json{Colors.ENDC}")
         else:
             print(f"{Colors.CYAN}Estado de configuración:{Colors.ENDC}")
-            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS"}.items():
+            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL"}.items():
                 st = status.get(key, "no_config")
                 symbol = "✅" if st == "configured" else "⚠️" if st == "incomplete" else "❌"
                 print(f"  {symbol} {name}")
@@ -437,7 +451,7 @@ def print_header():
 def print_menu_rich():
     """Muestra el menú con Rich."""
     config_status = get_config_status()
-    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS"}
+    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL"}
 
     table = Table(
         title="🚀 Seleccione una Plataforma",

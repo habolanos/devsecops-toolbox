@@ -97,7 +97,7 @@ DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 
 # Definición de las herramientas disponibles (con grupo asignado)
-# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6,23), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
+# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
 TOOLS = {
     # ══════════ MONITORING (1-2) ══════════
     "1": {
@@ -284,15 +284,6 @@ TOOLS = {
         "args": ["--csv-file"],
         "requirements": "artifact-registry/requirements.txt",
         "group": "artifacts",
-        "status": "ready"
-    },
-    # ══════════ CERTIFICATES (23) ══════════
-    "23": {
-        "name": "Certificate TLS Report",
-        "description": "Valida certificados SSL/TLS remotos desde GKE (CN, emisor, expiración, chain, TLS version, cipher)",
-        "path": "scripts-console/check-certificate-report.sh",
-        "args": ["--host", "--port"],
-        "group": "security",
         "status": "ready"
     },
     # ══════════ INVENTORY (22) ══════════

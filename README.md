@@ -150,7 +150,6 @@ docker-compose exec toolbox bash
 Herramientas especializadas para operaciones SRE en GCP:
 
 - Artifact Registry Manager
-- **Certificate TLS Report** - Valida certificados SSL/TLS remotos desde GKE (CN, emisor, expiración, chain, TLS version, cipher reales)
 - Certificate Manager
 - Cloud Armor Configurator
 - Cloud SQL Manager
@@ -190,6 +189,18 @@ Herramientas DevSecOps para AWS:
 - Compliance Checker
 - Network Tester
 - Secrets Manager
+
+### Terminal / Scripts Universales 🔧
+
+Scripts shell **agnósticos de cloud provider** que funcionan con cualquier cluster Kubernetes (GKE, EKS, AKS, OpenShift, on-premise):
+
+- **Certificate TLS Report** - Valida certificados SSL/TLS remotos desde cualquier cluster K8s (CN, emisor, expiración, chain, TLS version, cipher reales)
+- **Database Connections Checker** - Valida conectividad a múltiples instancias PostgreSQL usando netcat
+- **Deployments Last News** - Muestra deployments más recientes ordenados por fecha de creación
+- **Deployments Last Update** - Muestra deployments ordenados por último rollout (ReplicaSet)
+- **Deployments Recent Events** - Muestra eventos recientes relacionados con Deployments
+
+> **Nota:** Estos scripts requieren un entorno Linux/Unix (WSL, Git Bash, o Linux nativo).
 
 ---
 
@@ -282,6 +293,7 @@ devsecops-toolbox/
 │   ├── gcp/                      # Herramientas GCP
 │   ├── azdo/                     # Herramientas AZDO
 │   ├── aws/                      # Herramientas AWS
+│   ├── terminal/                 # Scripts universales (agnostic cloud)
 │   ├── tests/                    # Tests (unitarios e integración)
 │   ├── config.json.template      # Template de configuración
 │   └── README.md                 # Documentación detallada
@@ -359,6 +371,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-19 | 1.6.5 | **Terminal Scripts**: Nueva sección en main.py (opción 4) con 5 scripts shell universales agnósticos de cloud provider. Reubicados desde gcp/scripts-console/ a terminal/: Certificate TLS Report, DB Connections Checker, Deployments Last News/Update/Events. |
 | 2026-04-19 | 1.6.4 | **Validación de plataforma**: tools.py ahora detecta si se ejecuta en Windows y muestra un diálogo informativo cuando se intenta usar herramientas exclusivas de Linux (scripts .sh), sugiriendo WSL/Git Bash como alternativas. |
 | 2026-04-19 | 1.6.3 | **Certificate TLS Report**: Nueva herramienta (23) para validar certificados SSL/TLS remotos desde GKE con valores reales de TLS version y cipher. Integrada en tools.py con soporte para scripts shell. |
 | 2026-04-18 | 1.6.2 | **Cross-platform venv**: Valida que el python del venv funcione antes de usarlo; si fue creado en otra plataforma (Linux/WSL vs Windows), lo recrea automáticamente y limpia caché de requirements. |

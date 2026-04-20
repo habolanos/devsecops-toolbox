@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 
 # =============================================================================
-# Script: deployments_last_update_list.sh
+# Script: deployments-last-update.sh
 # Descripción: Muestra deployments ordenados por la fecha de su ÚLTIMO ROLLOUT
 #              (usando creationTimestamp del ReplicaSet actual)
 # Zona horaria: America/Mazatlan (UTC-7)
-# Uso: ./deployments_last_update_list.sh [número] [namespace opcional]
-# Ejemplo: ./deployments_last_update_list.sh 15 prod
+# Uso: ./deployments-last-update.sh [número] [namespace opcional]
+# Ejemplo: ./deployments-last-update.sh 15 prod
 # =============================================================================
+# Agnostic: Kubernetes (kubectl) - Works with GKE, EKS, AKS, OpenShift, etc.
 
 TZ_ZONE="America/Mazatlan"
 NUM=${1:-10}                     # Por defecto top 10
@@ -21,8 +22,8 @@ echo "  Mostrando: ${NUM}"
 echo "============================================================="
 echo ""
 
-# Función para convertir UTC a Mazatlán
-to_mazatlan() {
+# Función para convertir UTC a zona horaria configurada
+to_local_tz() {
     TZ="$TZ_ZONE" date -d "$1" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo "N/A"
 }
 
@@ -38,7 +39,7 @@ while IFS=$'\t' read -r ns dep rev replicas; do
     if [[ -n "$rs_info" ]]; then
         rs_name=$(echo "$rs_info" | cut -f1)
         rs_ts=$(echo "$rs_info" | cut -f2)
-        local_ts=$(to_mazatlan "$rs_ts")
+        local_ts=$(to_local_tz "$rs_ts")
         results+=("$ns"$'\t'"$dep"$'\t'"$local_ts"$'\t'"$rev"$'\t'"$replicas"$'\t'"$rs_name")
     else
         # Fallback si no encuentra RS (deployment sin rollout o error)
