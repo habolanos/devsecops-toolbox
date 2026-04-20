@@ -1,13 +1,14 @@
 {
   "_description": "Configuración para scripts universales de Terminal (agnostic cloud)",
-  "_note": "Copia este archivo a config.json y personaliza los valores",
+  "_note": "Copia este archivo a config.json y personaliza los valores. Prioridad: CLI args > Env vars > Este config > Interactivo",
   
   "timezone": "America/Mazatlan",
   "timeout": 5,
   "default_namespace": "default",
   
   "db_connections": {
-    "_description": "Configuración de conexiones PostgreSQL para db-connections-checker.sh",
+    "_description": "Conexiones por defecto para db-connections-checker.sh. Se usan si no se pasan --name/--url o TERMINAL_DB_*",
+    "_mode": "Si hay 'connections[]' se usan todas. Si hay 'single' se usa esa única.",
     "connections": [
       {
         "name": "example-db1",
@@ -17,7 +18,11 @@
         "name": "example-db2", 
         "url": "jdbc:postgresql://10.0.0.2:5432/database2?currentSchema=public"
       }
-    ]
+    ],
+    "single": {
+      "name": "local-db",
+      "url": "jdbc:postgresql://localhost:5432/postgres"
+    }
   },
   
   "kubernetes": {

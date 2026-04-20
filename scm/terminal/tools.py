@@ -78,6 +78,7 @@ def load_config() -> Dict:
 
 def prepare_env_from_config() -> Dict[str, str]:
     """Prepara variables de entorno desde la configuración."""
+    import json
     env = os.environ.copy()
     config = load_config()
     
@@ -95,6 +96,17 @@ def prepare_env_from_config() -> Dict[str, str]:
         env["TERMINAL_K8S_LIMIT"] = str(k8s_config["default_limit"])
     if k8s_config.get("context"):
         env["TERMINAL_K8S_CONTEXT"] = k8s_config["context"]
+    
+    # Configuración de DB connections (como JSON string)
+    db_config = config.get("db_connections", {})
+    if db_config:
+        env["TERMINAL_DB_CONFIG"] = json.dumps(db_config)
+        # También exportar single connection para compatibilidad simple
+        single = db_config.get("single", {})
+        if single.get("name"):
+            env["TERMINAL_DB_NAME"] = single["name"]
+        if single.get("url"):
+            env["TERMINAL_DB_URL"] = single["url"]
     
     return env
 
@@ -123,7 +135,7 @@ SCRIPTS = {
         "name": "Database Connections Checker",
         "description": "Valida conectividad a múltiples instancias PostgreSQL usando netcat (nc)",
         "path": "db-connections-checker.sh",
-        "args": [],
+        "args": ["name", "url"],
         "status": "ready"
     },
     "3": {
@@ -287,6 +299,19 @@ def run_script(script_key: str):
         if not port:
             port = "443"
         cmd.append(port)
+    
+    if "name" in args and "url" in args:
+        # Para db-connections-checker.sh
+        name = input(f"{Colors.BOLD}Nombre de la conexión (ej: prod-db) [dejar vacío para usar config.json]: {Colors.ENDC}").strip()
+        if name:
+            url = input(f"{Colors.BOLD}URL JDBC (ej: jdbc:postgresql://host:5432/db): {Colors.ENDC}").strip()
+            if url:
+                cmd.append(name)
+                cmd.append(url)
+            else:
+                print(f"{Colors.WARNING}URL no proporcionada, se usará configuración de config.json{Colors.ENDC}")
+        else:
+            print(f"{Colors.CYAN}Usando conexiones desde config.json{Colors.ENDC}")
     
     if "limit" in args:
         limit = input(f"{Colors.BOLD}Cantidad a mostrar [15]: {Colors.ENDC}").strip()
