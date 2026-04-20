@@ -2,7 +2,7 @@
 """
 azdo_release_deep_dive.py
 
-Deep-dive report para un Release Definition específico (por ID obligatorio).
+Deep-dive report para un Pipeline CD (Release Definition) específico por su definitionId.
 Identifica el repositorio Git vinculado en los artefactos y ejecuta los
 cuatro análisis del toolbox sobre esa combinación pipeline + repo:
 
@@ -12,7 +12,11 @@ cuatro análisis del toolbox sobre esa combinación pipeline + repo:
   4. Pipeline Drift — Cambios de stages/variables vs snapshot del último release
 
 Uso:
-  python azdo_release_deep_dive.py --release-id 42 --pat <PAT>
+  python azdo_release_deep_dive.py --definition-id 42 --pat <PAT>
+  python azdo_release_deep_dive.py --id 42 --pat <PAT>
+
+NOTA: El parámetro --definition-id (o --id) es el ID del Pipeline CD (Release Definition),
+      NO el ID de una ejecución/release específica.
 
 Autor: Harold Adrian
 """
@@ -79,7 +83,7 @@ BRANCH_ALIASES: Dict[str, List[str]] = {
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Deep-dive de un Release Definition por ID: PRs + Políticas + CD Health + Drift"
+        description="Deep-dive de un Pipeline CD (Release Definition) por su definitionId: PRs + Políticas + CD Health + Drift"
     )
     p.add_argument("--org", "-g", default=DEFAULT_ORG_URL,
                    help=f"URL de la organización (default: {DEFAULT_ORG_URL})")
@@ -87,8 +91,8 @@ def get_args() -> argparse.Namespace:
                    help=f"Nombre del proyecto (default: {DEFAULT_PROJECT})")
     p.add_argument("--pat", required=True,
                    help="PAT con permisos: Code (Read), Policy (Read), Release (Read)")
-    p.add_argument("--release-id", "--id", dest="release_id", type=int, required=True,
-                   help="ID de la Release Definition a analizar")
+    p.add_argument("--definition-id", "--id", dest="definition_id", type=int, required=True,
+                   help="ID (definitionId) del Pipeline CD (Release Definition) a analizar. Ej: 42")
     p.add_argument("--branch", "-b", default=DEFAULT_BRANCH,
                    help=f"Branch destino para análisis de PRs (default: {DEFAULT_BRANCH})")
     p.add_argument("--stage-name", default=DEFAULT_STAGE,
@@ -172,21 +176,21 @@ def days_ago(s: str) -> float:
 # RELEASE DEFINITION & RELEASES
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_release_definition(
-    org: str, project: str, release_id: int,
+    org: str, project: str, definition_id: int,
     headers: Dict, debug: bool = False,
 ) -> Optional[Dict]:
-    url = f"{vsrm(org)}/{quote(project, safe='')}/_apis/release/definitions/{release_id}"
+    url = f"{vsrm(org)}/{quote(project, safe='')}/_apis/release/definitions/{definition_id}"
     return api_get(url, headers, {"api-version": API_VERSION_DEFS}, debug)
 
 
 def get_releases(
-    org: str, project: str, release_id: int, top: int,
+    org: str, project: str, definition_id: int, top: int,
     headers: Dict, debug: bool = False,
 ) -> List[Dict]:
     url = f"{vsrm(org)}/{quote(project, safe='')}/_apis/release/releases"
     data = api_get(url, headers, {
         "api-version":  API_VERSION_RELS,
-        "definitionId": release_id,
+        "definitionId": definition_id,
         "$top":         top,
         "$expand":      "environments",
     }, debug)
@@ -609,14 +613,14 @@ def main() -> None:
     # ── 1. Release Definition ─────────────────────────────────────────────────
     if console:
         with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
-            t = p.add_task(f"Obteniendo Release Definition {args.release_id}…", total=None)
-            rdef = get_release_definition(args.org, args.project, args.release_id, headers, args.debug)
+            t = p.add_task(f"Obteniendo Release Definition {args.definition_id}…", total=None)
+            rdef = get_release_definition(args.org, args.project, args.definition_id, headers, args.debug)
             p.update(t, description=f"✅ {rdef.get('name', '?')}" if rdef else "❌ No encontrada")
     else:
-        rdef = get_release_definition(args.org, args.project, args.release_id, headers, args.debug)
+        rdef = get_release_definition(args.org, args.project, args.definition_id, headers, args.debug)
 
     if not rdef:
-        msg = f"❌ Release Definition {args.release_id} no encontrada. Verifica --release-id, --project y --pat."
+        msg = f"❌ Release Definition {args.definition_id} no encontrada. Verifica --definition-id, --project y --pat."
         (console.print(f"[red]{msg}[/]") if console else print(msg))
         sys.exit(1)
 
@@ -659,7 +663,7 @@ def main() -> None:
         }
 
     def _fetch_releases() -> List[Dict]:
-        return get_releases(args.org, args.project, args.release_id, args.top, headers, args.debug)
+        return get_releases(args.org, args.project, args.definition_id, args.top, headers, args.debug)
 
     if console:
         with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
