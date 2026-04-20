@@ -52,8 +52,10 @@ check_connection() {
     # -w $TIMEOUT = timeout en segundos
     if nc -z -w "$TIMEOUT" "$ip" "$port" 2>/dev/null; then
         echo -e "${GREEN}OK${NC}"
+        return 0
     else
         echo -e "${RED}ERROR (no responde o timeout)${NC}"
+        return 1
     fi
 }
 
