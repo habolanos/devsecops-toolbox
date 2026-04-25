@@ -21,6 +21,7 @@ import argparse
 from datetime import datetime
 from base64 import b64encode
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -51,6 +52,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECTS = ["Compras.RMI"]
 API_VERSION = "7.1"
+DEFAULT_WORKERS = 20
 
 # 🔒 LÍMITE GLOBAL (None = sin límite)
 GLOBAL_LIMIT = None
@@ -161,231 +163,260 @@ def get_yaml_file_text(org, project, repo_id, path, headers):
 # ==========================================================
 # REPOS
 # ==========================================================
-def get_repos(org, project, headers):
-    """Obtiene lista de repositorios Git del proyecto."""
+def _fetch_repo_commits(repo_info, org, project, headers):
+    """Worker: obtiene info de commits para un repo (usado por ThreadPoolExecutor)."""
+    repo_id = repo_info.get("id")
+    repo_name = repo_info.get("name")
+    repo_url = repo_info.get("webUrl")
+    default_branch = repo_info.get("defaultBranch", "refs/heads/master")
+    
+    first_commit = None
+    last_commit = None
+    total_commits = 0
+    
+    if default_branch:
+        branch_name = default_branch.replace("refs/heads/", "")
+        commits_url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo_id}/commits"
+        commits = safe_az_get(
+            commits_url, 
+            headers,
+            {"searchCriteria.itemVersion.version": branch_name, "$top": 1}
+        )
+        c_last = commits.get("value", [{}])[0] if commits else None
+        if c_last:
+            last_date = c_last.get("author", {}).get("date")
+            last_commit = last_date[:10] if last_date else None
+        
+        # Primer commit (usar commitCount del primer resultado si hay)
+        all_items = commits.get("value", []) if commits else []
+        total_commits = commits.get("count", len(all_items))
+        
+        c_first = all_items[0] if all_items else None
+        first_date = c_first.get("author", {}).get("date") if c_first else None
+        first_commit = first_date[:10] if first_date else None
+    
+    return {
+        "project": project,
+        "repo_id": repo_id,
+        "repo_name": repo_name,
+        "repo_url": repo_url,
+        "default_branch": default_branch.replace("refs/heads/", "") if default_branch else None,
+        "first_commit_date": first_commit,
+        "last_commit_date": last_commit,
+        "total_commits": total_commits,
+    }
+
+
+def get_repos(org, project, headers, workers=DEFAULT_WORKERS):
+    """Obtiene lista de repositorios Git del proyecto (commits en paralelo)."""
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories"
     data = az_get(url, headers)
     repos = apply_limit(data.get("value", []), GLOBAL_LIMIT)
     
     rows = []
-    for r in repos:
-        repo_id = r.get("id")
-        repo_name = r.get("name")
-        repo_url = r.get("webUrl")
-        default_branch = r.get("defaultBranch", "refs/heads/master")
-        
-        first_commit = None
-        last_commit = None
-        total_commits = 0
-        
-        if default_branch:
-            commits_url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo_id}/commits"
-            commits = safe_az_get(
-                commits_url, 
-                headers,
-                {"searchCriteria.itemVersion.version": default_branch.replace("refs/heads/", ""), "$top": 1}
-            )
-            c_last = commits.get("value", [{}])[0] if commits else None
-            if c_last:
-                last_date = c_last.get("author", {}).get("date")
-                last_commit = last_date[:10] if last_date else None
-            
-            # Primer commit
-            params_first = {
-                "searchCriteria.itemVersion.version": default_branch.replace("refs/heads/", ""),
-                "$top": 1,
-                "$skip": 0,
-            }
-            all_commits = safe_az_get(commits_url, headers, params_first)
-            all_items = all_commits.get("value", []) if all_commits else []
-            total_commits = len(all_items)
-            
-            c_first = all_items[0] if all_items else None
-            first_date = c_first.get("author", {}).get("date") if c_first else None
-            first_commit = first_date[:10] if first_date else None
-        
-        rows.append({
-            "project": project,
-            "repo_id": repo_id,
-            "repo_name": repo_name,
-            "repo_url": repo_url,
-            "default_branch": default_branch.replace("refs/heads/", "") if default_branch else None,
-            "first_commit_date": first_commit,
-            "last_commit_date": last_commit,
-            "total_commits": total_commits,
-        })
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_fetch_repo_commits, r, org, project, headers): r for r in repos}
+        for fut in as_completed(futures):
+            try:
+                rows.append(fut.result())
+            except Exception as e:
+                repo_name = futures[fut].get("name", "?")
+                print(f"   ⚠️ Error en repo {repo_name}: {e}")
     
+    # Ordenar por nombre para salida determinista
+    rows.sort(key=lambda x: x.get("repo_name", ""))
     return rows
 
 
 # ==========================================================
 # CI PIPELINES (YAML BUILDS)
 # ==========================================================
-def get_ci_pipelines(org, project, headers):
-    """Obtiene pipelines CI (YAML builds) del proyecto."""
+def _fetch_ci_pipeline(d, org, project, headers):
+    """Worker: obtiene detalle + último build de un CI pipeline."""
     base_url = f"https://dev.azure.com/{org}/{project}/_apis/build/definitions"
     builds_url = f"https://dev.azure.com/{org}/{project}/_apis/build/builds"
+    definition_id = d.get("id")
+    
+    try:
+        detail_url = f"{base_url}/{definition_id}"
+        detail = az_get(detail_url, headers)
+    except requests.exceptions.HTTPError as e:
+        return {
+            "project": project,
+            "ci_pipeline_id": definition_id,
+            "ci_pipeline_name": d.get("name"),
+            "repo_name": None,
+            "repo_yaml": None,
+            "yaml_path": None,
+            "last_run_id": None,
+            "last_run_date": None,
+            "last_run_status": "ERROR",
+            "last_run_result": str(e)[:200],
+            "last_run_user": None,
+            "ci_pipeline_url": f"https://dev.azure.com/{org}/{project}/_build?definitionId={definition_id}"
+        }
+    
+    repo = detail.get("repository", {})
+    repo_yaml_name = repo.get("name")
+    repo_yaml_id = repo.get("id")
+    yaml_path = detail.get("process", {}).get("yamlFilename")
+    
+    app_repo_name = None
+    
+    if repo_yaml_name and repo_yaml_name.lower() != "pipelines-projects":
+        app_repo_name = repo_yaml_name
+    else:
+        yaml_text = get_yaml_file_text(org, project, repo_yaml_id, yaml_path, headers)
+        app_repo_name = parse_app_repo_from_yaml_text(yaml_text)
+    
+    # Último build
+    last_run_id = None
+    last_run_date = None
+    last_run_status = None
+    last_run_result = None
+    last_run_user = None
+    
+    try:
+        builds_data = safe_az_get(
+            builds_url,
+            headers,
+            {"definitions": definition_id, "$top": 1, "queryOrder": "finishTimeDescending"}
+        )
+        b = builds_data.get("value", [{}])[0] if builds_data else None
+        if b:
+            last_run_id = b.get("id")
+            last_run_date = b.get("finishTime", "")[:10] if b.get("finishTime") else None
+            last_run_status = b.get("status")
+            last_run_result = b.get("result")
+            last_run_user = (b.get("requestedFor") or {}).get("displayName")
+    except Exception as e:
+        print(f"   ⚠️ Error consultando builds: {e}")
+    
+    return {
+        "project": project,
+        "ci_pipeline_id": definition_id,
+        "ci_pipeline_name": detail.get("name"),
+        "repo_name": app_repo_name,
+        "repo_yaml": repo_yaml_name,
+        "yaml_path": yaml_path,
+        "last_run_id": last_run_id,
+        "last_run_date": last_run_date,
+        "last_run_status": last_run_status,
+        "last_run_result": last_run_result,
+        "last_run_user": last_run_user,
+        "ci_pipeline_url": f"https://dev.azure.com/{org}/{project}/_build?definitionId={definition_id}"
+    }
+
+
+def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
+    """Obtiene pipelines CI (YAML builds) del proyecto (en paralelo)."""
+    base_url = f"https://dev.azure.com/{org}/{project}/_apis/build/definitions"
     
     data = az_get(base_url, headers)
     definitions = apply_limit(data.get("value", []), GLOBAL_LIMIT)
     
     rows = []
-    for d in definitions:
-        definition_id = d.get("id")
-        
-        try:
-            detail_url = f"{base_url}/{definition_id}"
-            detail = az_get(detail_url, headers)
-        except requests.exceptions.HTTPError as e:
-            print(f"    ❌ Error obteniendo CI {definition_id}: {e} — se omite")
-            rows.append({
-                "project": project,
-                "ci_pipeline_id": definition_id,
-                "ci_pipeline_name": d.get("name"),
-                "repo_name": None,
-                "repo_yaml": None,
-                "yaml_path": None,
-                "last_run_id": None,
-                "last_run_date": None,
-                "last_run_status": "ERROR",
-                "last_run_result": str(e)[:200],
-                "last_run_user": None,
-                "ci_pipeline_url": f"https://dev.azure.com/{org}/{project}/_build?definitionId={definition_id}"
-            })
-            continue
-        
-        repo = detail.get("repository", {})
-        repo_yaml_name = repo.get("name")
-        repo_yaml_id = repo.get("id")
-        yaml_path = detail.get("process", {}).get("yamlFilename")
-        
-        app_repo_name = None
-        
-        if repo_yaml_name and repo_yaml_name.lower() != "pipelines-projects":
-            app_repo_name = repo_yaml_name
-        else:
-            yaml_text = get_yaml_file_text(org, project, repo_yaml_id, yaml_path, headers)
-            app_repo_name = parse_app_repo_from_yaml_text(yaml_text)
-        
-        # Último build
-        last_run_id = None
-        last_run_date = None
-        last_run_status = None
-        last_run_result = None
-        last_run_user = None
-        
-        try:
-            builds_data = safe_az_get(
-                builds_url,
-                headers,
-                {"definitions": definition_id, "$top": 1, "queryOrder": "finishTimeDescending"}
-            )
-            b = builds_data.get("value", [{}])[0] if builds_data else None
-            if b:
-                last_run_id = b.get("id")
-                last_run_date = b.get("finishTime", "")[:10] if b.get("finishTime") else None
-                last_run_status = b.get("status")
-                last_run_result = b.get("result")
-                last_run_user = (b.get("requestedFor") or {}).get("displayName")
-        except Exception as e:
-            print(f"   ⚠️ Error consultando builds: {e}")
-        
-        rows.append({
-            "project": project,
-            "ci_pipeline_id": definition_id,
-            "ci_pipeline_name": detail.get("name"),
-            "repo_name": app_repo_name,
-            "repo_yaml": repo_yaml_name,
-            "yaml_path": yaml_path,
-            "last_run_id": last_run_id,
-            "last_run_date": last_run_date,
-            "last_run_status": last_run_status,
-            "last_run_result": last_run_result,
-            "last_run_user": last_run_user,
-            "ci_pipeline_url": f"https://dev.azure.com/{org}/{project}/_build?definitionId={definition_id}"
-        })
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers): d for d in definitions}
+        for fut in as_completed(futures):
+            try:
+                rows.append(fut.result())
+            except Exception as e:
+                def_name = futures[fut].get("name", "?")
+                print(f"   ⚠️ Error en CI pipeline {def_name}: {e}")
     
+    rows.sort(key=lambda x: x.get("ci_pipeline_name", ""))
     return rows
 
 
 # ==========================================================
 # CD PIPELINES (CLASSIC RELEASES)
 # ==========================================================
-def get_cd_pipelines(org, project, headers):
-    """Obtiene pipelines CD (classic releases) del proyecto."""
+def _fetch_cd_pipeline(d, org, project, headers):
+    """Worker: obtiene detalle + último release de un CD pipeline."""
     base_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions"
     releases_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
+    definition_id = d.get("id")
+    
+    try:
+        detail_url = f"{base_url}/{definition_id}"
+        detail = az_get(detail_url, headers)
+    except requests.exceptions.HTTPError as e:
+        return {
+            "project": project,
+            "cd_pipeline_id": definition_id,
+            "cd_pipeline_name": d.get("name"),
+            "repo_name": None,
+            "last_release_id": None,
+            "last_release_date": None,
+            "last_release_status": "ERROR",
+            "last_release_user": None,
+            "cd_pipeline_url": f"https://dev.azure.com/{org}/{project}/_release?_a=definitions&definitionId={definition_id}"
+        }
+    
+    # Extraer repo desde artefactos
+    artifacts = detail.get("artifacts", [])
+    repo_name = None
+    for art in artifacts:
+        if art.get("type") == "Git":
+            ref = art.get("definitionReference", {})
+            full_repo = ref.get("definition", {}).get("name", "")
+            if full_repo:
+                repo_name = full_repo.split("/")[-1] if "/" in full_repo else full_repo
+            break
+    
+    # Último release
+    last_release_id = None
+    last_release_date = None
+    last_release_status = None
+    last_release_user = None
+    
+    try:
+        rel_data = safe_az_get(
+            releases_url,
+            headers,
+            {"definitionId": definition_id, "$top": 1}
+        )
+        rel = rel_data.get("value", [{}])[0] if rel_data else None
+        if rel:
+            last_release_id = rel.get("id")
+            last_release_date = rel.get("createdOn", "")[:10] if rel.get("createdOn") else None
+            last_release_status = rel.get("status")
+            last_release_user = (rel.get("createdBy") or {}).get("displayName")
+    except Exception as e:
+        print(f"   ⚠️ Error consultando releases: {e}")
+    
+    return {
+        "project": project,
+        "cd_pipeline_id": definition_id,
+        "cd_pipeline_name": detail.get("name"),
+        "repo_name": repo_name,
+        "last_release_id": last_release_id,
+        "last_release_date": last_release_date,
+        "last_release_status": last_release_status,
+        "last_release_user": last_release_user,
+        "cd_pipeline_url": f"https://dev.azure.com/{org}/{project}/_release?_a=definitions&definitionId={definition_id}"
+    }
+
+
+def get_cd_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
+    """Obtiene pipelines CD (classic releases) del proyecto (en paralelo)."""
+    base_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions"
     
     data = az_get(base_url, headers)
     definitions = apply_limit(data.get("value", []), GLOBAL_LIMIT)
     
     rows = []
-    for d in definitions:
-        definition_id = d.get("id")
-        
-        try:
-            detail_url = f"{base_url}/{definition_id}"
-            detail = az_get(detail_url, headers)
-        except requests.exceptions.HTTPError as e:
-            print(f"    ❌ Error obteniendo CD {definition_id}: {e} — se omite")
-            rows.append({
-                "project": project,
-                "cd_pipeline_id": definition_id,
-                "cd_pipeline_name": d.get("name"),
-                "repo_name": None,
-                "last_release_id": None,
-                "last_release_date": None,
-                "last_release_status": "ERROR",
-                "last_release_user": None,
-                "cd_pipeline_url": f"https://dev.azure.com/{org}/{project}/_release?_a=definitions&definitionId={definition_id}"
-            })
-            continue
-        
-        # Extraer repo desde artefactos
-        artifacts = detail.get("artifacts", [])
-        repo_name = None
-        for art in artifacts:
-            if art.get("type") == "Git":
-                alias = art.get("alias", "")
-                ref = art.get("definitionReference", {})
-                full_repo = ref.get("definition", {}).get("name", "")
-                if full_repo:
-                    repo_name = full_repo.split("/")[-1] if "/" in full_repo else full_repo
-                break
-        
-        # Último release
-        last_release_id = None
-        last_release_date = None
-        last_release_status = None
-        last_release_user = None
-        
-        try:
-            rel_data = safe_az_get(
-                releases_url,
-                headers,
-                {"definitionId": definition_id, "$top": 1}
-            )
-            rel = rel_data.get("value", [{}])[0] if rel_data else None
-            if rel:
-                last_release_id = rel.get("id")
-                last_release_date = rel.get("createdOn", "")[:10] if rel.get("createdOn") else None
-                last_release_status = rel.get("status")
-                last_release_user = (rel.get("createdBy") or {}).get("displayName")
-        except Exception as e:
-            print(f"   ⚠️ Error consultando releases: {e}")
-        
-        rows.append({
-            "project": project,
-            "cd_pipeline_id": definition_id,
-            "cd_pipeline_name": detail.get("name"),
-            "repo_name": repo_name,
-            "last_release_id": last_release_id,
-            "last_release_date": last_release_date,
-            "last_release_status": last_release_status,
-            "last_release_user": last_release_user,
-            "cd_pipeline_url": f"https://dev.azure.com/{org}/{project}/_release?_a=definitions&definitionId={definition_id}"
-        })
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_fetch_cd_pipeline, d, org, project, headers): d for d in definitions}
+        for fut in as_completed(futures):
+            try:
+                rows.append(fut.result())
+            except Exception as e:
+                def_name = futures[fut].get("name", "?")
+                print(f"   ⚠️ Error en CD pipeline {def_name}: {e}")
     
+    rows.sort(key=lambda x: x.get("cd_pipeline_name", ""))
     return rows
 
 
