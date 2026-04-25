@@ -136,7 +136,9 @@ def process_repo(repo: dict, since_date: str, org: str, project: str, headers: d
 def export_to_excel(branches: list, org: str, project: str, since_date: str, output_file: str = None):
     """Exporta ramas a Excel con resumen."""
     if not output_file:
-        output_file = f"branches_created_{org}_{project}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        output_dir = get_output_dir()
+        default_name = f"branches_created_{org}_{project}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        output_file = str(output_dir / default_name)
     
     wb = Workbook()
     

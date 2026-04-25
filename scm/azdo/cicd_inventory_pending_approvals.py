@@ -110,7 +110,9 @@ def get_validador_status(release_id: int, org: str, project: str, pat: str):
 def export_to_excel(approvals: list, org: str, project: str, pat: str, filename: str = None):
     """Exporta aprobaciones a Excel."""
     if not filename:
-        filename = f"pending_approvals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        output_dir = get_output_dir()
+        default_name = f"pending_approvals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = str(output_dir / default_name)
     
     wb = Workbook()
     ws = wb.active

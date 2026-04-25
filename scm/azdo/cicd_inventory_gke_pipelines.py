@@ -274,8 +274,10 @@ Ejemplos:
             "variables": d.get("variables", {})
         })
     
-    # Generar Excel
-    output_file = args.output or f"gke_cd_pipelines_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    # Generar Excel en directorio de salida centralizado
+    output_dir = get_output_dir()
+    default_name = f"gke_cd_pipelines_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    output_file = args.output or str(output_dir / default_name)
     generate_excel(data, org, args.project, args.keyword, output_file)
     
     print(f"\n✅ Reporte generado: {output_file}")

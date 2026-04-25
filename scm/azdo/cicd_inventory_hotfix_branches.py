@@ -161,7 +161,9 @@ def process_repository(org: str, project: str, repo: dict, pattern: str, headers
 def export_to_excel(data: list, org: str, project: str, output_file: str = None):
     """Exporta a Excel."""
     if not output_file:
-        output_file = f"hotfix_branches_{org}_{project}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        output_dir = get_output_dir()
+        default_name = f"hotfix_branches_{org}_{project}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        output_file = str(output_dir / default_name)
     
     df = pd.DataFrame(data)
     

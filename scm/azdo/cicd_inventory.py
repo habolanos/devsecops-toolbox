@@ -684,8 +684,10 @@ Ejemplos:
         global GLOBAL_LIMIT
         GLOBAL_LIMIT = args.limit
     
-    # Generar nombre de archivo
-    output_file = args.output or f"inventario_cicd_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    # Generar nombre de archivo en directorio de salida centralizado
+    output_dir = get_output_dir()
+    default_name = f"inventario_cicd_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    output_file = args.output or str(output_dir / default_name)
     
     # Normalizar org: aceptar tanto URL completa como nombre simple
     org = normalize_org(args.org)
