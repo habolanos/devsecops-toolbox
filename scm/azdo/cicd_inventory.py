@@ -66,20 +66,23 @@ def get_headers(pat: str):
 
 
 def az_get(url, headers, params=None, max_retries=5):
-    """GET con retry y backoff exponencial para errores transitorios."""
+    """GET con retry y backoff exponencial para errores transitorios (5xx/red)."""
     params = params or {}
     params["api-version"] = API_VERSION
     
     for attempt in range(max_retries):
         try:
             r = requests.get(url, headers=headers, params=params, timeout=30)
-            if r.status_code == 503:
+            if r.status_code >= 500:
                 wait = 2 ** attempt
-                print(f"⚠️  503 en {url[:60]}... retry {attempt+1}/{max_retries} (espera {wait}s)")
+                print(f"⚠️  {r.status_code} en {url[:60]}... retry {attempt+1}/{max_retries} (espera {wait}s)")
                 time.sleep(wait)
                 continue
             r.raise_for_status()
             return r.json()
+        except requests.exceptions.HTTPError as e:
+            # 4xx = client error, no reintentar
+            raise
         except requests.exceptions.RequestException as e:
             if attempt == max_retries - 1:
                 raise
