@@ -69,8 +69,9 @@ GLOBAL_LIMIT = None
 
 
 def _progress_context():
-    """Retorna un contexto Rich Progress o un stub simple si Rich no está disponible."""
+    """Retorna un contexto Rich Progress que escribe al terminal real (no TeeWriter)."""
     if RICH_AVAILABLE:
+        console = Console(file=sys.__stdout__)
         return Progress(
             SpinnerColumn(),
             TextColumn("[bold blue]{task.description}"),
@@ -78,6 +79,7 @@ def _progress_context():
             TaskProgressColumn(),
             TextColumn("({task.completed}/{task.total})"),
             TimeElapsedColumn(),
+            console=console,
         )
     return None
 
@@ -107,17 +109,28 @@ class TeeWriter:
         self.terminal = sys.__stdout__
         self.log = open(log_path, "w", encoding="utf-8")
         self.log_path = log_path
+        self._paused = False  # Cuando True, solo escribe al archivo log
 
     def write(self, message):
-        self.terminal.write(message)
         self.log.write(message)
+        if not self._paused:
+            self.terminal.write(message)
 
     def flush(self):
-        self.terminal.flush()
         self.log.flush()
+        if not self._paused:
+            self.terminal.flush()
 
     def close(self):
         self.log.close()
+
+    def pause_terminal(self):
+        """Pausa escritura al terminal (Rich toma control)."""
+        self._paused = True
+
+    def resume_terminal(self):
+        """Reanuda escritura al terminal."""
+        self._paused = False
 
 
 def setup_logging(script_name):
@@ -357,7 +370,7 @@ def _fetch_repo_commits(repo_info, org, project, headers):
     }
 
 
-def get_repos(org, project, headers, workers=DEFAULT_WORKERS):
+def get_repos(org, project, headers, workers=DEFAULT_WORKERS, tee=None):
     """Obtiene lista de repositorios Git del proyecto (commits en paralelo)."""
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories"
     data = az_get(url, headers)
@@ -368,6 +381,7 @@ def get_repos(org, project, headers, workers=DEFAULT_WORKERS):
     progress = _progress_context()
     
     if progress:
+        if tee: tee.pause_terminal()
         with progress:
             task = progress.add_task("📦 Repositorios", total=total)
             with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -379,6 +393,7 @@ def get_repos(org, project, headers, workers=DEFAULT_WORKERS):
                         repo_name = futures[fut].get("name", "?")
                         print(f"   ⚠️ Error en repo {repo_name}: {e}")
                     progress.advance(task)
+        if tee: tee.resume_terminal()
     else:
         sp = _SimpleProgress("📦 Repositorios", total)
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -479,7 +494,7 @@ def _fetch_ci_pipeline(d, org, project, headers, pipelines_clone_path=None):
     }
 
 
-def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS, pipelines_clone_path=None):
+def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS, pipelines_clone_path=None, tee=None):
     """Obtiene pipelines CI (YAML builds) del proyecto (en paralelo)."""
     base_url = f"https://dev.azure.com/{org}/{project}/_apis/build/definitions"
     
@@ -491,6 +506,7 @@ def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS, pipelines_c
     progress = _progress_context()
     
     if progress:
+        if tee: tee.pause_terminal()
         with progress:
             task = progress.add_task("🔧 CI Pipelines", total=total)
             with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -502,6 +518,7 @@ def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS, pipelines_c
                         def_name = futures[fut].get("name", "?")
                         print(f"   ⚠️ Error en CI pipeline {def_name}: {e}")
                     progress.advance(task)
+        if tee: tee.resume_terminal()
     else:
         sp = _SimpleProgress("🔧 CI Pipelines", total)
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -589,7 +606,7 @@ def _fetch_cd_pipeline(d, org, project, headers):
     }
 
 
-def get_cd_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
+def get_cd_pipelines(org, project, headers, workers=DEFAULT_WORKERS, tee=None):
     """Obtiene pipelines CD (classic releases) del proyecto (en paralelo)."""
     base_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions"
     
@@ -601,6 +618,7 @@ def get_cd_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
     progress = _progress_context()
     
     if progress:
+        if tee: tee.pause_terminal()
         with progress:
             task = progress.add_task("🚀 CD Pipelines", total=total)
             with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -612,6 +630,7 @@ def get_cd_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
                         def_name = futures[fut].get("name", "?")
                         print(f"   ⚠️ Error en CD pipeline {def_name}: {e}")
                     progress.advance(task)
+        if tee: tee.resume_terminal()
     else:
         sp = _SimpleProgress("🚀 CD Pipelines", total)
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -751,7 +770,7 @@ Ejemplos:
         print(f"\n📦 Proyecto: {project}")
         
         print(f"\n  ── Obteniendo repositorios ──")
-        project_repos = get_repos(org, project, headers)
+        project_repos = get_repos(org, project, headers, tee=tee)
         repos_rows.extend(project_repos)
         print(f"  📊 Total repositorios: {len(project_repos)}")
         
@@ -767,8 +786,8 @@ Ejemplos:
         parallel_workers = DEFAULT_WORKERS // 2
         print(f"\n  ── Obteniendo CI + CD pipelines en paralelo ({parallel_workers} hilos c/u) ──")
         with ThreadPoolExecutor(max_workers=2) as executor:
-            ci_future = executor.submit(get_ci_pipelines, org, project, headers, parallel_workers, pipelines_clone_path)
-            cd_future = executor.submit(get_cd_pipelines, org, project, headers, parallel_workers)
+            ci_future = executor.submit(get_ci_pipelines, org, project, headers, parallel_workers, pipelines_clone_path, tee)
+            cd_future = executor.submit(get_cd_pipelines, org, project, headers, parallel_workers, tee)
             project_ci = ci_future.result()
             project_cd = cd_future.result()
         ci_rows.extend(project_ci)

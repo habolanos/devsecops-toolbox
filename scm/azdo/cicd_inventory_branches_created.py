@@ -27,6 +27,7 @@ except ImportError:
 
 try:
     from rich.progress import Progress, SpinnerColumn, BarColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
+    from rich.console import Console
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
@@ -64,17 +65,28 @@ class TeeWriter:
         self.terminal = sys.__stdout__
         self.log = open(log_path, "w", encoding="utf-8")
         self.log_path = log_path
+        self._paused = False  # Cuando True, solo escribe al archivo log
 
     def write(self, message):
-        self.terminal.write(message)
         self.log.write(message)
+        if not self._paused:
+            self.terminal.write(message)
 
     def flush(self):
-        self.terminal.flush()
         self.log.flush()
+        if not self._paused:
+            self.terminal.flush()
 
     def close(self):
         self.log.close()
+
+    def pause_terminal(self):
+        """Pausa escritura al terminal (Rich toma control)."""
+        self._paused = True
+
+    def resume_terminal(self):
+        """Reanuda escritura al terminal."""
+        self._paused = False
 
 
 def setup_logging(script_name):
@@ -117,15 +129,17 @@ class _SimpleProgress:
 
 
 def _progress_context():
-    """Retorna contexto Rich Progress o None si no está disponible."""
+    """Retorna contexto Rich Progress que escribe al terminal real (no TeeWriter)."""
     if not RICH_AVAILABLE:
         return None
+    console = Console(file=sys.__stdout__)
     return Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
         TimeElapsedColumn(),
+        console=console,
     )
 
 
@@ -342,11 +356,13 @@ Ejemplos:
     
     all_branches = []
     total = len(repos)
-    print(f"\n📦 Consultando {total} repositorios (concurrente)...\n")
+    print(f"\n📦 Consultando {total} repositorios (concurrente)...")
     
     progress = _progress_context()
     
     if progress:
+        # Pausar TeeWriter del terminal para que Rich tome control
+        tee.pause_terminal()
         with progress:
             task = progress.add_task("🌿 Ramas creadas", total=total)
             with ThreadPoolExecutor(max_workers=args.workers) as executor:
@@ -359,6 +375,8 @@ Ejemplos:
                         repo_name = futures[f].get("name", "?")
                         print(f"   ⚠️ Error en repo {repo_name}: {e}")
                     progress.advance(task)
+        # Reanudar TeeWriter
+        tee.resume_terminal()
     else:
         sp = _SimpleProgress("🌿 Ramas creadas", total)
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
