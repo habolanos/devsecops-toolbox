@@ -58,6 +58,13 @@ def get_headers(pat: str):
     return {"Authorization": f"Basic :{pat}"}
 
 
+def normalize_org(org: str) -> str:
+    """Extrae el nombre de la organización desde una URL completa o nombre simple."""
+    if org.startswith("http"):
+        return org.rstrip("/").split("/")[-1]
+    return org
+
+
 def get_pending_approvals(org: str, project: str, pat: str):
     """Obtiene aprobaciones pendientes del proyecto."""
     base_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release"
@@ -210,12 +217,14 @@ Ejemplos:
         print("❌ ERROR: Configura tu PAT via --pat o variable de entorno AZURE_PAT")
         exit(1)
     
+    org = normalize_org(args.org)
+
     print(f"🔍 Consultando aprobaciones pendientes...")
-    print(f"   Org: {args.org}")
+    print(f"   Org: {org}")
     print(f"   Project: {args.project}")
     print("=" * 60)
     
-    approvals = get_pending_approvals(args.org, args.project, pat)
+    approvals = get_pending_approvals(org, args.project, pat)
     
     if not approvals:
         print("\n✅ No hay aprobaciones pendientes.")
@@ -223,7 +232,7 @@ Ejemplos:
     
     print(f"\n📝 {len(approvals)} aprobación(es) pendiente(s) encontrada(s)")
     
-    filename = export_to_excel(approvals, args.org, args.project, pat, args.output)
+    filename = export_to_excel(approvals, org, args.project, pat, args.output)
     print(f"\n✅ Archivo generado: {filename}")
 
 

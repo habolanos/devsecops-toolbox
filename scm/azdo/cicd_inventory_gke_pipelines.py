@@ -65,6 +65,13 @@ def get_headers(pat: str):
     return {"Authorization": f"Basic {token_b64}", "Content-Type": "application/json"}
 
 
+def normalize_org(org: str) -> str:
+    """Extrae el nombre de la organización desde una URL completa o nombre simple."""
+    if org.startswith("http"):
+        return org.rstrip("/").split("/")[-1]
+    return org
+
+
 def resolve_base(org: str, project: str, endpoint: str):
     """Release endpoints van contra vsrm.dev.azure.com."""
     if endpoint.startswith("release/"):
@@ -221,11 +228,13 @@ Ejemplos:
     
     headers = get_headers(pat)
     
+    org = normalize_org(args.org)
+
     print(f"🔍 Buscando pipelines CD con keyword '{args.keyword}'...")
-    print(f"   Org: {args.org}")
+    print(f"   Org: {org}")
     print(f"   Project: {args.project}")
     
-    definitions = fetch_definitions(args.org, args.project, headers, args.keyword)
+    definitions = fetch_definitions(org, args.project, headers, args.keyword)
     print(f"✅ {len(definitions)} pipelines encontrados")
     
     if not definitions:
@@ -238,7 +247,7 @@ Ejemplos:
         def_name = d.get("name")
         print(f"  [{i}/{len(definitions)}] Analizando: {def_name}...")
         
-        last_rel = fetch_last_release(def_id, args.org, args.project, headers)
+        last_rel = fetch_last_release(def_id, org, args.project, headers)
         stages = build_stage_status(last_rel)
         
         # Estado general
@@ -258,7 +267,7 @@ Ejemplos:
         data.append({
             "id": def_id,
             "name": def_name,
-            "url": f"https://dev.azure.com/{args.org}/{args.project}/_release?_a=definitions&definitionId={def_id}",
+            "url": f"https://dev.azure.com/{org}/{args.project}/_release?_a=definitions&definitionId={def_id}",
             "last_release": last_rel,
             "stages": stages,
             "overall_status": overall,
@@ -267,7 +276,7 @@ Ejemplos:
     
     # Generar Excel
     output_file = args.output or f"gke_cd_pipelines_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    generate_excel(data, args.org, args.project, args.keyword, output_file)
+    generate_excel(data, org, args.project, args.keyword, output_file)
     
     print(f"\n✅ Reporte generado: {output_file}")
     print(f"   Total pipelines: {len(data)}")

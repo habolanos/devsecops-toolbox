@@ -68,6 +68,13 @@ def get_headers(pat: str):
     }
 
 
+def normalize_org(org: str) -> str:
+    """Extrae el nombre de la organización desde una URL completa o nombre simple."""
+    if org.startswith("http"):
+        return org.rstrip("/").split("/")[-1]
+    return org
+
+
 def get_repositories(org: str, project: str, headers: dict):
     """Obtiene lista de repositorios del proyecto."""
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories"
@@ -224,13 +231,15 @@ Ejemplos:
     headers = get_headers(pat)
     since_dt = datetime.fromisoformat(args.since.replace("Z", "+00:00"))
     
+    org = normalize_org(args.org)
+
     print(f"🔍 Analizando ramas creadas desde: {args.since}")
-    print(f"   Org: {args.org}")
+    print(f"   Org: {org}")
     print(f"   Project: {args.project}")
     print(f"   API: {API_VERSION} | Workers: {args.workers}")
     print("=" * 60)
     
-    repos = get_repositories(args.org, args.project, headers)
+    repos = get_repositories(org, args.project, headers)
     
     if args.repo_limit:
         repos = repos[:args.repo_limit]
@@ -240,7 +249,7 @@ Ejemplos:
     print(f"\n📦 Consultando {len(repos)} repositorios (concurrente)...\n")
     
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(process_repo, r, args.since, args.org, args.project, headers): r for r in repos}
+        futures = {executor.submit(process_repo, r, args.since, org, args.project, headers): r for r in repos}
         done = 0
         
         for f in as_completed(futures):
@@ -259,7 +268,7 @@ Ejemplos:
     
     print(f"\n✅ Total ramas nuevas encontradas: {len(all_branches)}")
     
-    output_file = export_to_excel(all_branches, args.org, args.project, args.since, args.output)
+    output_file = export_to_excel(all_branches, org, args.project, args.since, args.output)
     print(f"\n💾 Archivo generado: {output_file}")
 
 

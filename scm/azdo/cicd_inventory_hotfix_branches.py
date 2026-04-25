@@ -79,6 +79,13 @@ def azure_get(url: str, headers: dict, params=None, retries=5, timeout=15):
     raise Exception(f"Max retries ({retries}) exceeded for {url}")
 
 
+def normalize_org(org: str) -> str:
+    """Extrae el nombre de la organización desde una URL completa o nombre simple."""
+    if org.startswith("http"):
+        return org.rstrip("/").split("/")[-1]
+    return org
+
+
 def get_repositories(org: str, project: str, headers: dict):
     """Obtiene lista de repositorios."""
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories"
@@ -212,13 +219,15 @@ Ejemplos:
     
     headers = get_headers(pat)
     
+    org = normalize_org(args.org)
+
     print(f"🔍 Buscando ramas con patrón '{args.pattern}'...")
-    print(f"   Org: {args.org}")
+    print(f"   Org: {org}")
     print(f"   Project: {args.project}")
     print(f"   API: {API_VERSION}")
     print("=" * 60)
     
-    repos = get_repositories(args.org, args.project, headers)
+    repos = get_repositories(org, args.project, headers)
     print(f"📦 {len(repos)} repositorios encontrados\n")
     
     all_hotfix_branches = []
@@ -228,7 +237,7 @@ Ejemplos:
         print(f"  [{i}/{len(repos)}] Analizando: {repo_name}...")
         
         try:
-            hotfix_branches = process_repository(args.org, args.project, repo, args.pattern, headers)
+            hotfix_branches = process_repository(org, args.project, repo, args.pattern, headers)
             if hotfix_branches:
                 all_hotfix_branches.extend(hotfix_branches)
                 print(f"      ✅ {len(hotfix_branches)} ramas hotfix encontradas")
@@ -246,7 +255,7 @@ Ejemplos:
     
     print(f"\n✅ Total ramas hotfix: {len(all_hotfix_branches)}")
     
-    output_file = export_to_excel(all_hotfix_branches, args.org, args.project, args.output)
+    output_file = export_to_excel(all_hotfix_branches, org, args.project, args.output)
     print(f"\n💾 Archivo generado: {output_file}")
 
 

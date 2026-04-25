@@ -105,6 +105,17 @@ def apply_limit(items, limit):
     return items
 
 
+def normalize_org(org: str) -> str:
+    """Extrae el nombre de la organización desde una URL completa o nombre simple.
+
+    Acepta tanto 'Coppel-Retail' como 'https://dev.azure.com/Coppel-Retail'.
+    """
+    if org.startswith("http"):
+        # https://dev.azure.com/Coppel-Retail → Coppel-Retail
+        return org.rstrip("/").split("/")[-1]
+    return org
+
+
 def normalize_repo_name(name):
     """Normaliza nombre de repo para matching."""
     if not name:
@@ -473,7 +484,10 @@ Ejemplos:
     # Generar nombre de archivo
     output_file = args.output or f"inventario_cicd_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     
-    print(f"🔍 Analizando organización: {args.org}")
+    # Normalizar org: aceptar tanto URL completa como nombre simple
+    org = normalize_org(args.org)
+
+    print(f"🔍 Analizando organización: {org}")
     print(f"📁 Proyectos: {', '.join(projects)}")
     print(f"💾 Output: {output_file}")
     print("=" * 60)
@@ -486,15 +500,15 @@ Ejemplos:
         print(f"\n📦 Proyecto: {project}")
         
         print(f"\n  ── Obteniendo repositorios ──")
-        repos_rows.extend(get_repos(args.org, project, headers))
+        repos_rows.extend(get_repos(org, project, headers))
         print(f"  ✅ {len(repos_rows)} repos encontrados")
         
         print(f"\n  ── Obteniendo CI pipelines ──")
-        ci_rows.extend(get_ci_pipelines(args.org, project, headers))
+        ci_rows.extend(get_ci_pipelines(org, project, headers))
         print(f"  ✅ {len(ci_rows)} CI pipelines encontrados")
         
         print(f"\n  ── Obteniendo CD pipelines ──")
-        cd_rows.extend(get_cd_pipelines(args.org, project, headers))
+        cd_rows.extend(get_cd_pipelines(org, project, headers))
         print(f"  ✅ {len(cd_rows)} CD pipelines encontrados")
     
     print(f"\n🔗 Construyendo relación Repo → CI → CD ...")
