@@ -85,10 +85,13 @@ Al lanzar cada plataforma, el launcher configura automáticamente:
 
 | Plataforma | Variables |
 |------------|-----------|
+| **Global** | `DEVSECOPS_OUTPUT_DIR` — Directorio de salida absoluto para reportes (desde `global.output_dir`) |
 | **AZDO** | `AZDO_ORG_URL`, `AZDO_PROJECT`, `AZDO_PAT`, `AZDO_TIMEZONE` |
 | **GCP** | `GCP_PROJECT_ID`, `GCP_REGION`, `GOOGLE_APPLICATION_CREDENTIALS`, `GKE_CLUSTER_NAME` |
 | **AWS** | `AWS_PROFILE`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
 | **Terminal** | No requiere configuración especial (usa kubectl, openssl, nc) |
+
+> **Nota sobre `DEVSECOPS_OUTPUT_DIR`**: Si `global.output_dir` en `config.json` es una ruta relativa (ej: `"outcome"`), `main.py` la resuelve automáticamente como absoluta desde la raíz de `scm/` antes de exportarla. Si es absoluta se usa tal cual. Todas las herramientas pueden leer esta variable para guardar resultados en una ubicación consistente sin importar desde dónde se ejecuten.
 
 ### Comandos de Configuración
 

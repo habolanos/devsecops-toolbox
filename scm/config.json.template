@@ -61,6 +61,7 @@
     "debug": false,
     "verbose": false,
     "output_dir": "outcome",
+    "_output_dir_info": "Ruta relativa a la raíz de scm/ (ej: 'outcome' → scm/outcome). Si es ruta absoluta se usa tal cual. Inyectada como DEVSECOPS_OUTPUT_DIR a todas las herramientas.",
     "log_level": "INFO",
     "proxy": {
       "enabled": false,

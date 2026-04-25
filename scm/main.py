@@ -284,7 +284,10 @@ def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
     if global_config.get("verbose"):
         env["DEVSECOPS_VERBOSE"] = "1"
     if global_config.get("output_dir"):
-        env["DEVSECOPS_OUTPUT_DIR"] = global_config["output_dir"]
+        output_dir = Path(global_config["output_dir"])
+        if not output_dir.is_absolute():
+            output_dir = BASE_DIR / output_dir
+        env["DEVSECOPS_OUTPUT_DIR"] = str(output_dir.resolve())
     
     # Proxy
     proxy = global_config.get("proxy", {})
