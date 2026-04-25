@@ -20,7 +20,10 @@ import sys
 from base64 import b64encode
 from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = lambda *a, **k: None  # noqa: E731
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
