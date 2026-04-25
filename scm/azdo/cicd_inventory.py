@@ -27,6 +27,12 @@ try:
 except ImportError:
     load_dotenv = lambda *a, **k: None  # noqa: E731
 
+try:
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
     from utils import get_output_dir
@@ -52,10 +58,43 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECTS = ["Compras.RMI"]
 API_VERSION = "7.1"
-DEFAULT_WORKERS = 20
+DEFAULT_WORKERS = 30
 
 # 🔒 LÍMITE GLOBAL (None = sin límite)
 GLOBAL_LIMIT = None
+
+
+def _progress_context():
+    """Retorna un contexto Rich Progress o un stub simple si Rich no está disponible."""
+    if RICH_AVAILABLE:
+        return Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(bar_width=40),
+            TaskProgressColumn(),
+            TextColumn("({task.completed}/{task.total})"),
+            TimeElapsedColumn(),
+        )
+    return None
+
+
+class _SimpleProgress:
+    """Fallback: imprime progreso como texto simple."""
+    def __init__(self, desc, total):
+        self.desc = desc
+        self.total = total
+        self.completed = 0
+        self._last_pct = -1
+
+    def advance(self, n=1):
+        self.completed += n
+        pct = int(self.completed / self.total * 100) if self.total else 100
+        if pct != self._last_pct and pct % 10 == 0:
+            print(f"  {self.desc}: {self.completed}/{self.total} ({pct}%)")
+            self._last_pct = pct
+
+    def finish(self, msg):
+        print(f"  ✅ {msg}")
 
 
 def get_headers(pat: str):
@@ -212,18 +251,36 @@ def get_repos(org, project, headers, workers=DEFAULT_WORKERS):
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories"
     data = az_get(url, headers)
     repos = apply_limit(data.get("value", []), GLOBAL_LIMIT)
+    total = len(repos)
     
     rows = []
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_fetch_repo_commits, r, org, project, headers): r for r in repos}
-        for fut in as_completed(futures):
-            try:
-                rows.append(fut.result())
-            except Exception as e:
-                repo_name = futures[fut].get("name", "?")
-                print(f"   ⚠️ Error en repo {repo_name}: {e}")
+    progress = _progress_context()
     
-    # Ordenar por nombre para salida determinista
+    if progress:
+        with progress:
+            task = progress.add_task("📦 Repositorios", total=total)
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_fetch_repo_commits, r, org, project, headers): r for r in repos}
+                for fut in as_completed(futures):
+                    try:
+                        rows.append(fut.result())
+                    except Exception as e:
+                        repo_name = futures[fut].get("name", "?")
+                        print(f"   ⚠️ Error en repo {repo_name}: {e}")
+                    progress.advance(task)
+    else:
+        sp = _SimpleProgress("📦 Repositorios", total)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_fetch_repo_commits, r, org, project, headers): r for r in repos}
+            for fut in as_completed(futures):
+                try:
+                    rows.append(fut.result())
+                except Exception as e:
+                    repo_name = futures[fut].get("name", "?")
+                    print(f"   ⚠️ Error en repo {repo_name}: {e}")
+                sp.advance()
+        sp.finish(f"{len(rows)}/{total} repositorios procesados")
+    
     rows.sort(key=lambda x: x.get("repo_name", ""))
     return rows
 
@@ -314,16 +371,35 @@ def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
     
     data = az_get(base_url, headers)
     definitions = apply_limit(data.get("value", []), GLOBAL_LIMIT)
+    total = len(definitions)
     
     rows = []
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers): d for d in definitions}
-        for fut in as_completed(futures):
-            try:
-                rows.append(fut.result())
-            except Exception as e:
-                def_name = futures[fut].get("name", "?")
-                print(f"   ⚠️ Error en CI pipeline {def_name}: {e}")
+    progress = _progress_context()
+    
+    if progress:
+        with progress:
+            task = progress.add_task("🔧 CI Pipelines", total=total)
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers): d for d in definitions}
+                for fut in as_completed(futures):
+                    try:
+                        rows.append(fut.result())
+                    except Exception as e:
+                        def_name = futures[fut].get("name", "?")
+                        print(f"   ⚠️ Error en CI pipeline {def_name}: {e}")
+                    progress.advance(task)
+    else:
+        sp = _SimpleProgress("🔧 CI Pipelines", total)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers): d for d in definitions}
+            for fut in as_completed(futures):
+                try:
+                    rows.append(fut.result())
+                except Exception as e:
+                    def_name = futures[fut].get("name", "?")
+                    print(f"   ⚠️ Error en CI pipeline {def_name}: {e}")
+                sp.advance()
+        sp.finish(f"{len(rows)}/{total} CI pipelines procesados")
     
     rows.sort(key=lambda x: x.get("ci_pipeline_name", ""))
     return rows
@@ -405,16 +481,35 @@ def get_cd_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
     
     data = az_get(base_url, headers)
     definitions = apply_limit(data.get("value", []), GLOBAL_LIMIT)
+    total = len(definitions)
     
     rows = []
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_fetch_cd_pipeline, d, org, project, headers): d for d in definitions}
-        for fut in as_completed(futures):
-            try:
-                rows.append(fut.result())
-            except Exception as e:
-                def_name = futures[fut].get("name", "?")
-                print(f"   ⚠️ Error en CD pipeline {def_name}: {e}")
+    progress = _progress_context()
+    
+    if progress:
+        with progress:
+            task = progress.add_task("🚀 CD Pipelines", total=total)
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_fetch_cd_pipeline, d, org, project, headers): d for d in definitions}
+                for fut in as_completed(futures):
+                    try:
+                        rows.append(fut.result())
+                    except Exception as e:
+                        def_name = futures[fut].get("name", "?")
+                        print(f"   ⚠️ Error en CD pipeline {def_name}: {e}")
+                    progress.advance(task)
+    else:
+        sp = _SimpleProgress("🚀 CD Pipelines", total)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_fetch_cd_pipeline, d, org, project, headers): d for d in definitions}
+            for fut in as_completed(futures):
+                try:
+                    rows.append(fut.result())
+                except Exception as e:
+                    def_name = futures[fut].get("name", "?")
+                    print(f"   ⚠️ Error en CD pipeline {def_name}: {e}")
+                sp.advance()
+        sp.finish(f"{len(rows)}/{total} CD pipelines procesados")
     
     rows.sort(key=lambda x: x.get("cd_pipeline_name", ""))
     return rows
@@ -524,8 +619,10 @@ Ejemplos:
     print(f"🔍 Analizando organización: {org}")
     print(f"📁 Proyectos: {', '.join(projects)}")
     print(f"💾 Output: {output_file}")
+    print(f"⚡ Workers: {DEFAULT_WORKERS}")
     print("=" * 60)
     
+    start_time = time.time()
     repos_rows = []
     ci_rows = []
     cd_rows = []
@@ -534,20 +631,44 @@ Ejemplos:
         print(f"\n📦 Proyecto: {project}")
         
         print(f"\n  ── Obteniendo repositorios ──")
-        repos_rows.extend(get_repos(org, project, headers))
-        print(f"  ✅ {len(repos_rows)} repos encontrados")
+        project_repos = get_repos(org, project, headers)
+        repos_rows.extend(project_repos)
+        print(f"  📊 Total repositorios: {len(project_repos)}")
         
         print(f"\n  ── Obteniendo CI pipelines ──")
-        ci_rows.extend(get_ci_pipelines(org, project, headers))
-        print(f"  ✅ {len(ci_rows)} CI pipelines encontrados")
+        project_ci = get_ci_pipelines(org, project, headers)
+        ci_rows.extend(project_ci)
+        print(f"  📊 Total CI pipelines: {len(project_ci)}")
         
         print(f"\n  ── Obteniendo CD pipelines ──")
-        cd_rows.extend(get_cd_pipelines(org, project, headers))
-        print(f"  ✅ {len(cd_rows)} CD pipelines encontrados")
+        project_cd = get_cd_pipelines(org, project, headers)
+        cd_rows.extend(project_cd)
+        print(f"  📊 Total CD pipelines: {len(project_cd)}")
     
     print(f"\n🔗 Construyendo relación Repo → CI → CD ...")
     relations_rows = build_repo_ci_cd_relation(repos_rows, ci_rows, cd_rows)
-    print(f"  ✅ {len(relations_rows)} relaciones generadas")
+    
+    elapsed = time.time() - start_time
+    
+    # Resumen final
+    repos_with_ci = sum(1 for r in relations_rows if r.get("ci_pipeline"))
+    repos_with_cd = sum(1 for r in relations_rows if r.get("cd_pipeline"))
+    repos_with_both = sum(1 for r in relations_rows if r.get("ci_pipeline") and r.get("cd_pipeline"))
+    repos_no_pipeline = sum(1 for r in relations_rows if not r.get("ci_pipeline") and not r.get("cd_pipeline"))
+    
+    print(f"\n{'=' * 60}")
+    print(f"📊 RESUMEN")
+    print(f"{'=' * 60}")
+    print(f"  📦 Repositorios:       {len(repos_rows)}")
+    print(f"  🔧 CI Pipelines:      {len(ci_rows)}")
+    print(f"  🚀 CD Pipelines:      {len(cd_rows)}")
+    print(f"  🔗 Relaciones:        {len(relations_rows)}")
+    print(f"  ├─ Con CI:            {repos_with_ci}")
+    print(f"  ├─ Con CD:            {repos_with_cd}")
+    print(f"  ├─ Con CI + CD:       {repos_with_both}")
+    print(f"  └─ Sin pipeline:      {repos_no_pipeline}")
+    print(f"  ⏱️  Tiempo total:      {elapsed:.1f}s")
+    print(f"{'=' * 60}")
     
     with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
         pd.DataFrame(repos_rows).to_excel(writer, "Repositorios", index=False)
