@@ -74,14 +74,15 @@ class Colors:
 TOOL_GROUPS = {
     "pr":         {"name": "Pull Requests",      "emoji": "📬", "color": "cyan"},
     "policy":     {"name": "Políticas de Rama",  "emoji": "🔒", "color": "yellow"},
-    "release":    {"name": "Release Pipelines",  "emoji": "🚀", "color": "green"},
-    "drift":      {"name": "Drift Analysis",     "emoji": "🔍", "color": "magenta"},
+    "release":    {"name": "Releases & CD",      "emoji": "🚀", "color": "green"},
+    "drift":      {"name": "Drift & Cambios",    "emoji": "�", "color": "magenta"},
     "validation": {"name": "Validación",         "emoji": "✅", "color": "blue"},
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
-    "system":     {"name": "Sistema",            "emoji": "⚙️",  "color": "white"},
+    "inventory":  {"name": "Inventario",         "emoji": "📋", "color": "bright_white"},
+    "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
 
-GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "system"]
+GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "inventory", "system"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HERRAMIENTAS DISPONIBLES
@@ -166,6 +167,46 @@ TOOLS: Dict = {
         "args":        ["--pat", "--org", "--project", "--branches", "--targets",
                         "--repo", "--output"],
         "group":       "security",
+        "status":      "ready",
+    },
+    "9": {
+        "name":        "CICD Inventory",
+        "description": "Inventario completo de repos, CI pipelines (YAML) y CD pipelines (classic releases) con relación Repo ↔ CI ↔ CD",
+        "path":        "cicd_inventory.py",
+        "args":        ["--pat", "--org", "--project", "--limit", "--output"],
+        "group":       "inventory",
+        "status":      "ready",
+    },
+    "10": {
+        "name":        "GKE Pipelines Inventory",
+        "description": "Inventario de Release Definitions CD que contienen 'GKE' con detalle de stages y último estado",
+        "path":        "cicd_inventory_gke_pipelines.py",
+        "args":        ["--pat", "--org", "--project", "--keyword", "--output"],
+        "group":       "inventory",
+        "status":      "ready",
+    },
+    "11": {
+        "name":        "Pending Approvals",
+        "description": "Releases con aprobaciones pendientes + estado del stage 'Validador'",
+        "path":        "cicd_inventory_pending_approvals.py",
+        "args":        ["--pat", "--org", "--project", "--output"],
+        "group":       "release",
+        "status":      "ready",
+    },
+    "12": {
+        "name":        "Branches Created",
+        "description": "Ramas creadas desde fecha específica usando Pushes API (concurrente)",
+        "path":        "cicd_inventory_branches_created.py",
+        "args":        ["--pat", "--org", "--project", "--since", "--workers", "--output"],
+        "group":       "inventory",
+        "status":      "ready",
+    },
+    "13": {
+        "name":        "Hotfix Branches Inventory",
+        "description": "Inventario de ramas hotfix con creador, fecha de creación y actividad del repo",
+        "path":        "cicd_inventory_hotfix_branches.py",
+        "args":        ["--pat", "--org", "--project", "--pattern", "--output"],
+        "group":       "inventory",
         "status":      "ready",
     },
     "A": {

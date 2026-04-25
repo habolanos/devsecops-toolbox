@@ -106,10 +106,10 @@ En el menú principal:
 
 | # | Herramienta | Descripción |
 |---|-------------|-------------|
-| 19+ | SRE Tools | Monitoreo, IAM, Networking, Kubernetes, Database, Reports |
+| 21+ | SRE Tools | Monitoreo, IAM, Networking, Kubernetes, Database, Reports |
 
 **Grupos de herramientas:**
-- 📊 Monitoreo
+- 📊 Monitoreo (25 herramientas: incluye GKE Node/Pod Resources Monitors)
 - 🔐 IAM & Security
 - 💾 Database
 - 🌐 Networking
@@ -117,17 +117,29 @@ En el menú principal:
 - 📦 Artifacts
 - 📈 Reports
 
+**🆕 Nuevas herramientas (migradas desde Comercial):**
+- **GKE Node Resources Monitor** (#24) - CPU/memoria por nodo en clusters GKE
+- **GKE Pod Resources Monitor** (#25) - CPU/memoria por pod con selección interactiva
+
 ### 🔷 Azure DevOps (AZDO)
 
 | # | Herramienta | Descripción |
 |---|-------------|-------------|
-| 4+ | DevOps Tools | PRs, políticas de rama, releases, drift analysis |
+| 13+ | DevOps Tools | PRs, políticas, releases, drift, inventario, branches |
 
 **Grupos de herramientas:**
 - 📬 Pull Requests
 - 🔒 Políticas de Rama
 - 🚀 Release Pipelines
 - 🔍 Drift Analysis
+- 📋 Inventario (5 nuevas herramientas)
+
+**🆕 Nuevas herramientas (migradas desde Comercial):**
+- **CICD Inventory** (#9) - Inventario repos ↔ CI ↔ CD pipelines
+- **GKE Pipelines Inventory** (#10) - Pipelines CD con keyword GKE
+- **Pending Approvals** (#11) - Releases pendientes + estado Validador
+- **Branches Created** (#12) - Ramas creadas desde fecha específica
+- **Hotfix Branches Inventory** (#13) - Ramas hotfix con creador y fecha
 
 ### 🟠 Amazon Web Services (AWS)
 
@@ -803,6 +815,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-04-24 | 1.6.0 | **Migración Comercial → Toolbox**: 7 scripts migrados desde `Comercial/` al toolbox principal. GCP: GKE Node Monitor (#24), GKE Pod Monitor (#25). AZDO: CICD Inventory (#9), GKE Pipelines (#10), Pending Approvals (#11), Branches Created (#12), Hotfix Branches (#13). Todos parametrizables con `--org`, `--project`, `--pat`. |
 | 2026-04-08 | 1.5.2 | **Docker Container**: Dockerfile con Azure CLI, AWS CLI v2, Google Cloud SDK, kubectl, Helm, Terraform y herramientas netshoot (ping, dig, tcpdump, nmap, etc.). Entrypoint script con auto-configuración de credenciales. Healthcheck integrado. |
 | 2026-04-02 | 1.5.1 | **Testing Suite**: Arquitectura profesional de testing con pytest, cobertura 70%+, mocks para GCP/AZDO/AWS, CI/CD con GitHub Actions. Tests unitarios e integración con 500+ assertions. |
 | 2026-04-02 | 1.5.0 | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. |

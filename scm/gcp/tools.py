@@ -97,9 +97,9 @@ DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 
 # Definición de las herramientas disponibles (con grupo asignado)
-# Ordenadas por grupo: monitoring(1-2), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
+# Ordenadas por grupo: monitoring(1-2, 24-25), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
 TOOLS = {
-    # ══════════ MONITORING (1-2) ══════════
+    # ══════════ MONITORING (1-2, 24-25) ══════════
     "1": {
         "name": "Monitoreo de Recursos GCP",
         "description": "Monitorea recursos GCP (CPU, memoria, SQL, etc.)",
@@ -114,6 +114,24 @@ TOOLS = {
         "description": "Genera un reporte detallado de los despliegues en GKE",
         "path": "monitoring/gke_deployments_report.py",
         "args": [],
+        "requirements": "monitoring/requirements.txt",
+        "group": "monitoring",
+        "status": "ready"
+    },
+    "24": {
+        "name": "GKE Node Resources Monitor",
+        "description": "Uso de CPU y memoria por nodo en clusters GKE (HTML report)",
+        "path": "monitoring/gke_monitor_node.py",
+        "args": ["--project", "--output"],
+        "requirements": "monitoring/requirements.txt",
+        "group": "monitoring",
+        "status": "ready"
+    },
+    "25": {
+        "name": "GKE Pod Resources Monitor",
+        "description": "Uso de CPU y memoria por pod en clusters GKE con selección interactiva",
+        "path": "monitoring/gke_monitor_pod.py",
+        "args": ["--project", "--namespace", "--sort", "--top"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
         "status": "ready"
