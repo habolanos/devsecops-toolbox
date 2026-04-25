@@ -635,14 +635,16 @@ Ejemplos:
         repos_rows.extend(project_repos)
         print(f"  📊 Total repositorios: {len(project_repos)}")
         
-        print(f"\n  ── Obteniendo CI pipelines ──")
-        project_ci = get_ci_pipelines(org, project, headers)
+        # CI y CD en paralelo (son independientes)
+        print(f"\n  ── Obteniendo CI + CD pipelines en paralelo ──")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            ci_future = executor.submit(get_ci_pipelines, org, project, headers)
+            cd_future = executor.submit(get_cd_pipelines, org, project, headers)
+            project_ci = ci_future.result()
+            project_cd = cd_future.result()
         ci_rows.extend(project_ci)
-        print(f"  📊 Total CI pipelines: {len(project_ci)}")
-        
-        print(f"\n  ── Obteniendo CD pipelines ──")
-        project_cd = get_cd_pipelines(org, project, headers)
         cd_rows.extend(project_cd)
+        print(f"  📊 Total CI pipelines: {len(project_ci)}")
         print(f"  📊 Total CD pipelines: {len(project_cd)}")
     
     print(f"\n🔗 Construyendo relación Repo → CI → CD ...")
