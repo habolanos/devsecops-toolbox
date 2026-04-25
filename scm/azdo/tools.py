@@ -190,7 +190,7 @@ TOOLS: Dict = {
         "description": "Releases con aprobaciones pendientes + estado del stage 'Validador'",
         "path":        "cicd_inventory_pending_approvals.py",
         "args":        ["--pat", "--org", "--project", "--output"],
-        "group":       "release",
+        "group":       "inventory",
         "status":      "ready",
     },
     "12": {

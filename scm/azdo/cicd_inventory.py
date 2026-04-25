@@ -15,6 +15,9 @@ Autor: Harold Adrian (migrado desde Comercial/scripts/inventarioV4.PY)
 import os
 import re
 import time
+import shutil
+import subprocess
+import tempfile
 import requests
 import pandas as pd
 import argparse
@@ -185,8 +188,76 @@ def parse_app_repo_from_yaml_text(yaml_text):
     return None
 
 
+def clone_pipelines_projects(org, project, pat, clone_dir=None):
+    """Clona el repo pipelines-projects (shallow, single-branch master) a un directorio temporal.
+    Retorna la ruta del directorio del clone o None si falla.
+    Si clone_dir ya existe, hace git pull en lugar de git clone.
+    """
+    repo_url = f"https://{pat}@dev.azure.com/{org}/{project}/_git/pipelines-projects"
+    public_url = f"https://dev.azure.com/{org}/{project}/_git/pipelines-projects"
+    
+    if clone_dir is None:
+        clone_dir = os.path.join(tempfile.gettempdir(), f"pipelines-projects-{org}-{project}")
+    
+    clone_path = os.path.join(clone_dir, "pipelines-projects")
+    
+    try:
+        if os.path.isdir(os.path.join(clone_path, ".git")):
+            # Ya existe: hacer pull + limpiar PAT del remote
+            print(f"  🔄 git pull pipelines-projects (cache)...")
+            subprocess.run(
+                ["git", "remote", "set-url", "origin", repo_url],
+                cwd=clone_path, check=True, capture_output=True,
+            )
+            subprocess.run(
+                ["git", "pull", "--ff-only"],
+                cwd=clone_path, check=True, capture_output=True,
+            )
+            # Limpiar PAT del remote
+            subprocess.run(
+                ["git", "remote", "set-url", "origin", public_url],
+                cwd=clone_path, check=True, capture_output=True,
+            )
+        else:
+            # Clone nuevo
+            print(f"  📥 git clone pipelines-projects (shallow)...")
+            os.makedirs(clone_dir, exist_ok=True)
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "--single-branch", "--branch", "master", repo_url, clone_path],
+                cwd=clone_dir, check=True, capture_output=True,
+            )
+            # Limpiar PAT del remote inmediatamente
+            subprocess.run(
+                ["git", "remote", "set-url", "origin", public_url],
+                cwd=clone_path, check=True, capture_output=True,
+            )
+        return clone_path
+    except FileNotFoundError:
+        print("  ⚠️ git no encontrado en PATH. Se usará API como fallback.")
+        return None
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode(errors="replace") if e.stderr else str(e)
+        if "not found" in stderr.lower() or "does not exist" in stderr.lower():
+            print(f"  ℹ️ Repo pipelines-projects no existe en este proyecto. Se omite clone.")
+        else:
+            print(f"  ⚠️ Error en git clone/pull: {stderr[:200]}")
+        return None
+
+
+def read_yaml_local(clone_path, yaml_path):
+    """Lee un archivo YAML desde el clone local de pipelines-projects."""
+    if not clone_path or not yaml_path:
+        return None
+    full_path = os.path.join(clone_path, yaml_path.lstrip("/"))
+    try:
+        with open(full_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+
 def get_yaml_file_text(org, project, repo_id, path, headers):
-    """Obtiene contenido de archivo YAML desde repo."""
+    """Obtiene contenido de archivo YAML desde repo (fallback API)."""
     if not repo_id or not path:
         return None
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo_id}/items"
@@ -288,7 +359,7 @@ def get_repos(org, project, headers, workers=DEFAULT_WORKERS):
 # ==========================================================
 # CI PIPELINES (YAML BUILDS)
 # ==========================================================
-def _fetch_ci_pipeline(d, org, project, headers):
+def _fetch_ci_pipeline(d, org, project, headers, pipelines_clone_path=None):
     """Worker: obtiene detalle + último build de un CI pipeline."""
     base_url = f"https://dev.azure.com/{org}/{project}/_apis/build/definitions"
     builds_url = f"https://dev.azure.com/{org}/{project}/_apis/build/builds"
@@ -323,7 +394,10 @@ def _fetch_ci_pipeline(d, org, project, headers):
     if repo_yaml_name and repo_yaml_name.lower() != "pipelines-projects":
         app_repo_name = repo_yaml_name
     else:
-        yaml_text = get_yaml_file_text(org, project, repo_yaml_id, yaml_path, headers)
+        # Intentar lectura local desde clone, fallback a API
+        yaml_text = read_yaml_local(pipelines_clone_path, yaml_path)
+        if yaml_text is None:
+            yaml_text = get_yaml_file_text(org, project, repo_yaml_id, yaml_path, headers)
         app_repo_name = parse_app_repo_from_yaml_text(yaml_text)
     
     # Último build
@@ -365,7 +439,7 @@ def _fetch_ci_pipeline(d, org, project, headers):
     }
 
 
-def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
+def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS, pipelines_clone_path=None):
     """Obtiene pipelines CI (YAML builds) del proyecto (en paralelo)."""
     base_url = f"https://dev.azure.com/{org}/{project}/_apis/build/definitions"
     
@@ -380,7 +454,7 @@ def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
         with progress:
             task = progress.add_task("🔧 CI Pipelines", total=total)
             with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers): d for d in definitions}
+                futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers, pipelines_clone_path): d for d in definitions}
                 for fut in as_completed(futures):
                     try:
                         rows.append(fut.result())
@@ -391,7 +465,7 @@ def get_ci_pipelines(org, project, headers, workers=DEFAULT_WORKERS):
     else:
         sp = _SimpleProgress("🔧 CI Pipelines", total)
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers): d for d in definitions}
+            futures = {executor.submit(_fetch_ci_pipeline, d, org, project, headers, pipelines_clone_path): d for d in definitions}
             for fut in as_completed(futures):
                 try:
                     rows.append(fut.result())
@@ -635,11 +709,20 @@ Ejemplos:
         repos_rows.extend(project_repos)
         print(f"  📊 Total repositorios: {len(project_repos)}")
         
-        # CI y CD en paralelo (son independientes)
-        print(f"\n  ── Obteniendo CI + CD pipelines en paralelo ──")
+        # Clonar pipelines-projects para lectura local de YAMLs
+        print(f"\n  ── Preparando pipelines-projects ──")
+        pipelines_clone_path = clone_pipelines_projects(org, project, pat)
+        if pipelines_clone_path:
+            print(f"  ✅ Clone local: {pipelines_clone_path}")
+        else:
+            print(f"  ℹ️ Se usará API para leer YAMLs de pipelines-projects")
+        
+        # CI y CD en paralelo (son independientes): 15 workers cada uno = 30 hilos totales
+        parallel_workers = DEFAULT_WORKERS // 2
+        print(f"\n  ── Obteniendo CI + CD pipelines en paralelo ({parallel_workers} hilos c/u) ──")
         with ThreadPoolExecutor(max_workers=2) as executor:
-            ci_future = executor.submit(get_ci_pipelines, org, project, headers)
-            cd_future = executor.submit(get_cd_pipelines, org, project, headers)
+            ci_future = executor.submit(get_ci_pipelines, org, project, headers, parallel_workers, pipelines_clone_path)
+            cd_future = executor.submit(get_cd_pipelines, org, project, headers, parallel_workers)
             project_ci = ci_future.result()
             project_cd = cd_future.result()
         ci_rows.extend(project_ci)
