@@ -449,13 +449,15 @@ Ejemplos:
                        help="Límite de items por categoría (default: sin límite)")
     parser.add_argument("--output", "-o", default=None,
                        help="Nombre del archivo Excel de salida")
-    
+    parser.add_argument("--pat", default=None,
+                       help="PAT de Azure DevOps (default: env AZURE_PAT)")
+
     args = parser.parse_args()
-    
+
     # Configurar PAT
-    pat = os.getenv("AZURE_PAT", "")
+    pat = args.pat or os.getenv("AZURE_PAT", "")
     if not pat:
-        print("❌ No se encontró PAT. Agrega AZURE_PAT en el archivo .env")
+        print("❌ No se encontró PAT. Agrega AZURE_PAT en el archivo .env o usa --pat")
         exit(1)
     
     headers = get_headers(pat)
