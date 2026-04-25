@@ -33,6 +33,23 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 try:
     from rich.console import Console
     from rich.panel import Panel
@@ -683,7 +700,7 @@ def _flatten(r: Dict) -> Dict:
 def export_results(
     results: List[Dict], fmt: str, script_dir: str, tz_name: str
 ) -> Optional[str]:
-    outcome_dir = os.path.join(script_dir, "outcome")
+    outcome_dir = str(get_output_dir("outcome"))
     os.makedirs(outcome_dir, exist_ok=True)
     ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     flat = [_flatten(r) for r in results]

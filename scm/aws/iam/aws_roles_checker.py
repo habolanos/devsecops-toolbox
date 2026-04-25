@@ -19,6 +19,23 @@ from pathlib import Path
 from typing import Dict, List
 import time
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 try:
     import boto3
     from botocore.exceptions import ClientError
@@ -38,8 +55,22 @@ except ImportError:
 __version__ = "1.0.0"
 __author__ = "Harold Adrian"
 
-BASE_DIR = Path(__file__).parent.parent.absolute()
-OUTCOME_DIR = BASE_DIR / "outcome"
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+OUTCOME_DIR = get_output_dir("outcome")
 console = Console() if RICH_AVAILABLE else None
 
 

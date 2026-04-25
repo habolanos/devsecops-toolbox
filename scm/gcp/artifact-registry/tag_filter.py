@@ -4,6 +4,23 @@ import sys
 from openpyxl.styles import Font, Alignment
 import openpyxl
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 if len(sys.argv) > 1:
     csv_file = os.path.expanduser(sys.argv[1])  # Expandir ~ a ruta completa
     file_ne = os.path.splitext(os.path.basename(csv_file))[0]

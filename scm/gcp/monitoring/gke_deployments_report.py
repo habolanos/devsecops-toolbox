@@ -32,6 +32,23 @@ from kubernetes import client, config
 from kubernetes.client import ApiException
 from tabulate import tabulate
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 
 # ---------------------------------------------------------------------------
 # Utilidades de parsing de recursos (CPU/Memoria) de Kubernetes
@@ -530,7 +547,7 @@ def main():
     )
     parser.add_argument(
         "--output-dir",
-        default="outcome",
+        default=None,
         help="Directorio donde guardar el reporte (default: outcome)",
     )
     args = parser.parse_args()
@@ -560,7 +577,7 @@ def main():
         print(summary_status)
         print(summary_limits)
 
-        os.makedirs(args.output_dir, exist_ok=True)
+        output_dir = get_output_dir(args.output_dir or "outcome")
         ts_for_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         txt_path = os.path.join(

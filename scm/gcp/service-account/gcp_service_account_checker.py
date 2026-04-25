@@ -32,6 +32,23 @@ from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 try:
     from rich.console import Console
     from rich.table import Table
@@ -598,7 +615,7 @@ def main() -> int:
 
         # Guardar en archivo
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        outcome_dir = os.path.join(script_dir, "outcome")
+        outcome_dir = str(get_output_dir("outcome"))
         os.makedirs(outcome_dir, exist_ok=True)
         
         if args.output == "json":

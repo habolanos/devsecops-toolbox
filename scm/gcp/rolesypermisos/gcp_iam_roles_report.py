@@ -56,6 +56,23 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from tabulate import tabulate
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 
 # Silenciar el warning de "quota project" de google.auth en consola
 warnings.filterwarnings(
@@ -514,7 +531,7 @@ def main():
     )
     parser.add_argument(
         "--output-dir",
-        default="outcome",
+        default=None,
         help="Directorio donde guardar el reporte (default: outcome)",
     )
     args = parser.parse_args()
@@ -559,15 +576,15 @@ def main():
         # Resumen global
         summary_stats = compute_and_print_summary(full_report)
 
-        os.makedirs(args.output_dir, exist_ok=True)
+        output_dir = get_output_dir(args.output_dir or "outcome")
         ts_for_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
         base_name = f"gcp_iam_roles_{full_report['project_id']}_{ts_for_filename}"
 
-        txt_path = os.path.join(args.output_dir, base_name + ".txt")
-        csv_summary_path = os.path.join(args.output_dir, base_name + "_summary.csv")
-        csv_perms_path = os.path.join(args.output_dir, base_name + "_permissions.csv")
-        json_path = os.path.join(args.output_dir, base_name + ".json")
-        log_path = os.path.join(args.output_dir, base_name + ".log")
+        txt_path = os.path.join(str(output_dir), base_name + ".txt")
+        csv_summary_path = os.path.join(str(output_dir), base_name + "_summary.csv")
+        csv_perms_path = os.path.join(str(output_dir), base_name + "_permissions.csv")
+        json_path = os.path.join(str(output_dir), base_name + ".json")
+        log_path = os.path.join(str(output_dir), base_name + ".log")
 
         # TXT resumen
         with open(txt_path, "w", encoding="utf-8") as f:

@@ -579,7 +579,13 @@ def launch_platform(platform_key: str):
     
     # Preparar variables de entorno con configuración
     env = prepare_env_for_platform(platform_key)
-    
+
+    # Asegurar que scm/ está en PYTHONPATH para imports compartidos (utils.py)
+    scm_path = str(BASE_DIR)
+    existing_pp = env.get("PYTHONPATH", "")
+    if scm_path not in existing_pp.split(os.pathsep):
+        env["PYTHONPATH"] = scm_path + (os.pathsep + existing_pp if existing_pp else "")
+
     # Mostrar mensaje de transición con spinner
     if RICH_AVAILABLE and console:
         with console.status(f"[bold cyan]🚀 Lanzando {platform['emoji']} {platform['name']}...[/bold cyan]", spinner="dots"):
