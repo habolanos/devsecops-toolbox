@@ -25,6 +25,12 @@ try:
 except ImportError:
     load_dotenv = lambda *a, **k: None  # noqa: E731
 
+try:
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
     from utils import get_output_dir
@@ -91,12 +97,45 @@ def teardown_logging(tee):
     tee.close()
 
 
+class _SimpleProgress:
+    """Fallback: imprime progreso como texto simple."""
+    def __init__(self, desc, total):
+        self.desc = desc
+        self.total = total
+        self.completed = 0
+        self._last_pct = -1
+
+    def advance(self, n=1):
+        self.completed += n
+        pct = int(self.completed / self.total * 100) if self.total else 100
+        if pct != self._last_pct and pct % 10 == 0:
+            print(f"  {self.desc}: {self.completed}/{self.total} ({pct}%)")
+            self._last_pct = pct
+
+    def finish(self, msg):
+        print(f"  ✅ {msg}")
+
+
+def _progress_context():
+    """Retorna contexto Rich Progress o None si no está disponible."""
+    if not RICH_AVAILABLE:
+        return None
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+    )
+
+
 # ─── Configuración por defecto ───────────────────────────────────────
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
 API_VERSION = "7.1"
 DEFAULT_SINCE = "2026-01-01"
-MAX_WORKERS = 10
+DEFAULT_WORKERS = 30
+PUSHES_PAGE_SIZE = 200
 
 
 def get_headers(pat: str):
@@ -126,22 +165,33 @@ def get_repositories(org: str, project: str, headers: dict):
 
 
 def get_pushes_for_repo(repo_id: str, since_date: str, org: str, project: str, headers: dict):
-    """Obtiene pushes de un repo desde la fecha indicada."""
+    """Obtiene pushes de un repo desde la fecha indicada (con paginación)."""
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo_id}/pushes"
-    params = {
-        "api-version": API_VERSION,
-        "searchCriteria.fromDate": since_date,
-        "$top": 100
-    }
+    all_pushes = []
+    skip = 0
     
-    try:
-        resp = requests.get(url, headers=headers, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("value", [])
-    except Exception as e:
-        print(f"   ⚠️ Error en pushes de repo {repo_id}: {e}")
-        return []
+    while True:
+        params = {
+            "api-version": API_VERSION,
+            "searchCriteria.fromDate": since_date,
+            "searchCriteria.includeRefUpdates": "true",
+            "$top": PUSHES_PAGE_SIZE,
+            "$skip": skip,
+        }
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            page = data.get("value", [])
+            all_pushes.extend(page)
+            if len(page) < PUSHES_PAGE_SIZE:
+                break
+            skip += PUSHES_PAGE_SIZE
+        except Exception as e:
+            print(f"   ⚠️ Error en pushes de repo {repo_id}: {e}")
+            break
+    
+    return all_pushes
 
 
 def process_repo(repo: dict, since_date: str, org: str, project: str, headers: dict):
@@ -252,8 +302,8 @@ Ejemplos:
                        help=f"Proyecto (default: {DEFAULT_PROJECT})")
     parser.add_argument("--since", "-s", default=DEFAULT_SINCE,
                        help=f"Fecha desde (ISO format, default: {DEFAULT_SINCE})")
-    parser.add_argument("--workers", "-w", type=int, default=MAX_WORKERS,
-                       help=f"Workers concurrentes (default: {MAX_WORKERS})")
+    parser.add_argument("--workers", "-w", type=int, default=DEFAULT_WORKERS,
+                       help=f"Workers concurrentes (default: {DEFAULT_WORKERS})")
     parser.add_argument("--pat", default=None,
                        help="PAT de Azure DevOps (default: env AZURE_PAT)")
     parser.add_argument("--output", "-o", default=None,
@@ -291,21 +341,37 @@ Ejemplos:
         print(f"*** MODO PRUEBA: limitado a {args.repo_limit} repos ***")
     
     all_branches = []
-    print(f"\n📦 Consultando {len(repos)} repositorios (concurrente)...\n")
+    total = len(repos)
+    print(f"\n📦 Consultando {total} repositorios (concurrente)...\n")
     
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(process_repo, r, args.since, org, args.project, headers): r for r in repos}
-        done = 0
-        
-        for f in as_completed(futures):
-            done += 1
-            repo_name, branches = f.result()
-            count = len(branches)
-            if count > 0:
-                print(f"  [{done}/{len(repos)}] {repo_name}: {count} ramas nuevas")
-            else:
-                print(f"  [{done}/{len(repos)}] {repo_name}: 0")
-            all_branches.extend(branches)
+    progress = _progress_context()
+    
+    if progress:
+        with progress:
+            task = progress.add_task("🌿 Ramas creadas", total=total)
+            with ThreadPoolExecutor(max_workers=args.workers) as executor:
+                futures = {executor.submit(process_repo, r, args.since, org, args.project, headers): r for r in repos}
+                for f in as_completed(futures):
+                    try:
+                        repo_name, branches = f.result()
+                        all_branches.extend(branches)
+                    except Exception as e:
+                        repo_name = futures[f].get("name", "?")
+                        print(f"   ⚠️ Error en repo {repo_name}: {e}")
+                    progress.advance(task)
+    else:
+        sp = _SimpleProgress("🌿 Ramas creadas", total)
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = {executor.submit(process_repo, r, args.since, org, args.project, headers): r for r in repos}
+            for f in as_completed(futures):
+                try:
+                    repo_name, branches = f.result()
+                    all_branches.extend(branches)
+                except Exception as e:
+                    repo_name = futures[f].get("name", "?")
+                    print(f"   ⚠️ Error en repo {repo_name}: {e}")
+                sp.advance()
+        sp.finish(f"{len(all_branches)} ramas nuevas en {total} repos")
     
     if not all_branches:
         print(f"\nℹ️ No se encontraron ramas creadas desde {args.since}")
