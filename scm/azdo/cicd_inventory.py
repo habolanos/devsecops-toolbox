@@ -13,6 +13,7 @@ Autor: Harold Adrian (migrado desde Comercial/scripts/inventarioV4.PY)
 """
 
 import os
+import sys
 import re
 import time
 import shutil
@@ -100,6 +101,45 @@ class _SimpleProgress:
         print(f"  ✅ {msg}")
 
 
+class TeeWriter:
+    """Escribe stdout a consola Y archivo de log simultáneamente."""
+    def __init__(self, log_path):
+        self.terminal = sys.__stdout__
+        self.log = open(log_path, "w", encoding="utf-8")
+        self.log_path = log_path
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
+
+
+def setup_logging(script_name):
+    """Configura TeeWriter para que stdout vaya a consola + archivo log en outcome."""
+    output_dir = get_output_dir("outcome")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / f"{script_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    tee = TeeWriter(log_path)
+    sys.stdout = tee
+    print(f"📝 Log: {log_path.resolve()}")
+    print(f"📅 Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
+    return tee
+
+
+def teardown_logging(tee):
+    """Restaura stdout y cierra archivo de log."""
+    print(f"\n📝 Log guardado: {tee.log_path.resolve()}")
+    sys.stdout = tee.terminal
+    tee.close()
+
+
 def get_headers(pat: str):
     """Genera headers de autenticación para Azure DevOps."""
     auth = b64encode(f":{pat}".encode()).decode()
@@ -137,11 +177,11 @@ def az_get(url, headers, params=None, max_retries=5):
 
 
 def safe_az_get(url, headers, params=None):
-    """GET que nunca falla — retorna {} en caso de error."""
+    """GET que nunca falla — retorna {} en caso de error (loggea el error)."""
     try:
         return az_get(url, headers, params)
     except Exception as e:
-        print(f"   ❌ Error silenciado: {e}")
+        print(f"   ❌ Error: {e}")
         return {}
 
 
@@ -676,6 +716,9 @@ Ejemplos:
     
     headers = get_headers(pat)
     
+    # Configurar logging a archivo en outcome
+    tee = setup_logging("cicd_inventory")
+    
     # Configurar proyectos
     projects = args.project if args.project else DEFAULT_PROJECTS
     
@@ -685,7 +728,8 @@ Ejemplos:
         GLOBAL_LIMIT = args.limit
     
     # Generar nombre de archivo en directorio de salida centralizado
-    output_dir = get_output_dir()
+    output_dir = get_output_dir("outcome")
+    output_dir.mkdir(parents=True, exist_ok=True)
     default_name = f"inventario_cicd_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     output_file = args.output or str(output_dir / default_name)
     
@@ -763,7 +807,10 @@ Ejemplos:
         pd.DataFrame(cd_rows).to_excel(writer, "CD_Pipelines", index=False)
         pd.DataFrame(relations_rows).to_excel(writer, "Repo_CI_CD", index=False)
     
-    print(f"\n✅ Reporte generado: {output_file}")
+    excel_path = Path(output_file).resolve()
+    print(f"\n✅ Reporte generado: {excel_path}")
+    
+    teardown_logging(tee)
 
 
 if __name__ == "__main__":

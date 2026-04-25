@@ -13,6 +13,7 @@ Autor: Harold Adrian (migrado desde Comercial/scripts/pending.py)
 
 import requests
 import os
+import sys
 import argparse
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +40,46 @@ except ImportError:
 # -------------------------------------------------------------------
 
 load_dotenv(Path(__file__).parent.parent / ".env")
+
+
+class TeeWriter:
+    """Escribe stdout a consola Y archivo de log simultáneamente."""
+    def __init__(self, log_path):
+        self.terminal = sys.__stdout__
+        self.log = open(log_path, "w", encoding="utf-8")
+        self.log_path = log_path
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
+
+
+def setup_logging(script_name):
+    """Configura TeeWriter para que stdout vaya a consola + archivo log en outcome."""
+    output_dir = get_output_dir("outcome")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / f"{script_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    tee = TeeWriter(log_path)
+    sys.stdout = tee
+    print(f"📝 Log: {log_path.resolve()}")
+    print(f"📅 Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
+    return tee
+
+
+def teardown_logging(tee):
+    """Restaura stdout y cierra archivo de log."""
+    print(f"\n📝 Log guardado: {tee.log_path.resolve()}")
+    sys.stdout = tee.terminal
+    tee.close()
+
 
 try:
     from openpyxl import Workbook
@@ -220,6 +261,9 @@ Ejemplos:
         exit(1)
     
     org = normalize_org(args.org)
+    
+    # Configurar logging a archivo en outcome
+    tee = setup_logging("cicd_inventory_pending_approvals")
 
     print(f"🔍 Consultando aprobaciones pendientes...")
     print(f"   Org: {org}")
@@ -235,7 +279,10 @@ Ejemplos:
     print(f"\n📝 {len(approvals)} aprobación(es) pendiente(s) encontrada(s)")
     
     filename = export_to_excel(approvals, org, args.project, pat, args.output)
-    print(f"\n✅ Archivo generado: {filename}")
+    excel_path = Path(filename).resolve()
+    print(f"\n✅ Archivo generado: {excel_path}")
+    
+    teardown_logging(tee)
 
 
 if __name__ == "__main__":

@@ -51,6 +51,46 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
+
+class TeeWriter:
+    """Escribe stdout a consola Y archivo de log simultáneamente."""
+    def __init__(self, log_path):
+        self.terminal = sys.__stdout__
+        self.log = open(log_path, "w", encoding="utf-8")
+        self.log_path = log_path
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
+
+
+def setup_logging(script_name):
+    """Configura TeeWriter para que stdout vaya a consola + archivo log en outcome."""
+    output_dir = get_output_dir("outcome")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / f"{script_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    tee = TeeWriter(log_path)
+    sys.stdout = tee
+    print(f"📝 Log: {log_path.resolve()}")
+    print(f"📅 Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
+    return tee
+
+
+def teardown_logging(tee):
+    """Restaura stdout y cierra archivo de log."""
+    print(f"\n📝 Log guardado: {tee.log_path.resolve()}")
+    sys.stdout = tee.terminal
+    tee.close()
+
+
 # ─── Configuración por defecto ───────────────────────────────────────
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -233,6 +273,9 @@ Ejemplos:
     headers = get_headers(pat)
     since_dt = datetime.fromisoformat(args.since.replace("Z", "+00:00"))
     
+    # Configurar logging a archivo en outcome
+    tee = setup_logging("cicd_inventory_branches_created")
+    
     org = normalize_org(args.org)
 
     print(f"🔍 Analizando ramas creadas desde: {args.since}")
@@ -271,7 +314,10 @@ Ejemplos:
     print(f"\n✅ Total ramas nuevas encontradas: {len(all_branches)}")
     
     output_file = export_to_excel(all_branches, org, args.project, args.since, args.output)
-    print(f"\n💾 Archivo generado: {output_file}")
+    excel_path = Path(output_file).resolve()
+    print(f"\n💾 Archivo generado: {excel_path}")
+    
+    teardown_logging(tee)
 
 
 if __name__ == "__main__":
