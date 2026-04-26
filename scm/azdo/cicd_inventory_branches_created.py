@@ -34,7 +34,7 @@ except ImportError:
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import get_output_dir, resolve_output_path
 except ImportError:
     import os as _os
     from pathlib import Path as _Path
@@ -47,6 +47,21 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    from datetime import datetime as _dt
+    _FMT_EXT = {"excel": ".xlsx", "csv": ".csv", "json": ".json"}
+    def resolve_output_path(output_arg, base_name, default_format="excel"):
+        output_dir = get_output_dir("outcome")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        ext = _FMT_EXT.get(default_format, ".xlsx")
+        if not output_arg:
+            return str(output_dir / f"{base_name}_{_dt.now().strftime('%Y%m%d_%H%M%S')}{ext}")
+        if output_arg.lower() in _FMT_EXT:
+            ext = _FMT_EXT[output_arg.lower()]
+            return str(output_dir / f"{base_name}_{_dt.now().strftime('%Y%m%d_%H%M%S')}{ext}")
+        p = _Path(output_arg)
+        if p.suffix == "":
+            p = p.with_suffix(ext)
+        return str(p.resolve())
 # -------------------------------------------------------------------
 
 try:
@@ -239,11 +254,8 @@ def process_repo(repo: dict, since_date: str, org: str, project: str, headers: d
 
 def export_to_excel(branches: list, org: str, project: str, since_date: str, output_file: str = None):
     """Exporta ramas a Excel con resumen."""
-    if not output_file:
-        output_dir = get_output_dir("outcome")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        default_name = f"branches_created_{org}_{project}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        output_file = str(output_dir / default_name)
+    if not output_file or output_file.lower() in ("excel", "csv", "json"):
+        output_file = resolve_output_path(output_file, f"branches_created_{org}_{project}")
     
     wb = Workbook()
     

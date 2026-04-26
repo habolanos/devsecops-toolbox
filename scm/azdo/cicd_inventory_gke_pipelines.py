@@ -26,7 +26,7 @@ except ImportError:
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import get_output_dir, resolve_output_path
 except ImportError:
     import os as _os
     from pathlib import Path as _Path
@@ -39,6 +39,21 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    from datetime import datetime as _dt
+    _FMT_EXT = {"excel": ".xlsx", "csv": ".csv", "json": ".json"}
+    def resolve_output_path(output_arg, base_name, default_format="excel"):
+        output_dir = get_output_dir("outcome")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        ext = _FMT_EXT.get(default_format, ".xlsx")
+        if not output_arg:
+            return str(output_dir / f"{base_name}_{_dt.now().strftime('%Y%m%d_%H%M%S')}{ext}")
+        if output_arg.lower() in _FMT_EXT:
+            ext = _FMT_EXT[output_arg.lower()]
+            return str(output_dir / f"{base_name}_{_dt.now().strftime('%Y%m%d_%H%M%S')}{ext}")
+        p = _Path(output_arg)
+        if p.suffix == "":
+            p = p.with_suffix(ext)
+        return str(p.resolve())
 # -------------------------------------------------------------------
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -317,11 +332,7 @@ Ejemplos:
             "variables": d.get("variables", {})
         })
     
-    # Generar Excel en directorio de salida centralizado
-    output_dir = get_output_dir("outcome")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    default_name = f"gke_cd_pipelines_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    output_file = args.output or str(output_dir / default_name)
+    output_file = resolve_output_path(args.output, f"gke_cd_pipelines_{args.project}")
     generate_excel(data, org, args.project, args.keyword, output_file)
     
     excel_path = Path(output_file).resolve()
