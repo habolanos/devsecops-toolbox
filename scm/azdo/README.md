@@ -838,6 +838,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-04-26 | 1.6.4 | Implementación completa de 3 herramientas: `cicd_inventory_ci_detailed.py` (14), `cicd_inventory_cd_detailed.py` (15), `azdo_pipeline_health_score.py` (16). Cache-first, multihilo, Rich spinners/progress, Excel 3 pestañas, scoring DORA/SRE 5 dimensiones, resumen final | `cicd_inventory_ci_detailed.py`, `cicd_inventory_cd_detailed.py`, `azdo_pipeline_health_score.py`, `tools.py`, `README.md` |
 | 2026-04-26 | 1.6.3 | Plan de trabajo para Pipeline Health Score replanteado con modelo basado en DORA 2023, Google SRE, Microsoft DevOps Maturity y Accelerate. 5 dimensiones: Recency(20), Reliability(25), Usage(20), Freshness(15), TechDebt(20) | `docs/Plan_Trabajo_Pipeline_Health.md`, `README.md` |
 | 2026-04-10 | 1.6.2 | Paso 3 optimizado: busca candidatos por nombre primero, descarga solo detalles de candidatos (vs 500 CDs completos). Usa `vsrm.dev.azure.com` para Release APIs | `azdo_pr_pipeline_analyzer.py`, `README.md` |
 | 2026-04-10 | 1.3.1 | Launcher: herramienta 1b `azdo_pr_pipeline_analyzer.py` añadida al menú con prompts interactivos | `tools.py`, `README.md` |
