@@ -205,7 +205,7 @@ TOOLS: Dict = {
         "name":        "Hotfix Branches Inventory",
         "description": "Inventario de ramas hotfix con creador, fecha de creación y actividad del repo",
         "path":        "cicd_inventory_hotfix_branches.py",
-        "args":        ["--pat", "--org", "--project", "--pattern", "--output"],
+        "args":        ["--pat", "--org", "--project", "--pattern", "--workers", "--output"],
         "group":       "inventory",
         "status":      "ready",
     },

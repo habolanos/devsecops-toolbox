@@ -13,17 +13,24 @@ Autor: Harold Adrian (migrado desde Comercial/scripts/ramasV3.py)
 
 import requests
 import pandas as pd
-import time
 import os
 import argparse
 import sys
 from base64 import b64encode
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = lambda *a, **k: None  # noqa: E731
+
+try:
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
+    from rich.console import Console
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
@@ -66,17 +73,28 @@ class TeeWriter:
         self.terminal = sys.__stdout__
         self.log = open(log_path, "w", encoding="utf-8")
         self.log_path = log_path
+        self._paused = False
 
     def write(self, message):
-        self.terminal.write(message)
         self.log.write(message)
+        if not self._paused:
+            self.terminal.write(message)
 
     def flush(self):
-        self.terminal.flush()
         self.log.flush()
+        if not self._paused:
+            self.terminal.flush()
 
     def close(self):
         self.log.close()
+
+    def pause_terminal(self):
+        """Pausa escritura al terminal (Rich toma control)."""
+        self._paused = True
+
+    def resume_terminal(self):
+        """Reanuda escritura al terminal."""
+        self._paused = False
 
 
 def setup_logging(script_name):
@@ -99,13 +117,48 @@ def teardown_logging(tee):
     tee.close()
 
 
+class _SimpleProgress:
+    """Fallback: imprime progreso como texto simple."""
+    def __init__(self, desc, total):
+        self.desc = desc
+        self.total = total
+        self.completed = 0
+        self._last_pct = -1
+
+    def advance(self, n=1):
+        self.completed += n
+        pct = int(self.completed / self.total * 100) if self.total else 100
+        if pct != self._last_pct and pct % 10 == 0:
+            print(f"  {self.desc}: {self.completed}/{self.total} ({pct}%)")
+            self._last_pct = pct
+
+    def finish(self, msg):
+        print(f"  ✅ {msg}")
+
+
+def _progress_context():
+    """Retorna contexto Rich Progress que escribe al terminal real."""
+    if not RICH_AVAILABLE:
+        return None
+    console = Console(file=sys.__stdout__)
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    )
+
+
 # ======================================================
 # CONFIGURACIÓN POR DEFECTO
 # ======================================================
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Cadena_de_Suministros"
 DEFAULT_PATTERN = "hotfix"
-API_VERSION = "7.0"
+API_VERSION = "7.1"
+DEFAULT_WORKERS = 30
 
 
 def get_headers(pat: str):
@@ -117,21 +170,29 @@ def get_headers(pat: str):
     }
 
 
-def azure_get(url: str, headers: dict, params=None, retries=5, timeout=15):
-    """GET con retry para errores 503."""
-    for attempt in range(retries):
-        r = requests.get(url, headers=headers, params=params, timeout=timeout)
-        
-        if r.status_code == 503:
-            wait = 2 * (attempt + 1)
-            print(f"⚠️ 503 Service Unavailable → retry {attempt+1}/{retries} (wait {wait}s)")
-            time.sleep(wait)
-            continue
-        
-        r.raise_for_status()
-        return r.json()
-    
-    raise Exception(f"Max retries ({retries}) exceeded for {url}")
+def azure_get(url: str, headers: dict, params=None, max_retries=5, timeout=30):
+    """GET con retry y backoff exponencial para errores transitorios (5xx/red)."""
+    params = params or {}
+    params["api-version"] = API_VERSION
+
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=timeout)
+            if r.status_code >= 500:
+                wait = 2 ** attempt
+                print(f"⚠️  {r.status_code} en {url[:60]}... retry {attempt+1}/{max_retries} (espera {wait}s)")
+                import time; time.sleep(wait)
+                continue
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.HTTPError:
+            raise
+        except requests.exceptions.RequestException as e:
+            if attempt == max_retries - 1:
+                raise
+            wait = 2 ** attempt
+            import time; time.sleep(wait)
+    return {}
 
 
 def normalize_org(org: str) -> str:
@@ -141,76 +202,75 @@ def normalize_org(org: str) -> str:
     return org
 
 
+def safe_az_get(url, headers, params=None):
+    """GET que nunca falla — retorna {} en caso de error (loggea el error)."""
+    try:
+        return azure_get(url, headers, params)
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        return {}
+
+
 def get_repositories(org: str, project: str, headers: dict):
     """Obtiene lista de repositorios."""
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories"
-    params = {"api-version": API_VERSION}
-    data = azure_get(url, headers, params)
+    data = azure_get(url, headers)
     return data.get("value", [])
 
 
-def get_branches(org: str, project: str, repo_id: str, headers: dict):
-    """Obtiene ramas de un repositorio."""
+def get_hotfix_branches(org: str, project: str, repo_id: str, pattern: str, headers: dict):
+    """Obtiene ramas hotfix de un repo filtrando en la API (mucho más rápido)."""
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo_id}/refs"
     params = {
-        "api-version": API_VERSION,
-        "filter": "heads/",
-        "includeStatuses": "true"
+        "filter": f"heads/{pattern}",
+        "includeStatuses": "true",
     }
-    data = azure_get(url, headers, params)
+    data = safe_az_get(url, headers, params)
     return data.get("value", [])
 
 
-def get_branch_creator(org: str, project: str, repo_id: str, branch_name: str, headers: dict):
-    """Obtiene información del creador de una rama."""
-    try:
-        # Usar pushes para encontrar el primer push a esa rama
-        url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo_id}/pushes"
-        params = {
-            "api-version": API_VERSION,
-            "searchCriteria.refName": f"refs/heads/{branch_name}",
-            "$top": 1
+def get_pushes_for_branch(org: str, project: str, repo_id: str, branch_name: str, headers: dict):
+    """Obtiene el primer push de una rama para determinar creador y fecha."""
+    url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo_id}/pushes"
+    params = {
+        "searchCriteria.refName": f"refs/heads/{branch_name}",
+        "searchCriteria.includeRefUpdates": "true",
+        "$top": 1,
+    }
+    data = safe_az_get(url, headers, params)
+    pushes = data.get("value", [])
+    if pushes:
+        first_push = pushes[-1]
+        return {
+            "creator": first_push.get("pushedBy", {}).get("displayName", "Unknown"),
+            "date": first_push.get("date", "")[:10] if first_push.get("date") else "Unknown",
+            "push_id": first_push.get("pushId"),
         }
-        data = azure_get(url, headers, params)
-        pushes = data.get("value", [])
-        
-        if pushes:
-            first_push = pushes[-1]  # El más antiguo
-            return {
-                "creator": first_push.get("pushedBy", {}).get("displayName", "Unknown"),
-                "date": first_push.get("date", "")[:10] if first_push.get("date") else "Unknown",
-                "push_id": first_push.get("pushId")
-            }
-    except Exception as e:
-        print(f"   ⚠️ Error obteniendo creador de {branch_name}: {e}")
-    
     return {"creator": "Unknown", "date": "Unknown", "push_id": None}
 
 
-def process_repository(org: str, project: str, repo: dict, pattern: str, headers: dict):
-    """Procesa un repositorio y retorna ramas hotfix."""
+def _process_repo(org: str, project: str, repo: dict, pattern: str, headers: dict):
+    """Worker: procesa un repositorio y retorna (repo_name, hotfix_branches)."""
     repo_id = repo.get("id")
-    repo_name = repo.get("name")
-    
-    branches = get_branches(org, project, repo_id, headers)
+    repo_name = repo.get("name", "unknown")
+
+    branches = get_hotfix_branches(org, project, repo_id, pattern, headers)
     hotfix_branches = []
-    
+
     for branch in branches:
         branch_name = branch.get("name", "").replace("refs/heads/", "")
-        
-        if pattern.lower() in branch_name.lower():
-            creator_info = get_branch_creator(org, project, repo_id, branch_name, headers)
-            
-            hotfix_branches.append({
-                "repo_name": repo_name,
-                "branch_name": branch_name,
-                "creator": creator_info["creator"],
-                "created_date": creator_info["date"],
-                "is_locked": branch.get("isLocked", False),
-                "creator_id": creator_info["push_id"]
-            })
-    
-    return hotfix_branches
+        creator_info = get_pushes_for_branch(org, project, repo_id, branch_name, headers)
+
+        hotfix_branches.append({
+            "repo_name": repo_name,
+            "branch_name": branch_name,
+            "creator": creator_info["creator"],
+            "created_date": creator_info["date"],
+            "is_locked": branch.get("isLocked", False),
+            "creator_id": creator_info["push_id"],
+        })
+
+    return repo_name, hotfix_branches
 
 
 def export_to_excel(data: list, org: str, project: str, output_file: str = None):
@@ -259,6 +319,8 @@ Ejemplos:
                        help=f"Proyecto (default: {DEFAULT_PROJECT})")
     parser.add_argument("--pattern", default=DEFAULT_PATTERN,
                        help=f"Patrón para filtrar ramas (default: {DEFAULT_PATTERN})")
+    parser.add_argument("--workers", "-w", type=int, default=DEFAULT_WORKERS,
+                       help=f"Workers concurrentes (default: {DEFAULT_WORKERS})")
     parser.add_argument("--pat", default=None,
                        help="PAT de Azure DevOps (default: env AZURE_PAT)")
     parser.add_argument("--output", "-o", default=None,
@@ -286,26 +348,40 @@ Ejemplos:
     print("=" * 60)
     
     repos = get_repositories(org, args.project, headers)
-    print(f"📦 {len(repos)} repositorios encontrados\n")
+    total = len(repos)
+    print(f"📦 {total} repositorios encontrados")
     
     all_hotfix_branches = []
+    progress = _progress_context()
     
-    for i, repo in enumerate(repos, 1):
-        repo_name = repo.get("name")
-        print(f"  [{i}/{len(repos)}] Analizando: {repo_name}...")
-        
-        try:
-            hotfix_branches = process_repository(org, args.project, repo, args.pattern, headers)
-            if hotfix_branches:
-                all_hotfix_branches.extend(hotfix_branches)
-                print(f"      ✅ {len(hotfix_branches)} ramas hotfix encontradas")
-            else:
-                print(f"      ℹ️ Sin ramas hotfix")
-        except Exception as e:
-            print(f"      ❌ Error: {e}")
-        
-        # Pausa anti-throttling
-        time.sleep(0.5)
+    if progress:
+        tee.pause_terminal()
+        with progress:
+            task = progress.add_task("🔥 Hotfix Branches", total=total)
+            with ThreadPoolExecutor(max_workers=args.workers) as executor:
+                futures = {executor.submit(_process_repo, org, args.project, r, args.pattern, headers): r for r in repos}
+                for f in as_completed(futures):
+                    try:
+                        repo_name, branches = f.result()
+                        all_hotfix_branches.extend(branches)
+                    except Exception as e:
+                        repo_name = futures[f].get("name", "?")
+                        print(f"   ⚠️ Error en repo {repo_name}: {e}")
+                    progress.advance(task)
+        tee.resume_terminal()
+    else:
+        sp = _SimpleProgress("🔥 Hotfix Branches", total)
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = {executor.submit(_process_repo, org, args.project, r, args.pattern, headers): r for r in repos}
+            for f in as_completed(futures):
+                try:
+                    repo_name, branches = f.result()
+                    all_hotfix_branches.extend(branches)
+                except Exception as e:
+                    repo_name = futures[f].get("name", "?")
+                    print(f"   ⚠️ Error en repo {repo_name}: {e}")
+                sp.advance()
+        sp.finish(f"{len(all_hotfix_branches)} hotfix branches en {total} repos")
     
     if not all_hotfix_branches:
         print(f"\nℹ️ No se encontraron ramas con patrón '{args.pattern}'")
