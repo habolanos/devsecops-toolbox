@@ -365,7 +365,104 @@ Penalties (acumulativas):
 
 ---
 
-## 5. ENDPOINTS AZURE DEVOPS REQUERIDOS
+## 5. ESTRATEGIA DE EJECUCIÓN Y DATA SHARING
+
+### 5.1 Problema: Consultas Duplicadas
+
+Si los 3 programas se ejecutan de forma independiente, se repiten las mismas consultas API:
+- **CI Inventory** consulta: build definitions + último build por definition
+- **CD Inventory** consulta: release definitions + último release por definition
+- **Health Score** necesita: definitions + últimas 20 ejecuciones + MTTR + fechas de modificación
+
+**Costo estimado** para 1500 pipelines:
+- Sin data sharing: ~4500-6000 llamadas API (CI×2 + CD×2 + Health×3-4)
+- Con data sharing: ~3000 llamadas API (CI×2 + CD×2 + Health solo incremental)
+
+### 5.2 Arquitectura Recomendada: 2-Pass con Raw Cache
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  PASO 1: Inventarios (semanal/mensual)                              │
+│  ─────────────────────────────────────                              │
+│  $ python cicd_inventory_ci_detailed.py  → outcome/ci_inventory.xlsx│
+│                                          → outcome/.cache/ci_raw.json│
+│  $ python cicd_inventory_cd_detailed.py  → outcome/cd_inventory.xlsx│
+│                                          → outcome/.cache/cd_raw.json│
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  PASO 2: Health Score (diario/semanal)                              │
+│  ─────────────────────────────────────                              │
+│  Opción A: Con inputs (rápido, ~30% menos llamadas)                   │
+│  $ python azdo_pipeline_health_score.py                             │
+│      --ci-input outcome/ci_inventory_20260426_103000.xlsx             │
+│      --cd-input outcome/cd_inventory_20260426_103500.xlsx            │
+│                                                                      │
+│  Opción B: Standalone (sin inputs, consulta todo)                     │
+│  $ python azdo_pipeline_health_score.py                               │
+│      --org Coppel-Retail --project "Compras.RMI"                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 5.3 Raw Cache: Estructura
+
+Cada inventario guarda un `.cache/{tipo}_raw.json` con datos crudos API:
+
+```json
+{
+  "metadata": {
+    "org": "Coppel-Retail",
+    "project": "Compras.RMI",
+    "generated_at": "2026-04-26T10:30:00Z",
+    "api_version": "7.1"
+  },
+  "definitions": [
+    {
+      "id": 123,
+      "name": "api-gateway-CI",
+      "createdDate": "2024-03-20T14:11:00Z",
+      "modifiedDate": "2025-03-03T12:43:00Z",
+      "process": {"type": "yaml", "yamlFilename": "azure-pipelines.yml"},
+      "repository": {"id": "repo-uuid", "name": "api-gateway", "url": "..."},
+      "authoredBy": {"displayName": "..."},
+      "_last_build": {"id": 456, "status": "completed", "result": "succeeded", "finishTime": "2025-03-03T12:43:00Z"},
+      "_build_count_30d": 6,
+      "_build_count_90d": 18
+    }
+  ]
+}
+```
+
+**Ventajas del cache:**
+- Health Score lee `ci_raw.json` + `cd_raw.json` → evita re-consultar definitions básicos
+- Solo consulta incremental: últimas 20 ejecuciones por pipeline (para reliability + MTTR)
+- Si `--use-cache` y el cache tiene < 24h, Health Score puede ejecutarse sin ninguna llamada API (modo offline)
+
+### 5.4 Flujos de Ejecución Soportados
+
+| Flujo | Comando | Cuándo usar | Llamadas API |
+|---|---|---|---|
+| **Full** (sin cache) | Ejecutar los 3 scripts standalone | Primera vez, o después de limpiar cache | ~5000 |
+| **Inventory + Health** | Inventarios → Health con `--ci-input`/`--cd-input` | Uso normal semanal | ~3500 |
+| **Health rápido** | Health con `--use-cache` | Diario, monitoreo continuo | ~1500 (solo builds/releases recientes) |
+| **Health offline** | Health con `--offline` + cache < 24h | Sin conectividad, reportes locales | 0 |
+
+### 5.5 Implementación en Cada Script
+
+**Inventarios CI/CD:**
+- Siempre guardan `.cache/{ci|cd}_raw.json` después de terminar
+- Incluyen todos los campos crudos de la API + metadatos enriquecidos (`_build_count_*`, `_last_build`)
+
+**Health Score:**
+- `--ci-input PATH` / `--cd-input PATH`: lee Excel generado por inventarios
+- `--use-cache`: intenta leer `.cache/ci_raw.json` y `.cache/cd_raw.json` primero; falta datos → consulta API
+- `--offline`: solo usa cache, error si cache no existe o > 24h
+- Sin flags: consulta todo directamente (standalone)
+
+---
+
+## 6. ENDPOINTS AZURE DEVOPS REQUERIDOS
 
 ### CI Pipelines
 ```
