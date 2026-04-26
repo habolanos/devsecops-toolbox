@@ -18,10 +18,11 @@
 
   "defaults": {
     "_info": "Valores por defecto compartidos entre todas las herramientas. Se pueden sobreescribir por herramienta.",
-    "timezone":      "America/Mazatlan",
-    "threads":       8,
-    "output_format": "csv",
-    "debug":         false
+    "timezone":            "America/Mazatlan",
+    "threads":             8,
+    "output_format":       "csv",
+    "pipelines_clone_dir": "~/.devsecops-toolbox/cache",
+    "debug":               false
   },
 
   "tools": {

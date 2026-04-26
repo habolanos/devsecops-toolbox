@@ -19,6 +19,7 @@ import time
 import shutil
 import subprocess
 import tempfile
+import json
 import requests
 import pandas as pd
 import argparse
@@ -257,8 +258,30 @@ def parse_app_repo_from_yaml_text(yaml_text):
     return None
 
 
+def _get_pipelines_clone_dir(org, project):
+    """Resuelve directorio para clone de pipelines-projects.
+    Orden: DEVSECOPS_CLONE_DIR env > config.json > ~/.devsecops-toolbox/cache
+    """
+    env = os.getenv("DEVSECOPS_CLONE_DIR")
+    if env:
+        return os.path.join(env, f"pipelines-projects-{org}-{project}")
+    # Intentar leer config.json
+    config_path = Path(__file__).parent / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            clone_dir = cfg.get("defaults", {}).get("pipelines_clone_dir")
+            if clone_dir:
+                return os.path.join(clone_dir, f"pipelines-projects-{org}-{project}")
+        except Exception:
+            pass
+    # Default: home del usuario
+    return os.path.join(Path.home(), ".devsecops-toolbox", "cache", f"pipelines-projects-{org}-{project}")
+
+
 def clone_pipelines_projects(org, project, pat, clone_dir=None):
-    """Clona el repo pipelines-projects (shallow, single-branch master) a un directorio temporal.
+    """Clona el repo pipelines-projects (shallow, single-branch master).
     Retorna la ruta del directorio del clone o None si falla.
     Si clone_dir ya existe, hace git pull en lugar de git clone.
     """
@@ -266,7 +289,7 @@ def clone_pipelines_projects(org, project, pat, clone_dir=None):
     public_url = f"https://dev.azure.com/{org}/{project}/_git/pipelines-projects"
     
     if clone_dir is None:
-        clone_dir = os.path.join(tempfile.gettempdir(), f"pipelines-projects-{org}-{project}")
+        clone_dir = _get_pipelines_clone_dir(org, project)
     
     clone_path = os.path.join(clone_dir, "pipelines-projects")
     
@@ -492,7 +515,7 @@ def _fetch_ci_pipeline(d, org, project, headers, pipelines_clone_path=None):
             last_run_result = b.get("result")
             last_run_user = (b.get("requestedFor") or {}).get("displayName")
     except Exception as e:
-        print(f"   ⚠️ Error consultando builds: {e}")
+        last_run_result = f"ERROR: {str(e)[:200]}"
     
     return {
         "project": project,
@@ -607,7 +630,7 @@ def _fetch_cd_pipeline(d, org, project, headers):
             last_release_status = rel.get("status")
             last_release_user = (rel.get("createdBy") or {}).get("displayName")
     except Exception as e:
-        print(f"   ⚠️ Error consultando releases: {e}")
+        last_release_status = f"ERROR: {str(e)[:200]}"
     
     return {
         "project": project,
