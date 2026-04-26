@@ -24,13 +24,14 @@ import time
 import json
 import glob
 import math
+import subprocess
 import requests
 import pandas as pd
 import argparse
 from datetime import datetime, timezone, timedelta
 from base64 import b64encode
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 
 try:
     from dotenv import load_dotenv
@@ -167,6 +168,13 @@ def az_get(url, headers, params=None, max_retries=5):
             print(f"⚠️  Error en {url[:60]}... retry {attempt+1}/{max_retries}: {e}")
             time.sleep(wait)
     return {}
+
+
+def normalize_org(org: str) -> str:
+    """Extrae nombre de organización desde URL o nombre simple."""
+    if org.startswith("http"):
+        return org.rstrip("/").split("/")[-1]
+    return org
 
 
 def safe_az_get(url, headers, params=None):
@@ -732,6 +740,122 @@ def print_summary(ci_count, cd_count, cache_ci, cache_cd, api_calls, health_rows
 # MAIN
 # ==========================================================
 
+def _launch_proc(label, cmd, env):
+    """Lanza un subprocess Popen y retorna el proceso."""
+    return subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def _fmt_elapsed(seconds):
+    """Formatea segundos como Xm Ys."""
+    m, s = divmod(int(seconds), 60)
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+def _run_inventory_scripts(args, tee):
+    """Lanza cicd_inventory_ci_detailed.py y cicd_inventory_cd_detailed.py en paralelo con spinner dinámico."""
+    script_dir = Path(__file__).parent
+    python_exe = sys.executable
+    
+    common_env = os.environ.copy()
+    common_env["AZDO_PAT"] = args.pat
+    
+    ci_cmd = [
+        python_exe, str(script_dir / "cicd_inventory_ci_detailed.py"),
+        "--pat", args.pat,
+        "--org", args.org,
+        "--project", args.project,
+        "--workers", str(args.workers),
+    ]
+    cd_cmd = [
+        python_exe, str(script_dir / "cicd_inventory_cd_detailed.py"),
+        "--pat", args.pat,
+        "--org", args.org,
+        "--project", args.project,
+        "--workers", str(args.workers),
+    ]
+    
+    print("\n🔄 Ejecutando inventory CI y CD en paralelo...")
+    print(f"   CI: cicd_inventory_ci_detailed.py --org {args.org} --project {args.project}")
+    print(f"   CD: cicd_inventory_cd_detailed.py --org {args.org} --project {args.project}")
+    
+    ci_proc = _launch_proc("CI-Inventory", ci_cmd, common_env)
+    cd_proc = _launch_proc("CD-Inventory", cd_cmd, common_env)
+    procs = {"CI-Inventory": ci_proc, "CD-Inventory": cd_proc}
+    results = {}
+    start = time.time()
+    
+    # Spinner frames
+    spinner_frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+    frame_idx = 0
+    
+    if RICH_AVAILABLE:
+        tee.pause_terminal()
+        console = Console(file=sys.__stdout__)
+        from rich.live import Live
+        from rich.text import Text
+        
+        with Live(console=console, refresh_per_second=4, transient=True) as live:
+            while procs:
+                elapsed = time.time() - start
+                frame = spinner_frames[frame_idx % len(spinner_frames)]
+                frame_idx += 1
+                
+                lines = [f"{frame} [bold blue]Inventory en progreso[/] ({_fmt_elapsed(elapsed)})"]
+                for label, proc in list(procs.items()):
+                    if proc.poll() is not None:
+                        rc = proc.returncode
+                        icon = "✅" if rc == 0 else "⚠️"
+                        lines.append(f"  {icon} {label}: terminado (código {rc})")
+                        results[label] = rc
+                        del procs[label]
+                    else:
+                        lines.append(f"  🔄 {label}: ejecutándose...")
+                
+                live.update(Text.from_markup("\n".join(lines)))
+                time.sleep(0.25)
+        
+        tee.resume_terminal()
+    else:
+        # Fallback sin Rich: imprimir líneas con \r
+        last_print = 0
+        while procs:
+            elapsed = time.time() - start
+            if elapsed - last_print >= 2:
+                status_parts = []
+                for label, proc in procs.items():
+                    status_parts.append(f"{label}: ejecutándose")
+                print(f"   ⏳ {_fmt_elapsed(elapsed)} — {', '.join(status_parts)}")
+                last_print = elapsed
+            
+            for label, proc in list(procs.items()):
+                if proc.poll() is not None:
+                    rc = proc.returncode
+                    icon = "✅" if rc == 0 else "⚠️"
+                    print(f"   {icon} {label}: terminado (código {rc})")
+                    results[label] = rc
+                    del procs[label]
+            time.sleep(0.5)
+    
+    # Capturar stderr de procesos terminados para diagnóstico
+    for label, rc in results.items():
+        proc = ci_proc if label == "CI-Inventory" else cd_proc
+        if proc.stderr:
+            err_lines = proc.stderr.read().strip().split("\n")[-3:]
+            if err_lines and any(l.strip() for l in err_lines):
+                print(f"   [{label}] stderr (últimas líneas):")
+                for l in err_lines:
+                    if l.strip():
+                        print(f"      {l.strip()}")
+    
+    ci_rc = results.get("CI-Inventory", -1)
+    cd_rc = results.get("CD-Inventory", -1)
+    print(f"   CI-Inventory: código {ci_rc}")
+    print(f"   CD-Inventory: código {cd_rc}")
+    print("✅ Inventory completado. Continuando con Health Score...\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Pipeline Health Score Report")
     parser.add_argument("--pat", default=os.getenv("AZDO_PAT"), help="Azure DevOps PAT")
@@ -742,7 +866,9 @@ def main():
     parser.add_argument("--force-refresh", action="store_true", help="Ignorar cache, re-consultar todo")
     parser.add_argument("--offline", action="store_true", help="Solo usar cache, fallar si no existe")
     parser.add_argument("--skip-incremental", action="store_true", help="No consultar últimas 20 ejecuciones")
+    parser.add_argument("--run-inventory", action="store_true", help="Ejecutar CI y CD inventory en hilos paralelos antes de procesar")
     args = parser.parse_args()
+    args.org = normalize_org(args.org)
 
     if not args.pat and not args.offline:
         print("❌ Se requiere --pat o env AZDO_PAT (o usar --offline)")
@@ -761,6 +887,12 @@ def main():
     cache_cd_used = False
     
     try:
+        # ============================================
+        # PASO 0: EJECUTAR INVENTORY EN SEGUNDO PLANO
+        # ============================================
+        if args.run_inventory and not args.offline:
+            _run_inventory_scripts(args, tee)
+        
         # ============================================
         # PASO 1: OBTENER DATOS BASE CI
         # ============================================

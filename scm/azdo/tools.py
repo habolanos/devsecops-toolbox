@@ -75,14 +75,15 @@ TOOL_GROUPS = {
     "pr":         {"name": "Pull Requests",      "emoji": "📬", "color": "cyan"},
     "policy":     {"name": "Políticas de Rama",  "emoji": "🔒", "color": "yellow"},
     "release":    {"name": "Releases & CD",      "emoji": "🚀", "color": "green"},
-    "drift":      {"name": "Drift & Cambios",    "emoji": "�", "color": "magenta"},
+    "drift":      {"name": "Drift & Cambios",    "emoji": "🌪️", "color": "magenta"},
     "validation": {"name": "Validación",         "emoji": "✅", "color": "blue"},
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
     "inventory":  {"name": "Inventario",         "emoji": "📋", "color": "bright_white"},
+    "health":     {"name": "Health Score",       "emoji": "📊", "color": "bright_cyan"},
     "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
 
-GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "inventory", "system"]
+GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "inventory", "health", "system"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HERRAMIENTAS DISPONIBLES
@@ -229,7 +230,7 @@ TOOLS: Dict = {
         "name":        "Pipeline Health Score",
         "description": "[Flujo / Orquestador] Reporte de salud con scoring DORA/SRE en 5 dimensiones. Genera 1 Excel con 3 pestañas (CI + CD + Health). Lee cache CI/CD si existe < 24h, consulta APIs solo si es necesario.",
         "path":        "azdo_pipeline_health_score.py",
-        "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--offline", "--skip-incremental"],
+        "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--offline", "--skip-incremental", "--run-inventory"],
         "group":       "health",
         "status":      "ready",
     },
@@ -695,6 +696,36 @@ def run_tool(tool_key: str):
             extra += ["--output", val]
         elif not val and cfg_fmt in ("json", "csv", "excel"):
             extra += ["--output", cfg_fmt]
+
+    if "--force-refresh" in tool_args:
+        print(f"{Colors.BOLD}¿Forzar refresh (ignorar cache)? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--force-refresh")
+
+    if "--offline" in tool_args:
+        print(f"{Colors.BOLD}¿Modo offline (solo cache)? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--offline")
+
+    if "--skip-incremental" in tool_args:
+        print(f"{Colors.BOLD}¿Saltar datos incrementales? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--skip-incremental")
+
+    if "--run-inventory" in tool_args:
+        print(f"{Colors.BOLD}¿Ejecutar CI y CD inventory en paralelo antes de procesar? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--run-inventory")
+
+    if "--use-cache-only" in tool_args:
+        print(f"{Colors.BOLD}¿Usar solo cache (fallar si no existe)? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--use-cache-only")
 
     cmd = [venv_python, str(script_path)] + extra
 

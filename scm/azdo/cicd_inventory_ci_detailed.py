@@ -76,7 +76,7 @@ SCRIPT_NAME = "cicd_inventory_ci_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
 API_VERSION = "7.1"
-DEFAULT_WORKERS = 30
+DEFAULT_WORKERS = 10
 CACHE_TTL_HOURS = 24
 
 
@@ -171,6 +171,13 @@ def az_get(url, headers, params=None, max_retries=5):
             print(f"⚠️  Error en {url[:60]}... retry {attempt+1}/{max_retries}: {e}")
             time.sleep(wait)
     return {}
+
+
+def normalize_org(org: str) -> str:
+    """Extrae nombre de organización desde URL o nombre simple."""
+    if org.startswith("http"):
+        return org.rstrip("/").split("/")[-1]
+    return org
 
 
 def safe_az_get(url, headers, params=None):
@@ -372,6 +379,7 @@ def main():
     parser.add_argument("--skip-cache", action="store_true", help="Alias de --force-refresh")
     parser.add_argument("--use-cache-only", action="store_true", help="Solo cache, falla si no existe o > 24h")
     args = parser.parse_args()
+    args.org = normalize_org(args.org)
 
     if not args.pat:
         print("❌ Se requiere --pat o env AZDO_PAT")
