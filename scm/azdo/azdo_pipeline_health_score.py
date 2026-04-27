@@ -28,6 +28,16 @@ import subprocess
 import requests
 import pandas as pd
 import argparse
+
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+    from io import BytesIO
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
 from datetime import datetime, timezone, timedelta
 from base64 import b64encode
 from pathlib import Path
@@ -669,6 +679,238 @@ def build_cd_row(data, headers, org, project, skip_incremental=False):
 
 
 # ==========================================================
+# CHART GENERATION (P1, P2, P3, P5)
+# ==========================================================
+
+# Rating color palette
+RATING_COLORS = {
+    "Excelente": "#2ecc71",
+    "Bueno":     "#27ae60",
+    "Regular":   "#f39c12",
+    "Bajo":      "#e67e22",
+    "Crítico":   "#e74c3c",
+}
+
+DORA_COLORS = {
+    "Elite":  "#2ecc71",
+    "High":   "#27ae60",
+    "Medium": "#f39c12",
+    "Low":    "#e74c3c",
+}
+
+DIMENSION_COLORS = {
+    "Recency":    "#3498db",
+    "Reliability":"#2ecc71",
+    "Usage":      "#9b59b6",
+    "Freshness":  "#f39c12",
+    "TechDebt":   "#e74c3c",
+}
+
+
+def _chart_stacked_bar(df_health):
+    """P1: Stacked Bar Horizontal — composición del health score por dimensiones."""
+    if df_health.empty:
+        return None
+    top = df_health.nlargest(min(30, len(df_health)), "health_score")
+    names = top["pipeline_name"].tolist()
+    y_pos = range(len(names))
+
+    fig, ax = plt.subplots(figsize=(12, max(4, len(names) * 0.35)))
+    dimensions = [
+        ("recency_score", "Recency"),
+        ("reliability_score", "Reliability"),
+        ("usage_score", "Usage"),
+        ("freshness_score", "Freshness"),
+        ("tech_debt_score", "TechDebt"),
+    ]
+    left = [0] * len(names)
+    for col, label in dimensions:
+        values = top[col].tolist()
+        ax.barh(y_pos, values, left=left, color=DIMENSION_COLORS[label], label=label, edgecolor="white", linewidth=0.3)
+        left = [l + v for l, v in zip(left, values)]
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(names, fontsize=7)
+    ax.invert_yaxis()
+    ax.set_xlabel("Score (0-100)")
+    ax.set_title("Composición Health Score — Top 30 Pipelines", fontsize=11, fontweight="bold")
+    ax.legend(loc="lower right", fontsize=8, ncol=5)
+    ax.set_xlim(0, 105)
+    plt.tight_layout()
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=130)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _chart_donut_ratings(df_health):
+    """P2: Donut — distribución de ratings."""
+    if df_health.empty:
+        return None
+    rating_order = ["Excelente", "Bueno", "Regular", "Bajo", "Crítico"]
+    counts = df_health["rating"].value_counts()
+    labels = [r for r in rating_order if counts.get(r, 0) > 0]
+    sizes = [counts[r] for r in labels]
+    colors = [RATING_COLORS[r] for r in labels]
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    wedges, texts, autotexts = ax.pie(
+        sizes, labels=labels, colors=colors, autopct="%1.1f%%",
+        startangle=90, pctdistance=0.78,
+        wedgeprops=dict(width=0.4, edgecolor="white", linewidth=2),
+    )
+    for t in autotexts:
+        t.set_fontsize(9)
+        t.set_fontweight("bold")
+    for t in texts:
+        t.set_fontsize(9)
+
+    total = sum(sizes)
+    ax.text(0, 0, f"{total}\npipelines", ha="center", va="center", fontsize=14, fontweight="bold", color="#555")
+    ax.set_title("Distribución de Ratings", fontsize=12, fontweight="bold")
+    plt.tight_layout()
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=130)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _chart_dora_grouped_bar(df_health):
+    """P3: Grouped Bar — DORA profile CI vs CD."""
+    if df_health.empty:
+        return None
+    dora_order = ["Elite", "High", "Medium", "Low"]
+    ci_counts = df_health[df_health["pipeline_type"] == "CI"]["dora_profile"].value_counts()
+    cd_counts = df_health[df_health["pipeline_type"] == "CD"]["dora_profile"].value_counts()
+
+    labels = [d for d in dora_order if ci_counts.get(d, 0) + cd_counts.get(d, 0) > 0]
+    ci_vals = [ci_counts.get(d, 0) for d in labels]
+    cd_vals = [cd_counts.get(d, 0) for d in labels]
+
+    x = range(len(labels))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    bars_ci = ax.bar([i - width/2 for i in x], ci_vals, width, label="CI", color="#3498db", edgecolor="white")
+    bars_cd = ax.bar([i + width/2 for i in x], cd_vals, width, label="CD", color="#e67e22", edgecolor="white")
+
+    for bar in bars_ci:
+        if bar.get_height() > 0:
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3, str(int(bar.get_height())), ha="center", fontsize=9, fontweight="bold")
+    for bar in bars_cd:
+        if bar.get_height() > 0:
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3, str(int(bar.get_height())), ha="center", fontsize=9, fontweight="bold")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=10)
+    ax.set_ylabel("Cantidad de pipelines")
+    ax.set_title("DORA Profile — CI vs CD", fontsize=12, fontweight="bold")
+    ax.legend(fontsize=10)
+    ax.set_ylim(0, max(max(ci_vals, default=0), max(cd_vals, default=0)) * 1.25 + 1)
+    plt.tight_layout()
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=130)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _chart_scatter_score_vs_usage(df_health):
+    """P5: Scatter — Health Score vs Ejecuciones 30d, color por rating."""
+    if df_health.empty:
+        return None
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    for rating, color in RATING_COLORS.items():
+        subset = df_health[df_health["rating"] == rating]
+        if subset.empty:
+            continue
+        ax.scatter(
+            subset["total_executions_30d"],
+            subset["health_score"],
+            c=color, label=rating, alpha=0.7, s=60, edgecolors="white", linewidth=0.5,
+        )
+
+    # Annotate outliers: low score + high usage (priority action)
+    if len(df_health) > 0:
+        median_exec = df_health["total_executions_30d"].median()
+        low_score_high_usage = df_health[
+            (df_health["health_score"] < 50) & (df_health["total_executions_30d"] > median_exec)
+        ]
+        for _, row in low_score_high_usage.iterrows():
+            ax.annotate(
+                row["pipeline_name"][:25],
+                (row["total_executions_30d"], row["health_score"]),
+                fontsize=6, alpha=0.8,
+                xytext=(5, 5), textcoords="offset points",
+                arrowprops=dict(arrowstyle="->", color="red", lw=0.5),
+            )
+
+    # Quadrant lines
+    ax.axhline(y=50, color="gray", linestyle="--", linewidth=0.7, alpha=0.5)
+    if median_exec > 0:
+        ax.axvline(x=median_exec, color="gray", linestyle="--", linewidth=0.7, alpha=0.5)
+        ax.text(0.02, 0.98, "⚠️ Alto uso + Bajo score\n→ Acción urgente", transform=ax.transAxes, fontsize=7, va="top", color="red", alpha=0.7)
+        ax.text(0.98, 0.98, "✅ Alto uso + Alto score\n→ Mantener", transform=ax.transAxes, fontsize=7, va="top", ha="right", color="green", alpha=0.7)
+        ax.text(0.02, 0.02, "🔍 Bajo uso + Bajo score\n→ Evaluar eliminación", transform=ax.transAxes, fontsize=7, va="bottom", color="orange", alpha=0.7)
+        ax.text(0.98, 0.02, "💡 Bajo uso + Alto score\n→ Consolidar", transform=ax.transAxes, fontsize=7, va="bottom", ha="right", color="blue", alpha=0.7)
+
+    ax.set_xlabel("Ejecuciones (últimos 30 días)", fontsize=10)
+    ax.set_ylabel("Health Score (0-100)", fontsize=10)
+    ax.set_title("Health Score vs Uso — Priorización de intervención", fontsize=12, fontweight="bold")
+    ax.legend(fontsize=8, loc="center right")
+    ax.set_ylim(-5, 105)
+    plt.tight_layout()
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=130)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _add_charts_sheet(writer, df_health):
+    """Genera pestaña Charts con los 4 gráficos embebidos como imágenes."""
+    if not MATPLOTLIB_AVAILABLE:
+        print("⚠️  matplotlib no disponible — pestaña Charts omitida")
+        return
+    if df_health.empty:
+        print("⚠️  Sin datos para generar Charts")
+        return
+
+    from openpyxl.drawing.image import Image as XlImage
+    from openpyxl.styles import Font
+
+    workbook = writer.book
+    sheet = workbook.create_sheet("Charts")
+
+    charts = [
+        ("P1 — Composición Health Score", _chart_stacked_bar),
+        ("P2 — Distribución de Ratings", _chart_donut_ratings),
+        ("P3 — DORA Profile CI vs CD", _chart_dora_grouped_bar),
+        ("P5 — Score vs Uso (Priorización)", _chart_scatter_score_vs_usage),
+    ]
+
+    current_row = 1
+    for title, chart_fn in charts:
+        buf = chart_fn(df_health)
+        if buf is None:
+            continue
+        sheet.cell(row=current_row, column=1, value=title).font = Font(bold=True, size=12)
+        img = XlImage(buf)
+        # Scale image to fit reasonably
+        img.width = min(img.width, 900)
+        img.height = min(img.height, 600)
+        sheet.add_image(img, f"A{current_row + 1}")
+        # Advance rows based on estimated image height (approx 18px per row)
+        rows_needed = max(int(img.height / 18) + 2, 20)
+        current_row += rows_needed
+
+    print(f"   📊 Hoja 4 — Charts:         4 gráficos")
+
+
+# ==========================================================
 # EXPORT 3-SHEET EXCEL
 # ==========================================================
 
@@ -687,6 +929,7 @@ def export_three_sheet_excel(ci_rows, cd_rows, health_rows, output_dir):
             df_cd.to_excel(writer, sheet_name="CD Inventory", index=False)
         if not df_health.empty:
             df_health.to_excel(writer, sheet_name="Health Score", index=False)
+            _add_charts_sheet(writer, df_health)
     
     print(f"📊 Excel generado: {excel_path.resolve()}")
     print(f"   📋 Hoja 1 — CI Inventory:     {len(df_ci)} filas")
