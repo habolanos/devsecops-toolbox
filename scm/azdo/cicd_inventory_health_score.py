@@ -2073,7 +2073,7 @@ def main():
         # ============================================
         # PASO 0: EJECUTAR INVENTORY EN SEGUNDO PLANO
         # ============================================
-        if args.run_inventory and not args.offline:
+        if args.run_inventory:
             _run_inventory_scripts(args, tee)
         
         # ============================================
