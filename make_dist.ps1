@@ -162,6 +162,17 @@ if (Test-Path $GitignorePath) {
     [void]$ExcludedFileNames.Add($_)
 }
 
+# --- Inclusiones forzosas (excluidas por .gitignore pero necesarias para graficos) ---
+# Los archivos .cache/ dentro de outcome/ contienen datos historicos para graficos de tendencia
+$ForcedIncludeDirs = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+)
+@(
+    '.cache'
+) | ForEach-Object {
+    [void]$ForcedIncludeDirs.Add($_)
+}
+
 # ===============================================================================
 # FUNCION: Detectar repositorio GitHub desde git remote
 # ===============================================================================
@@ -190,6 +201,14 @@ function Test-IsExcluded {
 
     $relPath = $File.FullName.Substring($SourceRoot.Length + 1)
     $parts   = $relPath.Split([char[]](47, 92))
+
+    # Inclusion forzosa: si un segmento del path esta en ForcedIncludeDirs Y
+    # el archivo esta dentro de outcome/, se incluye siempre (para graficos)
+    $inOutcome = $false
+    for ($i = 0; $i -lt ($parts.Length - 1); $i++) {
+        if ($parts[$i] -eq 'outcome') { $inOutcome = $true }
+        if ($inOutcome -and $ForcedIncludeDirs.Contains($parts[$i])) { return $false }
+    }
 
     # Verificar segmentos de directorio (todos menos el ultimo que es el archivo)
     for ($i = 0; $i -lt ($parts.Length - 1); $i++) {
