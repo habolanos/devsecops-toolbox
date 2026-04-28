@@ -64,7 +64,7 @@ Basado en el análisis del archivo `Pipelines CD.csv`, las columnas requeridas s
 - `GET https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions`
 - `GET https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases?definitionId={id}&$top=1`
 
-### 2.3 Pipeline Health Report (`azdo_pipeline_health_score.py`)
+### 2.3 Pipeline Health Report (`cicd_inventory_health_score.py`)
 
 Nuevo reporte con scoring multi-dimensional basado en estándares de la industria.
 **Este script es el orquestador principal:** genera un **único archivo Excel con 3 pestañas**:
@@ -178,7 +178,7 @@ Nuevo reporte con scoring multi-dimensional basado en estándares de la industri
 - lastReleaseDate, lastReleaseStatus, isObsolete
 
 ### Fase 3: Pipeline Health Score Report
-**Archivo:** `scm/azdo/azdo_pipeline_health_score.py`
+**Archivo:** `scm/azdo/cicd_inventory_health_score.py`
 
 **Pasos:**
 1. [ ] Crear script base con imports, TeeWriter, logging, progress
@@ -390,9 +390,9 @@ Si los 3 programas se ejecutan de forma independiente, se repiten las mismas con
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  PASO ÚNICO: Ejecutar Health Score                                         │
 │  ───────────────────────────────────                                       │
-│  $ python azdo_pipeline_health_score.py --org X --project Y                │
+│  $ python cicd_inventory_health_score.py --org X --project Y                │
 │                                                                            │
-│  → Genera: outcome/azdo_pipeline_health_score_YYYYMMDD_HHMMSS.xlsx        │
+│  → Genera: outcome/cicd_inventory_health_score_YYYYMMDD_HHMMSS.xlsx        │
 │                                                                            │
 │  ┌─────────────────┬─────────────────┬──────────────────────────────┐     │
 │  │  Hoja 1: CI     │  Hoja 2: CD     │  Hoja 3: Health Score        │     │
@@ -489,9 +489,9 @@ Cada inventario guarda un `.cache/{tipo}_raw.json` con datos crudos API:
 
 | Flujo | Comando | Cuándo usar | Llamadas API | Duración est. (1500 pipelines, 30 workers) |
 |---|---|---|---|---|
-| **Full** (primera vez) | `python azdo_pipeline_health_score.py --org X --project Y` | Primera ejecución o `--force-refresh` | ~3000 (CI definitions + CD definitions + 20 builds/pipeline) | ~4 min |
-| **Health rápido** (cache fresco) | `python azdo_pipeline_health_score.py --org X --project Y` | Diario, cache < 24h | ~1500 (solo últimas 20 ejecuciones, definitions desde cache) | ~2 min |
-| **Health offline** | `python azdo_pipeline_health_score.py --offline` | Sin conectividad, cache < 24h | **0** | ~30 seg |
+| **Full** (primera vez) | `python cicd_inventory_health_score.py --org X --project Y` | Primera ejecución o `--force-refresh` | ~3000 (CI definitions + CD definitions + 20 builds/pipeline) | ~4 min |
+| **Health rápido** (cache fresco) | `python cicd_inventory_health_score.py --org X --project Y` | Diario, cache < 24h | ~1500 (solo últimas 20 ejecuciones, definitions desde cache) | ~2 min |
+| **Health offline** | `python cicd_inventory_health_score.py --offline` | Sin conectividad, cache < 24h | **0** | ~30 seg |
 | **CI Inventory individual** | `python cicd_inventory_ci_detailed.py --org X --project Y` | Debugging, regenerar cache CI | ~1500 si cache miss, **0** si cache hit | ~1.5 min / instantáneo |
 | **CD Inventory individual** | `python cicd_inventory_cd_detailed.py --org X --project Y` | Debugging, regenerar cache CD | ~1500 si cache miss, **0** si cache hit | ~1.5 min / instantáneo |
 | **Refresh forzado** | Cualquier script con `--force-refresh` | Cache corrupto o cambio masivo en org/project | ~3000 | ~4 min |
@@ -528,7 +528,7 @@ Cada inventario guarda un `.cache/{tipo}_raw.json` con datos crudos API:
    - `--use-cache-only`: si cache no existe o > 24h, falla con error (modo offline)
    - `--workers N`: hilos paralelos (default: 30)
 
-**Health Score (`azdo_pipeline_health_score.py`) — Orquestador:**
+**Health Score (`cicd_inventory_health_score.py`) — Orquestador:**
 
 1. **Verificación previa de cache (al inicio):**
    - Busca en `.cache/` los 2 archivos JSON más recientes:
@@ -537,7 +537,7 @@ Cada inventario guarda un `.cache/{tipo}_raw.json` con datos crudos API:
    - Verifica `mtime < 24h` para cada uno
    - Si ambos frescos → carga datos, skip definitions/repos (0 llamadas API para base)
    - Si alguno viejo/ausente → consulta APIs para ese tipo, guarda cache con prefijo del programa:
-     `.cache/azdo_pipeline_health_score_{ci|cd}_raw_YYYYMMDD_HHMMSS.json`
+     `.cache/cicd_inventory_health_score_{ci|cd}_raw_YYYYMMDD_HHMMSS.json`
 
 2. **Consulta incremental (siempre, cache o no cache):**
    - Últimas 20 ejecuciones por pipeline (para reliability_score + MTTR)
@@ -552,7 +552,7 @@ Cada inventario guarda un `.cache/{tipo}_raw.json` con datos crudos API:
    - **Hoja 1 — CI Inventory**: todas las columnas de `cicd_inventory_ci_detailed.py`
    - **Hoja 2 — CD Inventory**: todas las columnas de `cicd_inventory_cd_detailed.py`
    - **Hoja 3 — Health Score**: scoring DORA/SRE + recomendaciones + DORA profile
-   - Nombre: `outcome/azdo_pipeline_health_score_YYYYMMDD_HHMMSS.xlsx`
+   - Nombre: `outcome/cicd_inventory_health_score_YYYYMMDD_HHMMSS.xlsx`
 
 5. **Resumen al final de la ejecución:**
    - Tabla Rich con: pipelines CI, pipelines CD, cache CI usado (sí/no), cache CD usado (sí/no), llamadas API totales, pipelines por rating (Excelente/Bueno/Regular/Bajo/Crítico), tiempo total
@@ -599,7 +599,7 @@ devsecops-toolbox/
 │   └── azdo/
 │       ├── cicd_inventory_ci_detailed.py      # NUEVO: Inventario CI detallado
 │       ├── cicd_inventory_cd_detailed.py      # NUEVO: Inventario CD detallado
-│       ├── azdo_pipeline_health_score.py      # NUEVO: Reporte de salud
+│       ├── cicd_inventory_health_score.py      # NUEVO: Reporte de salud
 │       ├── tools.py                           # MODIFICAR: Agregar entradas
 │       └── ...
 ├── docs/
@@ -635,7 +635,7 @@ Agregar entradas al diccionario `TOOLS` con descripción de **ejecución en fluj
 "16": {
     "name":        "Pipeline Health Score",
     "description": "[Flujo / Orquestador] Reporte de salud con scoring DORA/SRE en 5 dimensiones. Genera 1 Excel con 3 pestañas (CI + CD + Health). Lee cache CI/CD si existe < 24h, consulta APIs solo si es necesario.",
-    "path":        "azdo_pipeline_health_score.py",
+    "path":        "cicd_inventory_health_score.py",
     "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--offline", "--skip-incremental"],
     "group":       "health",
     "status":      "ready",
@@ -647,7 +647,7 @@ Agregar entradas al diccionario `TOOLS` con descripción de **ejecución en fluj
 ## 8. CRITERIOS DE ÉXITO
 
 - [ ] Los 3 scripts ejecutan sin errores en modo directo y desde launcher
-- [ ] Los archivos de salida usan **prefijo del programa** para identificación: `cicd_inventory_ci_detailed_*`, `cicd_inventory_cd_detailed_*`, `azdo_pipeline_health_score_*`
+- [ ] Los archivos de salida usan **prefijo del programa** para identificación: `cicd_inventory_ci_detailed_*`, `cicd_inventory_cd_detailed_*`, `cicd_inventory_health_score_*`
 - [ ] Cada script genera **Excel + CSV + JSON cache** con timestamp en `outcome/` y `outcome/.cache/`
 - [ ] **Verificación previa de cache** funciona: si JSON existe y < 24h, skip APIs y genera outputs desde cache
 - [ ] **Multihilo** funciona: procesamiento paralelo con `ThreadPoolExecutor`, workers configurables por `--workers`

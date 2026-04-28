@@ -229,7 +229,7 @@ TOOLS: Dict = {
     "16": {
         "name":        "Pipeline Health Score",
         "description": "[Flujo / Orquestador] Reporte de salud con scoring DORA/SRE en 5 dimensiones. Genera 1 Excel con 3 pestañas (CI + CD + Health). Lee cache CI/CD si existe < 24h, consulta APIs solo si es necesario.",
-        "path":        "azdo_pipeline_health_score.py",
+        "path":        "cicd_inventory_health_score.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--offline", "--skip-incremental", "--run-inventory"],
         "group":       "health",
         "status":      "ready",

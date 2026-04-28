@@ -10,9 +10,9 @@ Genera 1 Excel con 3 pestañas:
   3. Health Score — scoring DORA/SRE + recomendaciones
 
 Uso:
-    python azdo_pipeline_health_score.py --org Coppel-Retail --project "Compras.RMI"
-    python azdo_pipeline_health_score.py --org Coppel-Retail --project "Compras.RMI" --offline
-    python azdo_pipeline_health_score.py --org Coppel-Retail --project "Compras.RMI" --skip-incremental
+    python cicd_inventory_health_score.py --org Coppel-Retail --project "Compras.RMI"
+    python cicd_inventory_health_score.py --org Coppel-Retail --project "Compras.RMI" --offline
+    python cicd_inventory_health_score.py --org Coppel-Retail --project "Compras.RMI" --skip-incremental
 
 Autor: Harold Adrian Bolanos Rodriguez
 """
@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-SCRIPT_NAME = "azdo_pipeline_health_score"
+SCRIPT_NAME = "cicd_inventory_health_score"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
 API_VERSION = "7.1"
@@ -1069,7 +1069,7 @@ def _write_chart_data_trend(sheet, df_health):
         return 1
 
     # Scan all health score cache files for historical data
-    pattern = str(cache_dir / "azdo_pipeline_health_score_*_raw_*.json")
+    pattern = str(cache_dir / "cicd_inventory_health_score_*_raw_*.json")
     cache_files = sorted(glob.glob(pattern))
 
     data_points = []
@@ -1641,7 +1641,7 @@ def _write_chart_data_run(sheet, df_health):
     # Try to get historical data from cache
     data_points = []
     if cache_dir.exists():
-        pattern = str(cache_dir / "azdo_pipeline_health_score_*_raw_*.json")
+        pattern = str(cache_dir / "cicd_inventory_health_score_*_raw_*.json")
         cache_files = sorted(glob.glob(pattern))
         for cf in cache_files:
             try:
@@ -2128,9 +2128,9 @@ def main():
             
             # Save cache for future
             _save_cache({
-                "metadata": {"script": "azdo_pipeline_health_score_ci", "org": args.org, "project": args.project, "generated_at": datetime.now(timezone.utc).isoformat(), "count": len(ci_base_data)},
+                "metadata": {"script": "cicd_inventory_health_score_ci", "org": args.org, "project": args.project, "generated_at": datetime.now(timezone.utc).isoformat(), "count": len(ci_base_data)},
                 "rows": ci_base_data,
-            }, "azdo_pipeline_health_score_ci")
+            }, "cicd_inventory_health_score_ci")
             print("💾 CI cache guardado")
         
         # ============================================
@@ -2185,9 +2185,9 @@ def main():
                 })
             
             _save_cache({
-                "metadata": {"script": "azdo_pipeline_health_score_cd", "org": args.org, "project": args.project, "generated_at": datetime.now(timezone.utc).isoformat(), "count": len(cd_base_data)},
+                "metadata": {"script": "cicd_inventory_health_score_cd", "org": args.org, "project": args.project, "generated_at": datetime.now(timezone.utc).isoformat(), "count": len(cd_base_data)},
                 "rows": cd_base_data,
-            }, "azdo_pipeline_health_score_cd")
+            }, "cicd_inventory_health_score_cd")
             print("💾 CD cache guardado")
         
         # ============================================
