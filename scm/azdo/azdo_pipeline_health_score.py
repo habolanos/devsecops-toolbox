@@ -672,7 +672,7 @@ def build_cd_row(data, headers, org, project, skip_incremental=False):
 # CHART GENERATION — openpyxl native Excel charts
 # ==========================================================
 
-from openpyxl.chart import BarChart, PieChart, Reference, ScatterChart
+from openpyxl.chart import BarChart, PieChart, Reference, ScatterChart, RadarChart, BubbleChart
 from openpyxl.chart.series import DataPoint
 from openpyxl.chart.label import DataLabelList
 from openpyxl.styles import Font
@@ -1253,8 +1253,517 @@ def _write_heatmap_to_sheet(sheet, df_health, start_row=101):
         cell.font = Font(size=8)
 
 
+# ──────────────────────────────────────────────────────────────
+# P9: TREEMAP RIESGO TECNOLÓGICO — pipeline_path count + avg health
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_risk_treemap(sheet, df_health):
+    """Escribe datos para P9: agrupa por pipeline_path, conteo y salud promedio."""
+    if "pipeline_path" not in df_health.columns:
+        return 0
+    # Extract top-level area from path (e.g. "\\WMS\\Legacy" -> "WMS")
+    def _extract_area(path):
+        if not path or not isinstance(path, str):
+            return "Raíz"
+        parts = [p for p in path.replace("\\", "/").split("/") if p and p != "\\"]
+        return parts[0] if parts else "Raíz"
+
+    df_copy = df_health.copy()
+    df_copy["area"] = df_copy["pipeline_path"].apply(_extract_area)
+
+    area_stats = df_copy.groupby("area").agg(
+        count=("health_score", "size"),
+        avg_health=("health_score", "mean"),
+    ).sort_values("count", ascending=False)
+
+    sheet.cell(row=1, column=1, value="Área/Path")
+    sheet.cell(row=1, column=2, value="Cantidad Pipelines")
+    sheet.cell(row=1, column=3, value="Salud Promedio")
+
+    for r, (area, row) in enumerate(area_stats.iterrows(), 2):
+        sheet.cell(row=r, column=1, value=str(area))
+        sheet.cell(row=r, column=2, value=int(row["count"]))
+        sheet.cell(row=r, column=3, value=round(float(row["avg_health"]), 1))
+
+    return len(area_stats)
+
+
+def _build_risk_treemap_chart(sheet, data_rows):
+    """P9: Combo bar+line — barras conteo por área, línea salud promedio."""
+    from openpyxl.chart import LineChart
+
+    bar = BarChart()
+    bar.type = "col"
+    bar.title = "Riesgo Tecnológico por Área"
+    bar.y_axis.title = "Cantidad de Pipelines"
+    bar.style = 10
+    bar.width = 24
+    bar.height = 14
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+    data_count = Reference(sheet, min_col=2, min_row=1, max_row=data_rows + 1)
+    bar.add_data(data_count, titles_from_data=True)
+    bar.set_categories(cats)
+
+    # Color bars by avg health score
+    for i in range(data_rows):
+        pt = DataPoint(idx=i)
+        avg = sheet.cell(row=i + 2, column=3).value or 0
+        if avg >= 80:
+            pt.graphicalProperties.solidFill = "2ecc71"
+        elif avg >= 60:
+            pt.graphicalProperties.solidFill = "27ae60"
+        elif avg >= 40:
+            pt.graphicalProperties.solidFill = "f39c12"
+        elif avg >= 20:
+            pt.graphicalProperties.solidFill = "e67e22"
+        else:
+            pt.graphicalProperties.solidFill = "e74c3c"
+        bar.series[0].data_points.append(pt)
+
+    # Line for avg health on secondary axis
+    line = LineChart()
+    line.y_axis.title = "Salud Promedio (0-100)"
+    line.y_axis.scaling.min = 0
+    line.y_axis.scaling.max = 105
+    line.y_axis.axId = 200
+
+    data_health = Reference(sheet, min_col=3, min_row=1, max_row=data_rows + 1)
+    line.add_data(data_health, titles_from_data=True)
+    line.set_categories(cats)
+    line.series[0].graphicalProperties.line.solidFill = "3498db"
+    line.series[0].graphicalProperties.line.width = 25000
+    line.series[0].marker.symbol = "circle"
+    line.series[0].marker.size = 7
+    line.series[0].marker.graphicalProperties.solidFill = "3498db"
+
+    bar.y_axis.crosses = "min"
+    bar += line
+
+    return bar
+
+
+# ──────────────────────────────────────────────────────────────
+# P10: SANKEY (stacked bar) — Technology → Recommendation flow
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_sankey(sheet, df_health):
+    """Escribe datos para P10 Sankey: tecnología vs recomendación (stacked)."""
+    if "technology" not in df_health.columns or "recommendation" not in df_health.columns:
+        return 0
+
+    # Simplify recommendations to categories
+    def _simplify_rec(rec):
+        if not rec or not isinstance(rec, str):
+            return "Sin recom."
+        rec_l = rec.lower()
+        if any(k in rec_l for k in ["deprecar", "eliminar", "retirar", "remover"]):
+            return "Deprecar"
+        if any(k in rec_l for k in ["consolidar", "fusionar", "unificar"]):
+            return "Consolidar"
+        if any(k in rec_l for k in ["evolucionar", "migrar", "actualizar", "modernizar"]):
+            return "Evolucionar"
+        if any(k in rec_l for k in ["mantener", "monitorear", "vigilar"]):
+            return "Mantener"
+        return "Sin recom."
+
+    df_copy = df_health.copy()
+    df_copy["rec_cat"] = df_copy["recommendation"].apply(_simplify_rec)
+
+    rec_categories = ["Deprecar", "Consolidar", "Evolucionar", "Mantener", "Sin recom."]
+    tech_order = df_copy["technology"].value_counts().index.tolist()[:15]
+
+    sheet.cell(row=1, column=1, value="Tecnología")
+    for c, rec in enumerate(rec_categories, 2):
+        sheet.cell(row=1, column=c, value=rec)
+
+    for r, tech in enumerate(tech_order, 2):
+        sheet.cell(row=r, column=1, value=str(tech) if tech else "Sin detectar")
+        tech_df = df_copy[df_copy["technology"] == tech]
+        for c, rec in enumerate(rec_categories, 2):
+            count = len(tech_df[tech_df["rec_cat"] == rec])
+            sheet.cell(row=r, column=c, value=count)
+
+    return len(tech_order)
+
+
+def _build_sankey_chart(sheet, data_rows):
+    """P10: Stacked bar — flujo de tecnología a recomendación."""
+    chart = BarChart()
+    chart.type = "col"
+    chart.grouping = "stacked"
+    chart.title = "Flujo Tecnología → Recomendación"
+    chart.y_axis.title = "Cantidad de Pipelines"
+    chart.style = 10
+    chart.width = 24
+    chart.height = 14
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+
+    rec_colors = ["e74c3c", "f39c12", "3498db", "2ecc71", "95a5a6"]
+    for i in range(5):
+        data = Reference(sheet, min_col=i + 2, min_row=1, max_row=data_rows + 1)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+        chart.series[i].graphicalProperties.solidFill = rec_colors[i]
+
+    chart.legend.position = "b"
+    return chart
+
+
+# ──────────────────────────────────────────────────────────────
+# P11: RADAR CHART — DORA maturity per area
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_radar(sheet, df_health):
+    """Escribe datos para P11 Radar: 5 dimensiones por top áreas."""
+    if "pipeline_path" not in df_health.columns:
+        return 0
+
+    def _extract_area(path):
+        if not path or not isinstance(path, str):
+            return "Raíz"
+        parts = [p for p in path.replace("\\", "/").split("/") if p and p != "\\"]
+        return parts[0] if parts else "Raíz"
+
+    df_copy = df_health.copy()
+    df_copy["area"] = df_copy["pipeline_path"].apply(_extract_area)
+
+    # Top 5 areas by count
+    top_areas = df_copy["area"].value_counts().head(5).index.tolist()
+    if not top_areas:
+        return 0
+
+    dimensions = ["Recency", "Reliability", "Usage", "Freshness", "TechDebt"]
+    dim_cols = ["recency_score", "reliability_score", "usage_score", "freshness_score", "tech_debt_score"]
+
+    sheet.cell(row=1, column=1, value="Dimensión")
+    for c, area in enumerate(top_areas, 2):
+        sheet.cell(row=1, column=c, value=area)
+
+    for r, (dim, col) in enumerate(zip(dimensions, dim_cols), 2):
+        sheet.cell(row=r, column=1, value=dim)
+        for c, area in enumerate(top_areas, 2):
+            area_df = df_copy[df_copy["area"] == area]
+            avg = area_df[col].mean() if len(area_df) > 0 else 0
+            sheet.cell(row=r, column=c, value=round(float(avg), 1))
+
+    return len(dimensions)
+
+
+def _build_radar_chart(sheet, data_rows):
+    """P11: Radar chart — comparación dimensional por área."""
+    chart = RadarChart()
+    chart.type = "filled"
+    chart.title = "Radar DORA — Dimensiones por Área (Top 5)"
+    chart.style = 10
+    chart.width = 20
+    chart.height = 16
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+
+    # One series per area (columns 2..N)
+    n_areas = 0
+    for c in range(2, 20):
+        if sheet.cell(row=1, column=c).value:
+            n_areas += 1
+        else:
+            break
+
+    area_colors = ["3498db", "e74c3c", "2ecc71", "f39c12", "9b59b6"]
+    for i in range(n_areas):
+        data = Reference(sheet, min_col=i + 2, min_row=1, max_row=data_rows + 1)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+        chart.series[i].graphicalProperties.solidFill = area_colors[i % len(area_colors)]
+        chart.series[i].graphicalProperties.line.solidFill = area_colors[i % len(area_colors)]
+
+    chart.legend.position = "b"
+    return chart
+
+
+# ──────────────────────────────────────────────────────────────
+# P12: BUBBLE CHART — Effort vs Impact (antiquity × usage, size=failures)
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_bubble(sheet, df_health):
+    """Escribe datos para P12 Bubble: X=days_since_creation, Y=exec_30d, size=failures."""
+    required = ["days_since_creation", "total_executions_30d", "total_failures_30d"]
+    if not all(c in df_health.columns for c in required):
+        return 0
+
+    sheet.cell(row=1, column=1, value="Pipeline")
+    sheet.cell(row=1, column=2, value="Antigüedad (días)")
+    sheet.cell(row=1, column=3, value="Ejecuciones 30d")
+    sheet.cell(row=1, column=4, value="Fallos 30d")
+    sheet.cell(row=1, column=5, value="Rating")
+
+    for r, (_, row) in enumerate(df_health.iterrows(), 2):
+        sheet.cell(row=r, column=1, value=row.get("pipeline_name", ""))
+        days = float(row.get("days_since_creation", 0) or 0)
+        execs = float(row.get("total_executions_30d", 0) or 0)
+        fails = float(row.get("total_failures_30d", 0) or 0)
+        sheet.cell(row=r, column=2, value=days)
+        sheet.cell(row=r, column=3, value=execs)
+        sheet.cell(row=r, column=4, value=max(fails, 1))  # min bubble size
+        sheet.cell(row=r, column=5, value=row.get("rating", ""))
+
+    return len(df_health)
+
+
+def _build_bubble_chart(sheet, data_rows):
+    """P12: Bubble chart — Esfuerzo (antigüedad) vs Impacto (uso), tamaño=fallos."""
+    chart = BubbleChart()
+    chart.title = "Esfuerzo vs Impacto — Antigüedad × Uso, tamaño = Fallos"
+    chart.x_axis.title = "Antigüedad (días desde creación)"
+    chart.y_axis.title = "Ejecuciones (últimos 30 días)"
+    chart.style = 10
+    chart.width = 22
+    chart.height = 16
+
+    # One series per rating for color coding
+    rating_order = ["Excelente", "Bueno", "Regular", "Bajo", "Crítico"]
+    rating_colors = ["2ecc71", "27ae60", "f39c12", "e67e22", "e74c3c"]
+
+    for ri, (rating, color) in enumerate(zip(rating_order, rating_colors)):
+        # Collect matching rows
+        matching_rows = []
+        for r in range(2, data_rows + 2):
+            if sheet.cell(row=r, column=5).value == rating:
+                matching_rows.append(r)
+
+        if not matching_rows:
+            continue
+
+        # Write auxiliary data in columns 7+
+        col_x = 7 + ri * 3
+        col_y = col_x + 1
+        col_s = col_x + 2
+        sheet.cell(row=1, column=col_x, value=f"Antig_{rating}")
+        sheet.cell(row=1, column=col_y, value=f"Uso_{rating}")
+        sheet.cell(row=1, column=col_s, value=f"Fallos_{rating}")
+
+        for i, r in enumerate(matching_rows, 2):
+            sheet.cell(row=i, column=col_x, value=sheet.cell(row=r, column=2).value)
+            sheet.cell(row=i, column=col_y, value=sheet.cell(row=r, column=3).value)
+            sheet.cell(row=i, column=col_s, value=sheet.cell(row=r, column=4).value)
+
+        xvalues = Reference(sheet, min_col=col_x, min_row=1, max_row=len(matching_rows) + 1)
+        yvalues = Reference(sheet, min_col=col_y, min_row=1, max_row=len(matching_rows) + 1)
+        bvalues = Reference(sheet, min_col=col_s, min_row=1, max_row=len(matching_rows) + 1)
+
+        from openpyxl.chart import Series as ChartSeries
+        s = ChartSeries(yvalues, xvalues, title=rating)
+        s.graphicalProperties.solidFill = color
+        chart.series.append(s)
+
+    chart.legend.position = "r"
+    return chart
+
+
+# ──────────────────────────────────────────────────────────────
+# P13: HISTOGRAMA MTTR — bins de tiempo de recuperación
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_mttr_hist(sheet, df_health):
+    """Escribe datos para P13 Histograma: bins de MTTR en minutos."""
+    if "mttr_minutes" not in df_health.columns:
+        return 0
+
+    mttr_vals = df_health["mttr_minutes"].dropna()
+    mttr_vals = mttr_vals[mttr_vals > 0]
+    if len(mttr_vals) == 0:
+        return 0
+
+    bins = [
+        ("0-30 min",    0,   30),
+        ("30-60 min",   30,  60),
+        ("1-2 hrs",     60,  120),
+        ("2-4 hrs",     120, 240),
+        ("4-8 hrs",     240, 480),
+        ("8-24 hrs",    480, 1440),
+        ("24+ hrs",     1440, 999999),
+    ]
+
+    sheet.cell(row=1, column=1, value="Rango MTTR")
+    sheet.cell(row=1, column=2, value="Cantidad de Pipelines")
+
+    r = 2
+    for label, lo, hi in bins:
+        count = int(((mttr_vals >= lo) & (mttr_vals < hi)).sum())
+        if count > 0 or hi <= 1440:  # always show standard bins
+            sheet.cell(row=r, column=1, value=label)
+            sheet.cell(row=r, column=2, value=count)
+            r += 1
+
+    return r - 2
+
+
+def _build_mttr_hist_chart(sheet, data_rows):
+    """P13: Bar chart — histograma de MTTR."""
+    chart = BarChart()
+    chart.type = "col"
+    chart.title = "Histograma de Tiempo de Recuperación (MTTR)"
+    chart.y_axis.title = "Cantidad de Pipelines"
+    chart.x_axis.title = "Rango de MTTR"
+    chart.style = 10
+    chart.width = 20
+    chart.height = 14
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+    data = Reference(sheet, min_col=2, min_row=1, max_row=data_rows + 1)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(cats)
+
+    # Color gradient: green (fast) to red (slow)
+    mttr_colors = ["2ecc71", "27ae60", "f39c12", "e67e22", "e74c3c", "c0392b", "8e44ad"]
+    for i in range(data_rows):
+        pt = DataPoint(idx=i)
+        pt.graphicalProperties.solidFill = mttr_colors[i % len(mttr_colors)]
+        chart.series[0].data_points.append(pt)
+
+    chart.series[0].dLbls = DataLabelList()
+    chart.series[0].dLbls.showVal = True
+    chart.legend = None
+
+    return chart
+
+
+# ──────────────────────────────────────────────────────────────
+# P14: RUN CHART — Failure rate over time with control limits
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_run(sheet, df_health):
+    """Escribe datos para P14 Run Chart: tasa de fallos desde cache histórico."""
+    output_dir = get_output_dir("outcome")
+    cache_dir = output_dir / ".cache"
+
+    # Try to get historical data from cache
+    data_points = []
+    if cache_dir.exists():
+        pattern = str(cache_dir / "azdo_pipeline_health_score_*_raw_*.json")
+        cache_files = sorted(glob.glob(pattern))
+        for cf in cache_files:
+            try:
+                with open(cf, "r", encoding="utf-8") as f:
+                    cache_data = json.load(f)
+                meta = cache_data.get("metadata", {})
+                rows = cache_data.get("rows", [])
+                if rows:
+                    gen_at = meta.get("generated_at", "")
+                    dt_str = gen_at[:10] if gen_at else Path(cf).stem.split("_")[-2]
+                    total = len(rows)
+                    # Calculate failure rate: pipelines with rating Bajo or Crítico
+                    failed = sum(1 for r in rows if r.get("rating", "") in ("Bajo", "Crítico"))
+                    fail_rate = round(failed / total * 100, 1) if total > 0 else 0
+                    avg_health = round(sum(r.get("health_score", 0) for r in rows) / total, 1) if total > 0 else 0
+                    data_points.append((dt_str, fail_rate, avg_health, total))
+            except Exception:
+                continue
+
+    # Add current run
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    total = len(df_health)
+    if total > 0:
+        failed = sum(1 for _, r in df_health.iterrows() if r.get("rating", "") in ("Bajo", "Crítico"))
+        fail_rate = round(failed / total * 100, 1)
+        avg_health = round(float(df_health["health_score"].mean()), 1)
+    else:
+        fail_rate = 0
+        avg_health = 0
+
+    if not data_points or data_points[-1][0] != current_date:
+        data_points.append((current_date, fail_rate, avg_health, total))
+
+    # Deduplicate by date
+    seen = {}
+    for dt, fr, ah, cnt in data_points:
+        seen[dt] = (fr, ah, cnt)
+    data_points = [(dt, v[0], v[1], v[2]) for dt, v in sorted(seen.items())]
+
+    if len(data_points) < 1:
+        return 0
+
+    # Calculate control limits (mean ± 2σ)
+    rates = [dp[1] for dp in data_points]
+    mean_rate = sum(rates) / len(rates) if rates else 0
+    variance = sum((r - mean_rate) ** 2 for r in rates) / len(rates) if rates else 0
+    std_rate = variance ** 0.5
+    ucl = round(mean_rate + 2 * std_rate, 1)
+    lcl = round(max(0, mean_rate - 2 * std_rate), 1)
+    mean_rate = round(mean_rate, 1)
+
+    sheet.cell(row=1, column=1, value="Fecha")
+    sheet.cell(row=1, column=2, value="Tasa Fallos (%)")
+    sheet.cell(row=1, column=3, value="Promedio (%)")
+    sheet.cell(row=1, column=4, value="Límite Superior (UCL)")
+    sheet.cell(row=1, column=5, value="Límite Inferior (LCL)")
+
+    for r, (dt, fr, ah, cnt) in enumerate(data_points, 2):
+        sheet.cell(row=r, column=1, value=dt)
+        sheet.cell(row=r, column=2, value=fr)
+        sheet.cell(row=r, column=3, value=mean_rate)
+        sheet.cell(row=r, column=4, value=ucl)
+        sheet.cell(row=r, column=5, value=lcl)
+
+    return len(data_points)
+
+
+def _build_run_chart(sheet, data_rows):
+    """P14: Line chart — run chart de tasa de fallos con límites de control."""
+    from openpyxl.chart import LineChart
+
+    chart = LineChart()
+    chart.title = "Run Chart — Tasa de Fallos (Bajo+Crítico) con Límites de Control"
+    chart.x_axis.title = "Fecha"
+    chart.y_axis.title = "Tasa de Fallos (%)"
+    chart.style = 10
+    chart.width = 22
+    chart.height = 14
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+
+    # Actual failure rate
+    data_rate = Reference(sheet, min_col=2, min_row=1, max_row=data_rows + 1)
+    chart.add_data(data_rate, titles_from_data=True)
+    chart.set_categories(cats)
+    chart.series[0].graphicalProperties.line.solidFill = "e74c3c"
+    chart.series[0].graphicalProperties.line.width = 30000
+    chart.series[0].marker.symbol = "circle"
+    chart.series[0].marker.size = 7
+    chart.series[0].marker.graphicalProperties.solidFill = "e74c3c"
+
+    # Mean line
+    data_mean = Reference(sheet, min_col=3, min_row=1, max_row=data_rows + 1)
+    chart.add_data(data_mean, titles_from_data=True)
+    chart.series[1].graphicalProperties.line.solidFill = "3498db"
+    chart.series[1].graphicalProperties.line.width = 20000
+    chart.series[1].graphicalProperties.line.dashStyle = "dash"
+
+    # UCL
+    data_ucl = Reference(sheet, min_col=4, min_row=1, max_row=data_rows + 1)
+    chart.add_data(data_ucl, titles_from_data=True)
+    chart.series[2].graphicalProperties.line.solidFill = "f39c12"
+    chart.series[2].graphicalProperties.line.width = 15000
+    chart.series[2].graphicalProperties.line.dashStyle = "dot"
+
+    # LCL
+    data_lcl = Reference(sheet, min_col=5, min_row=1, max_row=data_rows + 1)
+    chart.add_data(data_lcl, titles_from_data=True)
+    chart.series[3].graphicalProperties.line.solidFill = "f39c12"
+    chart.series[3].graphicalProperties.line.width = 15000
+    chart.series[3].graphicalProperties.line.dashStyle = "dot"
+
+    chart.legend.position = "b"
+
+    if data_rows == 1:
+        chart.title = "Run Chart Fallos (1 punto — ejecutar múltiples veces para ver tendencia)"
+
+    return chart
+
+
 def _add_charts_sheet(writer, df_health):
-    """Genera pestaña Charts con 8 gráficos nativos de Excel."""
+    """Genera pestaña Charts con 14 gráficos nativos de Excel + 1 tabla heatmap."""
     if df_health.empty:
         print("⚠️  Sin datos para generar Charts")
         return
@@ -1270,6 +1779,12 @@ def _add_charts_sheet(writer, df_health):
         ("_data_treemap",  _write_chart_data_treemap,      _build_treemap_chart),
         ("_data_pareto",   _write_chart_data_pareto,       _build_pareto_chart),
         ("_data_trend",    _write_chart_data_trend,        _build_trend_chart),
+        ("_data_risk",     _write_chart_data_risk_treemap, _build_risk_treemap_chart),
+        ("_data_sankey",   _write_chart_data_sankey,       _build_sankey_chart),
+        ("_data_radar",    _write_chart_data_radar,         _build_radar_chart),
+        ("_data_bubble",   _write_chart_data_bubble,       _build_bubble_chart),
+        ("_data_mttr",     _write_chart_data_mttr_hist,    _build_mttr_hist_chart),
+        ("_data_run",      _write_chart_data_run,          _build_run_chart),
     ]
 
     chart_objects = []
@@ -1297,14 +1812,22 @@ def _add_charts_sheet(writer, df_health):
         "P6 — Tecnologías: Cantidad vs Salud Promedio",
         "P7 — Pareto: Tecnologías con más pipelines críticos",
         "P8 — Tendencia Health Score (histórico)",
+        "P9 — Riesgo Tecnológico por Área",
+        "P10 — Flujo Tecnología → Recomendación",
+        "P11 — Radar DORA por Área",
+        "P12 — Esfuerzo vs Impacto (Burbujas)",
+        "P13 — Histograma MTTR",
+        "P14 — Run Chart Tasa de Fallos",
     ]
 
-    # Layout: 2 columns x 4 rows of charts
+    # Layout: 2 columns x 7 rows of charts
     positions = [
         "A1",   "N1",
         "A26",  "N26",
         "A51",  "N51",
-        "A76",
+        "A76",  "N76",
+        "A101", "N101",
+        "A126",
     ]
 
     for i, (ch, title) in enumerate(zip(chart_objects, chart_titles)):
@@ -1314,10 +1837,10 @@ def _add_charts_sheet(writer, df_health):
         charts_sheet.add_chart(ch, positions[i])
 
     # Heatmap table after last chart
-    heatmap_start = 101
+    heatmap_start = 151
     _write_heatmap_to_sheet(charts_sheet, df_health, start_row=heatmap_start)
 
-    print(f"   📊 Hoja 4 — Charts:         8 gráficos nativos Excel + 1 tabla heatmap")
+    print(f"   📊 Hoja 4 — Charts:         13 gráficos nativos Excel + 1 tabla heatmap")
 
 
 # ==========================================================
