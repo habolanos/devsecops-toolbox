@@ -1820,7 +1820,7 @@ def _add_charts_sheet(writer, df_health):
         "P14 — Run Chart Tasa de Fallos",
     ]
 
-    # Layout: 2 columns x 7 rows of charts
+    # Layout: 2 columns x 7 rows of charts (13 positions)
     positions = [
         "A1",   "N1",
         "A26",  "N26",
@@ -1830,14 +1830,21 @@ def _add_charts_sheet(writer, df_health):
         "A126",
     ]
 
+    pos_idx = 0
     for i, (ch, title) in enumerate(zip(chart_objects, chart_titles)):
         if ch is None:
             continue
         ch.title = title
-        charts_sheet.add_chart(ch, positions[i])
+        if pos_idx < len(positions):
+            charts_sheet.add_chart(ch, positions[pos_idx])
+        else:
+            # Overflow: place in next available row
+            row = 1 + pos_idx * 25
+            charts_sheet.add_chart(ch, f"A{row}")
+        pos_idx += 1
 
     # Heatmap table after last chart
-    heatmap_start = 151
+    heatmap_start = 1 + pos_idx * 25
     _write_heatmap_to_sheet(charts_sheet, df_health, start_row=heatmap_start)
 
     print(f"   📊 Hoja 4 — Charts:         13 gráficos nativos Excel + 1 tabla heatmap")
