@@ -912,8 +912,349 @@ def _build_scatter_chart(sheet, data_rows):
     return chart
 
 
+# ──────────────────────────────────────────────────────────────
+# P6: TREEMAP — Technology count + avg health (combo bar + line)
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_treemap(sheet, df_health):
+    """Escribe datos para P6 Treemap (combo): tecnología, conteo, salud promedio."""
+    if "technology" not in df_health.columns:
+        return 0
+    tech_stats = df_health.groupby("technology").agg(
+        count=("health_score", "size"),
+        avg_health=("health_score", "mean"),
+    ).sort_values("count", ascending=False)
+
+    sheet.cell(row=1, column=1, value="Tecnología")
+    sheet.cell(row=1, column=2, value="Cantidad Pipelines")
+    sheet.cell(row=1, column=3, value="Salud Promedio")
+
+    for r, (tech, row) in enumerate(tech_stats.iterrows(), 2):
+        sheet.cell(row=r, column=1, value=str(tech) if tech else "Sin detectar")
+        sheet.cell(row=r, column=2, value=int(row["count"]))
+        sheet.cell(row=r, column=3, value=round(float(row["avg_health"]), 1))
+
+    return len(tech_stats)
+
+
+def _build_treemap_chart(sheet, data_rows):
+    """P6: Combo chart — barras (conteo pipelines) + línea (salud promedio) por tecnología."""
+    from openpyxl.chart import LineChart
+    from openpyxl.chart.axis import NumericAxis
+
+    # Bar chart for count
+    bar = BarChart()
+    bar.type = "col"
+    bar.title = "Tecnologías: Cantidad vs Salud Promedio"
+    bar.y_axis.title = "Cantidad de Pipelines"
+    bar.style = 10
+    bar.width = 24
+    bar.height = 14
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+    data_count = Reference(sheet, min_col=2, min_row=1, max_row=data_rows + 1)
+    bar.add_data(data_count, titles_from_data=True)
+    bar.set_categories(cats)
+    bar.series[0].graphicalProperties.solidFill = "3498db"
+
+    # Line chart for avg health on secondary axis
+    line = LineChart()
+    line.y_axis.title = "Salud Promedio (0-100)"
+    line.y_axis.scaling.min = 0
+    line.y_axis.scaling.max = 105
+    line.y_axis.axId = 200
+
+    data_health = Reference(sheet, min_col=3, min_row=1, max_row=data_rows + 1)
+    line.add_data(data_health, titles_from_data=True)
+    line.set_categories(cats)
+    line.series[0].graphicalProperties.line.solidFill = "e74c3c"
+    line.series[0].graphicalProperties.line.width = 25000
+    line.series[0].marker.symbol = "circle"
+    line.series[0].marker.size = 7
+    line.series[0].marker.graphicalProperties.solidFill = "e74c3c"
+
+    bar.y_axis.crosses = "min"
+    bar += line
+
+    return bar
+
+
+# ──────────────────────────────────────────────────────────────
+# P7: PARETO — Technologies causing low scores (bar + cumulative %)
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_pareto(sheet, df_health):
+    """Escribe datos para P7 Pareto: tecnología, count Bajo+Crítico, % acumulado."""
+    if "technology" not in df_health.columns:
+        return 0
+    low_df = df_health[df_health["rating"].isin(["Bajo", "Crítico"])]
+    if low_df.empty:
+        return 0
+
+    tech_low = low_df.groupby("technology").size().sort_values(ascending=False)
+    total_low = tech_low.sum()
+
+    sheet.cell(row=1, column=1, value="Tecnología")
+    sheet.cell(row=1, column=2, value="Pipelines Bajo/Crítico")
+    sheet.cell(row=1, column=3, value="% Acumulado")
+
+    cum = 0
+    for r, (tech, count) in enumerate(tech_low.items(), 2):
+        sheet.cell(row=r, column=1, value=str(tech) if tech else "Sin detectar")
+        sheet.cell(row=r, column=2, value=int(count))
+        cum += count
+        sheet.cell(row=r, column=3, value=round(cum / total_low * 100, 1))
+
+    return len(tech_low)
+
+
+def _build_pareto_chart(sheet, data_rows):
+    """P7: Pareto — barras descendentes + línea % acumulado."""
+    from openpyxl.chart import LineChart
+
+    bar = BarChart()
+    bar.type = "col"
+    bar.title = "Pareto: Tecnologías con más pipelines críticos"
+    bar.y_axis.title = "Cantidad Bajo/Crítico"
+    bar.style = 10
+    bar.width = 22
+    bar.height = 14
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+    data_count = Reference(sheet, min_col=2, min_row=1, max_row=data_rows + 1)
+    bar.add_data(data_count, titles_from_data=True)
+    bar.set_categories(cats)
+    bar.series[0].graphicalProperties.solidFill = "e74c3c"
+
+    # Cumulative % line on secondary axis
+    line = LineChart()
+    line.y_axis.title = "% Acumulado"
+    line.y_axis.scaling.min = 0
+    line.y_axis.scaling.max = 105
+    line.y_axis.axId = 200
+
+    data_cum = Reference(sheet, min_col=3, min_row=1, max_row=data_rows + 1)
+    line.add_data(data_cum, titles_from_data=True)
+    line.set_categories(cats)
+    line.series[0].graphicalProperties.line.solidFill = "f39c12"
+    line.series[0].graphicalProperties.line.width = 25000
+    line.series[0].marker.symbol = "circle"
+    line.series[0].marker.size = 6
+    line.series[0].marker.graphicalProperties.solidFill = "f39c12"
+
+    bar.y_axis.crosses = "min"
+    bar += line
+
+    return bar
+
+
+# ──────────────────────────────────────────────────────────────
+# P8: TREND — Historical health score from cache files
+# ──────────────────────────────────────────────────────────────
+
+def _write_chart_data_trend(sheet, df_health):
+    """Escribe datos para P8 Trend: escanea cache previo para serie temporal."""
+    from openpyxl.chart import LineChart
+
+    output_dir = get_output_dir("outcome")
+    cache_dir = output_dir / ".cache"
+    if not cache_dir.exists():
+        # Single data point: current run only
+        sheet.cell(row=1, column=1, value="Fecha")
+        sheet.cell(row=1, column=2, value="Health Score Promedio")
+        sheet.cell(row=1, column=3, value="Total Pipelines")
+        sheet.cell(row=2, column=1, value=datetime.now().strftime("%Y-%m-%d"))
+        sheet.cell(row=2, column=2, value=round(float(df_health["health_score"].mean()), 1) if len(df_health) > 0 else 0)
+        sheet.cell(row=2, column=3, value=len(df_health))
+        return 1
+
+    # Scan all health score cache files for historical data
+    pattern = str(cache_dir / "azdo_pipeline_health_score_*_raw_*.json")
+    cache_files = sorted(glob.glob(pattern))
+
+    data_points = []
+    for cf in cache_files:
+        try:
+            with open(cf, "r", encoding="utf-8") as f:
+                cache_data = json.load(f)
+            meta = cache_data.get("metadata", {})
+            rows = cache_data.get("rows", [])
+            if rows:
+                gen_at = meta.get("generated_at", "")
+                dt_str = gen_at[:10] if gen_at else Path(cf).stem.split("_")[-2]
+                avg_score = sum(r.get("health_score", 0) for r in rows) / len(rows) if rows else 0
+                data_points.append((dt_str, round(avg_score, 1), len(rows)))
+        except Exception:
+            continue
+
+    # Also add current run
+    current_avg = round(float(df_health["health_score"].mean()), 1) if len(df_health) > 0 else 0
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    if not data_points or data_points[-1][0] != current_date:
+        data_points.append((current_date, current_avg, len(df_health)))
+
+    # Deduplicate by date (keep last per day)
+    seen = {}
+    for dt, avg, cnt in data_points:
+        seen[dt] = (avg, cnt)
+    data_points = [(dt, v[0], v[1]) for dt, v in sorted(seen.items())]
+
+    sheet.cell(row=1, column=1, value="Fecha")
+    sheet.cell(row=1, column=2, value="Health Score Promedio")
+    sheet.cell(row=1, column=3, value="Total Pipelines")
+
+    for r, (dt, avg, cnt) in enumerate(data_points, 2):
+        sheet.cell(row=r, column=1, value=dt)
+        sheet.cell(row=r, column=2, value=avg)
+        sheet.cell(row=r, column=3, value=cnt)
+
+    return len(data_points)
+
+
+def _build_trend_chart(sheet, data_rows):
+    """P8: Line chart — tendencia de Health Score promedio en el tiempo."""
+    from openpyxl.chart import LineChart
+
+    chart = LineChart()
+    chart.title = "Tendencia Health Score Promedio"
+    chart.x_axis.title = "Fecha"
+    chart.y_axis.title = "Health Score Promedio"
+    chart.y_axis.scaling.min = 0
+    chart.y_axis.scaling.max = 105
+    chart.style = 10
+    chart.width = 22
+    chart.height = 14
+
+    cats = Reference(sheet, min_col=1, min_row=2, max_row=data_rows + 1)
+    data_score = Reference(sheet, min_col=2, min_row=1, max_row=data_rows + 1)
+    chart.add_data(data_score, titles_from_data=True)
+    chart.set_categories(cats)
+
+    chart.series[0].graphicalProperties.line.solidFill = "2ecc71"
+    chart.series[0].graphicalProperties.line.width = 30000
+    chart.series[0].marker.symbol = "circle"
+    chart.series[0].marker.size = 8
+    chart.series[0].marker.graphicalProperties.solidFill = "2ecc71"
+
+    if data_rows == 1:
+        chart.title = "Tendencia Health Score (solo 1 punto — ejecutar múltiples veces para ver tendencia)"
+
+    return chart
+
+
+# ──────────────────────────────────────────────────────────────
+# HEATMAP: Technology Status vs Rating (conditional formatting table)
+# ──────────────────────────────────────────────────────────────
+
+HEATMAP_COLORS = {
+    0:  "f7f7f7",   # empty / white
+    1:  "d4efdf",   # 1-2 light green
+    3:  "a9dfbf",   # 3-5 green
+    6:  "f9e79f",   # 6-10 yellow
+    11: "f5b041",   # 11-20 orange
+    21: "e74c3c",   # 21+ red
+}
+
+
+def _heatmap_color(value):
+    """Retorna color hex según valor para heatmap."""
+    if value == 0:
+        return "f7f7f7"
+    if value <= 2:
+        return "d4efdf"
+    if value <= 5:
+        return "a9dfbf"
+    if value <= 10:
+        return "f9e79f"
+    if value <= 20:
+        return "f5b041"
+    return "e74c3c"
+
+
+def _build_heatmap_table(df_health):
+    """Construye datos para heatmap: technology_status vs rating. Retorna dict."""
+    if "technology_status" not in df_health.columns or "rating" not in df_health.columns:
+        return {}
+
+    status_order = ["Moderna", "Mantenimiento", "EOL", "Desconocido"]
+    rating_order = ["Excelente", "Bueno", "Regular", "Bajo", "Crítico"]
+
+    cross = {}
+    for _, row in df_health.iterrows():
+        st = row.get("technology_status", "Desconocido") or "Desconocido"
+        rt = row.get("rating", "Desconocido") or "Desconocido"
+        key = (st, rt)
+        cross[key] = cross.get(key, 0) + 1
+
+    return {"cross": cross, "statuses": status_order, "ratings": rating_order}
+
+
+def _write_heatmap_to_sheet(sheet, df_health, start_row=101):
+    """Escribe tabla heatmap con formato condicional en la hoja Charts."""
+    hm = _build_heatmap_table(df_health)
+    if not hm:
+        return
+
+    cross = hm["cross"]
+    statuses = hm["statuses"]
+    ratings = hm["ratings"]
+
+    from openpyxl.styles import PatternFill, Alignment, Border, Side
+
+    r = start_row
+    sheet.cell(row=r, column=1, value="MAPA DE CALOR: Technology Status vs Rating").font = Font(bold=True, size=12)
+    r += 1
+
+    # Header row
+    sheet.cell(row=r, column=1, value="Technology Status ↓  Rating →").font = Font(bold=True, size=9)
+    for c, rating in enumerate(ratings, 2):
+        cell = sheet.cell(row=r, column=c, value=rating)
+        cell.font = Font(bold=True, size=9, color="FFFFFF")
+        cell.fill = PatternFill(start_color="34495e", end_color="34495e", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center")
+    sheet.cell(row=r, column=len(ratings) + 2, value="Total").font = Font(bold=True, size=9)
+    r += 1
+
+    thin_border = Border(
+        left=Side(style="thin", color="cccccc"),
+        right=Side(style="thin", color="cccccc"),
+        top=Side(style="thin", color="cccccc"),
+        bottom=Side(style="thin", color="cccccc"),
+    )
+
+    for status in statuses:
+        sheet.cell(row=r, column=1, value=status).font = Font(bold=True, size=9)
+        row_total = 0
+        for c, rating in enumerate(ratings, 2):
+            val = cross.get((status, rating), 0)
+            row_total += val
+            cell = sheet.cell(row=r, column=c, value=val if val > 0 else "")
+            cell.fill = PatternFill(start_color=_heatmap_color(val), end_color=_heatmap_color(val), fill_type="solid")
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = thin_border
+            if val > 0:
+                cell.font = Font(bold=True, size=10)
+        sheet.cell(row=r, column=len(ratings) + 2, value=row_total).font = Font(bold=True, size=9)
+        r += 1
+
+    # Legend
+    r += 1
+    sheet.cell(row=r, column=1, value="Leyenda de colores:").font = Font(italic=True, size=8)
+    r += 1
+    legend_items = [
+        ("0", "f7f7f7"), ("1-2", "d4efdf"), ("3-5", "a9dfbf"),
+        ("6-10", "f9e79f"), ("11-20", "f5b041"), ("21+", "e74c3c"),
+    ]
+    for i, (label, color) in enumerate(legend_items):
+        cell = sheet.cell(row=r, column=i + 1, value=label)
+        cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+        cell.font = Font(size=8)
+
+
 def _add_charts_sheet(writer, df_health):
-    """Genera pestaña Charts con 4 gráficos nativos de Excel."""
+    """Genera pestaña Charts con 8 gráficos nativos de Excel."""
     if df_health.empty:
         print("⚠️  Sin datos para generar Charts")
         return
@@ -921,12 +1262,14 @@ def _add_charts_sheet(writer, df_health):
     workbook = writer.book
 
     # Create hidden data sheets for chart source data
-    data_sheets = {}
     chart_specs = [
         ("_data_stacked",  _write_chart_data_stacked_bar,  _build_stacked_bar_chart),
         ("_data_donut",    _write_chart_data_donut,        _build_donut_chart),
         ("_data_dora",     _write_chart_data_dora_bar,     _build_dora_grouped_bar),
         ("_data_scatter",  _write_chart_data_scatter,      _build_scatter_chart),
+        ("_data_treemap",  _write_chart_data_treemap,      _build_treemap_chart),
+        ("_data_pareto",   _write_chart_data_pareto,       _build_pareto_chart),
+        ("_data_trend",    _write_chart_data_trend,        _build_trend_chart),
     ]
 
     chart_objects = []
@@ -940,6 +1283,9 @@ def _add_charts_sheet(writer, df_health):
         else:
             chart_objects.append(None)
 
+    # Build heatmap table directly on Charts sheet (not a chart, a colored table)
+    heatmap_rows = _build_heatmap_table(df_health)
+
     # Create visible Charts sheet and place charts
     charts_sheet = workbook.create_sheet("Charts")
 
@@ -948,10 +1294,18 @@ def _add_charts_sheet(writer, df_health):
         "P2 — Distribución de Ratings",
         "P3 — DORA Profile CI vs CD",
         "P5 — Health Score vs Uso (Priorización)",
+        "P6 — Tecnologías: Cantidad vs Salud Promedio",
+        "P7 — Pareto: Tecnologías con más pipelines críticos",
+        "P8 — Tendencia Health Score (histórico)",
     ]
 
-    # Layout: 2 columns x 2 rows of charts
-    positions = ["A1", "N1", "A26", "N26"]
+    # Layout: 2 columns x 4 rows of charts
+    positions = [
+        "A1",   "N1",
+        "A26",  "N26",
+        "A51",  "N51",
+        "A76",
+    ]
 
     for i, (ch, title) in enumerate(zip(chart_objects, chart_titles)):
         if ch is None:
@@ -959,7 +1313,11 @@ def _add_charts_sheet(writer, df_health):
         ch.title = title
         charts_sheet.add_chart(ch, positions[i])
 
-    print(f"   📊 Hoja 4 — Charts:         4 gráficos nativos Excel")
+    # Heatmap table after last chart
+    heatmap_start = 101
+    _write_heatmap_to_sheet(charts_sheet, df_health, start_row=heatmap_start)
+
+    print(f"   📊 Hoja 4 — Charts:         8 gráficos nativos Excel + 1 tabla heatmap")
 
 
 # ==========================================================
