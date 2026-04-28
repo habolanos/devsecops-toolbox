@@ -1943,6 +1943,7 @@ def _run_inventory_scripts(args, tee):
     
     common_env = os.environ.copy()
     common_env["AZDO_PAT"] = args.pat
+    common_env["PYTHONUTF8"] = "1"  # Fix UnicodeEncodeError with emojis on Windows
     
     ci_cmd = [
         python_exe, str(script_dir / "cicd_inventory_ci_detailed.py"),
