@@ -234,6 +234,14 @@ TOOLS: Dict = {
         "group":       "health",
         "status":      "ready",
     },
+    "17": {
+        "name":        "Prod Deploy Tracker",
+        "description": "[Flujo] Rastrea último despliegue exitoso a Producción por pipeline CD. Requiere cache CD previo. Genera Excel + CSV + JSON cache con deadline de vigencia, commit SHA y build ID.",
+        "path":        "cicd_inventory_prod_deploy.py",
+        "args":        ["--pat", "--org", "--project", "--deadline", "--workers", "--output", "--force-refresh"],
+        "group":       "deploy",
+        "status":      "ready",
+    },
     "A": {
         "name":        "Ejecutar Todos",
         "description": "Ejecuta todas las herramientas con la misma configuración (sin Deep Dive)",
@@ -696,6 +704,15 @@ def run_tool(tool_key: str):
             extra += ["--output", val]
         elif not val and cfg_fmt in ("json", "csv", "excel"):
             extra += ["--output", cfg_fmt]
+
+    if "--deadline" in tool_args:
+        print(f"{Colors.BOLD}Fecha deadline (YYYY-MM-DD, obligatorio):{Colors.ENDC} ", end="")
+        val = input().strip()
+        if not val:
+            print(f"{Colors.RED}❌ El deadline es obligatorio.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        extra += ["--deadline", val]
 
     if "--force-refresh" in tool_args:
         print(f"{Colors.BOLD}¿Forzar refresh (ignorar cache)? (s/n) [n]:{Colors.ENDC} ", end="")
