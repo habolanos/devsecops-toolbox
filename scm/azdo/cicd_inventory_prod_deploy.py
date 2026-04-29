@@ -309,11 +309,11 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
         "is_obsolete": is_obsolete,
     }
 
-    # Consultar releases del pipeline (top 10 para buscar deploy exitoso a prod)
+    # Consultar releases del pipeline (top 100 para buscar deploy exitoso a prod)
     url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
     releases_data = safe_az_get(url, headers, {
         "definitionId": def_id,
-        "$top": 10,
+        "$top": 100,
         "$expand": "environments,artifacts",
     })
 
