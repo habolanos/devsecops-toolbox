@@ -308,6 +308,10 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
         "commit_sha": "",
         "build_id": "",
         "build_number": "",
+        "refresh_release_number": "",
+        "refresh_release_id": "",
+        "refresh_release_date": "",
+        "refresh_release_prod_status": "",
         "deadline": str(deadline_date) if deadline_date else "",
         "deadline_status": "",
         "days_since_prod_deploy": "",
@@ -494,6 +498,47 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
                 result["deadline_status"] = "Actualizar release"
         else:
             result["deadline_status"] = ""
+
+        # ── PASO I: Detectar "refresh release" (mismo build, release más nuevo) ──
+        # Un refresh release es un release posterior al último deploy a prod
+        # que usa el MISMO build artifact → cambio de config/variables, no de código.
+        if result["build_number"] and prod_rel_id:
+            try:
+                refresh_data = az_get(releases_url, headers, {
+                    "definitionId": def_id,
+                    "$top": 50,
+                    "$expand": "artifacts",
+                })
+                refresh_rels = refresh_data.get("value", []) if isinstance(refresh_data, dict) else []
+
+                for rel in refresh_rels:
+                    rel_id_str = str(rel.get("id", ""))
+                    if rel_id_str == str(prod_rel_id):
+                        break  # Llegamos al release del último prod deploy
+                    # Comparar build number del artefacto
+                    for art in rel.get("artifacts", []):
+                        ver = art.get("definitionReference", {}).get("version", {})
+                        if isinstance(ver, dict) and ver.get("name") == result["build_number"]:
+                            result["refresh_release_number"] = rel.get("name", "")
+                            result["refresh_release_id"] = rel_id_str
+                            result["refresh_release_date"] = rel.get("createdOn", "")
+                            # Verificar estado de prod en el refresh release (detail call)
+                            try:
+                                rr_detail = az_get(
+                                    f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{rel_id_str}",
+                                    headers
+                                )
+                                for env in rr_detail.get("environments", []):
+                                    if _is_prod_env(env.get("name", "")):
+                                        result["refresh_release_prod_status"] = env.get("status", "")
+                                        break
+                            except Exception:
+                                pass
+                            break  # Tomamos el primero (más reciente)
+                    if result["refresh_release_number"]:
+                        break
+            except Exception as e:
+                print(f"   ⚠️  [{name}] Error refresh release search: {e}")
     else:
         # No se encontró deploy exitoso a producción
         has_prod_env = any(
