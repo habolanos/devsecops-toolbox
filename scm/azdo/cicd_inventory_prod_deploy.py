@@ -306,6 +306,7 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
         "last_prod_release_number": "",
         "last_prod_release_id": "",
         "commit_sha": "",
+        "git_commit_sha": "",
         "build_id": "",
         "build_number": "",
         "refresh_release_number": "",
@@ -459,29 +460,36 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
 
             if isinstance(rel_detail, dict):
                 artifacts = rel_detail.get("artifacts", [])
-                # Procesar primario primero, luego los demás como fallback
+                # Primario primero para que commit_sha/build_id vengan del artefacto principal
                 sorted_arts = sorted(artifacts, key=lambda a: (not a.get("isPrimary", False)))
                 for art in sorted_arts:
-                    is_primary = art.get("isPrimary", False)
+                    art_type = art.get("type", "")            # Build, Git, GitHub, ExternalGit…
+                    is_build_type = art_type == "Build"
+                    is_git_type = art_type in ("Git", "GitHub", "ExternalGit", "TFVC")
                     ref = art.get("definitionReference", {})
 
-                    # Commit SHA: definitionReference.sourceVersion.id
-                    sv = ref.get("sourceVersion", {})
-                    if isinstance(sv, dict) and sv.get("id") and not result["commit_sha"]:
-                        result["commit_sha"] = sv["id"]
+                    if is_build_type:
+                        # commit_sha = commit que compiló el artefacto CI (sourceVersion)
+                        sv = ref.get("sourceVersion", {})
+                        if isinstance(sv, dict) and sv.get("id") and not result["commit_sha"]:
+                            result["commit_sha"] = sv["id"]
+                        # build_id / build_number = identificador del run de CI
+                        ver = ref.get("version", {})
+                        if isinstance(ver, dict):
+                            if ver.get("id") and not result["build_id"]:
+                                result["build_id"] = str(ver["id"])
+                            if ver.get("name") and not result["build_number"]:
+                                result["build_number"] = ver["name"]
 
-                    # Build ID: definitionReference.version.id (número entero del build)
-                    # Build number: definitionReference.version.name  (ej. "20260428.5")
-                    ver = ref.get("version", {})
-                    if isinstance(ver, dict):
-                        if ver.get("id") and not result["build_id"]:
-                            result["build_id"] = str(ver["id"])
-                        if ver.get("name") and not result["build_number"]:
-                            result["build_number"] = ver["name"]
-
-                    # Si ya tenemos los 3 datos y es primario, no seguir
-                    if is_primary and result["commit_sha"] and result["build_id"]:
-                        break
+                    elif is_git_type:
+                        # git_commit_sha = commit del artefacto git directo (no CI)
+                        ver = ref.get("version", {})
+                        if isinstance(ver, dict) and ver.get("id") and not result["git_commit_sha"]:
+                            result["git_commit_sha"] = ver["id"]
+                        # Fallback: sourceVersion si existe
+                        sv = ref.get("sourceVersion", {})
+                        if isinstance(sv, dict) and sv.get("id") and not result["git_commit_sha"]:
+                            result["git_commit_sha"] = sv["id"]
 
         # ── PASO G: Calcular days_since_prod_deploy ──────────────────
         now = datetime.now(timezone.utc)
