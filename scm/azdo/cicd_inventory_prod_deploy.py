@@ -29,6 +29,12 @@ from base64 import b64encode
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from openpyxl import load_workbook
+from openpyxl.chart import PieChart, BarChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.series import DataPoint
+from openpyxl.utils import get_column_letter
+
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -430,12 +436,147 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
 # EXPORT
 # ==========================================================
 
-def export_results(rows, output_dir, script_name=SCRIPT_NAME):
+# ==========================================================
+# CHART HELPERS
+# ==========================================================
+
+# Colores para deadline_status
+STATUS_COLORS = {
+    "Vigente":               "27AE60",   # verde
+    "Actualizar release":    "E67E22",   # naranja
+    "Sin env. Producción":   "95A5A6",   # gris
+    "Sin releases":          "BDC3C7",   # gris claro
+    "Sin deploy exitoso a prod": "E74C3C", # rojo
+}
+
+# Colores para bins de antigüedad
+BIN_COLORS = ["27AE60", "2ECC71", "F1C40F", "E67E22", "E74C3C", "C0392B"]
+
+
+def _add_charts_sheet(excel_path, df, deadline_date):
+    """Agrega hoja Charts con 2 gráficos nativos Excel."""
+    wb = load_workbook(excel_path)
+
+    # ---- Hoja oculta para datos de gráficos ----
+    data_sheet = wb.create_sheet("_chart_data")
+
+    # ── Chart 1: Distribución Deadline Status (Donut) ──────────────
+    status_counts = df["deadline_status"].value_counts()
+    data_sheet["A1"] = "Estado"
+    data_sheet["B1"] = "Cantidad"
+    for i, (status, count) in enumerate(status_counts.items(), start=2):
+        data_sheet[f"A{i}"] = status
+        data_sheet[f"B{i}"] = int(count)
+
+    chart1 = PieChart()
+    chart1.style = 10
+    chart1.title = f"Distribución Vigencia vs Deadline ({deadline_date})"
+    chart1.width = 18
+    chart1.height = 14
+
+    labels_ref = Reference(data_sheet, min_col=1, min_row=2, max_row=1 + len(status_counts))
+    data_ref = Reference(data_sheet, min_col=2, min_row=1, max_row=1 + len(status_counts))
+    chart1.add_data(data_ref, titles_from_data=True)
+    chart1.set_categories(labels_ref)
+
+    # Colores por estado
+    for idx, status in enumerate(status_counts.index):
+        pt = DataPoint(idx=idx)
+        color = STATUS_COLORS.get(status, "BDC3C7")
+        pt.graphicalProperties.solidFill = color
+        chart1.series[0].data_points.append(pt)
+
+    chart1.series[0].dLbls = DataLabelList()
+    chart1.series[0].dLbls.showPercent = True
+    chart1.series[0].dLbls.showCatName = True
+    chart1.series[0].dLbls.showVal = True
+
+    # Donut (hole size 50%)
+    from openpyxl.chart.series import DataPoint as DP
+    chart1.series[0].graphicalProperties.line.noFill = True
+    try:
+        chart1.series[0].explosion = 0
+    except Exception:
+        pass
+
+    # ── Chart 2: Antigüedad desde último deploy a Prod (Histograma) ─
+    # Bins: 0-30, 31-60, 61-90, 91-180, 181-365, >365 días
+    bins_labels = ["0-30", "31-60", "61-90", "91-180", "181-365", ">365"]
+    bins_edges = [0, 30, 60, 90, 180, 365, 99999]
+    bins_counts = [0] * 6
+
+    days_col = df["days_since_prod_deploy"]
+    for val in days_col:
+        if val == "" or val is None:
+            continue
+        try:
+            d = int(val)
+        except (ValueError, TypeError):
+            continue
+        for b in range(6):
+            if bins_edges[b] < d <= bins_edges[b + 1]:
+                bins_counts[b] += 1
+                break
+
+    data_sheet["D1"] = "Rango días"
+    data_sheet["E1"] = "Pipelines"
+    for i, (label, count) in enumerate(zip(bins_labels, bins_counts), start=2):
+        data_sheet[f"D{i}"] = label
+        data_sheet[f"E{i}"] = count
+
+    chart2 = BarChart()
+    chart2.type = "col"
+    chart2.style = 10
+    chart2.title = "Antigüedad del Último Deploy a Producción (días)"
+    chart2.y_axis.title = "Cantidad de pipelines"
+    chart2.x_axis.title = "Rango de días desde último deploy"
+    chart2.width = 18
+    chart2.height = 14
+
+    cats_ref = Reference(data_sheet, min_col=4, min_row=2, max_row=7)
+    vals_ref = Reference(data_sheet, min_col=5, min_row=1, max_row=7)
+    chart2.add_data(vals_ref, titles_from_data=True)
+    chart2.set_categories(cats_ref)
+    chart2.shape = 4
+
+    # Colores por bin (verde→rojo)
+    for idx, color in enumerate(BIN_COLORS):
+        pt = DataPoint(idx=idx)
+        pt.graphicalProperties.solidFill = color
+        chart2.series[0].data_points.append(pt)
+
+    chart2.series[0].dLbls = DataLabelList()
+    chart2.series[0].dLbls.showVal = True
+
+    # ── Crear hoja Charts ────────────────────────────────────────────
+    charts_sheet = wb.create_sheet("Charts")
+    charts_sheet.add_chart(chart1, "A1")
+    charts_sheet.add_chart(chart2, "A32")
+
+    # Ocultar hoja de datos
+    data_sheet.sheet_state = "hidden"
+
+    wb.save(excel_path)
+    wb.close()
+
+
+def export_results(rows, output_dir, script_name=SCRIPT_NAME, deadline_date=None):
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     df = pd.DataFrame(rows)
     excel_path = output_dir / f"{script_name}_{ts}.xlsx"
     df.to_excel(excel_path, index=False, engine="openpyxl")
-    print(f"📊 Excel: {excel_path.resolve()}")
+
+    # Agregar charts si hay datos
+    if not df.empty and deadline_date:
+        try:
+            _add_charts_sheet(excel_path, df, deadline_date)
+            print(f"📊 Excel: {excel_path.resolve()} (2 gráficos)")
+        except Exception as e:
+            print(f"⚠️  Error generando gráficos: {e}")
+            print(f"📊 Excel: {excel_path.resolve()}")
+    else:
+        print(f"📊 Excel: {excel_path.resolve()}")
+
     csv_path = output_dir / f"{script_name}_{ts}.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     print(f"📄 CSV:  {csv_path.resolve()}")
@@ -626,7 +767,7 @@ def main():
         # PASO 5: Exportar resultados
         # ============================================
         if rows:
-            export_results(rows, output_dir)
+            export_results(rows, output_dir, deadline_date=deadline_date)
         else:
             print("⚠️  No hay datos para exportar")
 

@@ -235,11 +235,11 @@ TOOLS: Dict = {
         "status":      "ready",
     },
     "17": {
-        "name":        "Prod Deploy Tracker",
+        "name":        "Prod Deploy Credenciales Git",
         "description": "[Flujo] Rastrea último despliegue exitoso a Producción por pipeline CD. Requiere cache CD previo. Genera Excel + CSV + JSON cache con deadline de vigencia, commit SHA y build ID.",
         "path":        "cicd_inventory_prod_deploy.py",
         "args":        ["--pat", "--org", "--project", "--deadline", "--workers", "--output", "--force-refresh"],
-        "group":       "deploy",
+        "group":       "health",
         "status":      "ready",
     },
     "A": {
