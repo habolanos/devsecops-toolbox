@@ -316,7 +316,11 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
 
     # ── PASO A: Obtener definition detail (para environments) ────────
     def_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions/{def_id}"
-    def_data = safe_az_get(def_url, headers)
+    try:
+        def_data = az_get(def_url, headers)
+    except Exception as e:
+        print(f"   ⚠️  [{name}] Error definition detail: {e}")
+        def_data = {}
 
     env_names = []
     if isinstance(def_data, dict) and def_data.get("environments"):
@@ -325,10 +329,11 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
 
     # ── PASO B: Último release global ───────────────────────────────
     releases_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
-    releases_data = safe_az_get(releases_url, headers, {
-        "definitionId": def_id,
-        "$top": 1,
-    })
+    try:
+        releases_data = az_get(releases_url, headers, {"definitionId": def_id, "$top": 1})
+    except Exception as e:
+        print(f"   ⚠️  [{name}] Error releases list: {e}")
+        releases_data = {}
 
     releases = releases_data.get("value", []) if isinstance(releases_data, dict) else []
     if not releases:
@@ -342,22 +347,34 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
     result["last_release_status"] = last_r.get("status", "")
 
     # ── PASO C: Buscar último deploy exitoso a prod via Deployments API ──
-    # Deployments API retorna registros planos con environment name + status + dates
     deploys_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/deployments"
-    deploys_data = safe_az_get(deploys_url, headers, {
-        "definitionId": def_id,
-        "$top": 100,
-    })
+    try:
+        deploys_data = az_get(deploys_url, headers, {"definitionId": def_id, "$top": 100})
+    except Exception as e:
+        print(f"   ⚠️  [{name}] Error deployments list: {e}")
+        deploys_data = {}
 
     deployments = deploys_data.get("value", []) if isinstance(deploys_data, dict) else []
+
+    # Si no obtuvimos environments del definition detail, extraer de deployments
+    if not env_names and deployments:
+        dep_env_names = []
+        for dep in deployments:
+            env_obj = dep.get("releaseEnvironment", {})
+            if isinstance(env_obj, dict):
+                en = env_obj.get("name", "")
+                if en and en not in dep_env_names:
+                    dep_env_names.append(en)
+        if dep_env_names:
+            result["environments"] = " / ".join(dep_env_names)
 
     # Buscar el deployment exitoso más reciente a un environment de producción
     best_deploy = None  # (datetime, env_name, status, finished_on_str, release_id, release_name)
 
     for dep in deployments:
         env_name = ""
-        # environment puede ser dict con name, o string
-        env_obj = dep.get("releaseEnvironment", {}) or dep.get("environment", {})
+        # releaseEnvironment es un dict con {id, name}
+        env_obj = dep.get("releaseEnvironment", {})
         if isinstance(env_obj, dict):
             env_name = env_obj.get("name", "") or env_obj.get("environmentName", "")
         elif isinstance(env_obj, str):
@@ -367,7 +384,7 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
             continue
 
         dep_status = dep.get("deploymentStatus", "")
-        finished_on = dep.get("finishedOn", "") or dep.get("modifiedOn", "")
+        finished_on = dep.get("finishedOn", "")
         dt_finished = _parse_iso_date(finished_on)
 
         if not dt_finished:
@@ -383,7 +400,40 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
             rel_name = rel_obj.get("name", "") if isinstance(rel_obj, dict) else ""
             best_deploy = (dt_finished, env_name, dep_status, finished_on, rel_id, rel_name)
 
-    # ── PASO D: Completar datos de prod deploy ──────────────────────
+    # ── PASO D: Si Deployments API no encontró prod, intentar desde releases ──
+    if not best_deploy:
+        try:
+            releases_full = az_get(releases_url, headers, {"definitionId": def_id, "$top": 100})
+        except Exception:
+            releases_full = {}
+
+        rel_list = releases_full.get("value", []) if isinstance(releases_full, dict) else []
+        for rel in rel_list:
+            envs = rel.get("environments", [])
+            if not envs:
+                continue
+            for env in envs:
+                env_name = env.get("name", "")
+                if not _is_prod_env(env_name):
+                    continue
+                # Intentar deploySteps
+                for step in env.get("deploySteps", []):
+                    step_status = step.get("deploymentStatus", "")
+                    finished_on = step.get("finishedOn", "")
+                    dt_finished = _parse_iso_date(finished_on)
+                    if dt_finished and step_status in ("succeeded", "partiallySucceeded"):
+                        if best_deploy is None or dt_finished > best_deploy[0]:
+                            best_deploy = (dt_finished, env_name, step_status, finished_on, rel.get("id", ""), rel.get("name", ""))
+                # Fallback: environment status
+                if not env.get("deploySteps"):
+                    env_status = env.get("status", "")
+                    modified_on = env.get("modifiedOn", "")
+                    dt_modified = _parse_iso_date(modified_on)
+                    if dt_modified and env_status in ("succeeded", "partiallySucceeded"):
+                        if best_deploy is None or dt_modified > best_deploy[0]:
+                            best_deploy = (dt_modified, env_name, env_status, modified_on, rel.get("id", ""), rel.get("name", ""))
+
+    # ── PASO E: Completar datos de prod deploy ──────────────────────
     if best_deploy:
         dt_prod, env_name, deploy_status, finished_on_str, prod_rel_id, prod_rel_name = best_deploy
         result["prod_env_name"] = env_name
@@ -392,10 +442,14 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
         result["last_prod_release_number"] = prod_rel_name
         result["last_prod_release_id"] = prod_rel_id
 
-        # ── PASO E: Obtener artefactos del release con deploy exitoso ──
+        # ── PASO F: Obtener artefactos del release con deploy exitoso ──
         if prod_rel_id:
             rel_detail_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{prod_rel_id}"
-            rel_detail = safe_az_get(rel_detail_url, headers)
+            try:
+                rel_detail = az_get(rel_detail_url, headers)
+            except Exception as e:
+                print(f"   ⚠️  [{name}] Error release detail {prod_rel_id}: {e}")
+                rel_detail = {}
 
             if isinstance(rel_detail, dict):
                 artifacts = rel_detail.get("artifacts", [])
@@ -421,14 +475,14 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
                     if is_primary:
                         break
 
-        # ── PASO F: Calcular days_since_prod_deploy ──────────────────
+        # ── PASO G: Calcular days_since_prod_deploy ──────────────────
         now = datetime.now(timezone.utc)
         if dt_prod.tzinfo is None:
             dt_prod = dt_prod.replace(tzinfo=timezone.utc)
         days_elapsed = (now - dt_prod).days
         result["days_since_prod_deploy"] = days_elapsed
 
-        # ── PASO G: Calcular deadline_status ─────────────────────────
+        # ── PASO H: Calcular deadline_status ─────────────────────────
         if deadline_date:
             prod_date = dt_prod.date() if hasattr(dt_prod, 'date') else dt_prod
             if prod_date > deadline_date:
@@ -439,7 +493,11 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
             result["deadline_status"] = ""
     else:
         # No se encontró deploy exitoso a producción
-        has_prod_env = any(_is_prod_env(e.strip()) for e in result["environments"].split("/") if e.strip())
+        has_prod_env = any(
+            _is_prod_env(e.strip())
+            for e in result["environments"].replace(" / ", "/").split("/")
+            if e.strip()
+        )
         if not has_prod_env:
             result["deadline_status"] = "Sin env. Producción"
         else:
