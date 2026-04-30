@@ -454,26 +454,28 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
 
             if isinstance(rel_detail, dict):
                 artifacts = rel_detail.get("artifacts", [])
-                for art in artifacts:
+                # Procesar primario primero, luego los demás como fallback
+                sorted_arts = sorted(artifacts, key=lambda a: (not a.get("isPrimary", False)))
+                for art in sorted_arts:
                     is_primary = art.get("isPrimary", False)
                     ref = art.get("definitionReference", {})
 
-                    # Commit SHA from sourceVersion
-                    source_version = ref.get("sourceVersion", {})
-                    commit_sha = source_version.get("id", "") if isinstance(source_version, dict) else ""
-                    if commit_sha:
-                        result["commit_sha"] = commit_sha
+                    # Commit SHA: definitionReference.sourceVersion.id
+                    sv = ref.get("sourceVersion", {})
+                    if isinstance(sv, dict) and sv.get("id") and not result["commit_sha"]:
+                        result["commit_sha"] = sv["id"]
 
-                    # Build ID and number
-                    build_ref = ref.get("build", {})
-                    if isinstance(build_ref, dict):
-                        if build_ref.get("id"):
-                            result["build_id"] = str(build_ref["id"])
-                        if build_ref.get("name"):
-                            result["build_number"] = build_ref["name"]
+                    # Build ID: definitionReference.version.id (número entero del build)
+                    # Build number: definitionReference.version.name  (ej. "20260428.5")
+                    ver = ref.get("version", {})
+                    if isinstance(ver, dict):
+                        if ver.get("id") and not result["build_id"]:
+                            result["build_id"] = str(ver["id"])
+                        if ver.get("name") and not result["build_number"]:
+                            result["build_number"] = ver["name"]
 
-                    # Si es artefacto primario, priorizar
-                    if is_primary:
+                    # Si ya tenemos los 3 datos y es primario, no seguir
+                    if is_primary and result["commit_sha"] and result["build_id"]:
                         break
 
         # ── PASO G: Calcular days_since_prod_deploy ──────────────────

@@ -96,7 +96,10 @@ if r3.ok:
             for a in arts:
                 print(f"     - type={a.get('type', '?')} isPrimary={a.get('isPrimary', '?')} alias={a.get('alias', '?')}")
                 ref = a.get("definitionReference", {})
+                print(f"       definitionReference keys: {list(ref.keys())}")
                 sv = ref.get("sourceVersion", {})
+                ver = ref.get("version", {})
                 br = ref.get("build", {})
-                print(f"       sourceVersion.id={sv.get('id', '?') if isinstance(sv, dict) else '?'}")
-                print(f"       build.id={br.get('id', '?') if isinstance(br, dict) else '?'} build.name={br.get('name', '?') if isinstance(br, dict) else '?'}")
+                print(f"       sourceVersion={sv}")
+                print(f"       version={ver}")
+                print(f"       build={br}")
