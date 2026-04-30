@@ -349,7 +349,7 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
     # ── PASO C: Buscar último deploy exitoso a prod via Deployments API ──
     deploys_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/deployments"
     try:
-        deploys_data = az_get(deploys_url, headers, {"definitionId": def_id, "$top": 100})
+        deploys_data = az_get(deploys_url, headers, {"definitionId": def_id, "$top": 100, "queryOrder": "descending"})
     except Exception as e:
         print(f"   ⚠️  [{name}] Error deployments list: {e}")
         deploys_data = {}
@@ -384,8 +384,9 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
             continue
 
         dep_status = dep.get("deploymentStatus", "")
-        finished_on = dep.get("finishedOn", "")
-        dt_finished = _parse_iso_date(finished_on)
+        # Deployments API usa completedOn (no finishedOn)
+        completed_on = dep.get("completedOn", "") or dep.get("lastModifiedOn", "")
+        dt_finished = _parse_iso_date(completed_on)
 
         if not dt_finished:
             continue
@@ -398,7 +399,7 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
             rel_obj = dep.get("release", {})
             rel_id = rel_obj.get("id", "") if isinstance(rel_obj, dict) else ""
             rel_name = rel_obj.get("name", "") if isinstance(rel_obj, dict) else ""
-            best_deploy = (dt_finished, env_name, dep_status, finished_on, rel_id, rel_name)
+            best_deploy = (dt_finished, env_name, dep_status, completed_on, rel_id, rel_name)
 
     # ── PASO D: Si Deployments API no encontró prod, intentar desde releases ──
     if not best_deploy:
