@@ -285,18 +285,17 @@ def _parse_iso_date(date_str):
 # ==========================================================
 
 def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
-    """Consulta releases de un pipeline CD y extrae info del último deploy a producción."""
+    """Consulta deployments y releases de un pipeline CD y extrae info del último deploy a producción."""
     def_id = cd_row.get("id") or cd_row.get("cd_pipeline_id")
     name = cd_row.get("name") or cd_row.get("cd_pipeline_name", "")
     path = cd_row.get("path") or cd_row.get("cd_pipeline_path", "")
-    environments_str = cd_row.get("environments", "")
     is_obsolete = cd_row.get("isObsolete") or detect_obsolete(name)
 
     result = {
         "cd_pipeline_id": def_id,
         "cd_pipeline_name": name,
         "cd_pipeline_path": path,
-        "environments": environments_str,
+        "environments": "",
         "last_release_number": "",
         "last_release_id": "",
         "last_release_date": "",
@@ -315,12 +314,20 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
         "is_obsolete": is_obsolete,
     }
 
-    # Consultar releases del pipeline (top 100 para buscar deploy exitoso a prod)
-    url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
-    releases_data = safe_az_get(url, headers, {
+    # ── PASO A: Obtener definition detail (para environments) ────────
+    def_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions/{def_id}"
+    def_data = safe_az_get(def_url, headers)
+
+    env_names = []
+    if isinstance(def_data, dict) and def_data.get("environments"):
+        env_names = [e.get("name", "") for e in def_data["environments"]]
+    result["environments"] = " / ".join(env_names) if env_names else (cd_row.get("environments", "") or "")
+
+    # ── PASO B: Último release global ───────────────────────────────
+    releases_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
+    releases_data = safe_az_get(releases_url, headers, {
         "definitionId": def_id,
-        "$top": 100,
-        "$expand": "environments,artifacts",
+        "$top": 1,
     })
 
     releases = releases_data.get("value", []) if isinstance(releases_data, dict) else []
@@ -328,92 +335,101 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
         result["deadline_status"] = "Sin releases"
         return result
 
-    # a) Último release global
     last_r = releases[0]
     result["last_release_number"] = last_r.get("name", "")
     result["last_release_id"] = last_r.get("id", "")
     result["last_release_date"] = last_r.get("createdOn", "")
     result["last_release_status"] = last_r.get("status", "")
 
-    # b) Buscar último deploy exitoso a producción iterando releases
-    best_prod_deploy = None  # (datetime, env_name, status, release_info)
-    best_release_for_prod = None
+    # ── PASO C: Buscar último deploy exitoso a prod via Deployments API ──
+    # Deployments API retorna registros planos con environment name + status + dates
+    deploys_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/deployments"
+    deploys_data = safe_az_get(deploys_url, headers, {
+        "definitionId": def_id,
+        "$top": 100,
+    })
 
-    for rel in releases:
-        envs = rel.get("environments", [])
-        for env in envs:
-            env_name = env.get("name", "")
-            if not _is_prod_env(env_name):
-                continue
+    deployments = deploys_data.get("value", []) if isinstance(deploys_data, dict) else []
 
-            # Iterar deploy steps (attempts)
-            deploy_steps = env.get("deploySteps", [])
-            for step in deploy_steps:
-                step_status = step.get("deploymentStatus", "")
-                finished_on = step.get("finishedOn", "")
-                dt_finished = _parse_iso_date(finished_on)
+    # Buscar el deployment exitoso más reciente a un environment de producción
+    best_deploy = None  # (datetime, env_name, status, finished_on_str, release_id, release_name)
 
-                if dt_finished and step_status == "succeeded":
-                    if best_prod_deploy is None or dt_finished > best_prod_deploy[0]:
-                        best_prod_deploy = (dt_finished, env_name, step_status, finished_on)
-                        best_release_for_prod = rel
+    for dep in deployments:
+        env_name = ""
+        # environment puede ser dict con name, o string
+        env_obj = dep.get("releaseEnvironment", {}) or dep.get("environment", {})
+        if isinstance(env_obj, dict):
+            env_name = env_obj.get("name", "") or env_obj.get("environmentName", "")
+        elif isinstance(env_obj, str):
+            env_name = env_obj
 
-            # Si no deploySteps, check environment status directly
-            if not deploy_steps:
-                env_status = env.get("status", "")
-                modified_on = env.get("modifiedOn", "")
-                dt_modified = _parse_iso_date(modified_on)
-                if dt_modified and env_status in ("succeeded", "partiallySucceeded"):
-                    if best_prod_deploy is None or dt_modified > best_prod_deploy[0]:
-                        best_prod_deploy = (dt_modified, env_name, env_status, modified_on)
-                        best_release_for_prod = rel
+        if not _is_prod_env(env_name):
+            continue
 
-    # c) Completar datos de prod deploy
-    if best_prod_deploy:
-        dt_prod, env_name, deploy_status, finished_on_str = best_prod_deploy
+        dep_status = dep.get("deploymentStatus", "")
+        finished_on = dep.get("finishedOn", "") or dep.get("modifiedOn", "")
+        dt_finished = _parse_iso_date(finished_on)
+
+        if not dt_finished:
+            continue
+
+        # Considerar succeeded y partiallySucceeded como exitosos
+        if dep_status not in ("succeeded", "partiallySucceeded"):
+            continue
+
+        if best_deploy is None or dt_finished > best_deploy[0]:
+            rel_obj = dep.get("release", {})
+            rel_id = rel_obj.get("id", "") if isinstance(rel_obj, dict) else ""
+            rel_name = rel_obj.get("name", "") if isinstance(rel_obj, dict) else ""
+            best_deploy = (dt_finished, env_name, dep_status, finished_on, rel_id, rel_name)
+
+    # ── PASO D: Completar datos de prod deploy ──────────────────────
+    if best_deploy:
+        dt_prod, env_name, deploy_status, finished_on_str, prod_rel_id, prod_rel_name = best_deploy
         result["prod_env_name"] = env_name
         result["last_prod_deploy_date"] = finished_on_str
         result["last_prod_deploy_status"] = deploy_status
+        result["last_prod_release_number"] = prod_rel_name
+        result["last_prod_release_id"] = prod_rel_id
 
-        if best_release_for_prod:
-            result["last_prod_release_number"] = best_release_for_prod.get("name", "")
-            result["last_prod_release_id"] = best_release_for_prod.get("id", "")
+        # ── PASO E: Obtener artefactos del release con deploy exitoso ──
+        if prod_rel_id:
+            rel_detail_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{prod_rel_id}"
+            rel_detail = safe_az_get(rel_detail_url, headers)
 
-            # d) Extraer artefactos: commit SHA, build ID
-            artifacts = best_release_for_prod.get("artifacts", [])
-            for art in artifacts:
-                is_primary = art.get("isPrimary", False)
-                art_type = art.get("type", "")
-                ref = art.get("definitionReference", {})
+            if isinstance(rel_detail, dict):
+                artifacts = rel_detail.get("artifacts", [])
+                for art in artifacts:
+                    is_primary = art.get("isPrimary", False)
+                    ref = art.get("definitionReference", {})
 
-                # Commit SHA from sourceVersion
-                source_version = ref.get("sourceVersion", {})
-                commit_sha = source_version.get("id", "") if isinstance(source_version, dict) else ""
-                if commit_sha:
-                    result["commit_sha"] = commit_sha
+                    # Commit SHA from sourceVersion
+                    source_version = ref.get("sourceVersion", {})
+                    commit_sha = source_version.get("id", "") if isinstance(source_version, dict) else ""
+                    if commit_sha:
+                        result["commit_sha"] = commit_sha
 
-                # Build ID and number
-                build_ref = ref.get("build", {})
-                if isinstance(build_ref, dict):
-                    if build_ref.get("id"):
-                        result["build_id"] = str(build_ref["id"])
-                    if build_ref.get("name"):
-                        result["build_number"] = build_ref["name"]
+                    # Build ID and number
+                    build_ref = ref.get("build", {})
+                    if isinstance(build_ref, dict):
+                        if build_ref.get("id"):
+                            result["build_id"] = str(build_ref["id"])
+                        if build_ref.get("name"):
+                            result["build_number"] = build_ref["name"]
 
-                # Si es artefacto primario, priorizar
-                if is_primary:
-                    break
+                    # Si es artefacto primario, priorizar
+                    if is_primary:
+                        break
 
-        # e) Calcular days_since_prod_deploy
+        # ── PASO F: Calcular days_since_prod_deploy ──────────────────
         now = datetime.now(timezone.utc)
         if dt_prod.tzinfo is None:
             dt_prod = dt_prod.replace(tzinfo=timezone.utc)
         days_elapsed = (now - dt_prod).days
         result["days_since_prod_deploy"] = days_elapsed
 
-        # f) Calcular deadline_status
+        # ── PASO G: Calcular deadline_status ─────────────────────────
         if deadline_date:
-            # Comparar solo la fecha (sin hora)
             prod_date = dt_prod.date() if hasattr(dt_prod, 'date') else dt_prod
             if prod_date > deadline_date:
                 result["deadline_status"] = "Vigente"
@@ -423,7 +439,7 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
             result["deadline_status"] = ""
     else:
         # No se encontró deploy exitoso a producción
-        has_prod_env = any(_is_prod_env(e.strip()) for e in environments_str.split("/") if e.strip())
+        has_prod_env = any(_is_prod_env(e.strip()) for e in result["environments"].split("/") if e.strip())
         if not has_prod_env:
             result["deadline_status"] = "Sin env. Producción"
         else:
@@ -721,7 +737,7 @@ def main():
                                 result = future.result()
                                 if result:
                                     rows.append(result)
-                                    api_calls += 1
+                                    api_calls += 3  # definition + releases + deployments (+1 optional release detail)
                             except Exception as e:
                                 cd_name = futures[future].get("name", futures[future].get("cd_pipeline_name", "?"))
                                 print(f"❌ Error en pipeline {cd_name}: {e}")
@@ -739,7 +755,7 @@ def main():
                             result = future.result()
                             if result:
                                 rows.append(result)
-                                api_calls += 1
+                                api_calls += 3  # definition + releases + deployments (+1 optional release detail)
                         except Exception as e:
                             cd_name = futures[future].get("name", futures[future].get("cd_pipeline_name", "?"))
                             print(f"❌ Error en pipeline {cd_name}: {e}")
