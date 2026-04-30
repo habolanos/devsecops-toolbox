@@ -312,6 +312,7 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
         "refresh_release_id": "",
         "refresh_release_date": "",
         "refresh_release_prod_status": "",
+        "refresh_release_prod_date": "",
         "deadline": str(deadline_date) if deadline_date else "",
         "deadline_status": "",
         "days_since_prod_deploy": "",
@@ -530,7 +531,16 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
                                 )
                                 for env in rr_detail.get("environments", []):
                                     if _is_prod_env(env.get("name", "")):
-                                        result["refresh_release_prod_status"] = env.get("status", "")
+                                        rr_prod_status = env.get("status", "")
+                                        result["refresh_release_prod_status"] = rr_prod_status
+                                        # Extraer fecha real del deploy a prod del refresh
+                                        if rr_prod_status in ("succeeded", "partiallySucceeded"):
+                                            rr_prod_date = ""
+                                            for step in env.get("deploySteps", []):
+                                                if step.get("deploymentStatus") in ("succeeded", "partiallySucceeded"):
+                                                    rr_prod_date = step.get("finishedOn", "")
+                                                    break
+                                            result["refresh_release_prod_date"] = rr_prod_date or env.get("modifiedOn", "")
                                         break
                             except Exception:
                                 pass
@@ -539,6 +549,22 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
                         break
             except Exception as e:
                 print(f"   ⚠️  [{name}] Error refresh release search: {e}")
+
+        # ── Recalcular deadline_status/days_since con fecha efectiva del refresh ──
+        if result["refresh_release_number"]:
+            # Prioridad: fecha real del deploy a prod del refresh > fecha de creación del refresh
+            refresh_eff = result["refresh_release_prod_date"] or result["refresh_release_date"]
+            dt_refresh = _parse_iso_date(refresh_eff)
+            if dt_refresh:
+                if dt_refresh.tzinfo is None:
+                    dt_refresh = dt_refresh.replace(tzinfo=timezone.utc)
+                now_r = datetime.now(timezone.utc)
+                result["days_since_prod_deploy"] = (now_r - dt_refresh).days
+                if deadline_date:
+                    if dt_refresh.date() > deadline_date:
+                        result["deadline_status"] = "Vigente"
+                    else:
+                        result["deadline_status"] = "Actualizar release"
     else:
         # No se encontró deploy exitoso a producción
         has_prod_env = any(
@@ -550,6 +576,9 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
             result["deadline_status"] = "Sin env. Producción"
         else:
             result["deadline_status"] = "Sin deploy exitoso a prod"
+
+    # Recalcular is_obsolete con el deadline_status final
+    result["is_obsolete"] = detect_obsolete(name) or result.get("deadline_status") == "Actualizar release"
 
     return result
 
