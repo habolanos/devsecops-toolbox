@@ -1,0 +1,24 @@
+{
+  "webhook": {
+    "url": "YOUR_WEBHOOK_URL",
+    "description": "Google Chat Webhook para alertas AWS SRE"
+  },
+  "webhooks": {
+    "primary": {
+      "url": "YOUR_PRIMARY_WEBHOOK_URL",
+      "description": "Canal principal SRE"
+    },
+    "test": {
+      "url": "YOUR_TEST_WEBHOOK_URL",
+      "description": "Canal de pruebas"
+    }
+  },
+  "aws": {
+    "profile": "default",
+    "region": "us-east-1"
+  },
+  "settings": {
+    "timezone": "America/Mexico_City",
+    "reporter": "SRE Team - AWS"
+  }
+}

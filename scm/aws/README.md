@@ -11,11 +11,15 @@ Herramientas DevSecOps para análisis y monitoreo de recursos AWS.
 | **[rds/](rds/README.md)** | Análisis de instancias RDS y monitoreo de storage |
 | **[vpc/](vpc/README.md)** | VPCs, subnets, route tables y Security Groups |
 | **[elb/](elb/README.md)** | Application y Network Load Balancers |
-| **[eks/](eks/README.md)** | Clusters EKS, node groups y addons |
+| **[eks/](eks/README.md)** | Clusters EKS, node groups, pods y nodos |
 | **[ecr/](ecr/README.md)** | Repositorios ECR, imágenes y lifecycle policies |
-| **[ec2/](ec2/README.md)** | Instancias EC2, estado y configuración |
+| **[ec2/](ec2/README.md)** | Instancias EC2, estado y volúmenes EBS |
 | **[lambda/](lambda/README.md)** | Funciones Lambda, runtime y memoria |
 | **[cloudwatch/](cloudwatch/README.md)** | Alarmas CloudWatch y estado |
+| **[secretsmanager/](secretsmanager/)** | Secrets Manager y SSM Parameter Store |
+| **[waf/](waf/)** | AWS WAF v2: Web ACLs, reglas y logging |
+| **[inventory/](inventory/)** | Inventario completo multi-servicio y multi-región |
+| **[notification/](notification/)** | Notificaciones EKS workloads a Google Chat |
 | **[tools.py](tools.py)** | Lanzador unificado con menú interactivo |
 
 ## 🚀 AWS Tools Launcher
@@ -27,23 +31,29 @@ python tools.py --profile my-profile --region us-west-2
 
 ### Herramientas disponibles
 
-| # | Grupo | Herramienta | Descripción |
-|---|-------|-------------|-------------|
-| 1 | IAM & Security | IAM Users Checker | Usuarios IAM, MFA, access keys |
-| 2 | IAM & Security | IAM Roles Checker | Roles, trust policies, permisos |
-| 3 | IAM & Security | ACM Certificate Checker | Certificados SSL/TLS, expiración |
-| 4 | Database | RDS Instance Checker | Instancias RDS, backups, encryption |
-| 5 | Database | RDS Storage Monitor | Uso de almacenamiento RDS |
-| 6 | Networking | VPC Networks Checker | VPCs, subnets, NAT gateways |
-| 7 | Networking | Security Groups Checker | Reglas de entrada/salida, riesgos |
-| 8 | Networking | Load Balancer Checker | ALB/NLB, listeners, target groups |
-| 9 | Kubernetes | EKS Cluster Checker | Clusters, node groups, addons |
-| 10 | Artifacts | ECR Repository Checker | Repositorios, imágenes, policies |
-| 11 | Compute | EC2 Instances Checker | Instancias, estado, networking |
-| 12 | Compute | Lambda Functions Checker | Funciones, runtime, memoria |
-| 13 | Monitoring | CloudWatch Alarms Checker | Alarmas, estado, acciones |
-| A | Sistema | Ejecutar Todos | Corre todos los checkers |
-| Q | Sistema | Salir | Salir del menú |
+| # | Grupo | Herramienta | GCP Equivalente | Descripción |
+|---|-------|-------------|-----------------|-------------|
+| 1 | IAM & Security | IAM Users Checker | gcp_iam_roles_report | Usuarios IAM, MFA, access keys |
+| 2 | IAM & Security | IAM Roles Checker | gcp_iam_roles_report | Roles, trust policies, permisos |
+| 3 | IAM & Security | ACM Certificate Checker | certificate-manager | Certificados SSL/TLS, expiración |
+| 4 | Database | RDS Instance Checker | gcp_database_checker | Instancias RDS, backups, encryption |
+| 5 | Database | RDS Storage Monitor | gcp_database_checker | Uso de almacenamiento RDS |
+| 6 | Networking | VPC Networks Checker | vpc-networks | VPCs, subnets, NAT gateways |
+| 7 | Networking | Security Groups Checker | cloud-armor | Reglas de entrada/salida, riesgos |
+| 8 | Networking | Load Balancer Checker | load-balancer | ALB/NLB, listeners, target groups |
+| 9 | Kubernetes | EKS Cluster Checker | gcp_cluster_checker | Clusters, node groups, addons |
+| 10 | Artifacts | ECR Repository Checker | artifact-registry | Repositorios, imágenes, policies |
+| 11 | Compute | EC2 Instances Checker | gcp_monitor | Instancias, estado, networking |
+| 12 | Compute | Lambda Functions Checker | cloud-run | Funciones, runtime, memoria |
+| 13 | Monitoring | CloudWatch Alarms Checker | gcp_monitor | Alarmas, estado, acciones |
+| 14 | Database | **EBS Volume Checker** *(nuevo)* | gcp_disk_checker | Volúmenes EBS: cifrado, snapshots, adjuntos |
+| 15 | Kubernetes | **EKS Pod Monitor** *(nuevo)* | gke_monitor_pod | CPU/memoria por pod (kubectl top pods) |
+| 16 | Kubernetes | **EKS Node Monitor** *(nuevo)* | gke_monitor_node | Estado y recursos de nodos EKS |
+| 17 | Security | **Secrets Manager & SSM** *(nuevo)* | gcp_secrets_configmaps_checker | Secretos, rotación, parámetros SSM |
+| 18 | Networking | **WAF Web ACL Checker** *(nuevo)* | cloud-armor | WAF v2: Web ACLs, reglas, logging |
+| 19 | Inventory | **AWS Inventory Generator** *(nuevo)* | generar-inventario-csv | Inventario EKS/RDS/EC2/ELB/Lambda/S3 |
+| A | Sistema | Ejecutar Todos | — | Corre todos los checkers automáticamente |
+| Q | Sistema | Salir | — | Salir del menú |
 
 ## 🔧 Requisitos
 
@@ -109,7 +119,21 @@ Para ejecutar todas las herramientas, el usuario/rol necesita permisos de lectur
                 "cloudwatch:Describe*",
                 "cloudwatch:Get*",
                 "acm:Describe*",
-                "acm:List*"
+                "acm:List*",
+                "secretsmanager:ListSecrets",
+                "secretsmanager:DescribeSecret",
+                "ssm:DescribeParameters",
+                "ssm:GetParameter",
+                "wafv2:ListWebACLs",
+                "wafv2:GetWebACL",
+                "wafv2:ListResourcesForWebACL",
+                "wafv2:ListRuleGroups",
+                "dynamodb:ListTables",
+                "dynamodb:DescribeTable",
+                "s3:ListAllMyBuckets",
+                "s3:GetBucketLocation",
+                "s3:GetBucketVersioning",
+                "s3:GetBucketEncryption"
             ],
             "Resource": "*"
         }
@@ -121,21 +145,25 @@ Para ejecutar todas las herramientas, el usuario/rol necesita permisos de lectur
 
 ```
 aws/
-├── acm/                    # Certificate Manager
-├── cloudwatch/             # CloudWatch Alarms
-├── ec2/                    # EC2 Instances
-├── ecr/                    # Container Registry
-├── eks/                    # Elastic Kubernetes Service
-├── elb/                    # Load Balancers
-├── iam/                    # IAM Users & Roles
-├── lambda/                 # Lambda Functions
-├── rds/                    # RDS Databases
-├── vpc/                    # VPC & Security Groups
+├── acm/                    # Certificate Manager (≈ certificate-manager GCP)
+├── cloudwatch/             # CloudWatch Alarms (≈ gcp_monitor GCP)
+├── ec2/                    # EC2 Instances + EBS Volumes (≈ gcp_disk_checker GCP)
+├── ecr/                    # Container Registry (≈ artifact-registry GCP)
+├── eks/                    # EKS: Clusters, Pods, Nodes (≈ cluster-gke + monitoring GCP)
+├── elb/                    # Load Balancers (≈ load-balancer GCP)
+├── iam/                    # IAM Users & Roles (≈ rolesypermisos GCP)
+├── inventory/              # Inventario multi-servicio (≈ inventory GCP) ← NUEVO
+├── lambda/                 # Lambda Functions (≈ cloud-run GCP)
+├── notification/           # Notificaciones EKS → Chat (≈ notification GCP) ← NUEVO
+├── rds/                    # RDS Databases (≈ cloud-sql GCP)
+├── secretsmanager/         # Secrets Manager + SSM (≈ secrets-configmaps GCP) ← NUEVO
+├── vpc/                    # VPC & Security Groups (≈ vpc-networks GCP)
+├── waf/                    # AWS WAF v2 (≈ cloud-armor GCP) ← NUEVO
 ├── outcome/                # Reportes generados
-├── config.json             # Configuración local
+├── config.json             # Configuración local (gitignored)
 ├── config.json.template    # Plantilla de configuración
 ├── requirements.txt        # Dependencias Python
-├── tools.py                # Launcher principal
+├── tools.py                # Launcher principal (19 herramientas)
 └── README.md               # Este archivo
 ```
 
@@ -181,6 +209,7 @@ python eks/aws_eks_checker.py --cluster my-cluster -o json
 
 | Fecha | Versión | Descripción | Archivos |
 |-------|---------|-------------|----------|
+| 2026-05-03 | 1.0.1 | +6 herramientas nuevas replicadas de GCP: EBS (14), EKS Pod Monitor (15), EKS Node Monitor (16), Secrets Manager+SSM (17), WAF (18), Inventory Generator (19). Directorios: secretsmanager/, waf/, inventory/, notification/ | tools.py, ec2/aws_ebs_checker.py, eks/aws_eks_pod_checker.py, eks/aws_eks_node_checker.py, secretsmanager/aws_secrets_checker.py, waf/aws_waf_checker.py, inventory/aws_inventory_generator.py, notification/aws_notify.sh |
 | 2026-03-31 | 1.0.0 | Versión inicial - 13 herramientas DevSecOps | Todos |
 
 ---

@@ -48,12 +48,14 @@ INSTALLED_MARKER = VENV_DIR / ".installed_requirements"
 
 TOOL_GROUPS = {
     "iam": {"name": "IAM & Security", "emoji": "🔐", "color": "yellow"},
-    "database": {"name": "Database (RDS)", "emoji": "💾", "color": "magenta"},
-    "network": {"name": "Networking", "emoji": "🌐", "color": "blue"},
+    "database": {"name": "Database (RDS/EBS)", "emoji": "💾", "color": "magenta"},
+    "network": {"name": "Networking & WAF", "emoji": "🌐", "color": "blue"},
     "kubernetes": {"name": "Kubernetes (EKS)", "emoji": "☸️", "color": "green"},
     "artifacts": {"name": "Artifacts (ECR)", "emoji": "📦", "color": "red"},
     "compute": {"name": "Compute", "emoji": "💻", "color": "cyan"},
     "monitoring": {"name": "Monitoring", "emoji": "📊", "color": "bright_white"},
+    "security": {"name": "Security", "emoji": "🛡️", "color": "red"},
+    "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
 
@@ -177,10 +179,64 @@ TOOLS = {
         "group": "monitoring",
         "status": "ready"
     },
+    "14": {
+        "name": "EBS Volume Checker",
+        "description": "Analiza volúmenes EBS: cifrado, snapshots, adjuntos",
+        "path": "ec2/aws_ebs_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "database",
+        "status": "ready"
+    },
+    "15": {
+        "name": "EKS Pod Monitor",
+        "description": "CPU/memoria por pod en clusters EKS (kubectl top pods)",
+        "path": "eks/aws_eks_pod_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "16": {
+        "name": "EKS Node Monitor",
+        "description": "Estado y recursos de nodos EKS (kubectl top nodes)",
+        "path": "eks/aws_eks_node_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "17": {
+        "name": "Secrets Manager & SSM Checker",
+        "description": "Secretos, rotación y parámetros SSM Parameter Store",
+        "path": "secretsmanager/aws_secrets_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "security",
+        "status": "ready"
+    },
+    "18": {
+        "name": "WAF Web ACL Checker",
+        "description": "AWS WAF v2: Web ACLs, reglas, logging y asociaciones",
+        "path": "waf/aws_waf_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "network",
+        "status": "ready"
+    },
+    "19": {
+        "name": "AWS Inventory Generator",
+        "description": "Inventario completo EKS/RDS/EC2/ELB/Lambda/DynamoDB/S3",
+        "path": "inventory/aws_inventory_generator.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "inventory",
+        "status": "ready"
+    },
     "A": {
         "name": "Ejecutar Todos (Checkers)",
         "description": "Ejecuta todos los checkers con configuración por defecto",
-        "auto_tools": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"],
+        "auto_tools": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "17", "18"],
         "group": "system",
         "status": "ready"
     },
