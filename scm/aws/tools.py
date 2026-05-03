@@ -17,6 +17,7 @@ Uso:
     python tools.py --profile my-profile --region us-east-1
 """
 
+import datetime
 import os
 import sys
 import subprocess
@@ -577,6 +578,22 @@ def install_requirements(requirements_path: str, python_exec: str, force: bool =
 # EJECUCIÓN DE HERRAMIENTAS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_PLATFORM = "AWS"
+
+def log_command(cmd: List[str], status: str = "EXEC") -> None:
+    """Registra el comando en el log global si DEVSECOPS_LOG_COMMANDS=1."""
+    if os.environ.get("DEVSECOPS_LOG_COMMANDS") != "1":
+        return
+    output_dir_env = os.environ.get("DEVSECOPS_OUTPUT_DIR")
+    log_dir = Path(output_dir_env) if output_dir_env else BASE_DIR / "outcome"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    today = datetime.datetime.now().strftime("%Y%m%d")
+    log_file = log_dir / f"commands_{today}.log"
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cmd_str = " ".join(str(c) for c in cmd)
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] [{_PLATFORM}] [{status}] {cmd_str}\n")
+
 def run_tool(tool_key: str):
     """Ejecuta la herramienta seleccionada."""
     if tool_key not in TOOLS:
@@ -697,9 +714,11 @@ def run_tool(tool_key: str):
 
     print(f"\n{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(cmd)}\n")
 
+    log_command(cmd)
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
+        log_command(cmd, "ERROR")
         print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
     except KeyboardInterrupt:
         print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
@@ -842,10 +861,12 @@ def run_all_checkers():
 
         cmd = [venv_python, str(script_path), "--profile", profile, "--region", region, "-o", "json"]
 
+        log_command(cmd)
         try:
             subprocess.run(cmd, check=True)
             results.append((tool['name'], "OK", "Completado"))
         except subprocess.CalledProcessError as e:
+            log_command(cmd, "ERROR")
             results.append((tool['name'], "ERROR", str(e)))
         except KeyboardInterrupt:
             print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")

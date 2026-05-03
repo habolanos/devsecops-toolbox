@@ -283,6 +283,8 @@ def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
         env["DEVSECOPS_DEBUG"] = "1"
     if global_config.get("verbose"):
         env["DEVSECOPS_VERBOSE"] = "1"
+    if global_config.get("log_commands"):
+        env["DEVSECOPS_LOG_COMMANDS"] = "1"
     if global_config.get("output_dir"):
         output_dir = Path(global_config["output_dir"])
         if not output_dir.is_absolute():

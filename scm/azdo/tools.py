@@ -15,6 +15,7 @@ Uso:
     python tools.py
 """
 
+import datetime
 import json
 import os
 import platform
@@ -555,6 +556,23 @@ def ask_common_params(cfg: Dict) -> Optional[Dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # EJECUCIÓN DE HERRAMIENTA
 # ═══════════════════════════════════════════════════════════════════════════════
+
+_PLATFORM = "AZDO"
+
+def log_command(cmd: List[str], status: str = "EXEC") -> None:
+    """Registra el comando en el log global si DEVSECOPS_LOG_COMMANDS=1."""
+    if os.environ.get("DEVSECOPS_LOG_COMMANDS") != "1":
+        return
+    output_dir_env = os.environ.get("DEVSECOPS_OUTPUT_DIR")
+    log_dir = Path(output_dir_env) if output_dir_env else BASE_DIR / "outcome"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    today = datetime.datetime.now().strftime("%Y%m%d")
+    log_file = log_dir / f"commands_{today}.log"
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cmd_str = " ".join(str(c) for c in cmd)
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] [{_PLATFORM}] [{status}] {cmd_str}\n")
+
 def run_tool(tool_key: str):
     if tool_key not in TOOLS:
         print(f"{Colors.FAIL}Opción no válida.{Colors.ENDC}")
@@ -751,9 +769,11 @@ def run_tool(tool_key: str):
     else:
         print(f"\n{Colors.CYAN}Ejecutando: {' '.join(cmd[:4])} ...{Colors.ENDC}\n")
 
+    log_command(cmd)
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
+        log_command(cmd, "ERROR")
         print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
     except KeyboardInterrupt:
         print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
@@ -848,10 +868,12 @@ def run_all_tools():
             "--output",  output_fmt,
         ]
 
+        log_command(cmd)
         try:
             subprocess.run(cmd, check=True)
             results.append((tool["name"], "OK", "Completado"))
         except subprocess.CalledProcessError as e:
+            log_command(cmd, "ERROR")
             results.append((tool["name"], "ERROR", str(e)))
         except KeyboardInterrupt:
             print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
