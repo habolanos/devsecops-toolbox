@@ -881,12 +881,13 @@ def run_all_checkers():
 
 def main():
     """Función principal del menú."""
+    global DEFAULT_PROFILE, DEFAULT_REGION
+
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--profile", "-p", default=DEFAULT_PROFILE, help="AWS CLI profile por defecto")
     parser.add_argument("--region", "-r", default=DEFAULT_REGION, help="AWS region por defecto")
     cli_args = parser.parse_args()
 
-    global DEFAULT_PROFILE, DEFAULT_REGION
     DEFAULT_PROFILE = cli_args.profile
     DEFAULT_REGION = cli_args.region
 
