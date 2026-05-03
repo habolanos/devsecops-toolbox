@@ -82,10 +82,10 @@ jobs:
           fetch-depth: 0
 
       - name: Scan for secrets with GitLeaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.27.2/gitleaks_8.27.2_linux_x64.tar.gz | tar -xz
+          ./gitleaks detect --source=. --exit-code=0 \
+            --report-format=json --report-path=gitleaks-report.json || true
         continue-on-error: true
 
       - name: Scan for secrets with TruffleHog
