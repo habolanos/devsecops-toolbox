@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-##TEST##
-WEBHOOK_URL="https://chat.googleapis.com/v1/spaces/AAQAOnJzpCw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jYbhXk_XMLcRCfPZyFoYOJvcZ6gmR1cBOWUh4cMI7a8"
-##GUARDIA##
-#WEBHOOK_URL="https://chat.googleapis.com/v1/spaces/AAQA7LOFqoE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=qqkLTkdZhr6hg9pOL5bYfQBdzOOhOjc3DwSgX4xtGjk"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${CONFIG_FILE:-${SCRIPT_DIR}/config.json}"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "❌ Error: config.json no encontrado en $CONFIG_FILE"
+    echo "   Copia config.json.template a config.json y configura las URLs de webhook."
+    exit 1
+fi
+WEBHOOK_URL="$(jq -r '.webhook.url // empty' "$CONFIG_FILE")"
+if [[ -z "$WEBHOOK_URL" ]]; then
+    echo "❌ Error: webhook.url no definido en $CONFIG_FILE" >&2
+    exit 1
+fi
 
 PROJECTS=(
   "CDS::WMS|gke_cpl-cs-wms-prod-30112023_us-central1_gke-cs-wms-prod-01|wms"

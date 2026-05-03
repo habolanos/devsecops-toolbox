@@ -20,10 +20,18 @@ if [[ "${1:-}" == "--help" ]]; then
     show_help
 fi
 
-##TEST##
-#WEBHOOK_URL="https://chat.googleapis.com/v1/spaces/AAQAOnJzpCw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jYbhXk_XMLcRCfPZyFoYOJvcZ6gmR1cBOWUh4cMI7a8"
-##GUARDIA## a - INTERNO - Alertas SRE / Producción
-WEBHOOK_URL="https://chat.googleapis.com/v1/spaces/AAQAAwrKz7U/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Jg86Nq9MLD-P_h7Yus0tB_G4pqWT1s10wIFo8BT06zk"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${CONFIG_FILE:-${SCRIPT_DIR}/config.json}"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "❌ Error: config.json no encontrado en $CONFIG_FILE"
+    echo "   Copia config.json.template a config.json y configura las URLs de webhook."
+    exit 1
+fi
+WEBHOOK_URL="$(jq -r '.webhook.url // empty' "$CONFIG_FILE")"
+if [[ -z "$WEBHOOK_URL" ]]; then
+    echo "❌ Error: webhook.url no definido en $CONFIG_FILE" >&2
+    exit 1
+fi
 
 PROJECTS=(
   "COMERCIAL::ComprasMuebles|gke_cpl-corp-cial-prod-17042024_us-central1_gke-corp-cial-prod-01|comprasmuebles"

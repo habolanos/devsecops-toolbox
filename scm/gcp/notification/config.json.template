@@ -1,7 +1,21 @@
 {
   "webhook": {
-    "url": "https://chat.googleapis.com/v1/spaces/AAQAAwrKz7U/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Jg86Nq9MLD-P_h7Yus0tB_G4pqWT1s10wIFo8BT06zk",
+    "url": "YOUR_ACTIVE_WEBHOOK_URL",
     "description": "GUARDIA - INTERNO - Alertas SRE / Producción"
+  },
+  "webhooks": {
+    "guardia": {
+      "url": "YOUR_GUARDIA_WEBHOOK_URL",
+      "description": "GUARDIA - INTERNO - Alertas SRE / Producción"
+    },
+    "guardia_template": {
+      "url": "YOUR_GUARDIA_TEMPLATE_WEBHOOK_URL",
+      "description": "GUARDIA - Canal template-webhooks"
+    },
+    "test": {
+      "url": "YOUR_TEST_WEBHOOK_URL",
+      "description": "TEST - Canal de pruebas"
+    }
   },
   "settings": {
     "timezone": "America/Mazatlan",

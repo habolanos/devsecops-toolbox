@@ -8,7 +8,7 @@
 
 #Secrets
 *.origin.json
-config.json
+**config.json
 .env
 .env.local
 .env.*.local
