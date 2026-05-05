@@ -191,7 +191,7 @@ def get_refs(
 def extract_locked_branches(refs: List[Dict]) -> List[Dict]:
     """
     Filtra refs con isLocked=True.
-    Retorna lista de dicts con: branch_name, locked_by.
+    Retorna lista de dicts con: branch, bloqueada, creador, locked_by.
     """
     locked = []
     for ref in refs:
@@ -199,16 +199,25 @@ def extract_locked_branches(refs: List[Dict]) -> List[Dict]:
             continue
         name      = ref.get("name", "")
         branch    = name.removeprefix("refs/heads/") if name.startswith("refs/heads/") else name
-        locked_by = ref.get("isLockedBy", {})
-        locker    = (
-            locked_by.get("displayName")
-            or locked_by.get("uniqueName")
-            or locked_by.get("id")
+        creator   = ref.get("creator", {})
+        creador   = (
+            creator.get("displayName")
+            or creator.get("uniqueName")
+            or creator.get("id")
+            or "—"
+        )
+        locked_by_obj = ref.get("isLockedBy", {})
+        locked_by     = (
+            locked_by_obj.get("displayName")
+            or locked_by_obj.get("uniqueName")
+            or locked_by_obj.get("id")
             or "—"
         )
         locked.append({
             "branch":    branch,
-            "locked_by": locker,
+            "bloqueada": "🔒 Sí",
+            "creador":   creador,
+            "locked_by": locked_by,
         })
     return locked
 
@@ -225,17 +234,23 @@ def print_rich_table(console: "Console", rows: List[Dict]):
         box=box.ROUNDED,
         show_lines=False,
     )
-    table.add_column("#",             style="dim",        width=4,   justify="right")
-    table.add_column("Repositorio",   style="bold white", min_width=30)
-    table.add_column("Rama",          style="bold yellow", min_width=28)
-    table.add_column("Bloqueado por", style="cyan",        min_width=25)
+    table.add_column("#",           style="dim",         width=4,   justify="right")
+    table.add_column("Proyecto",    style="dim cyan",     min_width=18)
+    table.add_column("Repositorio", style="bold white",   min_width=28)
+    table.add_column("Rama",        style="bold yellow",  min_width=25)
+    table.add_column("Bloqueada",   justify="center",     width=10)
+    table.add_column("Creador",     style="cyan",         min_width=22)
+    table.add_column("URL Repo",    style="dim blue",     min_width=30)
 
     for idx, row in enumerate(rows, 1):
         table.add_row(
             str(idx),
+            row["proyecto"],
             row["repository"],
             row["branch"],
-            row["locked_by"],
+            row["bloqueada"],
+            row["creador"],
+            row["url_repo"],
         )
 
     console.print(table)
@@ -263,17 +278,18 @@ def print_rich_summary(console: "Console", rows: List[Dict], repos_total: int, e
 # OUTPUT — FALLBACK
 # ═══════════════════════════════════════════════════════════════════════════════
 def print_plain_table(rows: List[Dict], repos_total: int, elapsed: float):
-    hdr = f"{'#':>4}  {'Repositorio':<35} {'Rama':<30} Bloqueado por"
+    hdr = f"{'#':>4}  {'Proyecto':<20} {'Repositorio':<30} {'Rama':<28} {'Bloq':^6} {'Creador':<25} URL Repo"
     sep = "=" * len(hdr)
     print(f"\n{sep}")
     print(hdr)
     print(sep)
     for idx, row in enumerate(rows, 1):
-        print(f"{idx:>4}  {row['repository']:<35} {row['branch']:<30} {row['locked_by']}")
+        print(f"{idx:>4}  {row['proyecto']:<20} {row['repository']:<30} {row['branch']:<28} "
+              f"{'SI':^6} {row['creador']:<25} {row['url_repo']}")
     repos_with_locks = len({r["repository"] for r in rows})
     print(f"\nTotal: {len(rows)} ramas bloqueadas | "
           f"Repos con locks: {repos_with_locks}/{repos_total} | "
-          f"⏱️ {elapsed:.2f}s\n")
+          f"\u23f1\ufe0f {elapsed:.2f}s\n")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -288,6 +304,8 @@ def export_results(
     os.makedirs(outcome_dir, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
+    export_fields = ["proyecto", "repository", "branch", "bloqueada", "creador", "locked_by", "url_repo"]
+
     if output_format == "json":
         filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.json")
         payload  = {
@@ -298,7 +316,7 @@ def export_results(
             },
             "total_locked_branches": len(rows),
             "repos_with_locks":      len({r["repository"] for r in rows}),
-            "data": rows,
+            "data": [{f: r.get(f, "") for f in export_fields} for r in rows],
         }
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -309,7 +327,7 @@ def export_results(
             return None
         filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.csv")
         with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["repository", "branch", "locked_by"])
+            writer = csv.DictWriter(f, fieldnames=export_fields, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
         return filepath
@@ -318,7 +336,8 @@ def export_results(
         try:
             import pandas as pd
             filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.xlsx")
-            pd.DataFrame(rows).to_excel(filepath, index=False, engine="openpyxl")
+            flat = [{f: r.get(f, "") for f in export_fields} for r in rows]
+            pd.DataFrame(flat).to_excel(filepath, index=False, engine="openpyxl")
             return filepath
         except ImportError:
             print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
@@ -403,9 +422,13 @@ def main():
                 locked = extract_locked_branches(refs)
                 for lb in locked:
                     rows.append({
-                        "repository": repo["name"],
-                        "branch":     lb["branch"],
-                        "locked_by":  lb["locked_by"],
+                        "proyecto":    args.project,
+                        "repository":  repo["name"],
+                        "branch":      lb["branch"],
+                        "bloqueada":   lb["bloqueada"],
+                        "creador":     lb["creador"],
+                        "locked_by":   lb["locked_by"],
+                        "url_repo":    repo.get("webUrl", repo.get("remoteUrl", "")),
                     })
                 p.advance(t)
             p.update(t, description=f"✅ {repos_total} repos procesados")
@@ -417,9 +440,13 @@ def main():
             locked = extract_locked_branches(refs)
             for lb in locked:
                 rows.append({
+                    "proyecto":   args.project,
                     "repository": repo["name"],
                     "branch":     lb["branch"],
+                    "bloqueada":  lb["bloqueada"],
+                    "creador":    lb["creador"],
                     "locked_by":  lb["locked_by"],
+                    "url_repo":   repo.get("webUrl", repo.get("remoteUrl", "")),
                 })
         print()
 
