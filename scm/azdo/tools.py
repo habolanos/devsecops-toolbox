@@ -116,6 +116,14 @@ TOOLS: Dict = {
         "group":       "policy",
         "status":      "ready",
     },
+    "2b": {
+        "name":        "Branch Lock Checker",
+        "description": "Lista todas las ramas con lock (isLocked) por repositorio — Repo | Rama | Bloqueado por",
+        "path":        "azdo_branch_lock_checker.py",
+        "args":        ["--pat", "--org", "--project", "--repo", "--output"],
+        "group":       "policy",
+        "status":      "ready",
+    },
     "3": {
         "name":        "Release CD Health",
         "description": "Score de salud de Release Pipelines CD: recencia + estabilidad + consistencia",

@@ -302,6 +302,37 @@ python azdo_pr_pipeline_analyzer.py --pat <PAT> --list-cds
 
 ### 2 · Branch Policy Checker — `azdo_branch_policy_checker.py`
 
+---
+
+### 2b · Branch Lock Checker — `azdo_branch_lock_checker.py`
+
+Lista todas las ramas con **lock activo** (`isLocked = true`) en todos los repositorios del proyecto. El repositorio se repite por cada rama bloqueada que contenga.
+
+**Columnas:**
+
+| # | Repositorio | Rama | Bloqueado por |
+|---|-------------|------|----------------|
+| 1 | repo-abc | master | juan.perez |
+| 2 | repo-abc | develop | juan.perez |
+| 3 | repo-xyz | main | maria.lopez |
+
+**Uso:**
+```bash
+python azdo_branch_lock_checker.py --pat <PAT> --org https://dev.azure.com/MiOrg --project MiProyecto
+
+# Filtrar solo un repo
+python azdo_branch_lock_checker.py --pat <PAT> --repo mi-servicio
+
+# Exportar
+python azdo_branch_lock_checker.py --pat <PAT> --output json
+```
+
+**Permisos PAT:** `Code (Read)`
+
+---
+
+### 2 · Branch Policy Checker — `azdo_branch_policy_checker.py`
+
 Audita las políticas de rama configuradas en **todos los repositorios** del proyecto para tres ramas críticas: `master/main`, `QA` y `develop`. Asigna un semáforo de estado por repositorio.
 
 #### Estado por repositorio
@@ -838,6 +869,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-05-04 | 1.6.8 | Nueva herramienta 2b: `azdo_branch_lock_checker.py` — Lista ramas bloqueadas (isLocked) por repositorio. Tabla: Repo / Rama / Bloqueado por. Exporta json/csv/excel. Progress bar por repo | `azdo_branch_lock_checker.py` (nuevo), `tools.py`, `README.md` |
 | 2026-04-30 | 1.6.7 | Fixes y mejoras en `cicd_inventory_prod_deploy.py`: (1) Fix crítico — Deployments API usa `completedOn` no `finishedOn`; (2) Artefactos: `build_id`/`build_number` ahora usan `version.id`/`version.name`; (3) Nueva columna `git_commit_sha` para artefactos tipo Git separados del CI Build; (4) Nuevas columnas `refresh_release_*` — detecta releases más recientes con el mismo build (config/variable refresh); (5) `deadline_status`, `days_since_prod_deploy` e `is_obsolete` recalculados con fecha efectiva del refresh release; (6) Error logging explícito por API call, fallback de environments desde deployments, fallback a releases expandidos cuando Deployments API no retorna prod | `cicd_inventory_prod_deploy.py`, `README.md` |
 | 2026-04-29 | 1.6.6 | Nueva herramienta 17: `cicd_inventory_prod_deploy.py` — Rastrea último despliegue exitoso a Producción por pipeline CD. Lee cache CD previo, consulta releases con environments+artifacts. 20 columnas: pipeline, último release, deploy a prod (fecha/status/release), commit SHA, build ID/number, deadline (Vigente/Actualizar release), days_since_prod_deploy. Fix IndexError charts, PYTHONUTF8=1 en subprocess, --run-inventory con --offline | `cicd_inventory_prod_deploy.py` (nuevo), `cicd_inventory_health_score.py`, `tools.py`, `README.md`, `docs/Plan_Trabajo_Prod_Deploy.md` |
 | 2026-04-27 | 1.6.5 | Pestaña Charts en Excel de Health Score: 13 gráficos nativos Excel + 1 tabla heatmap. P1 Stacked Bar, P2 Pie ratings, P3 Grouped Bar DORA, P5 Scatter score vs uso, P6 Treemap tecnologías, P7 Pareto críticos, P8 Tendencia histórica, P9 Riesgo Tecnológico por Área (combo bar+line con colores por salud), P10 Sankey Tecnología→Recomendación (stacked bar), P11 Radar DORA por Área (5 dimensiones top 5 áreas), P12 Bubble Esfuerzo vs Impacto (antigüedad×uso, tamaño=fallos), P13 Histograma MTTR (bins con gradiente), P14 Run Chart Fallos con UCL/LCL (desde cache histórico), Heatmap Technology Status vs Rating. Fix normalize_org. Flag --run-inventory con spinner. make_dist.ps1 incluye .cache/ en ZIP | `cicd_inventory_health_score.py`, `cicd_inventory_ci_detailed.py`, `cicd_inventory_cd_detailed.py`, `tools.py`, `README.md`, `make_dist.ps1` |
