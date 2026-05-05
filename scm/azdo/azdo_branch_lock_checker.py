@@ -21,9 +21,11 @@ Autor: Harold Adrian
 
 import argparse
 import base64
+import concurrent.futures
 import csv
 import json
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -115,6 +117,12 @@ def get_args() -> argparse.Namespace:
         help=f"Zona horaria para fechas (default: {DEFAULT_TIMEZONE})"
     )
     parser.add_argument(
+        "--workers", "-w",
+        type=int,
+        default=10,
+        help="Hilos paralelos para consultar refs (default: 10)"
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Mostrar errores HTTP detallados"
@@ -188,6 +196,29 @@ def get_refs(
 # ═══════════════════════════════════════════════════════════════════════════════
 # LOCK LOGIC
 # ═══════════════════════════════════════════════════════════════════════════════
+def _fetch_repo_locks(
+    repo: Dict,
+    org: str,
+    project: str,
+    headers: Dict,
+    debug: bool,
+) -> List[Dict]:
+    """Worker: descarga refs de un repo y retorna solo las bloqueadas."""
+    refs   = get_refs(org, project, repo["id"], headers, debug)
+    locked = extract_locked_branches(refs)
+    url    = repo.get("webUrl", repo.get("remoteUrl", ""))
+    return [
+        {
+            "proyecto":   project,
+            "repository": repo["name"],
+            "branch":     lb["branch"],
+            "bloqueada":  lb["bloqueada"],
+            "creador":    lb["creador"],
+            "locked_by":  lb["locked_by"],
+            "url_repo":   url,
+        }
+        for lb in locked
+    ]
 def extract_locked_branches(refs: List[Dict]) -> List[Dict]:
     """
     Filtra refs con isLocked=True.
@@ -404,8 +435,9 @@ def main():
 
     repos_total = len(repos)
 
-    # ── 2. Refs por repo ─────────────────────────────────────────────────────
+    # ── 2. Refs en paralelo ──────────────────────────────────────────────────────────────
     rows: List[Dict] = []
+    workers = max(1, min(args.workers, repos_total))
 
     if RICH_AVAILABLE and console:
         with Progress(
@@ -415,39 +447,34 @@ def main():
             TaskProgressColumn(),
             console=console,
         ) as p:
-            t = p.add_task("Consultando refs...", total=repos_total)
-            for repo in repos:
-                p.update(t, description=f"[dim]{repo['name'][:40]}[/]")
-                refs   = get_refs(args.org, args.project, repo["id"], headers, args.debug)
-                locked = extract_locked_branches(refs)
-                for lb in locked:
-                    rows.append({
-                        "proyecto":    args.project,
-                        "repository":  repo["name"],
-                        "branch":      lb["branch"],
-                        "bloqueada":   lb["bloqueada"],
-                        "creador":     lb["creador"],
-                        "locked_by":   lb["locked_by"],
-                        "url_repo":    repo.get("webUrl", repo.get("remoteUrl", "")),
-                    })
-                p.advance(t)
-            p.update(t, description=f"✅ {repos_total} repos procesados")
+            t    = p.add_task(f"Consultando refs ({workers} hilos)...", total=repos_total)
+            lock = threading.Lock()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(_fetch_repo_locks, repo, args.org, args.project, headers, args.debug): repo
+                    for repo in repos
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    repo_rows = future.result() or []
+                    with lock:
+                        rows.extend(repo_rows)
+                    p.advance(t)
+            p.update(t, description=f"✅ {repos_total} repos procesados | {len(rows)} ramas bloqueadas")
         console.print()
     else:
-        for repo in repos:
-            print(f"  Consultando {repo['name']}...", end="\r")
-            refs   = get_refs(args.org, args.project, repo["id"], headers, args.debug)
-            locked = extract_locked_branches(refs)
-            for lb in locked:
-                rows.append({
-                    "proyecto":   args.project,
-                    "repository": repo["name"],
-                    "branch":     lb["branch"],
-                    "bloqueada":  lb["bloqueada"],
-                    "creador":    lb["creador"],
-                    "locked_by":  lb["locked_by"],
-                    "url_repo":   repo.get("webUrl", repo.get("remoteUrl", "")),
-                })
+        counter = {"n": 0}
+        counter_lock = threading.Lock()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_fetch_repo_locks, repo, args.org, args.project, headers, args.debug): repo
+                for repo in repos
+            }
+            for future in concurrent.futures.as_completed(futures):
+                repo_rows = future.result() or []
+                with counter_lock:
+                    rows.extend(repo_rows)
+                    counter["n"] += 1
+                    print(f"  [{counter['n']}/{repos_total}] repos procesados...", end="\r")
         print()
 
     elapsed = time.time() - start_time

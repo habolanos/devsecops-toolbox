@@ -120,7 +120,7 @@ TOOLS: Dict = {
         "name":        "Branch Lock Checker",
         "description": "Lista todas las ramas con lock (isLocked) por repositorio — Repo | Rama | Bloqueado por",
         "path":        "azdo_branch_lock_checker.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--workers", "--output"],
         "group":       "policy",
         "status":      "ready",
     },
