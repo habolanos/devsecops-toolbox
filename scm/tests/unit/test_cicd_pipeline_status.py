@@ -1,0 +1,700 @@
+"""
+Tests unitarios para cicd_pipeline_status.py
+
+Cubre las funciones puras y de cache del script de reporte de estado CI+CD.
+"""
+
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+# Asegurar que scm está importable como paquete
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from scm.azdo.cicd_pipeline_status import (
+    _bucket,
+    parse_date,
+    days_since,
+    fmt_date,
+    build_ci_row,
+    _cache_is_fresh,
+    _load_cache,
+    _save_cache,
+    make_headers,
+    BUCKETS,
+    DEPRECADO_SI,
+    DEPRECADO_NO,
+    SCRIPT_NAME,
+    CACHE_TTL_HOURS,
+    API_VERSION,
+)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# _bucket
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestBucket:
+    """Tests para la función _bucket()."""
+
+    @pytest.mark.unit
+    def test_bucket_nunca(self):
+        assert _bucket("Nunca") == "Nunca"
+
+    @pytest.mark.unit
+    def test_bucket_cero_dias(self):
+        assert _bucket("0") == "0-30d"
+
+    @pytest.mark.unit
+    def test_bucket_30_dias(self):
+        assert _bucket("30") == "0-30d"
+
+    @pytest.mark.unit
+    def test_bucket_31_dias(self):
+        assert _bucket("31") == "31-60d"
+
+    @pytest.mark.unit
+    def test_bucket_60_dias(self):
+        assert _bucket("60") == "31-60d"
+
+    @pytest.mark.unit
+    def test_bucket_61_dias(self):
+        assert _bucket("61") == "61-90d"
+
+    @pytest.mark.unit
+    def test_bucket_90_dias(self):
+        assert _bucket("90") == "61-90d"
+
+    @pytest.mark.unit
+    def test_bucket_91_dias(self):
+        assert _bucket("91") == "91-180d"
+
+    @pytest.mark.unit
+    def test_bucket_180_dias(self):
+        assert _bucket("180") == "91-180d"
+
+    @pytest.mark.unit
+    def test_bucket_181_dias(self):
+        assert _bucket("181") == ">180d"
+
+    @pytest.mark.unit
+    def test_bucket_grande(self):
+        assert _bucket("999") == ">180d"
+
+    @pytest.mark.unit
+    def test_all_buckets_covered(self):
+        """Verifica que todos los valores de BUCKETS son retornables."""
+        results = {
+            _bucket("15"), _bucket("45"), _bucket("75"),
+            _bucket("120"), _bucket("200"), _bucket("Nunca"),
+        }
+        assert results == set(BUCKETS)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# parse_date
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestParseDate:
+    """Tests para la función parse_date()."""
+
+    @pytest.mark.unit
+    def test_none_returns_none(self):
+        assert parse_date(None) is None
+
+    @pytest.mark.unit
+    def test_empty_string_returns_none(self):
+        assert parse_date("") is None
+
+    @pytest.mark.unit
+    def test_iso_with_milliseconds(self):
+        result = parse_date("2024-05-01T10:30:00.000Z")
+        assert result is not None
+        assert result.year == 2024
+        assert result.month == 5
+        assert result.day == 1
+
+    @pytest.mark.unit
+    def test_iso_without_milliseconds(self):
+        result = parse_date("2024-05-01T10:30:00Z")
+        assert result is not None
+        assert result.hour == 10
+        assert result.minute == 30
+
+    @pytest.mark.unit
+    def test_iso_without_z(self):
+        result = parse_date("2024-05-01T10:30:00")
+        assert result is not None
+        assert result.year == 2024
+
+    @pytest.mark.unit
+    def test_invalid_format_returns_none(self):
+        assert parse_date("not-a-date") is None
+
+    @pytest.mark.unit
+    def test_returns_utc_timezone(self):
+        result = parse_date("2024-05-01T10:30:00Z")
+        assert result.tzinfo == timezone.utc
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# days_since
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestDaysSince:
+    """Tests para la función days_since()."""
+
+    @pytest.mark.unit
+    def test_none_returns_none(self):
+        assert days_since(None) is None
+
+    @pytest.mark.unit
+    def test_today_returns_zero(self):
+        now = datetime.now(timezone.utc)
+        result = days_since(now)
+        assert result == 0
+
+    @pytest.mark.unit
+    def test_one_day_ago(self):
+        dt = datetime.now(timezone.utc) - timedelta(days=1)
+        result = days_since(dt)
+        assert result == 1
+
+    @pytest.mark.unit
+    def test_ninety_days_ago(self):
+        dt = datetime.now(timezone.utc) - timedelta(days=90)
+        result = days_since(dt)
+        assert result == 90
+
+    @pytest.mark.unit
+    def test_returns_integer(self):
+        dt = datetime.now(timezone.utc) - timedelta(days=45)
+        result = days_since(dt)
+        assert isinstance(result, int)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# fmt_date
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestFmtDate:
+    """Tests para la función fmt_date()."""
+
+    @pytest.mark.unit
+    def test_empty_returns_dash(self):
+        assert fmt_date("", "America/Mazatlan") == "—"
+
+    @pytest.mark.unit
+    def test_none_returns_dash(self):
+        assert fmt_date(None, "America/Mazatlan") == "—"
+
+    @pytest.mark.unit
+    def test_valid_date_returns_formatted(self):
+        result = fmt_date("2024-05-01T10:30:00Z", "America/Mazatlan")
+        assert result != "—"
+        assert "2024" in result
+
+    @pytest.mark.unit
+    def test_invalid_timezone_fallback(self):
+        result = fmt_date("2024-05-01T10:30:00Z", "Invalid/Zone")
+        assert result != "—"
+        assert "2024" in result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# build_ci_row
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestBuildCIRow:
+    """Tests para la función build_ci_row()."""
+
+    @pytest.mark.unit
+    def _make_defn(self, queue_status="enabled", modified="2024-04-01T10:00:00Z",
+                   finish_time="2024-04-20T09:00:00Z", name="pipeline-test", defn_id=1):
+        """Helper: crea un diccionario de definición CI mock."""
+        return {
+            "id": defn_id,
+            "name": name,
+            "path": "\\",
+            "queueStatus": queue_status,
+            "modifiedDate": modified,
+            "latestCompletedBuild": {"finishTime": finish_time} if finish_time else None,
+            "url": f"https://dev.azure.com/org/proj/_apis/build/definitions/{defn_id}",
+        }
+
+    @pytest.mark.unit
+    def test_enabled_pipeline_fields(self):
+        """Pipeline enabled con ejecución reciente."""
+        defn = self._make_defn(queue_status="enabled")
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        assert row["tipo"] == "CI"
+        assert row["nombre"] == "pipeline-test"
+        assert row["queue_status"] == "enabled"
+        assert "Activo" in row["estado"]
+
+    @pytest.mark.unit
+    def test_disabled_pipeline_is_deprecated(self):
+        """Pipeline disabled siempre es deprecado."""
+        defn = self._make_defn(queue_status="disabled")
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        assert row["deprecado"] == DEPRECADO_SI
+        assert "Deshabilitado" in row["estado"]
+
+    @pytest.mark.unit
+    def test_paused_pipeline_estado(self):
+        """Pipeline pausado muestra estado correcto."""
+        defn = self._make_defn(queue_status="paused")
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        assert "Pausado" in row["estado"]
+
+    @pytest.mark.unit
+    def test_never_executed_is_deprecated(self):
+        """Pipeline sin ejecución alguna es deprecado."""
+        defn = self._make_defn(finish_time=None)
+        defn["latestCompletedBuild"] = None
+        defn["latestBuild"] = None
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        assert row["deprecado"] == DEPRECADO_SI
+        assert row["dias_inactivo"] == "Nunca"
+
+    @pytest.mark.unit
+    def test_inactive_pipeline_is_deprecated(self):
+        """Pipeline inactivo por más de N días es deprecado."""
+        old_date = (datetime.now(timezone.utc) - timedelta(days=100)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        defn = self._make_defn(finish_time=old_date)
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        assert row["deprecado"] == DEPRECADO_SI
+
+    @pytest.mark.unit
+    def test_active_recent_pipeline_not_deprecated(self):
+        """Pipeline con ejecución reciente (dentro de inactive_days) no es deprecado."""
+        recent_date = (datetime.now(timezone.utc) - timedelta(days=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        defn = self._make_defn(queue_status="enabled", finish_time=recent_date)
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        assert row["deprecado"] == DEPRECADO_NO
+
+    @pytest.mark.unit
+    def test_row_has_required_keys(self):
+        """El row tiene todas las claves requeridas."""
+        defn = self._make_defn()
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        required_keys = [
+            "tipo", "id", "nombre", "path", "estado", "queue_status",
+            "deprecado", "ultima_act", "ultima_act_raw", "ultimo_run",
+            "ultimo_run_raw", "dias_inactivo", "url",
+        ]
+        for key in required_keys:
+            assert key in row, f"Falta clave: {key}"
+
+    @pytest.mark.unit
+    def test_dias_inactivo_is_numeric_string(self):
+        """dias_inactivo es un string numérico cuando hay ejecución."""
+        recent = (datetime.now(timezone.utc) - timedelta(days=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        defn = self._make_defn(finish_time=recent)
+        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        assert row["dias_inactivo"].isdigit()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cache functions
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestCacheFunctions:
+    """Tests para las funciones de cache."""
+
+    @pytest.mark.unit
+    def test_cache_is_fresh_nonexistent(self, tmp_path):
+        """Cache no fresco si el archivo no existe."""
+        fake_path = tmp_path / "nonexistent.json"
+        assert _cache_is_fresh(fake_path) is False
+
+    @pytest.mark.unit
+    def test_cache_is_fresh_none(self):
+        """Cache no fresco si path es None."""
+        assert _cache_is_fresh(None) is False
+
+    @pytest.mark.unit
+    def test_cache_is_fresh_recent_file(self, tmp_path):
+        """Cache fresco si el archivo fue creado hace poco."""
+        cache_file = tmp_path / f"{SCRIPT_NAME}_raw_20260506_010000.json"
+        cache_file.write_text("{}", encoding="utf-8")
+        assert _cache_is_fresh(cache_file) is True
+
+    @pytest.mark.unit
+    def test_cache_is_stale_old_file(self, tmp_path):
+        """Cache caducado si el archivo tiene más de TTL horas."""
+        cache_file = tmp_path / f"{SCRIPT_NAME}_raw_20240101_000000.json"
+        cache_file.write_text("{}", encoding="utf-8")
+        stale_mtime = time.time() - (CACHE_TTL_HOURS + 1) * 3600
+        os.utime(cache_file, (stale_mtime, stale_mtime))
+        assert _cache_is_fresh(cache_file) is False
+
+    @pytest.mark.unit
+    def test_load_cache_valid_json(self, tmp_path):
+        """Cargar cache con JSON válido."""
+        data = {"metadata": {"script": SCRIPT_NAME}, "rows": [{"tipo": "CI"}]}
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text(json.dumps(data), encoding="utf-8")
+        result = _load_cache(cache_file)
+        assert result["metadata"]["script"] == SCRIPT_NAME
+        assert len(result["rows"]) == 1
+
+    @pytest.mark.unit
+    def test_load_cache_returns_dict(self, tmp_path):
+        """_load_cache retorna un diccionario."""
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text('{"rows": []}', encoding="utf-8")
+        result = _load_cache(cache_file)
+        assert isinstance(result, dict)
+
+    @pytest.mark.unit
+    def test_save_cache_creates_file(self, tmp_path):
+        """_save_cache crea un archivo JSON en outcome/.cache/."""
+        rows = [{"tipo": "CI", "nombre": "test-pipeline"}]
+        with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
+            saved_path = _save_cache(rows, "https://dev.azure.com/org", "TestProject", 90)
+        assert saved_path.exists()
+        with open(saved_path, encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["metadata"]["script"] == SCRIPT_NAME
+        assert data["metadata"]["org"] == "https://dev.azure.com/org"
+        assert data["metadata"]["project"] == "TestProject"
+        assert data["metadata"]["inactive_days"] == 90
+        assert len(data["rows"]) == 1
+
+    @pytest.mark.unit
+    def test_save_cache_filename_format(self, tmp_path):
+        """El nombre del archivo de cache sigue el patrón esperado."""
+        rows = []
+        with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
+            saved_path = _save_cache(rows, "org", "proj", 90)
+        assert saved_path.name.startswith(f"{SCRIPT_NAME}_raw_")
+        assert saved_path.suffix == ".json"
+
+    @pytest.mark.unit
+    def test_save_cache_creates_directory(self, tmp_path):
+        """_save_cache crea el directorio .cache si no existe."""
+        rows = []
+        cache_dir = tmp_path / ".cache"
+        assert not cache_dir.exists()
+        with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
+            _save_cache(rows, "org", "proj", 90)
+        assert cache_dir.exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# make_headers / api_get
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestMakeHeaders:
+    """Tests para make_headers()."""
+
+    @pytest.mark.unit
+    def test_returns_authorization_header(self):
+        headers = make_headers("my-token")
+        assert "Authorization" in headers
+        assert headers["Authorization"].startswith("Basic ")
+
+    @pytest.mark.unit
+    def test_returns_content_type(self):
+        headers = make_headers("my-token")
+        assert headers["Content-Type"] == "application/json"
+
+    @pytest.mark.unit
+    def test_token_is_base64_encoded(self):
+        import base64
+        headers = make_headers("test-pat")
+        encoded = headers["Authorization"].replace("Basic ", "")
+        decoded = base64.b64decode(encoded).decode()
+        assert decoded == ":test-pat"
+
+
+class TestApiGet:
+    """Tests para api_get() con requests mockeado."""
+
+    @pytest.mark.unit
+    def test_returns_json_on_success(self):
+        from scm.azdo.cicd_pipeline_status import api_get
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"value": ["item1"]}
+        mock_resp.raise_for_status = MagicMock()
+        with patch("scm.azdo.cicd_pipeline_status.requests.get", return_value=mock_resp):
+            result = api_get("http://test.url", {}, {})
+        assert result == {"value": ["item1"]}
+
+    @pytest.mark.unit
+    def test_returns_none_on_exception(self):
+        from scm.azdo.cicd_pipeline_status import api_get
+        with patch("scm.azdo.cicd_pipeline_status.requests.get", side_effect=Exception("timeout")):
+            result = api_get("http://test.url", {})
+        assert result is None
+
+    @pytest.mark.unit
+    def test_returns_none_on_http_error(self):
+        from scm.azdo.cicd_pipeline_status import api_get
+        import requests as req_module
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        mock_resp.raise_for_status.side_effect = req_module.HTTPError("401")
+        mock_resp.text = "Unauthorized"
+        with patch("scm.azdo.cicd_pipeline_status.requests.get", return_value=mock_resp):
+            result = api_get("http://test.url", {}, debug=False)
+        assert result is None
+
+
+class TestGetDefinitions:
+    """Tests para get_ci_definitions y get_cd_definitions."""
+
+    @pytest.mark.unit
+    def test_get_ci_definitions_returns_list(self):
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        mock_data = {"value": [{"id": 1, "name": "ci-pipeline"}]}
+        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=mock_data):
+            result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
+        assert len(result) == 1
+        assert result[0]["name"] == "ci-pipeline"
+
+    @pytest.mark.unit
+    def test_get_ci_definitions_empty_on_api_error(self):
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=None):
+            result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
+        assert result == []
+
+    @pytest.mark.unit
+    def test_get_cd_definitions_returns_list(self):
+        from scm.azdo.cicd_pipeline_status import get_cd_definitions
+        mock_data = {"value": [{"id": 10, "name": "cd-release"}]}
+        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=mock_data):
+            result = get_cd_definitions("https://dev.azure.com/org", "Project", {})
+        assert len(result) == 1
+        assert result[0]["name"] == "cd-release"
+
+    @pytest.mark.unit
+    def test_get_cd_definitions_empty_on_api_error(self):
+        from scm.azdo.cicd_pipeline_status import get_cd_definitions
+        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=None):
+            result = get_cd_definitions("https://dev.azure.com/org", "Project", {})
+        assert result == []
+
+    @pytest.mark.unit
+    def test_get_latest_release_returns_first(self):
+        from scm.azdo.cicd_pipeline_status import get_latest_release
+        mock_data = {"value": [{"id": 99, "createdOn": "2024-05-01T10:00:00Z"}]}
+        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=mock_data):
+            result = get_latest_release(1, "https://dev.azure.com/org", "Project", {}, False)
+        assert result["id"] == 99
+
+    @pytest.mark.unit
+    def test_get_latest_release_none_when_empty(self):
+        from scm.azdo.cicd_pipeline_status import get_latest_release
+        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value={"value": []}):
+            result = get_latest_release(1, "https://dev.azure.com/org", "Project", {}, False)
+        assert result is None
+
+
+class TestCdWorker:
+    """Tests para _cd_worker()."""
+
+    @pytest.mark.unit
+    def _make_defn(self, defn_id=10, name="release-prod"):
+        return {
+            "id": defn_id,
+            "name": name,
+            "path": "\\",
+            "modifiedOn": "2024-04-01T08:00:00Z",
+            "url": f"https://vsrm.dev.azure.com/org/proj/_apis/release/definitions/{defn_id}",
+        }
+
+    @pytest.mark.unit
+    def test_never_released_is_deprecated(self):
+        from scm.azdo.cicd_pipeline_status import _cd_worker
+        defn = self._make_defn()
+        with patch("scm.azdo.cicd_pipeline_status.get_latest_release", return_value=None):
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+        assert row["deprecado"] == DEPRECADO_SI
+        assert row["dias_inactivo"] == "Nunca"
+        assert row["tipo"] == "CD"
+
+    @pytest.mark.unit
+    def test_recent_release_is_active(self):
+        from scm.azdo.cicd_pipeline_status import _cd_worker
+        recent = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        defn = self._make_defn()
+        with patch("scm.azdo.cicd_pipeline_status.get_latest_release",
+                   return_value={"createdOn": recent}):
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+        assert row["deprecado"] == DEPRECADO_NO
+        assert "✅" in row["estado"]
+
+    @pytest.mark.unit
+    def test_inactive_release_is_deprecated(self):
+        from scm.azdo.cicd_pipeline_status import _cd_worker
+        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        defn = self._make_defn()
+        with patch("scm.azdo.cicd_pipeline_status.get_latest_release",
+                   return_value={"createdOn": old}):
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+        assert row["deprecado"] == DEPRECADO_SI
+        assert "🔴" in row["estado"]
+
+    @pytest.mark.unit
+    def test_inactivo_state_between_30_and_90_days(self):
+        from scm.azdo.cicd_pipeline_status import _cd_worker
+        mid = (datetime.now(timezone.utc) - timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        defn = self._make_defn()
+        with patch("scm.azdo.cicd_pipeline_status.get_latest_release",
+                   return_value={"createdOn": mid}):
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+        assert "⚠" in row["estado"]
+
+    @pytest.mark.unit
+    def test_row_has_required_cd_keys(self):
+        from scm.azdo.cicd_pipeline_status import _cd_worker
+        defn = self._make_defn()
+        with patch("scm.azdo.cicd_pipeline_status.get_latest_release", return_value=None):
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+        for key in ["tipo", "id", "nombre", "estado", "deprecado", "dias_inactivo", "url"]:
+            assert key in row
+
+
+class TestPrintPlainTable:
+    """Tests para print_plain_table()."""
+
+    @pytest.mark.unit
+    def _sample_rows(self):
+        return [
+            {
+                "tipo": "CI", "nombre": "pipeline-a", "estado": "✅ Activo",
+                "deprecado": DEPRECADO_NO, "ultima_act": "2024-05-01 10:00",
+                "ultimo_run": "2024-05-01 10:00", "dias_inactivo": "5",
+            },
+        ]
+
+    @pytest.mark.unit
+    def test_print_plain_table_runs(self, capsys):
+        from scm.azdo.cicd_pipeline_status import print_plain_table
+        print_plain_table(self._sample_rows(), elapsed=1.5, inactive_days=90)
+        captured = capsys.readouterr()
+        assert "CI" in captured.out
+        assert "pipeline-a" in captured.out
+
+    @pytest.mark.unit
+    def test_print_plain_table_shows_totals(self, capsys):
+        from scm.azdo.cicd_pipeline_status import print_plain_table
+        print_plain_table(self._sample_rows(), elapsed=2.0, inactive_days=90)
+        captured = capsys.readouterr()
+        assert "Total" in captured.out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Export results
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestExportResults:
+    """Tests para la función export_results()."""
+
+    @pytest.mark.unit
+    def _sample_rows(self):
+        return [
+            {
+                "tipo": "CI", "id": 1, "nombre": "pipeline-ci",
+                "path": "\\", "estado": "✅ Activo", "deprecado": DEPRECADO_NO,
+                "ultima_act": "2024-05-01 10:00", "ultimo_run": "2024-05-01 10:00",
+                "dias_inactivo": "5", "url": "https://dev.azure.com/test",
+                "queue_status": "enabled", "ultima_act_raw": "", "ultimo_run_raw": "",
+            },
+            {
+                "tipo": "CD", "id": 2, "nombre": "release-cd",
+                "path": "\\", "estado": "🔴 Sin uso", "deprecado": DEPRECADO_SI,
+                "ultima_act": "2023-01-01 08:00", "ultimo_run": "Nunca",
+                "dias_inactivo": "Nunca", "url": "https://vsrm.dev.azure.com/test",
+                "queue_status": "", "ultima_act_raw": "", "ultimo_run_raw": "",
+            },
+        ]
+
+    @pytest.mark.unit
+    def test_export_json_creates_file(self, tmp_path):
+        """export_results JSON crea un archivo con estructura válida."""
+        from scm.azdo.cicd_pipeline_status import export_results
+        rows = self._sample_rows()
+        with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
+            filepath = export_results(rows, "json", "America/Mazatlan")
+        assert filepath is not None
+        assert Path(filepath).exists()
+        with open(filepath, encoding="utf-8") as f:
+            data = json.load(f)
+        assert "summary" in data
+        assert data["summary"]["total"] == 2
+        assert data["summary"]["ci"] == 1
+        assert data["summary"]["cd"] == 1
+
+    @pytest.mark.unit
+    def test_export_csv_creates_file(self, tmp_path):
+        """export_results CSV crea un archivo con cabeceras."""
+        import csv
+        from scm.azdo.cicd_pipeline_status import export_results
+        rows = self._sample_rows()
+        with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
+            filepath = export_results(rows, "csv", "America/Mazatlan")
+        assert filepath is not None
+        assert Path(filepath).exists()
+        with open(filepath, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            csv_rows = list(reader)
+        assert len(csv_rows) == 2
+        assert "tipo" in csv_rows[0]
+        assert "nombre" in csv_rows[0]
+
+    @pytest.mark.unit
+    def test_export_unknown_format_returns_none(self, tmp_path):
+        """export_results retorna None para formato desconocido."""
+        from scm.azdo.cicd_pipeline_status import export_results
+        rows = self._sample_rows()
+        with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
+            result = export_results(rows, "xml", "America/Mazatlan")
+        assert result is None
+
+    @pytest.mark.unit
+    def test_export_json_deprecated_count(self, tmp_path):
+        """export_results JSON incluye conteo correcto de deprecados."""
+        from scm.azdo.cicd_pipeline_status import export_results
+        rows = self._sample_rows()
+        with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
+            filepath = export_results(rows, "json", "America/Mazatlan")
+        with open(filepath, encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["summary"]["deprecated"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Constants and defaults
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestConstants:
+    """Verifica los valores de las constantes del módulo."""
+
+    @pytest.mark.unit
+    def test_script_name(self):
+        assert SCRIPT_NAME == "cicd_pipeline_status"
+
+    @pytest.mark.unit
+    def test_cache_ttl_positive(self):
+        assert CACHE_TTL_HOURS > 0
+
+    @pytest.mark.unit
+    def test_deprecado_si_not_empty(self):
+        assert DEPRECADO_SI != ""
+        assert DEPRECADO_NO != ""
+
+    @pytest.mark.unit
+    def test_buckets_has_six_values(self):
+        assert len(BUCKETS) == 6
+
+    @pytest.mark.unit
+    def test_buckets_includes_nunca(self):
+        assert "Nunca" in BUCKETS
