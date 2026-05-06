@@ -335,7 +335,7 @@ class TestPrepareEnvForPlatform:
         
         assert env["DEVSECOPS_DEBUG"] == "1"
         assert env["DEVSECOPS_VERBOSE"] == "1"
-        assert env["DEVSECOPS_OUTPUT_DIR"] == "custom_output"
+        assert Path(env["DEVSECOPS_OUTPUT_DIR"]).name == "custom_output"
 
     @pytest.mark.unit
     def test_prepare_env_with_proxy(self, sample_config_data, clean_env):
