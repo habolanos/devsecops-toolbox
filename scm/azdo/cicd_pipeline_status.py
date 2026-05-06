@@ -22,11 +22,13 @@ import argparse
 import base64
 import concurrent.futures
 import csv
+import glob
 import json
 import os
 import threading
 import time
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from urllib.parse import quote
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -62,8 +64,10 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-__version__ = "1.0.0"
-__author__  = "Harold Adrian"
+__version__     = "1.1.0"
+__author__      = "Harold Adrian"
+SCRIPT_NAME     = "cicd_pipeline_status"
+CACHE_TTL_HOURS = 24
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEFAULTS
@@ -82,6 +86,28 @@ QUEUE_STATUS_LABEL = {
 
 DEPRECADO_SI  = "⚠️  Sí"
 DEPRECADO_NO  = "No"
+
+BUCKETS       = ["0-30d", "31-60d", "61-90d", "91-180d", ">180d", "Nunca"]
+
+BUCKET_COLORS = {
+    "0-30d":   "2ecc71",
+    "31-60d":  "f1c40f",
+    "61-90d":  "e67e22",
+    "91-180d": "e74c3c",
+    ">180d":   "922b21",
+    "Nunca":   "7f8c8d",
+}
+
+
+def _bucket(dias_str: str) -> str:
+    if dias_str == "Nunca":
+        return "Nunca"
+    d = int(dias_str)
+    if d <= 30:  return "0-30d"
+    if d <= 60:  return "31-60d"
+    if d <= 90:  return "61-90d"
+    if d <= 180: return "91-180d"
+    return ">180d"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -109,6 +135,10 @@ def get_args() -> argparse.Namespace:
                         help="Exportar resultados (json / csv / excel)")
     parser.add_argument("--timezone", "-tz", default=DEFAULT_TIMEZONE,
                         help=f"Zona horaria (default: {DEFAULT_TIMEZONE})")
+    parser.add_argument("--force-refresh", action="store_true",
+                        help="Ignorar cache y consultar APIs")
+    parser.add_argument("--use-cache-only", action="store_true",
+                        help="Solo usar cache; falla si no existe o es > 24h")
     parser.add_argument("--debug", action="store_true",
                         help="Mostrar errores HTTP detallados")
     return parser.parse_args()
@@ -376,6 +406,215 @@ def print_plain_table(rows: List[Dict], elapsed: float, inactive_days: int):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# CACHE
+# ═══════════════════════════════════════════════════════════════════════════════
+def _find_latest_cache() -> Optional[Path]:
+    output_dir = get_output_dir("outcome")
+    cache_dir  = Path(str(output_dir)) / ".cache"
+    files      = sorted(glob.glob(str(cache_dir / f"{SCRIPT_NAME}_raw_*.json")), reverse=True)
+    return Path(files[0]) if files else None
+
+
+def _cache_is_fresh(cache_path: Optional[Path]) -> bool:
+    if not cache_path or not cache_path.exists():
+        return False
+    age_hours = (time.time() - cache_path.stat().st_mtime) / 3600
+    return age_hours < CACHE_TTL_HOURS
+
+
+def _load_cache(cache_path: Path) -> Dict:
+    with open(cache_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_cache(rows: List[Dict], org: str, project: str, inactive_days: int) -> Path:
+    output_dir = Path(str(get_output_dir("outcome")))
+    cache_dir  = output_dir / ".cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    ts         = datetime.now().strftime("%Y%m%d_%H%M%S")
+    cache_path = cache_dir / f"{SCRIPT_NAME}_raw_{ts}.json"
+    payload    = {
+        "metadata": {
+            "script":        SCRIPT_NAME,
+            "version":       __version__,
+            "org":           org,
+            "project":       project,
+            "inactive_days": inactive_days,
+            "generated_at":  datetime.now(timezone.utc).isoformat(),
+        },
+        "rows": rows,
+    }
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+    return cache_path
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXCEL CHARTS
+# ═══════════════════════════════════════════════════════════════════════════════
+def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
+    """Agrega pestanas 'Resumen' y 'Charts' con 4 graficos nativos al workbook."""
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.chart import BarChart, PieChart, Reference
+        from openpyxl.chart.series import DataPoint
+        from openpyxl.chart.label import DataLabelList
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return
+
+    wb = load_workbook(filepath)
+
+    # ── Hoja Resumen: tablas de datos para los graficos ─────────────────────────
+    ws = wb.create_sheet("Resumen")
+
+    ci_rows = [r for r in rows if r["tipo"] == "CI"]
+    cd_rows = [r for r in rows if r["tipo"] == "CD"]
+
+    # Tabla 1: Estado CI (col A-B, filas 1-5)
+    ws["A1"] = "Estado CI";  ws["B1"] = "Cantidad"
+    ws["A1"].font = Font(bold=True)
+    ci_estados = {"Activo": 0, "Pausado": 0, "Deshabilitado": 0}
+    for r in ci_rows:
+        qs = r.get("queue_status", "enabled")
+        lbl = {"enabled": "Activo", "paused": "Pausado", "disabled": "Deshabilitado"}.get(qs, "Activo")
+        ci_estados[lbl] = ci_estados.get(lbl, 0) + 1
+    for i, (lbl, cnt) in enumerate(ci_estados.items(), 2):
+        ws.cell(row=i, column=1, value=lbl)
+        ws.cell(row=i, column=2, value=cnt)
+
+    # Tabla 2: Estado CD (col A-B, filas 7-12)
+    ws["A7"] = "Estado CD";  ws["B7"] = "Cantidad"
+    ws["A7"].font = Font(bold=True)
+    cd_estados = {"Activo (<30d)": 0, "Inactivo (31-90d)": 0, "Sin uso (>90d)": 0, "Sin ejecucion": 0}
+    for r in cd_rows:
+        est = r.get("estado", "")
+        if "✅" in est:   cd_estados["Activo (<30d)"] += 1
+        elif "⚠" in est: cd_estados["Inactivo (31-90d)"] += 1
+        elif "🔴" in est: cd_estados["Sin uso (>90d)"] += 1
+        else:              cd_estados["Sin ejecucion"] += 1
+    for i, (lbl, cnt) in enumerate(cd_estados.items(), 8):
+        ws.cell(row=i, column=1, value=lbl)
+        ws.cell(row=i, column=2, value=cnt)
+
+    # Tabla 3: Distribucion por bucket CI vs CD (col A-C, filas 14-21)
+    ws["A14"] = "Bucket"; ws["B14"] = "CI"; ws["C14"] = "CD"
+    ws["A14"].font = Font(bold=True)
+    ci_bkt = {b: 0 for b in BUCKETS}
+    cd_bkt = {b: 0 for b in BUCKETS}
+    for r in ci_rows:
+        ci_bkt[_bucket(r["dias_inactivo"])] += 1
+    for r in cd_rows:
+        cd_bkt[_bucket(r["dias_inactivo"])] += 1
+    for i, b in enumerate(BUCKETS, 15):
+        ws.cell(row=i, column=1, value=b)
+        ws.cell(row=i, column=2, value=ci_bkt[b])
+        ws.cell(row=i, column=3, value=cd_bkt[b])
+
+    # Tabla 4: Resumen ejecutivo (col A-B, filas 23-29)
+    ws["A23"] = "Categoria"; ws["B23"] = "Cantidad"
+    ws["A23"].font = Font(bold=True)
+    dep_ci = sum(1 for r in ci_rows if r["deprecado"] == DEPRECADO_SI)
+    dep_cd = sum(1 for r in cd_rows if r["deprecado"] == DEPRECADO_SI)
+    resumen_data = [
+        ("Total CI",        len(ci_rows)),
+        ("Total CD",        len(cd_rows)),
+        ("Deprecados CI",   dep_ci),
+        ("Deprecados CD",   dep_cd),
+        ("Activos CI",      len(ci_rows) - dep_ci),
+        ("Activos CD",      len(cd_rows) - dep_cd),
+    ]
+    for i, (lbl, cnt) in enumerate(resumen_data, 24):
+        ws.cell(row=i, column=1, value=lbl)
+        ws.cell(row=i, column=2, value=cnt)
+
+    # ── Hoja Charts ───────────────────────────────────────────────────
+    wc = wb.create_sheet("Charts")
+
+    # Grafico 1: Donut Estado CI
+    c1 = PieChart()
+    c1.title  = "Estado Pipelines CI"
+    c1.style  = 10
+    c1.width  = 15
+    c1.height = 13
+    c1.add_data(Reference(ws, min_col=2, min_row=1, max_row=4), titles_from_data=True)
+    c1.set_categories(Reference(ws, min_col=1, min_row=2, max_row=4))
+    ci_colors = ["2ecc71", "f1c40f", "e74c3c"]
+    for j, color in enumerate(ci_colors):
+        pt = DataPoint(idx=j)
+        pt.graphicalProperties.solidFill = color
+        c1.series[0].data_points.append(pt)
+    c1.series[0].dLbls = DataLabelList()
+    c1.series[0].dLbls.showPercent  = True
+    c1.series[0].dLbls.showCatName  = True
+    c1.series[0].dLbls.showVal      = False
+    wc.add_chart(c1, "A1")
+
+    # Grafico 2: Donut Estado CD
+    c2 = PieChart()
+    c2.title  = "Estado Pipelines CD"
+    c2.style  = 10
+    c2.width  = 15
+    c2.height = 13
+    c2.add_data(Reference(ws, min_col=2, min_row=7, max_row=11), titles_from_data=True)
+    c2.set_categories(Reference(ws, min_col=1, min_row=8, max_row=11))
+    cd_colors = ["2ecc71", "f39c12", "e74c3c", "7f8c8d"]
+    for j, color in enumerate(cd_colors):
+        pt = DataPoint(idx=j)
+        pt.graphicalProperties.solidFill = color
+        c2.series[0].data_points.append(pt)
+    c2.series[0].dLbls = DataLabelList()
+    c2.series[0].dLbls.showPercent  = True
+    c2.series[0].dLbls.showCatName  = True
+    c2.series[0].dLbls.showVal      = False
+    wc.add_chart(c2, "I1")
+
+    # Grafico 3: Barras agrupadas CI vs CD por bucket
+    c3 = BarChart()
+    c3.type      = "col"
+    c3.grouping  = "clustered"
+    c3.title     = "Distribucion de Inactividad — CI vs CD"
+    c3.y_axis.title = "Pipelines"
+    c3.x_axis.title = "Dias inactivo"
+    c3.width     = 24
+    c3.height    = 13
+    cats3 = Reference(ws, min_col=1, min_row=15, max_row=20)
+    data3_ci = Reference(ws, min_col=2, min_row=14, max_row=20)
+    data3_cd = Reference(ws, min_col=3, min_row=14, max_row=20)
+    c3.add_data(data3_ci, titles_from_data=True)
+    c3.add_data(data3_cd, titles_from_data=True)
+    c3.set_categories(cats3)
+    c3.series[0].graphicalProperties.solidFill = "3498db"
+    c3.series[1].graphicalProperties.solidFill = "8e44ad"
+    c3.series[0].dLbls = DataLabelList(); c3.series[0].dLbls.showVal = True
+    c3.series[1].dLbls = DataLabelList(); c3.series[1].dLbls.showVal = True
+    wc.add_chart(c3, "A16")
+
+    # Grafico 4: Barras Resumen ejecutivo
+    c4 = BarChart()
+    c4.type      = "bar"
+    c4.grouping  = "clustered"
+    c4.title     = "Resumen Ejecutivo CI + CD"
+    c4.x_axis.title = "Cantidad"
+    c4.width     = 15
+    c4.height    = 13
+    cats4  = Reference(ws, min_col=1, min_row=24, max_row=29)
+    data4  = Reference(ws, min_col=2, min_row=23, max_row=29)
+    c4.add_data(data4, titles_from_data=True)
+    c4.set_categories(cats4)
+    exec_colors = ["3498db", "8e44ad", "e74c3c", "c0392b", "2ecc71", "27ae60"]
+    for j, color in enumerate(exec_colors):
+        pt = DataPoint(idx=j)
+        pt.graphicalProperties.solidFill = color
+        c4.series[0].data_points.append(pt)
+    c4.series[0].dLbls = DataLabelList(); c4.series[0].dLbls.showVal = True
+    wc.add_chart(c4, "I16")
+
+    wb.save(filepath)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # EXPORT
 # ═══════════════════════════════════════════════════════════════════════════════
 EXPORT_FIELDS = ["tipo", "id", "nombre", "path", "estado", "deprecado",
@@ -421,7 +660,9 @@ def export_results(rows: List[Dict], output_format: str, tz_name: str) -> Option
         try:
             import pandas as pd
             filepath = os.path.join(outcome_dir, f"pipeline_status_{ts}.xlsx")
-            pd.DataFrame(flat).to_excel(filepath, index=False, engine="openpyxl")
+            pd.DataFrame(flat).to_excel(filepath, index=False,
+                                        sheet_name="Datos", engine="openpyxl")
+            _add_excel_charts(filepath, rows)
             return filepath
         except ImportError:
             print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
@@ -452,6 +693,26 @@ def main():
 
     revision_time = datetime.now(ZoneInfo(tz_name)).strftime(f"%Y-%m-%d %H:%M:%S ({tz_name})")
 
+    # ── Cache check ──────────────────────────────────────────────────────────
+    cache_used = False
+    cache_path = _find_latest_cache()
+
+    if args.use_cache_only:
+        if cache_path and _cache_is_fresh(cache_path):
+            cache_used = True
+        else:
+            msg = "❌ Cache no disponible para --use-cache-only (no existe o > 24h)."
+            (console.print(f"[red]{msg}[/]") if console else print(msg))
+            return
+    elif not args.force_refresh and cache_path and _cache_is_fresh(cache_path):
+        cache_used = True
+
+    cache_label = (
+        f"[green]💾 Cache[/] ({cache_path.name})" if cache_used
+        else "[yellow]🔄 APIs[/]" if not args.force_refresh
+        else "[yellow]🔄 Force refresh[/]"
+    ) if RICH_AVAILABLE else ""
+
     if RICH_AVAILABLE and console:
         console.print()
         console.print(Panel(
@@ -459,16 +720,27 @@ def main():
             f"[dim]🕐 {revision_time}[/]\n"
             f"[dim]🏢 Org:      {args.org}[/]\n"
             f"[dim]📁 Proyecto: {args.project}[/]\n"
-            f"[dim]📅 Inactivo: >{args.inactive_days} días → deprecado[/]",
+            f"[dim]📅 Inactivo: >{args.inactive_days} días → deprecado[/]\n"
+            f"[dim]📦 Fuente:   {cache_label}[/]",
             border_style="cyan",
             expand=False,
         ))
         console.print()
+    else:
+        src = "cache" if cache_used else "APIs"
+        print(f"Pipeline Status Report | {revision_time} | fuente: {src}")
 
     rows: List[Dict] = []
 
+    # ── Cargar desde cache si aplica ─────────────────────────────────────────
+    if cache_used and cache_path:
+        data  = _load_cache(cache_path)
+        rows  = data.get("rows", [])
+        msg   = f"📦 Cache cargado: {cache_path.name} ({len(rows)} pipelines)"
+        (console.print(f"[dim]{msg}[/]\n") if console else print(msg))
+
     # ── CI ───────────────────────────────────────────────────────────────────
-    if args.type in ("ci", "all"):
+    if not cache_used and args.type in ("ci", "all"):
         if RICH_AVAILABLE and console:
             with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
                 t = p.add_task("Obteniendo CI pipelines...", total=None)
@@ -484,8 +756,8 @@ def main():
         if console:
             console.print()
 
-    # ── CD ───────────────────────────────────────────────────────────────────
-    if args.type in ("cd", "all"):
+    # ── CD ───────────────────────────────────────────────────────────────────────
+    if not cache_used and args.type in ("cd", "all"):
         if RICH_AVAILABLE and console:
             with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
                 t = p.add_task("Obteniendo CD pipelines...", total=None)
@@ -540,6 +812,12 @@ def main():
                             counter["n"] += 1
                             print(f"  [{counter['n']}/{len(cd_defs)}] CD procesados...", end="\r")
             print()
+
+    # ── Guardar cache tras consulta API ─────────────────────────────────
+    if not cache_used and rows:
+        saved = _save_cache(rows, args.org, args.project, args.inactive_days)
+        msg   = f"💾 Cache guardado: {saved.name}"
+        (console.print(f"[dim]{msg}[/]") if console else print(msg))
 
     elapsed = time.time() - start_time
 
