@@ -251,6 +251,14 @@ TOOLS: Dict = {
         "group":       "health",
         "status":      "ready",
     },
+    "18": {
+        "name":        "Pipeline Status",
+        "description": "Reporte consolidado CI+CD: totales, deprecados, última actualización, estado (enabled/disabled/paused/inactivo)",
+        "path":        "cicd_pipeline_status.py",
+        "args":        ["--pat", "--org", "--project", "--workers", "--inactive-days", "--type", "--only-deprecated", "--output"],
+        "group":       "health",
+        "status":      "ready",
+    },
     "A": {
         "name":        "Ejecutar Todos",
         "description": "Ejecuta todas las herramientas con la misma configuración (sin Deep Dive)",
