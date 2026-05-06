@@ -1,4 +1,4 @@
-name: CD - DevSecOps Toolbox Release
+﻿name: CD - DevSecOps Toolbox Release
 
 on:
   push:
@@ -75,9 +75,9 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           if [ -f "CHANGELOG.md" ]; then
             if grep -q "$VERSION" CHANGELOG.md; then
-              echo "✓ Version found in CHANGELOG.md"
+              echo "Γ£ô Version found in CHANGELOG.md"
             else
-              echo "⚠ Version $VERSION not found in CHANGELOG.md"
+              echo "ΓÜá Version $VERSION not found in CHANGELOG.md"
             fi
           fi
 
