@@ -245,19 +245,51 @@ def fmt_date(value: str, tz_name: str) -> str:
 # CI — FETCH
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_ci_definitions(org: str, project: str, headers: Dict, debug: bool = False) -> List[Dict]:
-    """Obtiene TODAS las build definitions con paginación via x-ms-continuationtoken.
+    """Obtiene TODAS las build definitions con info del último build.
 
-    Usa $top=1000 (máximo seguro por página) y acumula todas las páginas.
-    Con >1000 pipelines la llamada única a api_get perdía la(s) página(s) extra.
+    Estrategia en dos pasos (necesaria porque includeLatestBuilds=true
+    desactiva la paginación vía x-ms-continuationtoken en Azure DevOps):
+
+    Paso 1 — Paginación completa sin includeLatestBuilds:
+        Obtiene todos los IDs/metadata usando continuationToken.
+
+    Paso 2 — Batch-fetch con includeLatestBuilds=true (lotes de 200):
+        Enriquece cada lote con latestCompletedBuild / latestBuild.
     """
     org_name = org.rstrip("/").split("/")[-1]
     url = f"https://dev.azure.com/{org_name}/{quote(project, safe='')}/_apis/build/definitions"
-    params = {
-        "api-version":        API_VERSION,
-        "$top":               1000,
-        "includeLatestBuilds": "true",
-    }
-    return api_get_paginated(url, headers, params, debug)
+
+    # ── Paso 1: obtener TODOS los IDs con paginación ────────────────────────
+    all_defs_raw = api_get_paginated(
+        url, headers, {"api-version": API_VERSION, "$top": 1000}, debug
+    )
+
+    if not all_defs_raw:
+        return []
+
+    if debug:
+        print(f"[DEBUG CI] Total definitions encontradas: {len(all_defs_raw)}")
+
+    # ── Paso 2: enriquecer en lotes de 200 con includeLatestBuilds=true ──────
+    result: List[Dict] = []
+    batch_size = 200
+    for i in range(0, len(all_defs_raw), batch_size):
+        batch     = all_defs_raw[i : i + batch_size]
+        batch_ids = ",".join(str(d["id"]) for d in batch)
+        data = api_get(
+            url, headers,
+            {"api-version": API_VERSION, "definitionIds": batch_ids, "includeLatestBuilds": "true"},
+            debug,
+        )
+        if data:
+            result.extend(data.get("value", []))
+        elif debug:
+            print(f"[DEBUG CI] Lote {i // batch_size + 1}: sin datos")
+
+    if debug:
+        print(f"[DEBUG CI] Definitions enriquecidas: {len(result)}")
+
+    return result
 
 
 def build_ci_row(defn: Dict, inactive_days: int, tz_name: str) -> Dict:

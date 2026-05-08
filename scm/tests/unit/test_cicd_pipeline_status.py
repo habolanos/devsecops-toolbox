@@ -589,15 +589,19 @@ class TestGetDefinitions:
 
     @pytest.mark.unit
     def test_get_ci_definitions_returns_list(self):
+        """Paso 1 devuelve IDs, paso 2 enriquece con includeLatestBuilds."""
         from scm.azdo.cicd_pipeline_status import get_ci_definitions
-        mock_page = [{"id": 1, "name": "ci-pipeline"}]
-        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=mock_page):
-            result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
+        raw_ids = [{"id": 1, "name": "ci-pipeline"}]
+        enriched = {"value": [{"id": 1, "name": "ci-pipeline", "latestCompletedBuild": {}}]}
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=raw_ids):
+            with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=enriched):
+                result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
         assert len(result) == 1
         assert result[0]["name"] == "ci-pipeline"
 
     @pytest.mark.unit
     def test_get_ci_definitions_empty_on_api_error(self):
+        """Si paso 1 no devuelve nada, retorna lista vacía."""
         from scm.azdo.cicd_pipeline_status import get_ci_definitions
         with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]):
             result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
@@ -620,24 +624,42 @@ class TestGetDefinitions:
         assert result == []
 
     @pytest.mark.unit
-    def test_get_ci_definitions_multi_page(self):
-        """Verifica que get_ci_definitions devuelve todos los registros de múltiples páginas."""
+    def test_get_ci_definitions_multi_page_1692(self):
+        """Con 1692 defs se hacen ceil(1692/200)=9 llamadas de enriquecimiento."""
+        import math
         from scm.azdo.cicd_pipeline_status import get_ci_definitions
-        page1 = [{"id": i, "name": f"ci-{i}"} for i in range(1, 1001)]
-        page2 = [{"id": i, "name": f"ci-{i}"} for i in range(1001, 1693)]
-        all_pages = page1 + page2
-        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=all_pages):
-            result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
-        assert len(result) == 1692
+        raw_ids = [{"id": i, "name": f"ci-{i}"} for i in range(1, 1693)]
+        enriched_batch = {"value": [{"id": d["id"]} for d in raw_ids[:200]]}
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=raw_ids):
+            with patch("scm.azdo.cicd_pipeline_status.api_get",
+                       return_value={"value": []}) as mock_api:
+                get_ci_definitions("https://dev.azure.com/org", "Project", {})
+        expected_batches = math.ceil(1692 / 200)
+        assert mock_api.call_count == expected_batches
 
     @pytest.mark.unit
-    def test_get_ci_definitions_uses_top_1000(self):
-        """Verifica que get_ci_definitions usa $top=1000, no 5000."""
+    def test_get_ci_definitions_uses_top_1000_step1(self):
+        """Paso 1 usa $top=1000 (sin includeLatestBuilds)."""
         from scm.azdo.cicd_pipeline_status import get_ci_definitions
         with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]) as mock_pag:
             get_ci_definitions("https://dev.azure.com/org", "Project", {})
-        call_params = mock_pag.call_args[0][2]  # positional args: url, headers, params
+        call_params = mock_pag.call_args[0][2]
         assert call_params["$top"] == 1000
+        assert "includeLatestBuilds" not in call_params
+
+    @pytest.mark.unit
+    def test_get_ci_definitions_step2_uses_include_latest_builds(self):
+        """Paso 2 pasa includeLatestBuilds=true y definitionIds al API."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        raw_ids = [{"id": 1}, {"id": 2}]
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=raw_ids):
+            with patch("scm.azdo.cicd_pipeline_status.api_get",
+                       return_value={"value": []}) as mock_api:
+                get_ci_definitions("https://dev.azure.com/org", "Project", {})
+        batch_params = mock_api.call_args[0][2]
+        assert batch_params["includeLatestBuilds"] == "true"
+        assert "1" in batch_params["definitionIds"]
+        assert "2" in batch_params["definitionIds"]
 
     @pytest.mark.unit
     def test_get_latest_release_returns_first(self):
