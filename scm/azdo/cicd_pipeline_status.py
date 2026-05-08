@@ -670,6 +670,89 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
         for col in (5, 6, 7):
             ws.cell(row=i, column=col).fill = PatternFill("solid", fgColor=fill_color)
 
+    # ── Hoja Consolidado ────────────────────────────────────────────────────
+    from openpyxl.styles import Border, Side
+    _thin  = Side(style="thin", color="AAAAAA")
+    _brd   = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+
+    wcon = wb.create_sheet("Consolidado")
+
+    _HDR_FILL = PatternFill("solid", fgColor="2c3e50")
+    _HDR_FONT = Font(bold=True, color="FFFFFF")
+    _TOT_FILL = PatternFill("solid", fgColor="1a252f")
+    _TOT_FONT = Font(bold=True, color="FFFFFF")
+
+    _con_headers = [
+        "Grupo",
+        "Total Pipeline CI",
+        "Total Pipeline CD",
+        "Total Deprecados",
+        "Total Propuestos para Deprecar",
+        "Total Pipelines",
+    ]
+    _con_widths = [22, 20, 20, 22, 30, 18]
+
+    for c_i, (hdr, w) in enumerate(zip(_con_headers, _con_widths), 1):
+        cell = wcon.cell(row=1, column=c_i, value=hdr)
+        cell.font      = _HDR_FONT
+        cell.fill      = _HDR_FILL
+        cell.border    = _brd
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        wcon.column_dimensions[get_column_letter(c_i)].width = w
+    wcon.row_dimensions[1].height = 40
+
+    _grupos_con = [g for g, _ in _GRUPO_RULES] + [GRUPO_SIN_COINCIDENCIA]
+
+    for r_i, grupo in enumerate(_grupos_con, 2):
+        g_ci    = [r for r in ci_rows if r.get("grupo") == grupo]
+        g_cd    = [r for r in cd_rows if r.get("grupo") == grupo]
+        g_dep   = sum(1 for r in g_ci + g_cd if r["deprecado"] == DEPRECADO_SI)
+        g_prop  = (
+            sum(1 for r in g_ci if r.get("queue_status") == "enabled"
+                and r["dias_inactivo"] == "Nunca")
+            + sum(1 for r in g_cd if r["dias_inactivo"] == "Nunca")
+        )
+        g_total = len(g_ci) + len(g_cd)
+        row_vals = [grupo, len(g_ci), len(g_cd), g_dep, g_prop, g_total]
+        fc = GRUPO_COLORS_EXCEL.get(grupo, "bdc3c7")
+        for c_i, val in enumerate(row_vals, 1):
+            cell = wcon.cell(row=r_i, column=c_i, value=val)
+            cell.fill      = PatternFill("solid", fgColor=fc)
+            cell.border    = _brd
+            cell.alignment = Alignment(
+                horizontal="left" if c_i == 1 else "center",
+                vertical="center",
+            )
+            if c_i > 1:
+                cell.font = Font(bold=True)
+        wcon.row_dimensions[r_i].height = 20
+
+    # Fila TOTAL
+    r_tot = len(_grupos_con) + 2
+    tot_ci_all   = len(ci_rows)
+    tot_cd_all   = len(cd_rows)
+    tot_dep_all  = sum(1 for r in rows if r["deprecado"] == DEPRECADO_SI)
+    tot_prop_all = (
+        sum(1 for r in ci_rows if r.get("queue_status") == "enabled"
+            and r["dias_inactivo"] == "Nunca")
+        + sum(1 for r in cd_rows if r["dias_inactivo"] == "Nunca")
+    )
+    tot_total_all = len(rows)
+    tot_vals = ["TOTAL", tot_ci_all, tot_cd_all, tot_dep_all, tot_prop_all, tot_total_all]
+    for c_i, val in enumerate(tot_vals, 1):
+        cell = wcon.cell(row=r_tot, column=c_i, value=val)
+        cell.font      = _TOT_FONT
+        cell.fill      = _TOT_FILL
+        cell.border    = _brd
+        cell.alignment = Alignment(
+            horizontal="left" if c_i == 1 else "center",
+            vertical="center",
+        )
+    wcon.row_dimensions[r_tot].height = 22
+
+    # Mover "Consolidado" a la segunda posición (después de "Datos")
+    wb.move_sheet("Consolidado", offset=-(len(wb.sheetnames) - 2))
+
     # ── Hoja Charts ───────────────────────────────────────────────────
     wc = wb.create_sheet("Charts")
 
