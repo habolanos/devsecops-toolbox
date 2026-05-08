@@ -585,10 +585,10 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
     """Agrega pestanas 'Resumen' y 'Charts' con 4 graficos nativos al workbook."""
     try:
         from openpyxl import load_workbook
-        from openpyxl.chart import BarChart, PieChart, Reference
+        from openpyxl.chart import BarChart, PieChart, RadarChart, Reference
         from openpyxl.chart.series import DataPoint
         from openpyxl.chart.label import DataLabelList
-        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.styles import Border, Font, PatternFill, Alignment, Side
         from openpyxl.utils import get_column_letter
     except ImportError:
         return
@@ -672,65 +672,81 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
         for col in (5, 6, 7):
             ws.cell(row=i, column=col).fill = PatternFill("solid", fgColor=fill_color)
 
-    # ── Hoja Consolidado ────────────────────────────────────────────────────
-    from openpyxl.styles import Border, Side
-    _thin  = Side(style="thin", color="AAAAAA")
-    _brd   = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+    # ── Hoja Consolidado — Estilo ejecutivo sobrio ────────────────────────────
+    # Paleta ejecutiva
+    _NAV1  = "1a2e4a"   # marino oscuro — título / total
+    _NAV2  = "243d5c"   # marino medio — headers columna
+    _WHT   = "FFFFFF"
+    _CHR   = "2c3e50"   # charcoal — texto datos
+    # Tintes muy suaves para cada grupo (fondo de fila)
+    _TINTS = {
+        "WMS": "eaf7f4", "OMS": "eafaf1", "CSC": "fefce8",
+        "TMS": "f4ecfb", GRUPO_SIN_COINCIDENCIA: "f7f8f8",
+    }
+
+    def _brd_accent(color_hex):
+        _s = Side(style="thin",   color="d5d8dc")
+        return Border(left=Side(style="medium", color=color_hex),
+                      right=_s, top=_s, bottom=_s)
+
+    def _brd_plain():
+        _s = Side(style="thin", color="d5d8dc")
+        return Border(left=_s, right=_s, top=_s, bottom=_s)
 
     wcon = wb.create_sheet("Consolidado")
+    _NUM_COLS = 6
+    _CON_HDRS   = ["Grupo", "Total Pipeline CI", "Total Pipeline CD",
+                   "Total Deprecados", "Total Propuestos para Deprecar", "Total Pipelines"]
+    _CON_WIDTHS = [24, 20, 20, 22, 30, 18]
 
-    _HDR_FILL = PatternFill("solid", fgColor="2c3e50")
-    _HDR_FONT = Font(bold=True, color="FFFFFF")
-    _TOT_FILL = PatternFill("solid", fgColor="1a252f")
-    _TOT_FONT = Font(bold=True, color="FFFFFF")
+    # Fila 1: Título fusionado
+    wcon.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NUM_COLS)
+    _tc = wcon.cell(row=1, column=1, value="Resumen Ejecutivo de Pipelines por Grupo")
+    _tc.font      = Font(name="Calibri", bold=True, size=13, color=_WHT)
+    _tc.fill      = PatternFill("solid", fgColor=_NAV1)
+    _tc.alignment = Alignment(horizontal="center", vertical="center")
+    wcon.row_dimensions[1].height = 30
 
-    _con_headers = [
-        "Grupo",
-        "Total Pipeline CI",
-        "Total Pipeline CD",
-        "Total Deprecados",
-        "Total Propuestos para Deprecar",
-        "Total Pipelines",
-    ]
-    _con_widths = [22, 20, 20, 22, 30, 18]
-
-    for c_i, (hdr, w) in enumerate(zip(_con_headers, _con_widths), 1):
-        cell = wcon.cell(row=1, column=c_i, value=hdr)
-        cell.font      = _HDR_FONT
-        cell.fill      = _HDR_FILL
-        cell.border    = _brd
+    # Fila 2: Cabeceras de columna
+    for c_i, (hdr, w) in enumerate(zip(_CON_HDRS, _CON_WIDTHS), 1):
+        cell = wcon.cell(row=2, column=c_i, value=hdr)
+        cell.font      = Font(name="Calibri", bold=True, size=10, color=_WHT)
+        cell.fill      = PatternFill("solid", fgColor=_NAV2)
+        cell.border    = _brd_plain()
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         wcon.column_dimensions[get_column_letter(c_i)].width = w
-    wcon.row_dimensions[1].height = 40
+    wcon.row_dimensions[2].height = 36
 
+    # Filas de datos (comienzan en fila 3)
     _grupos_con = [g for g, _ in _GRUPO_RULES] + [GRUPO_SIN_COINCIDENCIA]
-
-    for r_i, grupo in enumerate(_grupos_con, 2):
-        g_ci    = [r for r in ci_rows if r.get("grupo") == grupo]
-        g_cd    = [r for r in cd_rows if r.get("grupo") == grupo]
-        g_dep   = sum(1 for r in g_ci + g_cd if r["deprecado"] == DEPRECADO_SI)
-        g_prop  = (
+    for r_i, grupo in enumerate(_grupos_con, 3):
+        g_ci   = [r for r in ci_rows if r.get("grupo") == grupo]
+        g_cd   = [r for r in cd_rows if r.get("grupo") == grupo]
+        g_dep  = sum(1 for r in g_ci + g_cd if r["deprecado"] == DEPRECADO_SI)
+        g_prop = (
             sum(1 for r in g_ci if r.get("queue_status") == "enabled"
                 and r["dias_inactivo"] == "Nunca")
             + sum(1 for r in g_cd if r["dias_inactivo"] == "Nunca")
         )
-        g_total = len(g_ci) + len(g_cd)
+        g_total  = len(g_ci) + len(g_cd)
         row_vals = [grupo, len(g_ci), len(g_cd), g_dep, g_prop, g_total]
-        fc = GRUPO_COLORS_EXCEL.get(grupo, "bdc3c7")
+        tint     = _TINTS.get(grupo, "f7f8f8")
+        accent   = GRUPO_COLORS_EXCEL.get(grupo, "95a5a6")
         for c_i, val in enumerate(row_vals, 1):
             cell = wcon.cell(row=r_i, column=c_i, value=val)
-            cell.fill      = PatternFill("solid", fgColor=fc)
-            cell.border    = _brd
-            cell.alignment = Alignment(
-                horizontal="left" if c_i == 1 else "center",
-                vertical="center",
-            )
-            if c_i > 1:
-                cell.font = Font(bold=True)
-        wcon.row_dimensions[r_i].height = 20
+            cell.fill   = PatternFill("solid", fgColor=tint)
+            cell.border = _brd_accent(accent)
+            if c_i == 1:
+                cell.font      = Font(name="Calibri", bold=True, size=10, color=_CHR)
+                cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+            else:
+                cell.font          = Font(name="Calibri", size=10, color=_CHR)
+                cell.alignment     = Alignment(horizontal="center", vertical="center")
+                cell.number_format = "#,##0"
+        wcon.row_dimensions[r_i].height = 22
 
     # Fila TOTAL
-    r_tot = len(_grupos_con) + 2
+    r_tot        = len(_grupos_con) + 3
     tot_ci_all   = len(ci_rows)
     tot_cd_all   = len(cd_rows)
     tot_dep_all  = sum(1 for r in rows if r["deprecado"] == DEPRECADO_SI)
@@ -743,14 +759,15 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
     tot_vals = ["TOTAL", tot_ci_all, tot_cd_all, tot_dep_all, tot_prop_all, tot_total_all]
     for c_i, val in enumerate(tot_vals, 1):
         cell = wcon.cell(row=r_tot, column=c_i, value=val)
-        cell.font      = _TOT_FONT
-        cell.fill      = _TOT_FILL
-        cell.border    = _brd
-        cell.alignment = Alignment(
-            horizontal="left" if c_i == 1 else "center",
-            vertical="center",
-        )
-    wcon.row_dimensions[r_tot].height = 22
+        cell.font      = Font(name="Calibri", bold=True, size=10, color=_WHT)
+        cell.fill      = PatternFill("solid", fgColor=_NAV1)
+        cell.border    = _brd_plain()
+        if c_i == 1:
+            cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        else:
+            cell.alignment     = Alignment(horizontal="center", vertical="center")
+            cell.number_format = "#,##0"
+    wcon.row_dimensions[r_tot].height = 24
 
     # Mover "Consolidado" a la segunda posición (después de "Datos")
     wb.move_sheet("Consolidado", offset=-(len(wb.sheetnames) - 2))
@@ -837,17 +854,15 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
     c4.series[0].dLbls = DataLabelList(); c4.series[0].dLbls.showVal = True
     wc.add_chart(c4, "I16")
 
-    # Grafico 5: Distribucion por Grupo CI vs CD
-    c5 = BarChart()
-    c5.type      = "bar"
-    c5.grouping  = "clustered"
-    c5.title     = "Pipelines por Grupo — CI vs CD"
-    c5.x_axis.title = "Cantidad"
-    c5.y_axis.title = "Grupo"
-    c5.width     = 24
-    c5.height    = 13
-    n_grupos     = len(grupos_order)
-    cats5  = Reference(ws, min_col=5, min_row=2, max_row=1 + n_grupos)
+    # Grafico 5: Radar — Distribucion por Grupo CI vs CD
+    c5 = RadarChart()
+    c5.type   = "filled"
+    c5.title  = "Pipelines por Grupo — CI vs CD"
+    c5.style  = 10
+    c5.width  = 18
+    c5.height = 14
+    n_grupos  = len(grupos_order)
+    cats5    = Reference(ws, min_col=5, min_row=2, max_row=1 + n_grupos)
     data5_ci = Reference(ws, min_col=6, min_row=1, max_row=1 + n_grupos)
     data5_cd = Reference(ws, min_col=7, min_row=1, max_row=1 + n_grupos)
     c5.add_data(data5_ci, titles_from_data=True)
@@ -855,8 +870,6 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
     c5.set_categories(cats5)
     c5.series[0].graphicalProperties.solidFill = "3498db"
     c5.series[1].graphicalProperties.solidFill = "8e44ad"
-    c5.series[0].dLbls = DataLabelList(); c5.series[0].dLbls.showVal = True
-    c5.series[1].dLbls = DataLabelList(); c5.series[1].dLbls.showVal = True
     wc.add_chart(c5, "A32")
 
     wb.save(filepath)
