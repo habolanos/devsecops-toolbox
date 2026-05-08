@@ -298,8 +298,10 @@ def get_ci_definitions(org: str, project: str, headers: Dict, debug: bool = Fals
     url = f"https://dev.azure.com/{org_name}/{quote(project, safe='')}/_apis/build/definitions"
 
     # ── Paso 1: obtener TODOS los IDs con paginación ────────────────────────
+    # Sin includeLatestBuilds el API soporta $top hasta 5000+ en una sola página.
+    # includeLatestBuilds=true tiene un límite interno de ~1000 por página.
     all_defs_raw = api_get_paginated(
-        url, headers, {"api-version": API_VERSION, "$top": 1000}, debug
+        url, headers, {"api-version": API_VERSION, "$top": 5000}, debug
     )
 
     if not all_defs_raw:

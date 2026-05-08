@@ -255,7 +255,7 @@ TOOLS: Dict = {
         "name":        "Pipeline Status",
         "description": "Reporte consolidado CI+CD: totales, deprecados, última actualización, estado (enabled/disabled/paused/inactivo)",
         "path":        "cicd_pipeline_status.py",
-        "args":        ["--pat", "--org", "--project", "--workers", "--inactive-days", "--type", "--only-deprecated", "--output"],
+        "args":        ["--pat", "--org", "--project", "--workers", "--inactive-days", "--type", "--only-deprecated", "--output", "--force-refresh"],
         "group":       "health",
         "status":      "ready",
     },

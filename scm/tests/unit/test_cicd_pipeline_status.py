@@ -734,13 +734,13 @@ class TestGetDefinitions:
         assert mock_api.call_count == expected_batches
 
     @pytest.mark.unit
-    def test_get_ci_definitions_uses_top_1000_step1(self):
-        """Paso 1 usa $top=1000 (sin includeLatestBuilds)."""
+    def test_get_ci_definitions_uses_top_5000_step1(self):
+        """Paso 1 usa $top=5000 (sin includeLatestBuilds) para obtener todos los IDs."""
         from scm.azdo.cicd_pipeline_status import get_ci_definitions
         with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]) as mock_pag:
             get_ci_definitions("https://dev.azure.com/org", "Project", {})
         call_params = mock_pag.call_args[0][2]
-        assert call_params["$top"] == 1000
+        assert call_params["$top"] == 5000
         assert "includeLatestBuilds" not in call_params
 
     @pytest.mark.unit
