@@ -23,6 +23,7 @@ from scm.azdo.cicd_pipeline_status import (
     days_since,
     fmt_date,
     build_ci_row,
+    classify_pipeline_group,
     _cache_is_fresh,
     _load_cache,
     _save_cache,
@@ -31,6 +32,7 @@ from scm.azdo.cicd_pipeline_status import (
     BUCKETS,
     DEPRECADO_SI,
     DEPRECADO_NO,
+    GRUPO_SIN_COINCIDENCIA,
     SCRIPT_NAME,
     CACHE_TTL_HOURS,
     API_VERSION,
@@ -512,6 +514,100 @@ class TestApiGetPaginated:
             api_get_paginated("http://url", {}, {})
 
         assert mock_get.call_count == 2
+
+
+class TestClassifyPipelineGroup:
+    """Tests para classify_pipeline_group() — clasificación por palabras clave en path."""
+
+    @pytest.mark.unit
+    def test_wms_by_wm(self):
+        assert classify_pipeline_group("\/WM\\pipeline") == "WMS"
+
+    @pytest.mark.unit
+    def test_wms_by_wms(self):
+        assert classify_pipeline_group("\/WMS\\pipeline") == "WMS"
+
+    @pytest.mark.unit
+    def test_wms_by_ayr(self):
+        assert classify_pipeline_group("\/AYR\\build") == "WMS"
+
+    @pytest.mark.unit
+    def test_wms_by_ims(self):
+        assert classify_pipeline_group("\/IMS\\deploy") == "WMS"
+
+    @pytest.mark.unit
+    def test_wms_by_rdm(self):
+        assert classify_pipeline_group("\/RDM\\service") == "WMS"
+
+    @pytest.mark.unit
+    def test_oms_keyword(self):
+        assert classify_pipeline_group("\/OMS\\checkout") == "OMS"
+
+    @pytest.mark.unit
+    def test_csc_keyword(self):
+        assert classify_pipeline_group("\/CSC\\api") == "CSC"
+
+    @pytest.mark.unit
+    def test_tms_by_tms(self):
+        assert classify_pipeline_group("\/TMS\\route") == "TMS"
+
+    @pytest.mark.unit
+    def test_tms_by_cmanager(self):
+        assert classify_pipeline_group("\/CManager\\deploy") == "TMS"
+
+    @pytest.mark.unit
+    def test_tms_by_torrecontrol(self):
+        assert classify_pipeline_group("\/TorreControl\\monitor") == "TMS"
+
+    @pytest.mark.unit
+    def test_sin_coincidencia_unrelated_path(self):
+        assert classify_pipeline_group("\/SharedLibs\\utils") == GRUPO_SIN_COINCIDENCIA
+
+    @pytest.mark.unit
+    def test_sin_coincidencia_empty_path(self):
+        assert classify_pipeline_group("") == GRUPO_SIN_COINCIDENCIA
+
+    @pytest.mark.unit
+    def test_sin_coincidencia_root_only(self):
+        assert classify_pipeline_group("\\\\") == GRUPO_SIN_COINCIDENCIA
+
+    @pytest.mark.unit
+    def test_case_insensitive_lowercase(self):
+        assert classify_pipeline_group("\/wms\\ci-build") == "WMS"
+
+    @pytest.mark.unit
+    def test_case_insensitive_mixed(self):
+        assert classify_pipeline_group("\/Oms\\order-api") == "OMS"
+
+    @pytest.mark.unit
+    def test_wms_takes_priority_over_later_groups(self):
+        """Path con 'wms' y 'tms' juntos → WMS gana (primera regla)."""
+        assert classify_pipeline_group("\/wms-tms\\pipeline") == "WMS"
+
+    @pytest.mark.unit
+    def test_keyword_in_middle_of_path(self):
+        """Palabra clave en el medio del path se detecta correctamente."""
+        assert classify_pipeline_group("\/Proyectos\\CSC\\api-gateway") == "CSC"
+
+    @pytest.mark.unit
+    def test_build_ci_row_includes_grupo(self):
+        """build_ci_row agrega campo 'grupo' correctamente desde el path."""
+        dt = datetime.now(timezone.utc) - timedelta(days=5)
+        defn = {
+            "id": 1, "name": "wms-build",
+            "path": "\/WMS\\Inventario",
+            "queueStatus": "enabled",
+            "modifiedDate": "2024-01-01T00:00:00Z",
+            "latestCompletedBuild": {"finishTime": dt.strftime("%Y-%m-%dT%H:%M:%SZ")},
+            "url": "https://dev.azure.com/org",
+        }
+        row = build_ci_row(defn, inactive_days=365, tz_name="America/Mazatlan")
+        assert row["grupo"] == "WMS"
+
+    @pytest.mark.unit
+    def test_none_path_returns_sin_coincidencia(self):
+        """Path None no rompe la función."""
+        assert classify_pipeline_group(None) == GRUPO_SIN_COINCIDENCIA
 
 
 class TestDefaultDeprecationThreshold:

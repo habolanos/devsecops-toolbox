@@ -102,6 +102,44 @@ BUCKET_COLORS = {
     "Nunca":   "7f8c8d",
 }
 
+# Reglas de clasificación por grupo — se evalúan en orden (primera coincidencia gana)
+_GRUPO_RULES: List[Tuple[str, List[str]]] = [
+    ("WMS", ["wm", "wms", "ayr", "ims", "rdm"]),
+    ("OMS", ["oms"]),
+    ("CSC", ["csc"]),
+    ("TMS", ["tms", "cmanager", "torrecontrol"]),
+]
+GRUPO_SIN_COINCIDENCIA = "Sin Coincidencia"
+
+GRUPO_COLORS_RICH = {
+    "WMS": "cyan",
+    "OMS": "green",
+    "CSC": "yellow",
+    "TMS": "magenta",
+    GRUPO_SIN_COINCIDENCIA: "dim",
+}
+
+GRUPO_COLORS_EXCEL = {
+    "WMS": "1abc9c",
+    "OMS": "2ecc71",
+    "CSC": "f1c40f",
+    "TMS": "9b59b6",
+    GRUPO_SIN_COINCIDENCIA: "bdc3c7",
+}
+
+
+def classify_pipeline_group(path: str) -> str:
+    """Clasifica un pipeline en WMS/OMS/CSC/TMS según palabras clave en su ruta.
+
+    Evalúa _GRUPO_RULES en orden; devuelve la primera coincidencia.
+    La comparación es case-insensitive sobre el path completo.
+    """
+    path_lower = (path or "").lower()
+    for group, keywords in _GRUPO_RULES:
+        if any(kw in path_lower for kw in keywords):
+            return group
+    return GRUPO_SIN_COINCIDENCIA
+
 
 def _bucket(dias_str: str) -> str:
     if dias_str == "Nunca":
@@ -307,11 +345,13 @@ def build_ci_row(defn: Dict, inactive_days: int, tz_name: str) -> Dict:
         or (days_inactive is None)  # nunca ejecutado
     )
 
+    path = defn.get("path", "")
     return {
         "tipo":           "CI",
         "id":             defn.get("id", ""),
         "nombre":         defn.get("name", ""),
-        "path":           defn.get("path", ""),
+        "path":           path,
+        "grupo":          classify_pipeline_group(path),
         "estado":         QUEUE_STATUS_LABEL.get(queue_status, queue_status),
         "queue_status":   queue_status,
         "deprecado":      DEPRECADO_SI if deprecated else DEPRECADO_NO,
@@ -369,11 +409,13 @@ def _cd_worker(defn: Dict, org: str, project: str, headers: Dict,
     else:
         estado = "🔴 Sin uso"
 
+    path = defn.get("path", "")
     return {
         "tipo":           "CD",
         "id":             defn.get("id", ""),
         "nombre":         defn.get("name", ""),
-        "path":           defn.get("path", ""),
+        "path":           path,
+        "grupo":          classify_pipeline_group(path),
         "estado":         estado,
         "queue_status":   "",
         "deprecado":      DEPRECADO_SI if deprecated else DEPRECADO_NO,
@@ -407,6 +449,7 @@ def print_rich_table(console: "Console", rows: List[Dict]):
     table.add_column("#",           style="dim",          width=4,  justify="right")
     table.add_column("Tipo",        justify="center",     width=5)
     table.add_column("Nombre",      style="bold white",   min_width=35)
+    table.add_column("Grupo",       justify="center",     min_width=16)
     table.add_column("Estado",      min_width=18)
     table.add_column("Deprecado",   justify="center",     min_width=10)
     table.add_column("Última Act.", style="dim",          min_width=17)
@@ -414,10 +457,13 @@ def print_rich_table(console: "Console", rows: List[Dict]):
     table.add_column("Días Inact.", justify="right",      min_width=11)
 
     for idx, row in enumerate(rows, 1):
-        tipo_label = "[blue]CI[/]" if row["tipo"] == "CI" else "[magenta]CD[/]"
-        dep_label  = "[bold red]⚠️  Sí[/]" if row["deprecado"] == DEPRECADO_SI else "[green]No[/]"
-        dias       = row["dias_inactivo"]
-        dias_label = (
+        tipo_label  = "[blue]CI[/]" if row["tipo"] == "CI" else "[magenta]CD[/]"
+        dep_label   = "[bold red]⚠️  Sí[/]" if row["deprecado"] == DEPRECADO_SI else "[green]No[/]"
+        grupo       = row.get("grupo", GRUPO_SIN_COINCIDENCIA)
+        grupo_color = GRUPO_COLORS_RICH.get(grupo, "dim")
+        grupo_label = f"[{grupo_color}]{grupo}[/]"
+        dias        = row["dias_inactivo"]
+        dias_label  = (
             f"[bold red]{dias}[/]" if dias != "Nunca" and int(dias) > 90
             else f"[yellow]{dias}[/]" if dias != "Nunca" and int(dias) > 30
             else f"[dim]{dias}[/]"
@@ -427,6 +473,7 @@ def print_rich_table(console: "Console", rows: List[Dict]):
             str(idx),
             tipo_label,
             row["nombre"],
+            grupo_label,
             row["estado"],
             dep_label,
             row["ultima_act"],
@@ -470,12 +517,13 @@ def print_rich_summary(console: "Console", rows: List[Dict], elapsed: float, ina
 # OUTPUT — FALLBACK
 # ═══════════════════════════════════════════════════════════════════════════════
 def print_plain_table(rows: List[Dict], elapsed: float, inactive_days: int):
-    hdr = f"{'#':>4}  {'T':^3}  {'Nombre':<38} {'Estado':<20} {'Dep':^5} {'Última Act.':<17} {'Último Run':<17} Días"
+    hdr = f"{'#':>4}  {'T':^3}  {'Nombre':<38} {'Grupo':<16} {'Estado':<20} {'Dep':^5} {'Última Act.':<17} {'Último Run':<17} Días"
     sep = "=" * len(hdr)
     print(f"\n{sep}\n{hdr}\n{sep}")
     for idx, row in enumerate(rows, 1):
-        dep = "SI" if row["deprecado"] == DEPRECADO_SI else "No"
-        print(f"{idx:>4}  {row['tipo']:^3}  {row['nombre']:<38} {row['estado'][:20]:<20} "
+        dep   = "SI" if row["deprecado"] == DEPRECADO_SI else "No"
+        grupo = row.get("grupo", GRUPO_SIN_COINCIDENCIA)[:16]
+        print(f"{idx:>4}  {row['tipo']:^3}  {row['nombre']:<38} {grupo:<16} {row['estado'][:20]:<20} "
               f"{dep:^5} {row['ultima_act']:<17} {row['ultimo_run']:<17} {row['dias_inactivo']}")
     ci_rows = [r for r in rows if r["tipo"] == "CI"]
     cd_rows = [r for r in rows if r["tipo"] == "CD"]
@@ -608,6 +656,20 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
         ws.cell(row=i, column=1, value=lbl)
         ws.cell(row=i, column=2, value=cnt)
 
+    # Tabla 5: Distribución por Grupo (col E-G, filas 1-7)
+    grupos_order = [g for g, _ in _GRUPO_RULES] + [GRUPO_SIN_COINCIDENCIA]
+    ws["E1"] = "Grupo";  ws["F1"] = "CI";  ws["G1"] = "CD"
+    ws["E1"].font = Font(bold=True)
+    grupo_ci = {g: sum(1 for r in ci_rows if r.get("grupo") == g) for g in grupos_order}
+    grupo_cd = {g: sum(1 for r in cd_rows if r.get("grupo") == g) for g in grupos_order}
+    for i, g in enumerate(grupos_order, 2):
+        ws.cell(row=i, column=5, value=g)
+        ws.cell(row=i, column=6, value=grupo_ci[g])
+        ws.cell(row=i, column=7, value=grupo_cd[g])
+        fill_color = GRUPO_COLORS_EXCEL.get(g, "bdc3c7")
+        for col in (5, 6, 7):
+            ws.cell(row=i, column=col).fill = PatternFill("solid", fgColor=fill_color)
+
     # ── Hoja Charts ───────────────────────────────────────────────────
     wc = wb.create_sheet("Charts")
 
@@ -690,13 +752,35 @@ def _add_excel_charts(filepath: str, rows: List[Dict]) -> None:
     c4.series[0].dLbls = DataLabelList(); c4.series[0].dLbls.showVal = True
     wc.add_chart(c4, "I16")
 
+    # Grafico 5: Distribucion por Grupo CI vs CD
+    c5 = BarChart()
+    c5.type      = "bar"
+    c5.grouping  = "clustered"
+    c5.title     = "Pipelines por Grupo — CI vs CD"
+    c5.x_axis.title = "Cantidad"
+    c5.y_axis.title = "Grupo"
+    c5.width     = 24
+    c5.height    = 13
+    n_grupos     = len(grupos_order)
+    cats5  = Reference(ws, min_col=5, min_row=2, max_row=1 + n_grupos)
+    data5_ci = Reference(ws, min_col=6, min_row=1, max_row=1 + n_grupos)
+    data5_cd = Reference(ws, min_col=7, min_row=1, max_row=1 + n_grupos)
+    c5.add_data(data5_ci, titles_from_data=True)
+    c5.add_data(data5_cd, titles_from_data=True)
+    c5.set_categories(cats5)
+    c5.series[0].graphicalProperties.solidFill = "3498db"
+    c5.series[1].graphicalProperties.solidFill = "8e44ad"
+    c5.series[0].dLbls = DataLabelList(); c5.series[0].dLbls.showVal = True
+    c5.series[1].dLbls = DataLabelList(); c5.series[1].dLbls.showVal = True
+    wc.add_chart(c5, "A32")
+
     wb.save(filepath)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # EXPORT
 # ═══════════════════════════════════════════════════════════════════════════════
-EXPORT_FIELDS = ["tipo", "id", "nombre", "path", "estado", "deprecado",
+EXPORT_FIELDS = ["tipo", "id", "nombre", "path", "grupo", "estado", "deprecado",
                  "ultima_act", "ultimo_run", "dias_inactivo", "url"]
 
 
