@@ -9,8 +9,12 @@ Columnas:
   # | Tipo | Nombre | Estado | Deprecado | Última Actualización | Último Run | Días Inactivo
 
 Lógica de "Deprecado":
-  CI : queueStatus == 'disabled'  OR  sin ejecuciones en --inactive-days días
-  CD : sin releases en --inactive-days días  OR  nunca ejecutado
+  CI : queueStatus == 'disabled'  OR  sin ejecuciones en --inactive-days días (default: 365)
+  CD : sin releases en --inactive-days días (default: 365)  OR  nunca ejecutado
+
+Paginación:
+  Ambas APIs (build definitions / release definitions) devuelven máximo ~1000 registros
+  por página vía x-ms-continuationtoken. api_get_paginated() acumula todas las páginas.
 
 Resumen:
   Total | Activos | Deshabilitados | Deprecados | Sin actividad N días
@@ -64,7 +68,7 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-__version__     = "1.1.0"
+__version__     = "1.1.1"
 __author__      = "Harold Adrian"
 SCRIPT_NAME     = "cicd_pipeline_status"
 CACHE_TTL_HOURS = 24
@@ -75,7 +79,7 @@ CACHE_TTL_HOURS = 24
 DEFAULT_ORG_URL       = "https://dev.azure.com/Coppel-Retail"
 DEFAULT_PROJECT       = "Compras.RMI"
 DEFAULT_TIMEZONE      = "America/Mazatlan"
-DEFAULT_INACTIVE_DAYS = 90
+DEFAULT_INACTIVE_DAYS = 365
 API_VERSION           = "7.1"
 
 QUEUE_STATUS_LABEL = {
@@ -167,6 +171,46 @@ def api_get(url: str, headers: Dict, params: Dict = None, debug: bool = False) -
         return None
 
 
+def api_get_paginated(url: str, headers: Dict, params: Dict = None,
+                     debug: bool = False) -> List[Dict]:
+    """GET paginado: acumula todas las páginas vía x-ms-continuationtoken.
+
+    Azure DevOps limita a ~1000 registros por llamada. Cuando hay más,
+    la respuesta incluye el header 'x-ms-continuationtoken'. Este helper
+    itera hasta que no haya más token, devolviendo la lista completa.
+    """
+    all_values: List[Dict] = []
+    continuation_token: Optional[str] = None
+    page = 0
+
+    while True:
+        page += 1
+        p = dict(params or {})
+        if continuation_token:
+            p["continuationToken"] = continuation_token
+        try:
+            resp = requests.get(url, headers=headers, params=p, timeout=30)
+            if resp.status_code >= 400:
+                if debug:
+                    print(f"[DEBUG] HTTP {resp.status_code} pág.{page} → {url}")
+                    print(f"[DEBUG] {resp.text[:300]}")
+                resp.raise_for_status()
+            data = resp.json()
+            batch = data.get("value", [])
+            all_values.extend(batch)
+            if debug:
+                print(f"[DEBUG] Pág.{page}: {len(batch)} registros (total acum. {len(all_values)})")
+            continuation_token = resp.headers.get("x-ms-continuationtoken")
+            if not continuation_token:
+                break
+        except Exception as e:
+            if debug:
+                print(f"[DEBUG] Exception en pág.{page}: {e}")
+            break
+
+    return all_values
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATE HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -201,16 +245,19 @@ def fmt_date(value: str, tz_name: str) -> str:
 # CI — FETCH
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_ci_definitions(org: str, project: str, headers: Dict, debug: bool = False) -> List[Dict]:
-    """Obtiene todas las build definitions con info del último build incluida."""
+    """Obtiene TODAS las build definitions con paginación via x-ms-continuationtoken.
+
+    Usa $top=1000 (máximo seguro por página) y acumula todas las páginas.
+    Con >1000 pipelines la llamada única a api_get perdía la(s) página(s) extra.
+    """
     org_name = org.rstrip("/").split("/")[-1]
     url = f"https://dev.azure.com/{org_name}/{quote(project, safe='')}/_apis/build/definitions"
     params = {
         "api-version":        API_VERSION,
-        "$top":               5000,
+        "$top":               1000,
         "includeLatestBuilds": "true",
     }
-    data = api_get(url, headers, params, debug)
-    return data.get("value", []) if data else []
+    return api_get_paginated(url, headers, params, debug)
 
 
 def build_ci_row(defn: Dict, inactive_days: int, tz_name: str) -> Dict:
@@ -249,11 +296,11 @@ def build_ci_row(defn: Dict, inactive_days: int, tz_name: str) -> Dict:
 # CD — FETCH
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_cd_definitions(org: str, project: str, headers: Dict, debug: bool = False) -> List[Dict]:
+    """Obtiene TODAS las release definitions con paginación via x-ms-continuationtoken."""
     org_name = org.rstrip("/").split("/")[-1]
     url = f"https://vsrm.dev.azure.com/{org_name}/{quote(project, safe='')}/_apis/release/definitions"
-    params = {"api-version": API_VERSION, "$top": 5000}
-    data = api_get(url, headers, params, debug)
-    return data.get("value", []) if data else []
+    params = {"api-version": API_VERSION, "$top": 1000}
+    return api_get_paginated(url, headers, params, debug)
 
 
 def get_latest_release(defn_id: int, org: str, project: str, headers: Dict, debug: bool) -> Optional[Dict]:

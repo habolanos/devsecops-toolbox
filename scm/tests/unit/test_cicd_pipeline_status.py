@@ -27,12 +27,14 @@ from scm.azdo.cicd_pipeline_status import (
     _load_cache,
     _save_cache,
     make_headers,
+    api_get_paginated,
     BUCKETS,
     DEPRECADO_SI,
     DEPRECADO_NO,
     SCRIPT_NAME,
     CACHE_TTL_HOURS,
     API_VERSION,
+    DEFAULT_INACTIVE_DAYS,
 )
 
 
@@ -414,6 +416,140 @@ class TestMakeHeaders:
         assert decoded == ":test-pat"
 
 
+class TestApiGetPaginated:
+    """Tests para api_get_paginated() — paginación via x-ms-continuationtoken."""
+
+    @pytest.mark.unit
+    def test_single_page_no_token(self):
+        """Una sola página sin token de continuación."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"value": [{"id": 1}, {"id": 2}]}
+        mock_resp.headers = {}
+        mock_resp.raise_for_status = MagicMock()
+        with patch("scm.azdo.cicd_pipeline_status.requests.get", return_value=mock_resp):
+            result = api_get_paginated("http://test.url", {}, {})
+        assert len(result) == 2
+
+    @pytest.mark.unit
+    def test_two_pages_with_token(self):
+        """Dos páginas: primera con token, segunda sin token."""
+        resp_page1 = MagicMock()
+        resp_page1.status_code = 200
+        resp_page1.json.return_value = {"value": [{"id": i} for i in range(1, 1001)]}
+        resp_page1.headers = {"x-ms-continuationtoken": "abc-token-123"}
+        resp_page1.raise_for_status = MagicMock()
+
+        resp_page2 = MagicMock()
+        resp_page2.status_code = 200
+        resp_page2.json.return_value = {"value": [{"id": i} for i in range(1001, 1693)]}
+        resp_page2.headers = {}
+        resp_page2.raise_for_status = MagicMock()
+
+        with patch("scm.azdo.cicd_pipeline_status.requests.get",
+                   side_effect=[resp_page1, resp_page2]):
+            result = api_get_paginated("http://test.url", {}, {})
+
+        assert len(result) == 1692
+
+    @pytest.mark.unit
+    def test_token_passed_in_second_request(self):
+        """El continuationToken se incluye como parámetro en la segunda llamada."""
+        resp_page1 = MagicMock()
+        resp_page1.status_code = 200
+        resp_page1.json.return_value = {"value": [{"id": 1}]}
+        resp_page1.headers = {"x-ms-continuationtoken": "my-token"}
+        resp_page1.raise_for_status = MagicMock()
+
+        resp_page2 = MagicMock()
+        resp_page2.status_code = 200
+        resp_page2.json.return_value = {"value": [{"id": 2}]}
+        resp_page2.headers = {}
+        resp_page2.raise_for_status = MagicMock()
+
+        with patch("scm.azdo.cicd_pipeline_status.requests.get",
+                   side_effect=[resp_page1, resp_page2]) as mock_get:
+            api_get_paginated("http://test.url", {}, {})
+
+        second_call_params = mock_get.call_args_list[1][1]["params"]
+        assert second_call_params["continuationToken"] == "my-token"
+
+    @pytest.mark.unit
+    def test_returns_empty_on_exception(self):
+        """Devuelve lista vacía si la primera llamada lanza excepción."""
+        with patch("scm.azdo.cicd_pipeline_status.requests.get",
+                   side_effect=Exception("timeout")):
+            result = api_get_paginated("http://test.url", {})
+        assert result == []
+
+    @pytest.mark.unit
+    def test_partial_result_on_second_page_error(self):
+        """Si la segunda página falla, devuelve los datos de la primera."""
+        resp_page1 = MagicMock()
+        resp_page1.status_code = 200
+        resp_page1.json.return_value = {"value": [{"id": i} for i in range(10)]}
+        resp_page1.headers = {"x-ms-continuationtoken": "token"}
+        resp_page1.raise_for_status = MagicMock()
+
+        with patch("scm.azdo.cicd_pipeline_status.requests.get",
+                   side_effect=[resp_page1, Exception("timeout")]):
+            result = api_get_paginated("http://test.url", {})
+
+        assert len(result) == 10
+
+    @pytest.mark.unit
+    def test_makes_two_requests_for_two_pages(self):
+        """Verifica que se hacen exactamente 2 llamadas HTTP para 2 páginas."""
+        resp_p1 = MagicMock(status_code=200, headers={"x-ms-continuationtoken": "t"})
+        resp_p1.json.return_value = {"value": [{"id": 1}]}
+        resp_p1.raise_for_status = MagicMock()
+        resp_p2 = MagicMock(status_code=200, headers={})
+        resp_p2.json.return_value = {"value": [{"id": 2}]}
+        resp_p2.raise_for_status = MagicMock()
+
+        with patch("scm.azdo.cicd_pipeline_status.requests.get",
+                   side_effect=[resp_p1, resp_p2]) as mock_get:
+            api_get_paginated("http://url", {}, {})
+
+        assert mock_get.call_count == 2
+
+
+class TestDefaultDeprecationThreshold:
+    """Verifica que el umbral de deprecación default es 1 año (365 días)."""
+
+    @pytest.mark.unit
+    def test_default_inactive_days_is_one_year(self):
+        assert DEFAULT_INACTIVE_DAYS == 365
+
+    @pytest.mark.unit
+    def test_pipeline_at_364_days_not_deprecated(self):
+        """Pipeline con 364 días inactivo NO debe ser deprecado (< 365)."""
+        dt = datetime.now(timezone.utc) - timedelta(days=364)
+        defn = {
+            "id": 1, "name": "borderline-ci", "path": "\\",
+            "queueStatus": "enabled",
+            "modifiedDate": "2024-01-01T00:00:00Z",
+            "latestCompletedBuild": {"finishTime": dt.strftime("%Y-%m-%dT%H:%M:%SZ")},
+            "url": "https://dev.azure.com/org/proj/_apis/build/definitions/1",
+        }
+        row = build_ci_row(defn, inactive_days=365, tz_name="America/Mazatlan")
+        assert row["deprecado"] == DEPRECADO_NO
+
+    @pytest.mark.unit
+    def test_pipeline_at_366_days_is_deprecated(self):
+        """Pipeline con 366 días inactivo SÍ debe ser deprecado (> 365)."""
+        dt = datetime.now(timezone.utc) - timedelta(days=366)
+        defn = {
+            "id": 2, "name": "old-ci", "path": "\\",
+            "queueStatus": "enabled",
+            "modifiedDate": "2024-01-01T00:00:00Z",
+            "latestCompletedBuild": {"finishTime": dt.strftime("%Y-%m-%dT%H:%M:%SZ")},
+            "url": "https://dev.azure.com/org/proj/_apis/build/definitions/2",
+        }
+        row = build_ci_row(defn, inactive_days=365, tz_name="America/Mazatlan")
+        assert row["deprecado"] == DEPRECADO_SI
+
+
 class TestApiGet:
     """Tests para api_get() con requests mockeado."""
 
@@ -449,13 +585,13 @@ class TestApiGet:
 
 
 class TestGetDefinitions:
-    """Tests para get_ci_definitions y get_cd_definitions."""
+    """Tests para get_ci_definitions y get_cd_definitions (usan api_get_paginated)."""
 
     @pytest.mark.unit
     def test_get_ci_definitions_returns_list(self):
         from scm.azdo.cicd_pipeline_status import get_ci_definitions
-        mock_data = {"value": [{"id": 1, "name": "ci-pipeline"}]}
-        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=mock_data):
+        mock_page = [{"id": 1, "name": "ci-pipeline"}]
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=mock_page):
             result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
         assert len(result) == 1
         assert result[0]["name"] == "ci-pipeline"
@@ -463,15 +599,15 @@ class TestGetDefinitions:
     @pytest.mark.unit
     def test_get_ci_definitions_empty_on_api_error(self):
         from scm.azdo.cicd_pipeline_status import get_ci_definitions
-        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=None):
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]):
             result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
         assert result == []
 
     @pytest.mark.unit
     def test_get_cd_definitions_returns_list(self):
         from scm.azdo.cicd_pipeline_status import get_cd_definitions
-        mock_data = {"value": [{"id": 10, "name": "cd-release"}]}
-        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=mock_data):
+        mock_page = [{"id": 10, "name": "cd-release"}]
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=mock_page):
             result = get_cd_definitions("https://dev.azure.com/org", "Project", {})
         assert len(result) == 1
         assert result[0]["name"] == "cd-release"
@@ -479,9 +615,29 @@ class TestGetDefinitions:
     @pytest.mark.unit
     def test_get_cd_definitions_empty_on_api_error(self):
         from scm.azdo.cicd_pipeline_status import get_cd_definitions
-        with patch("scm.azdo.cicd_pipeline_status.api_get", return_value=None):
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]):
             result = get_cd_definitions("https://dev.azure.com/org", "Project", {})
         assert result == []
+
+    @pytest.mark.unit
+    def test_get_ci_definitions_multi_page(self):
+        """Verifica que get_ci_definitions devuelve todos los registros de múltiples páginas."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        page1 = [{"id": i, "name": f"ci-{i}"} for i in range(1, 1001)]
+        page2 = [{"id": i, "name": f"ci-{i}"} for i in range(1001, 1693)]
+        all_pages = page1 + page2
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=all_pages):
+            result = get_ci_definitions("https://dev.azure.com/org", "Project", {})
+        assert len(result) == 1692
+
+    @pytest.mark.unit
+    def test_get_ci_definitions_uses_top_1000(self):
+        """Verifica que get_ci_definitions usa $top=1000, no 5000."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]) as mock_pag:
+            get_ci_definitions("https://dev.azure.com/org", "Project", {})
+        call_params = mock_pag.call_args[0][2]  # positional args: url, headers, params
+        assert call_params["$top"] == 1000
 
     @pytest.mark.unit
     def test_get_latest_release_returns_first(self):
