@@ -760,7 +760,7 @@ Ejemplos:
     parser.add_argument("--limit", type=int, default=None,
                        help="Límite de items por categoría (default: sin límite)")
     parser.add_argument("--output", "-o", default=None,
-                       help="Nombre del archivo Excel de salida")
+                       help="Formato o nombre de salida: json / excel / <nombre_archivo>")
     parser.add_argument("--pat", default=None,
                        help="PAT de Azure DevOps (default: env AZURE_PAT)")
 
@@ -855,14 +855,38 @@ Ejemplos:
     print(f"  ⏱️  Tiempo total:      {elapsed:.1f}s")
     print(f"{'=' * 60}")
     
-    with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-        pd.DataFrame(repos_rows).to_excel(writer, "Repositorios", index=False)
-        pd.DataFrame(ci_rows).to_excel(writer, "CI_Pipelines", index=False)
-        pd.DataFrame(cd_rows).to_excel(writer, "CD_Pipelines", index=False)
-        pd.DataFrame(relations_rows).to_excel(writer, "Repo_CI_CD", index=False)
-    
-    excel_path = Path(output_file).resolve()
-    print(f"\n✅ Reporte generado: {excel_path}")
+    _out = (args.output or "").lower()
+    if _out == "json":
+        json_path = resolve_output_path("json", "inventario_cicd")
+        payload = {
+            "metadata": {
+                "tool": "cicd_inventory",
+                "generated_at": datetime.now().isoformat(),
+                "org": org,
+                "projects": projects,
+            },
+            "summary": {
+                "repos": len(repos_rows),
+                "ci_pipelines": len(ci_rows),
+                "cd_pipelines": len(cd_rows),
+                "relations": len(relations_rows),
+            },
+            "repos": repos_rows,
+            "ci_pipelines": ci_rows,
+            "cd_pipelines": cd_rows,
+            "relations": relations_rows,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+        print(f"\n✅ JSON generado: {Path(json_path).resolve()}")
+    else:
+        with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
+            pd.DataFrame(repos_rows).to_excel(writer, "Repositorios", index=False)
+            pd.DataFrame(ci_rows).to_excel(writer, "CI_Pipelines", index=False)
+            pd.DataFrame(cd_rows).to_excel(writer, "CD_Pipelines", index=False)
+            pd.DataFrame(relations_rows).to_excel(writer, "Repo_CI_CD", index=False)
+        excel_path = Path(output_file).resolve()
+        print(f"\n✅ Reporte generado: {excel_path}")
     
     teardown_logging(tee)
 

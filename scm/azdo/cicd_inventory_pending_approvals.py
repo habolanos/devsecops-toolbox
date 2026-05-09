@@ -15,7 +15,7 @@ import requests
 import os
 import sys
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 try:
     from dotenv import load_dotenv
@@ -263,7 +263,7 @@ Ejemplos:
     parser.add_argument("--pat", default=None,
                        help="PAT de Azure DevOps (default: env AZURE_PAT)")
     parser.add_argument("--output", "-o", default=None,
-                       help="Nombre del archivo Excel de salida")
+                       help="Formato o nombre de salida: json / excel / <nombre_archivo>")
     
     args = parser.parse_args()
     
@@ -291,9 +291,42 @@ Ejemplos:
     
     print(f"\n📝 {len(approvals)} aprobación(es) pendiente(s) encontrada(s)")
     
-    filename = export_to_excel(approvals, org, args.project, pat, args.output)
-    excel_path = Path(filename).resolve()
-    print(f"\n✅ Archivo generado: {excel_path}")
+    _out = (args.output or "").lower()
+    if _out == "json":
+        json_path = resolve_output_path("json", f"pending_approvals_{org}_{args.project}")
+        rows = []
+        for approval in approvals:
+            release_ref = approval.get("release", {})
+            release_id  = release_ref.get("id")
+            rows.append({
+                "release_name":      release_ref.get("name", "N/A"),
+                "release_id":        release_id,
+                "pipeline":          approval.get("releaseDefinition", {}).get("name", "N/A"),
+                "stage":             approval.get("releaseEnvironment", {}).get("name", "N/A"),
+                "approver":          approval.get("approver", {}).get("displayName", "N/A"),
+                "created_on":        (release_ref.get("createdOn") or "")[:10],
+                "pending_since":     (approval.get("createdOn") or "")[:10],
+                "validador_status":  get_validador_status(release_id, org, args.project, pat),
+                "approval_id":       approval.get("id", "N/A"),
+            })
+        import json as _json
+        payload = {
+            "metadata": {
+                "tool": "cicd_inventory_pending_approvals",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "org": org,
+                "project": args.project,
+            },
+            "total": len(rows),
+            "data": rows,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            _json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+        print(f"\n✅ JSON generado: {Path(json_path).resolve()}")
+    else:
+        filename = export_to_excel(approvals, org, args.project, pat, args.output)
+        excel_path = Path(filename).resolve()
+        print(f"\n✅ Archivo generado: {excel_path}")
     
     teardown_logging(tee)
 

@@ -184,6 +184,7 @@ TOOLS: Dict = {
         "description": "Inventario completo de repos, CI pipelines (YAML) y CD pipelines (classic releases) con relación Repo ↔ CI ↔ CD",
         "path":        "cicd_inventory.py",
         "args":        ["--pat", "--org", "--project", "--limit", "--output"],
+        "json_output": True,
         "group":       "inventory",
         "status":      "ready",
     },
@@ -192,6 +193,7 @@ TOOLS: Dict = {
         "description": "Inventario de Release Definitions CD que contienen 'GKE' con detalle de stages y último estado",
         "path":        "cicd_inventory_gke_pipelines.py",
         "args":        ["--pat", "--org", "--project", "--keyword", "--output"],
+        "json_output": True,
         "group":       "inventory",
         "status":      "ready",
     },
@@ -200,6 +202,7 @@ TOOLS: Dict = {
         "description": "Releases con aprobaciones pendientes + estado del stage 'Validador'",
         "path":        "cicd_inventory_pending_approvals.py",
         "args":        ["--pat", "--org", "--project", "--output"],
+        "json_output": True,
         "group":       "inventory",
         "status":      "ready",
     },
@@ -216,6 +219,7 @@ TOOLS: Dict = {
         "description": "Inventario de ramas hotfix con creador, fecha de creación y actividad del repo",
         "path":        "cicd_inventory_hotfix_branches.py",
         "args":        ["--pat", "--org", "--project", "--pattern", "--workers", "--output"],
+        "json_output": True,
         "group":       "inventory",
         "status":      "ready",
     },
@@ -262,7 +266,14 @@ TOOLS: Dict = {
     "A": {
         "name":        "Ejecutar Todos",
         "description": "Ejecuta todas las herramientas con la misma configuración (sin Deep Dive)",
-        "auto_tools":  ["1", "2", "3", "4"],
+        "auto_tools":  ["1", "2", "2b", "3", "4", "7", "8", "9", "10", "11", "13", "14", "15", "16", "18"],
+        "group":       "system",
+        "status":      "ready",
+    },
+    "B": {
+        "name":        "Ejecutar Todo + JSON",
+        "description": "Ejecuta TODAS las herramientas en secuencia forzando salida JSON en outcome/. Ideal para alimentar el dashboard.",
+        "auto_tools":  ["1", "2", "2b", "3", "4", "7", "8", "9", "10", "11", "13", "14", "15", "16", "18"],
         "group":       "system",
         "status":      "ready",
     },
@@ -482,9 +493,11 @@ def get_menu_order() -> List[str]:
     ordered: List[str] = []
     for group_key in GROUP_ORDER:
         keys = [k for k, t in TOOLS.items()
-                if t.get("group") == group_key and k not in ("Q", "A")]
+                if t.get("group") == group_key and k not in ("Q", "A", "B")]
         keys.sort(key=_menu_sort_key)
         ordered.extend(keys)
+    if "B" in TOOLS:
+        ordered.append("B")
     if "A" in TOOLS:
         ordered.append("A")
     if "Q" in TOOLS:
@@ -515,6 +528,8 @@ def print_menu():
             group_text = f"{group_info['emoji']} {group_info['name']}"
 
             if key == "Q":
+                ks, ns = "bold yellow", "yellow"
+            elif key == "B":
                 ks, ns = "bold yellow", "yellow"
             elif key == "A":
                 ks, ns = "bold magenta", "magenta"
@@ -602,6 +617,10 @@ def run_tool(tool_key: str):
 
     if tool_key == "A":
         run_all_tools()
+        return
+
+    if tool_key == "B":
+        run_all_json()
         return
 
     if RICH_AVAILABLE and console:
@@ -800,6 +819,12 @@ def run_tool(tool_key: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 # EJECUTAR TODOS
 # ═══════════════════════════════════════════════════════════════════════════════
+# Tools que usan --output como selector de formato (json/csv/excel)
+_JSON_FORMAT_TOOLS = {"1", "1b", "2", "2b", "3", "4", "7", "8", "9", "10", "11", "13", "17", "18"}
+# Tools que usan --output como directorio; ya generan JSON cache automáticamente
+_CACHE_JSON_TOOLS  = {"14", "15", "16"}
+
+
 def run_all_tools():
     tool_config = TOOLS.get("A", {})
     auto_keys   = tool_config.get("auto_tools", [])
@@ -900,6 +925,116 @@ def run_all_tools():
     input("\nPresione Enter para continuar...")
 
 
+def run_all_json():
+    """Opción B: ejecuta todos los tools batcheables forzando --output json."""
+    tool_config = TOOLS.get("B", {})
+    auto_keys   = tool_config.get("auto_tools", [])
+
+    if RICH_AVAILABLE and console:
+        console.print()
+        console.print(Panel(
+            Align.center(Text("⚡ EJECUTAR TODO + JSON (Dashboard Feed)", style="bold yellow")),
+            box=DOUBLE_EDGE, border_style="yellow",
+        ))
+        console.print()
+        t = Table(box=ROUNDED, border_style="yellow", show_header=False)
+        t.add_column("Herramienta", style="cyan")
+        for k in auto_keys:
+            tool  = TOOLS.get(k, {})
+            group = TOOL_GROUPS.get(tool.get("group", "system"), {})
+            cache_note = " [dim](JSON cache)[/dim]" if k in _CACHE_JSON_TOOLS else ""
+            t.add_row(f"{group.get('emoji','🔧')}  {tool.get('name','')}{cache_note}")
+        console.print(t)
+        console.print(f"[dim]Los JSON se generarán en [cyan]outcome/[/cyan][/dim]")
+        console.print()
+    else:
+        print(f"\n{Colors.HEADER}{'='*60}")
+        print(f"{'EJECUTAR TODO + JSON':^60}")
+        print(f"{'='*60}{Colors.ENDC}\n")
+        for k in auto_keys:
+            tool = TOOLS.get(k, {})
+            note = " (JSON cache)" if k in _CACHE_JSON_TOOLS else ""
+            print(f"  • {tool.get('name', '')}{note}")
+
+    cfg    = load_config()
+    params = ask_common_params(cfg)
+    if not params:
+        input("\nPresione Enter para continuar...")
+        return
+
+    print(f"\n{Colors.BOLD}¿Continuar? (s/n) [s]:{Colors.ENDC} ", end="")
+    if input().strip().lower() == "n":
+        print(f"{Colors.WARNING}Cancelado.{Colors.ENDC}")
+        input("\nPresione Enter para continuar...")
+        return
+
+    venv_python = get_venv_python()
+    if not venv_python:
+        print(f"{Colors.FAIL}No se pudo preparar el entorno virtual.{Colors.ENDC}")
+        input("\nPresione Enter para continuar...")
+        return
+
+    if not install_requirements(venv_python):
+        print(f"{Colors.FAIL}No se pudieron instalar las dependencias.{Colors.ENDC}")
+        input("\nPresione Enter para continuar...")
+        return
+
+    results = []
+    start   = time_module.time()
+
+    for idx, key in enumerate(auto_keys, 1):
+        tool        = TOOLS.get(key)
+        script_path = BASE_DIR / tool["path"]
+
+        if RICH_AVAILABLE and console:
+            group = TOOL_GROUPS.get(tool.get("group", "system"), {})
+            console.print(
+                f"\n[bold yellow]⚡ [{idx}/{len(auto_keys)}][/bold yellow] "
+                f"{group.get('emoji','🔧')} [white]{tool['name']}[/white]"
+                + (" [dim](JSON cache)[/dim]" if key in _CACHE_JSON_TOOLS else " [dim]→ json[/dim]")
+            )
+            console.print(f"[dim]{'─'*50}[/dim]")
+        else:
+            note = " (JSON cache)" if key in _CACHE_JSON_TOOLS else " → json"
+            print(f"\n{Colors.HEADER}[{idx}/{len(auto_keys)}] {tool['name']}{note}{Colors.ENDC}")
+            print(f"{Colors.CYAN}{'-'*50}{Colors.ENDC}")
+
+        if not script_path.exists():
+            results.append((tool["name"], "ERROR", f"Script no encontrado: {script_path}"))
+            continue
+
+        cmd = [
+            venv_python, str(script_path),
+            "--pat",     params["pat"],
+            "--org",     params["org"],
+            "--project", params["project"],
+        ]
+        if key in _JSON_FORMAT_TOOLS:
+            cmd += ["--output", "json"]
+
+        log_command(cmd)
+        try:
+            subprocess.run(cmd, check=True)
+            results.append((tool["name"], "OK", "Completado"))
+        except subprocess.CalledProcessError as e:
+            log_command(cmd, "ERROR")
+            results.append((tool["name"], "ERROR", str(e)))
+        except KeyboardInterrupt:
+            print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
+            break
+
+    elapsed = time_module.time() - start
+    _print_execution_summary(results, elapsed)
+
+    if RICH_AVAILABLE and console:
+        console.print(Panel(
+            "💡 Todos los JSON están en [cyan]outcome/[/cyan]. "
+            "Carga esa carpeta en el dashboard para visualizar.",
+            box=ROUNDED, border_style="yellow",
+        ))
+    input("\nPresione Enter para continuar...")
+
+
 def _print_execution_summary(results: list, elapsed: float):
     ok_count  = sum(1 for r in results if r[1] == "OK")
     err_count = sum(1 for r in results if r[1] == "ERROR")
@@ -966,9 +1101,7 @@ def main():
             # Normalizar: "A"/"Q" en mayúsculas, claves como "1b" en minúsculas
             choice_norm = choice.upper() if choice.isalpha() else choice.lower()
 
-            if choice_norm == "A":
-                run_all_tools()
-            elif choice_norm in TOOLS:
+            if choice_norm in TOOLS:
                 run_tool(choice_norm)
             else:
                 print(f"\n{Colors.FAIL}Opción no válida.{Colors.ENDC}")

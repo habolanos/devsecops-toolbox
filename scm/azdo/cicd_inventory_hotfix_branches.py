@@ -11,13 +11,14 @@ Uso:
 Autor: Harold Adrian (migrado desde Comercial/scripts/ramasV3.py)
 """
 
+import json
 import requests
 import pandas as pd
 import os
 import argparse
 import sys
 from base64 import b64encode
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 try:
@@ -324,7 +325,7 @@ Ejemplos:
     parser.add_argument("--pat", default=None,
                        help="PAT de Azure DevOps (default: env AZURE_PAT)")
     parser.add_argument("--output", "-o", default=None,
-                       help="Nombre del archivo Excel de salida")
+                       help="Formato o nombre de salida: json / excel / <nombre_archivo>")
     
     args = parser.parse_args()
     
@@ -389,9 +390,26 @@ Ejemplos:
     
     print(f"\n✅ Total ramas hotfix: {len(all_hotfix_branches)}")
     
-    output_file = export_to_excel(all_hotfix_branches, org, args.project, args.output)
-    excel_path = Path(output_file).resolve()
-    print(f"\n💾 Archivo generado: {excel_path}")
+    _out = (args.output or "").lower()
+    if _out == "json":
+        json_path = resolve_output_path("json", f"hotfix_branches_{org}_{args.project}")
+        payload = {
+            "metadata": {
+                "tool": "cicd_inventory_hotfix_branches",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "org": org,
+                "project": args.project,
+                "pattern": args.pattern,
+            },
+            "total": len(all_hotfix_branches),
+            "data": all_hotfix_branches,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+        print(f"\n✅ JSON generado: {Path(json_path).resolve()}")
+    else:
+        output_file = export_to_excel(all_hotfix_branches, org, args.project, args.output)
+        print(f"\n💾 Archivo generado: {Path(output_file).resolve()}")
     
     teardown_logging(tee)
 

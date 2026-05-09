@@ -270,7 +270,7 @@ Ejemplos:
     parser.add_argument("--pat", default=None,
                        help="PAT de Azure DevOps (default: env AZURE_PAT)")
     parser.add_argument("--output", "-o", default=None,
-                       help="Nombre del archivo Excel de salida")
+                       help="Formato o nombre de salida: json / excel / <nombre_archivo>")
     
     args = parser.parse_args()
     
@@ -332,11 +332,39 @@ Ejemplos:
             "variables": d.get("variables", {})
         })
     
-    output_file = resolve_output_path(args.output, f"gke_cd_pipelines_{args.project}")
-    generate_excel(data, org, args.project, args.keyword, output_file)
-    
-    excel_path = Path(output_file).resolve()
-    print(f"\n✅ Reporte generado: {excel_path}")
+    _out = (args.output or "").lower()
+    if _out == "json":
+        json_path = resolve_output_path("json", f"gke_cd_pipelines_{args.project}")
+        flat_data = [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "url": item["url"],
+                "overall_status": item["overall_status"],
+                "stages": item["stages"],
+                "last_release_name": (item["last_release"] or {}).get("name"),
+                "last_release_date": (item["last_release"] or {}).get("createdOn", "")[:10],
+            }
+            for item in data
+        ]
+        payload = {
+            "metadata": {
+                "tool": "cicd_inventory_gke_pipelines",
+                "generated_at": datetime.now().isoformat(),
+                "org": org,
+                "project": args.project,
+                "keyword": args.keyword,
+            },
+            "total": len(flat_data),
+            "data": flat_data,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+        print(f"\n✅ JSON generado: {Path(json_path).resolve()}")
+    else:
+        output_file = resolve_output_path(args.output, f"gke_cd_pipelines_{args.project}")
+        generate_excel(data, org, args.project, args.keyword, output_file)
+        print(f"\n✅ Reporte generado: {Path(output_file).resolve()}")
     print(f"   Total pipelines: {len(data)}")
     
     teardown_logging(tee)
