@@ -23,16 +23,18 @@ Elementos validados:
 
 import subprocess
 import json
+import os
 import sys
+import socket
 import argparse
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 
 class CheckStatus(Enum):
@@ -1354,10 +1356,10 @@ class ConnectivityChecker:
                 ))
 
     # =========================================================================
-    # 8. TEST DE CONECTIVIDAD
+    # 9. TEST DE CONECTIVIDAD
     # =========================================================================
     def check_connectivity_test(self, sql_ip: str, sql_port: int = 3306):
-        """Verifica la conectividad de red al Cloud SQL."""
+        """Verifica la conectividad de red al Cloud SQL (TCP directo + gcloud test)."""
         if not sql_ip:
             self.add_result(CheckResult(
                 name="Network Connectivity Test",
@@ -1365,30 +1367,53 @@ class ConnectivityChecker:
                 message="No se pudo determinar la IP de Cloud SQL"
             ))
             return
-        
-        # Crear test de conectividad usando gcloud
+
+        # ── TCP directo desde el host del script ───────────────────────
+        t0 = time.time()
+        tcp_status = CheckStatus.FAIL
+        tcp_msg    = ""
+        try:
+            with socket.create_connection((sql_ip, sql_port), timeout=10) as _s:
+                latency_ms = (time.time() - t0) * 1000
+                tcp_status = CheckStatus.PASS
+                tcp_msg    = f"Puerto {sql_port} accesible ({latency_ms:.0f}ms)"
+        except socket.timeout:
+            tcp_msg = f"Timeout 10s al conectar a {sql_ip}:{sql_port}"
+        except OSError as e:
+            tcp_msg = f"Conexión rechazada: {e}"
+
+        self.add_result(CheckResult(
+            name="TCP Direct Connectivity",
+            status=tcp_status,
+            message=tcp_msg,
+            details=f"Host: {sql_ip}  Puerto: {sql_port}",
+            remediation=None if tcp_status == CheckStatus.PASS
+                else f"nc -zv {sql_ip} {sql_port}"
+        ))
+
+        # ── gcloud network-management test (opcional, puede fallar por permisos) ──
         test_name = f"test-sql-{self.sql_instance[:20]}"
-        
         success, result = self.run_gcloud([
             "network-management", "connectivity-tests", "create", test_name,
             "--destination-ip-address", sql_ip,
             "--destination-port", str(sql_port),
             "--protocol", "TCP",
-            "--source-network", f"projects/{self.project_id}/global/networks/default"
+            "--source-network",
+            f"projects/{self.project_id}/global/networks/default"
         ], format_json=False)
-        
+
         if success:
             self.add_result(CheckResult(
-                name="Network Connectivity Test Created",
+                name="GCloud Connectivity Test Created",
                 status=CheckStatus.INFO,
-                message=f"Test de conectividad '{test_name}' creado",
-                details="Ejecutar: gcloud network-management connectivity-tests describe " + test_name
+                message=f"Test '{test_name}' creado en GCP Network Management",
+                details="gcloud network-management connectivity-tests describe " + test_name
             ))
         else:
             self.add_result(CheckResult(
-                name="Network Connectivity Test",
+                name="GCloud Connectivity Test",
                 status=CheckStatus.INFO,
-                message="No se pudo crear test automático de conectividad",
+                message="No se pudo crear test automático (puede requerir permisos adicionales)",
                 details=f"Verificar manualmente: nc -zv {sql_ip} {sql_port}"
             ))
 
@@ -1493,6 +1518,82 @@ class ConnectivityChecker:
     def print_summary(self):
         """Imprime el resumen final usando la tabla."""
         self.table.print_summary()
+
+
+def export_results(
+    checker: 'ConnectivityChecker',
+    filepath: str,
+    export_format: str,
+    tz_name: str = "America/Mazatlan",
+) -> None:
+    """
+    Exporta los resultados del ConnectivityChecker a JSON o CSV.
+    El JSON incluye metadata, summary y la lista completa de resultados.
+    """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    tz = ZoneInfo(tz_name)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    # Mapear CheckStatus a string limpio
+    def _st(s: CheckStatus) -> str:
+        return s.name  # PASS / FAIL / WARN / INFO / SKIP
+
+    # Recopilar sección de cada resultado a partir de la tabla
+    results_table = checker.table
+    rows = []
+    current_section = ""
+    for r in results_table.results:
+        # La sección se registra en current_section del ResultsTable;
+        # la aproximamos desde el índice de bloque
+        rows.append({
+            "name":        r.name,
+            "status":      _st(r.status),
+            "message":     r.message,
+            "details":     r.details or None,
+            "remediation": r.remediation or None,
+        })
+
+    passed   = sum(1 for r in rows if r["status"] == "PASS")
+    failed   = sum(1 for r in rows if r["status"] == "FAIL")
+    warnings = sum(1 for r in rows if r["status"] == "WARN")
+    info     = sum(1 for r in rows if r["status"] == "INFO")
+    skipped  = sum(1 for r in rows if r["status"] == "SKIP")
+
+    if export_format == "json":
+        export_data = {
+            "metadata": {
+                "tool":         "pod_connectivity_checker",
+                "version":      __version__,
+                "sql_instance": checker.sql_instance,
+                "project":      checker.project_id,
+                "deployment":   checker.deployment,
+                "namespace":    checker.namespace,
+                "gke_cluster":  checker.gke_cluster,
+                "gke_location": checker.gke_location,
+                "ksa_name":     checker.ksa_name,
+                "gsa_email":    checker.gsa_email,
+                "timestamp":    ts,
+            },
+            "summary": {
+                "total":    len(rows),
+                "pass":     passed,
+                "fail":     failed,
+                "warn":     warnings,
+                "info":     info,
+                "skip":     skipped,
+                "critical_ok": failed == 0,
+            },
+            "results": rows,
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(export_data, f, indent=2, ensure_ascii=False)
+    else:  # csv
+        import csv
+        fieldnames = ["name", "status", "message", "details", "remediation"]
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
 
 
 def print_execution_time(start_time, tz_name="America/Mazatlan"):
@@ -1611,6 +1712,12 @@ Notas:
         help="Mostrar detalles adicionales y comandos ejecutados"
     )
     parser.add_argument(
+        "--output", "-o",
+        type=str,
+        choices=["json", "csv"],
+        help="Exporta resultados a archivo (json o csv) en carpeta outcome/"
+    )
+    parser.add_argument(
         "--timezone", "-tz",
         type=str,
         default="America/Mazatlan",
@@ -1648,6 +1755,16 @@ Notas:
     )
     
     checker.run_all_checks()
+
+    if args.output:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        outcome_dir = os.path.join(script_dir, "outcome")
+        ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filename = f"pod_connectivity_{args.sql_instance}_{ts_str}.{args.output}"
+        filepath = os.path.join(outcome_dir, filename)
+        export_results(checker, filepath, args.output, tz_name)
+        print(f"\n📁 Reporte exportado: {filepath}")
+
     print_execution_time(start_time, tz_name)
 
 

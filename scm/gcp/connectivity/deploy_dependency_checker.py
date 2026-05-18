@@ -53,10 +53,23 @@ DEFAULT_REGION = "us-central1"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_PROBE_IMAGE = "jrecord/nettools:latest"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
-URL_PATTERN = re.compile(r"(jdbc:)?((?P<engine>postgres(?:ql)?|mysql|mssql|sqlserver|oracle|mongodb|redis|cockroachdb)://[^\s'\"`]+)", re.IGNORECASE)
+URL_PATTERN = re.compile(r"(jdbc:)?((?P<engine>postgres(?:ql)?|mysql|mssql|sqlserver|oracle|mongodb|redis|cockroachdb)://[^\s'\"` ]+)", re.IGNORECASE)
 HOST_PORT_PATTERN = re.compile(r"([a-zA-Z0-9.-]+):(\d{2,5})")
+
+# Puertos por defecto por motor de BD — usados cuando la URL no incluye puerto explícito
+DB_DEFAULT_PORTS: Dict[str, int] = {
+    'postgresql': 5432,
+    'postgres':   5432,
+    'mysql':      3306,
+    'mssql':      1433,
+    'sqlserver':  1433,
+    'oracle':     1521,
+    'mongodb':    27017,
+    'redis':      6379,
+    'cockroachdb': 26257,
+}
 
 
 def get_args():
@@ -124,6 +137,16 @@ def get_args():
         type=str,
         default=DEFAULT_PROBE_IMAGE,
         help=f"Imagen contenedora para el pod temporal (Default: {DEFAULT_PROBE_IMAGE})"
+    )
+    parser.add_argument(
+        "--db-probe",
+        action="store_true",
+        help=(
+            "Verificación nivel 2: después del check TCP envía protocolo nativo del motor DB "
+            "(PostgreSQL SSL-request, MySQL greeting, Redis PING) para detectar falsos positivos "
+            "de load balancers que aceptan TCP pero tienen la BD apagada. "
+            "Solo aplica en --probe-mode=pod."
+        )
     )
     parser.add_argument(
         "--debug",
@@ -326,7 +349,8 @@ def parse_connection_values(value: str) -> List[Tuple[str, int, str, str]]:
             normalized = normalized.split(';')[0]
         parsed = urlparse(normalized)
         host = parsed.hostname
-        port = parsed.port
+        # Usar puerto explícito; si omitido, usar default por engine
+        port = parsed.port or DB_DEFAULT_PORTS.get(db_type.lower())
         if host and port:
             results.append((host, port, raw_url, db_type.lower()))
     # host:puerto planos (formato estandar host:port)
@@ -392,7 +416,9 @@ def collect_connections(configmaps: List[str], namespace: str, debug: bool = Fal
                     'raw_value': raw,
                     'status': 'PENDING',
                     'message': 'Pendiente de validación',
-                    'elapsed': 0.0
+                    'elapsed': 0.0,
+                    'db_probe_status':  '',
+                    'db_probe_message': '',
                 })
     return connections
 
@@ -457,21 +483,132 @@ def test_connectivity_via_pod(pod_name: str, namespace: str, host: str, port: in
     return 'ERROR', (stderr or stdout or 'Error ejecutando nc'), elapsed
 
 
+# Scripts de probe de protocolo DB por motor.
+# Se ejecutan via: kubectl exec POD -- python3 -c "SCRIPT"
+# Usan solo la stdlib de Python 3 (sin dependencias extra).
+_DB_PROBE_SCRIPTS: Dict[str, str] = {
+    'postgresql': (
+        "import socket,struct,sys\n"
+        "try:\n"
+        "  s=socket.create_connection(('{host}',{port}),timeout={timeout})\n"
+        "  s.send(struct.pack('!ii',8,80877103))\n"
+        "  r=s.recv(1)\n"
+        "  s.close()\n"
+        "  print('ALIVE' if r in(b'N',b'S',b'E') else 'UNEXPECTED:'+repr(r))\n"
+        "except Exception as e:\n"
+        "  print('FAILED:'+str(e))\n"
+        "  sys.exit(1)\n"
+    ),
+    'mysql': (
+        "import socket,sys\n"
+        "try:\n"
+        "  s=socket.create_connection(('{host}',{port}),timeout={timeout})\n"
+        "  r=s.recv(5)\n"
+        "  s.close()\n"
+        "  print('ALIVE' if len(r)>=4 else 'UNEXPECTED:'+repr(r))\n"
+        "except Exception as e:\n"
+        "  print('FAILED:'+str(e))\n"
+        "  sys.exit(1)\n"
+    ),
+    'redis': (
+        "import socket,sys\n"
+        "try:\n"
+        "  s=socket.create_connection(('{host}',{port}),timeout={timeout})\n"
+        "  s.send(b'*1\\r\\n$4\\r\\nPING\\r\\n')\n"
+        "  r=s.recv(16)\n"
+        "  s.close()\n"
+        "  print('ALIVE' if b'PONG' in r or r.startswith(b'+') else 'UNEXPECTED:'+repr(r))\n"
+        "except Exception as e:\n"
+        "  print('FAILED:'+str(e))\n"
+        "  sys.exit(1)\n"
+    ),
+}
+_DB_PROBE_SCRIPTS['postgres'] = _DB_PROBE_SCRIPTS['postgresql']
+_DB_PROBE_SCRIPTS['mssql']     = _DB_PROBE_SCRIPTS['mysql']
+_DB_PROBE_SCRIPTS['sqlserver'] = _DB_PROBE_SCRIPTS['mysql']
+
+
+def test_db_probe_via_pod(
+    pod_name: str, namespace: str,
+    host: str, port: int, db_type: str,
+    timeout: int, debug: bool = False
+) -> Tuple[str, str]:
+    """
+    Verificación de conectividad nivel 2 (protocolo nativo DB).
+    Envía un paquete del protocolo real del motor para descartar falsos positivos
+    de load balancers que aceptan TCP pero tienen la BD apagada.
+    Returns (status, message): ALIVE / FAILED / UNEXPECTED / SKIPPED
+    """
+    engine = db_type.lower()
+    script_template = _DB_PROBE_SCRIPTS.get(engine)
+    if not script_template:
+        return 'SKIPPED', f"Motor '{db_type}' sin probe implementado (soportados: postgresql, mysql, redis)"
+
+    script = script_template.format(host=host, port=port, timeout=timeout)
+    exec_cmd = ['kubectl', 'exec', pod_name, '-n', namespace, '--', 'python3', '-c', script]
+    code, stdout, stderr = run_command(exec_cmd, debug, timeout=timeout + 15)
+
+    output = (stdout or stderr or '').strip()
+    if 'ALIVE' in output:
+        return 'ALIVE', f"Motor {db_type.upper()} respondió al protocolo nativo"
+    elif output.startswith('FAILED:'):
+        return 'FAILED', output[7:] or "Conexión rechazada por el motor"
+    elif output.startswith('UNEXPECTED:'):
+        return 'UNEXPECTED', f"Respuesta no reconocida: {output[11:]}"
+    elif code == 127 or 'not found' in output.lower():
+        return 'SKIPPED', "python3 no disponible en el pod de prueba"
+    elif code == 124:
+        return 'FAILED', f"Timeout {timeout}s — motor no respondió"
+    else:
+        return 'FAILED', output or f"Sin respuesta (código {code})"
+
+
 def export_results(connections: List[Dict], filepath: str, export_format: str, metadata: Dict):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     if export_format == 'csv':
         import csv
-        fieldnames = ['project', 'deployment', 'namespace', 'configmap', 'key', 'db_type', 'host', 'port', 'status', 'message', 'elapsed', 'raw_value', 'timestamp']
+        fieldnames = [
+            'project', 'deployment', 'namespace', 'configmap', 'key', 'db_type',
+            'host', 'port', 'tcp_status', 'message', 'elapsed', 'raw_value',
+            'db_probe_status', 'db_probe_message', 'timestamp',
+        ]
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
             writer.writeheader()
             for row in connections:
-                payload = {**metadata, **row}
+                payload = {**metadata, **row, 'tcp_status': row.get('status', '')}
                 writer.writerow(payload)
     else:
+        total = len(connections)
+        summary = {
+            'total':           total,
+            'tcp_ok':          sum(1 for c in connections if c.get('status') == 'OK'),
+            'tcp_timeout':     sum(1 for c in connections if c.get('status') == 'TIMEOUT'),
+            'tcp_error':       sum(1 for c in connections if c.get('status') in ('ERROR', 'UNREACHABLE')),
+            'db_probe_alive':  sum(1 for c in connections if c.get('db_probe_status') == 'ALIVE'),
+            'db_probe_failed': sum(1 for c in connections if c.get('db_probe_status') == 'FAILED'),
+            'skipped':         sum(1 for c in connections if c.get('status') == 'SKIPPED'),
+        }
         export_data = {
-            'metadata': metadata,
-            'connections': connections
+            'metadata':    metadata,
+            'summary':     summary,
+            'connections': [
+                {
+                    'configmap':        c.get('configmap', ''),
+                    'key':              c.get('key', ''),
+                    'host':             c.get('host', ''),
+                    'port':             c.get('port'),
+                    'db_type':          c.get('db_type', 'unknown'),
+                    'raw_value':        c.get('raw_value', ''),
+                    'tcp_status':       c.get('status', ''),
+                    'tcp_message':      c.get('message', ''),
+                    'elapsed_s':        c.get('elapsed', 0.0),
+                    'db_probe_status':  c.get('db_probe_status') or None,
+                    'db_probe_message': c.get('db_probe_message') or None,
+                    'timestamp':        c.get('timestamp', ''),
+                }
+                for c in connections
+            ],
         }
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(export_data, f, indent=2, ensure_ascii=False)
@@ -506,56 +643,90 @@ def get_connection_type(raw_value: str) -> str:
     return "TCP"
 
 
+def _probe_badge(status: str) -> str:
+    """Retorna badge Rich para el estado del DB probe."""
+    mapping = {
+        'ALIVE':    '[green]✅ ALIVE[/]',
+        'FAILED':   '[red]🔴 FAILED[/]',
+        'UNEXPECTED': '[yellow]⚠️  UNX[/]',
+        'SKIPPED':  '[dim]⏭ SKIP[/]',
+    }
+    return mapping.get(status, f'[dim]{status or "—"}[/]')
+
+
 def print_results(console: Optional[Console], connections: List[Dict]):
     if RICH_AVAILABLE and console:
-        table = Table(title="🔌 Resultados de Conectividad", title_style="bold magenta", header_style="bold cyan", border_style="dim")
-        table.add_column("ConfigMap", style="white")
-        table.add_column("Key", style="white")
-        table.add_column("Conexión", justify="center", width=10)
-        table.add_column("Tipo DB", justify="left")
-        table.add_column("Host", justify="left")
-        table.add_column("Puerto", justify="center")
-        table.add_column("Estado", justify="center")
-        table.add_column("Mensaje", justify="left", max_width=50)
+        has_db_probe = any(c.get('db_probe_status') for c in connections)
+        title = "🔌 Resultados de Conectividad" + (" (TCP + DB Probe)" if has_db_probe else " (TCP)")
+        table = Table(title=title, title_style="bold magenta", header_style="bold cyan", border_style="dim")
+        table.add_column("ConfigMap",  style="white")
+        table.add_column("Key",        style="white")
+        table.add_column("Conexión",   justify="center", width=10)
+        table.add_column("Tipo DB",    justify="left")
+        table.add_column("Host",       justify="left")
+        table.add_column("Puerto",     justify="center")
+        table.add_column("TCP",        justify="center", width=12)
+        table.add_column("Mensaje",    justify="left", max_width=45)
+        if has_db_probe:
+            table.add_column("DB Probe", justify="center", width=12)
         for conn in connections:
-            status_style = 'green' if conn['status'] == 'OK' else 'yellow' if conn['status'] == 'TIMEOUT' else 'red'
+            tcp_style = 'green' if conn['status'] == 'OK' else 'yellow' if conn['status'] == 'TIMEOUT' else 'red'
             conn_type = get_connection_type(conn.get('raw_value', ''))
-            table.add_row(
+            row = [
                 conn['configmap'],
                 conn['key'],
                 f"[cyan]{conn_type}[/]",
                 conn.get('db_type', 'unknown'),
                 conn['host'],
                 str(conn['port']),
-                f"[{status_style}]{conn['status']}[/{status_style}]",
-                conn['message']
-            )
+                f"[{tcp_style}]{conn['status']}[/{tcp_style}]",
+                conn['message'],
+            ]
+            if has_db_probe:
+                row.append(_probe_badge(conn.get('db_probe_status', '')))
+            table.add_row(*row)
         console.print(table)
+        if has_db_probe:
+            console.print(
+                "[dim]🔬 DB Probe: protocolo nativo del motor. "
+                "ALIVE = motor responde. FAILED = TCP OK pero BD no responde.[/]"
+            )
     else:
-        print("ConfigMap\tKey\tConexión\tTipo\tHost\tPort\tStatus\tMessage")
+        print("ConfigMap\tKey\tConexión\tTipo\tHost\tPort\tTCP_Status\tDB_Probe\tMessage")
         for conn in connections:
             conn_type = get_connection_type(conn.get('raw_value', ''))
-            print(f"{conn['configmap']}\t{conn['key']}\t{conn_type}\t{conn.get('db_type', 'unknown')}\t{conn['host']}\t{conn['port']}\t{conn['status']}\t{conn['message']}")
+            print(
+                f"{conn['configmap']}\t{conn['key']}\t{conn_type}\t"
+                f"{conn.get('db_type', 'unknown')}\t{conn['host']}\t{conn['port']}\t"
+                f"{conn['status']}\t{conn.get('db_probe_status', '')}\t{conn['message']}"
+            )
 
 
 def print_summary_counts(console: Optional[Console], connections: List[Dict]):
     total = len(connections)
     counts = {
-        'OK': sum(1 for c in connections if c['status'] == 'OK'),
+        'OK':      sum(1 for c in connections if c['status'] == 'OK'),
         'TIMEOUT': sum(1 for c in connections if c['status'] == 'TIMEOUT'),
-        'ERROR': sum(1 for c in connections if c['status'] == 'ERROR'),
-        'SKIPPED': sum(1 for c in connections if c['status'] == 'SKIPPED')
+        'ERROR':   sum(1 for c in connections if c['status'] in ('ERROR', 'DB_PROBE_FAIL')),
+        'SKIPPED': sum(1 for c in connections if c['status'] == 'SKIPPED'),
     }
+    probe_alive  = sum(1 for c in connections if c.get('db_probe_status') == 'ALIVE')
+    probe_failed = sum(1 for c in connections if c.get('db_probe_status') == 'FAILED')
     summary_text = (
-        f"[bold green]OK: {counts['OK']}[/]  "
+        f"[bold green]TCP OK: {counts['OK']}[/]  "
         f"[bold yellow]TIMEOUT: {counts['TIMEOUT']}[/]  "
         f"[bold red]ERROR: {counts['ERROR']}[/]  "
         f"[dim]SKIPPED: {counts['SKIPPED']}[/]"
     )
+    if probe_alive or probe_failed:
+        summary_text += (
+            f"  │  [bold green]DB ALIVE: {probe_alive}[/]  "
+            f"[bold red]DB FAIL: {probe_failed}[/]"
+        )
     if RICH_AVAILABLE and console:
         console.print(Panel(summary_text + f"  | Total: {total}", title="Resumen Validaciones", border_style="blue", expand=False))
     else:
-        print(f"Resumen -> OK:{counts['OK']} TIMEOUT:{counts['TIMEOUT']} ERROR:{counts['ERROR']} SKIPPED:{counts['SKIPPED']} Total:{total}")
+        print(f"Resumen -> TCP OK:{counts['OK']} TIMEOUT:{counts['TIMEOUT']} ERROR:{counts['ERROR']} SKIPPED:{counts['SKIPPED']} DB_ALIVE:{probe_alive} DB_FAIL:{probe_failed} Total:{total}")
 
 
 def print_execution_time(start_time: float, console: Optional[Console], tz_name: str):
@@ -695,13 +866,33 @@ def main():
                 status, message, elapsed = test_connectivity_via_pod(probe_pod_name, namespace, host, int(port), timeout, args.debug)
             else:
                 status, message, elapsed = test_tcp_connectivity(host, int(port), timeout)
-            conn['status'] = status
-            conn['message'] = message
-            conn['elapsed'] = round(elapsed, 3)
+            conn['status']    = status
+            conn['message']   = message
+            conn['elapsed']   = round(elapsed, 3)
             conn['timestamp'] = datetime.now(timezone.utc).isoformat()
-            conn['project'] = project_id
-            conn['deployment'] = deployment
+            conn['project']   = project_id
+            conn['deployment']= deployment
             conn['namespace'] = namespace
+
+            # ── Nivel 2: DB probe (solo si TCP OK, modo pod y flag activo) ──────────
+            if args.db_probe and status == 'OK' and probe_mode == 'pod' and probe_pod_name:
+                if RICH_AVAILABLE and console:
+                    console.print(
+                        f"[dim]  🔬 DB probe [{conn.get('db_type','?').upper()}] "
+                        f"{host}:{port}...[/]"
+                    )
+                probe_status, probe_msg = test_db_probe_via_pod(
+                    probe_pod_name, namespace, host, int(port),
+                    conn.get('db_type', 'unknown'), timeout, args.debug
+                )
+                conn['db_probe_status']  = probe_status
+                conn['db_probe_message'] = probe_msg
+                if probe_status == 'FAILED':
+                    conn['status']  = 'DB_PROBE_FAIL'
+                    conn['message'] = f"TCP OK pero motor no responde: {probe_msg}"
+                elif probe_status == 'UNEXPECTED':
+                    conn['status']  = 'DB_PROBE_WARN'
+                    conn['message'] = f"TCP OK, respuesta inesperada: {probe_msg}"
 
         print_results(console, connections)
         print_summary_counts(console, connections)
