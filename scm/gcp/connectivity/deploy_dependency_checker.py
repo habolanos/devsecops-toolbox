@@ -53,7 +53,7 @@ DEFAULT_REGION = "us-central1"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_PROBE_IMAGE = "jrecord/nettools:latest"
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 URL_PATTERN = re.compile(r"(jdbc:)?((?P<engine>postgres(?:ql)?|mysql|mssql|sqlserver|oracle|mongodb|redis|cockroachdb)://[^\s'\"` ]+)", re.IGNORECASE)
 HOST_PORT_PATTERN = re.compile(r"([a-zA-Z0-9.-]+):(\d{2,5})")
@@ -472,6 +472,14 @@ def delete_probe_pod(pod_name: str, namespace: str, debug: bool = False):
     run_command(['kubectl', 'delete', 'pod', pod_name, '-n', namespace, '--ignore-not-found'], debug)
 
 
+def _clean_kubectl_stderr(stderr: str) -> str:
+    """Elimina líneas informativas de kubectl del stderr (e.g. 'Defaulted container...')."""
+    skip_prefixes = ('Defaulted container', "If you don't see a command prompt")
+    lines = [l for l in stderr.splitlines()
+             if not any(l.startswith(p) for p in skip_prefixes)]
+    return '\n'.join(lines).strip()
+
+
 def test_connectivity_via_pod(pod_name: str, namespace: str, host: str, port: int, timeout: int, debug: bool = False) -> Tuple[str, str, float]:
     start = time.time()
     command = f"nc -z -w {timeout} {host} {port}"
@@ -482,7 +490,8 @@ def test_connectivity_via_pod(pod_name: str, namespace: str, host: str, port: in
         return 'OK', f"Conexión desde pod en {elapsed:.2f}s", elapsed
     if code == 124:
         return 'TIMEOUT', f"Timeout tras {timeout}s desde pod", elapsed
-    return 'ERROR', (stderr or stdout or 'Error ejecutando nc'), elapsed
+    clean_err = _clean_kubectl_stderr(stderr or '') or (stdout or '').strip() or f"nc exit code {code}"
+    return 'ERROR', clean_err, elapsed
 
 
 # Scripts de probe de protocolo DB por motor.
@@ -786,14 +795,25 @@ def print_results(console: Optional[Console], connections: List[Dict]):
         table.add_column("Tipo DB",    justify="left")
         table.add_column("Host",       justify="left")
         table.add_column("Puerto",     justify="center")
-        table.add_column("TCP",        justify="center", width=12)
+        table.add_column("TCP (L4)",    justify="center", width=12)
         table.add_column("Mensaje",    justify="left", max_width=40)
         if has_lb:
             table.add_column("Load Balancer", justify="center", width=18)
         if has_db_probe:
             table.add_column("DB Probe", justify="center", width=12)
         for conn in connections:
-            tcp_style = 'green' if conn['status'] == 'OK' else 'yellow' if conn['status'] == 'TIMEOUT' else 'red'
+            # TCP column: siempre muestra resultado L4 real (preservado en tcp_status)
+            # conn['status'] puede ser DB_PROBE_FAIL/WARN — no debe aparecer en esta columna
+            tcp_raw   = conn.get('tcp_status', conn['status'])
+            db_probe_s = conn.get('db_probe_status', '')
+            if tcp_raw == 'OK' and db_probe_s == 'FAILED':
+                tcp_cell = '[yellow]\u26a0\ufe0f  OK[/]'   # TCP OK pero BD no responde al protocolo
+            elif tcp_raw == 'OK':
+                tcp_cell = '[green]OK[/]'
+            elif tcp_raw == 'TIMEOUT':
+                tcp_cell = '[yellow]TIMEOUT[/]'
+            else:
+                tcp_cell = f'[red]{tcp_raw}[/]'
             conn_type = get_connection_type(conn.get('raw_value', ''))
             row = [
                 conn['configmap'],
@@ -802,7 +822,7 @@ def print_results(console: Optional[Console], connections: List[Dict]):
                 conn.get('db_type', 'unknown'),
                 conn['host'],
                 str(conn['port']),
-                f"[{tcp_style}]{conn['status']}[/{tcp_style}]",
+                tcp_cell,
                 conn['message'],
             ]
             if has_lb:
@@ -826,7 +846,8 @@ def print_results(console: Optional[Console], connections: List[Dict]):
         if has_db_probe:
             console.print(
                 "[dim]\U0001f52c DB Probe: protocolo nativo del motor. "
-                "ALIVE = motor responde. FAILED = TCP OK pero BD no responde.[/]"
+                "ALIVE = motor responde. FAILED = TCP OK pero BD no responde al protocolo. "
+                "\u26a0\ufe0f OK en TCP(L4) = red accesible pero motor con problemas.[/]"
             )
     else:
         print("ConfigMap\tKey\tConexi\u00f3n\tTipo\tHost\tPort\tTCP_Status\tLB\tDB_Probe\tMessage")
@@ -1018,6 +1039,8 @@ def main():
             conn['project']   = project_id
             conn['deployment']= deployment
             conn['namespace'] = namespace
+
+            conn['tcp_status'] = status  # L4 puro — nunca sobreescribir con resultado DB probe
 
             # ── Nivel 2: DB probe (solo si TCP OK, modo pod y flag activo) ──────────
             if args.db_probe and status == 'OK' and probe_mode == 'pod' and probe_pod_name:
