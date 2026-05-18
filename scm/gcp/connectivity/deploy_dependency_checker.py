@@ -771,6 +771,75 @@ def _probe_badge(status: str) -> str:
     return mapping.get(status, f'[dim]{status or "—"}[/]')
 
 
+def print_results(console: Optional[Console], connections: List[Dict]):
+    if RICH_AVAILABLE and console:
+        has_db_probe = any(c.get('db_probe_status') for c in connections)
+        has_lb       = any(c.get('lb_name') for c in connections)
+        title_parts  = ["TCP"]
+        if has_lb:       title_parts.append("LB")
+        if has_db_probe: title_parts.append("DB Probe")
+        title = f"\U0001f50c Resultados de Conectividad ({' + '.join(title_parts)})"
+        table = Table(title=title, title_style="bold magenta", header_style="bold cyan", border_style="dim")
+        table.add_column("ConfigMap",  style="white")
+        table.add_column("Key",        style="white")
+        table.add_column("Conexi\u00f3n",   justify="center", width=10)
+        table.add_column("Tipo DB",    justify="left")
+        table.add_column("Host",       justify="left")
+        table.add_column("Puerto",     justify="center")
+        table.add_column("TCP",        justify="center", width=12)
+        table.add_column("Mensaje",    justify="left", max_width=40)
+        if has_lb:
+            table.add_column("Load Balancer", justify="center", width=18)
+        if has_db_probe:
+            table.add_column("DB Probe", justify="center", width=12)
+        for conn in connections:
+            tcp_style = 'green' if conn['status'] == 'OK' else 'yellow' if conn['status'] == 'TIMEOUT' else 'red'
+            conn_type = get_connection_type(conn.get('raw_value', ''))
+            row = [
+                conn['configmap'],
+                conn['key'],
+                f"[cyan]{conn_type}[/]",
+                conn.get('db_type', 'unknown'),
+                conn['host'],
+                str(conn['port']),
+                f"[{tcp_style}]{conn['status']}[/{tcp_style}]",
+                conn['message'],
+            ]
+            if has_lb:
+                lb_name   = conn.get('lb_name', '')
+                lb_status = conn.get('lb_status', '')
+                if lb_name:
+                    lb_style = 'green' if lb_status == 'OK' else 'yellow' if lb_status == 'PENDING' else 'dim'
+                    lb_icon  = '\u2705' if lb_status == 'OK' else '\u26a0\ufe0f' if lb_status == 'PENDING' else '\u2796'
+                    row.append(f"[{lb_style}]{lb_icon} {lb_name}[/{lb_style}]")
+                else:
+                    row.append("[dim]\u2014[/]")
+            if has_db_probe:
+                row.append(_probe_badge(conn.get('db_probe_status', '')))
+            table.add_row(*row)
+        console.print(table)
+        if has_lb:
+            console.print(
+                "[dim]\U0001f507 Load Balancer: K8s Service detectado como intermediario. "
+                "OK = IP externa asignada. PENDING = LB en aprovisionamiento.[/]"
+            )
+        if has_db_probe:
+            console.print(
+                "[dim]\U0001f52c DB Probe: protocolo nativo del motor. "
+                "ALIVE = motor responde. FAILED = TCP OK pero BD no responde.[/]"
+            )
+    else:
+        print("ConfigMap\tKey\tConexi\u00f3n\tTipo\tHost\tPort\tTCP_Status\tLB\tDB_Probe\tMessage")
+        for conn in connections:
+            conn_type = get_connection_type(conn.get('raw_value', ''))
+            print(
+                f"{conn['configmap']}\t{conn['key']}\t{conn_type}\t"
+                f"{conn.get('db_type', 'unknown')}\t{conn['host']}\t{conn['port']}\t"
+                f"{conn['status']}\t{conn.get('lb_status', '')}\t"
+                f"{conn.get('db_probe_status', '')}\t{conn['message']}"
+            )
+
+
 def print_summary_counts(console: Optional[Console], connections: List[Dict]):
     total = len(connections)
     counts = {
