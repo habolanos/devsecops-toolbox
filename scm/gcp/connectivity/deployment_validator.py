@@ -61,7 +61,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN Y CONSTANTES
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__ = "Harold Adrian"
 
 DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
@@ -144,6 +144,8 @@ class ConnectionEndpoint:
     latency_ms: float = 0.0
     db_probe_status: str = ""   # Nivel 2: ALIVE / FAILED / SKIPPED / UNSUPPORTED
     db_probe_message: str = ""  # Detalle del probe de protocolo DB
+    lb_name: str = ""           # Nombre del K8s Service si el host es un LB
+    lb_status: str = ""         # OK | PENDING | N/A
 
 
 @dataclass
@@ -781,9 +783,17 @@ def validate_connectivity(endpoints: List[ConnectionEndpoint], namespace: str,
             ep.message = f"Pod temporal no disponible: {error}"
         return
 
+    # ── Pre-resolución de Load Balancers (una sola llamada kubectl) ─────────
+    svc_map = build_services_map(namespace, debug)
+    if svc_map and RICH_AVAILABLE and console:
+        console.print(f"[dim]🔍 Detectados {len(svc_map)} K8s Services para correlación LB[/]")
+
     try:
         for ep in endpoints:
-            # ── Nivel 1: TCP ──────────────────────────────────────────────
+            # ── Nivel 0: K8s Service / LB lookup ───────────────────────
+            ep.lb_name, ep.lb_status = resolve_lb_for_host(ep.host, svc_map)
+
+            # ── Nivel 1: TCP ────────────────────────────────────────────
             status, message, latency = test_connectivity_via_pod(
                 pod_name, namespace, ep.host, ep.port, timeout, debug
             )
@@ -791,7 +801,7 @@ def validate_connectivity(endpoints: List[ConnectionEndpoint], namespace: str,
             ep.message = message
             ep.latency_ms = latency
 
-            # ── Nivel 2: protocolo DB (solo si TCP OK y flag activo) ──────
+            # ── Nivel 2: protocolo DB (solo si TCP OK y flag activo) ────
             if db_probe and status == 'OK':
                 if RICH_AVAILABLE and console:
                     console.print(
@@ -813,6 +823,67 @@ def validate_connectivity(endpoints: List[ConnectionEndpoint], namespace: str,
         if RICH_AVAILABLE and console:
             console.print(f"[dim]🧹 Eliminando pod temporal: {pod_name}[/]")
         delete_probe_pod(pod_name, namespace, debug)
+
+
+def build_services_map(namespace: str, debug: bool = False) -> Dict[str, Dict]:
+    """
+    Construye un mapa {IP/hostname → info} con todos los K8s Services del namespace.
+    Usado para detectar si un endpoint de BD está detrás de un Load Balancer.
+    """
+    cmd = ['kubectl', 'get', 'svc', '-n', namespace, '-o', 'json']
+    code, stdout, _ = run_command(cmd, debug, timeout=15)
+    if code != 0 or not stdout:
+        return {}
+    try:
+        items = json.loads(stdout).get('items', [])
+    except json.JSONDecodeError:
+        return {}
+
+    svc_map: Dict[str, Dict] = {}
+    for svc in items:
+        meta       = svc.get('metadata', {})
+        spec       = svc.get('spec', {})
+        status     = svc.get('status', {})
+        name       = meta.get('name', '')
+        ns         = meta.get('namespace', namespace)
+        svc_type   = spec.get('type', 'ClusterIP')
+        cluster_ip = spec.get('clusterIP', '')
+        ingress    = status.get('loadBalancer', {}).get('ingress', [])
+        ext_ip     = (ingress[0].get('ip') or ingress[0].get('hostname', '')) if ingress else ''
+        lb_status  = 'OK' if ext_ip else ('PENDING' if svc_type == 'LoadBalancer' else 'N/A')
+
+        info = {
+            'name': name, 'namespace': ns, 'type': svc_type,
+            'lb_status': lb_status, 'external_ip': ext_ip, 'cluster_ip': cluster_ip,
+        }
+        if cluster_ip and cluster_ip not in ('None', ''):
+            svc_map[cluster_ip] = info
+        if ext_ip:
+            svc_map[ext_ip] = info
+        for dns in [name, f"{name}.{ns}", f"{name}.{ns}.svc",
+                    f"{name}.{ns}.svc.cluster.local"]:
+            if dns:
+                svc_map[dns] = info
+    return svc_map
+
+
+def resolve_lb_for_host(host: str, svc_map: Dict[str, Dict]) -> Tuple[str, str]:
+    """
+    Determina si un host es un K8s Service / LB.
+    Returns (lb_label, lb_status): lb_label="" y lb_status="N/A" si no hay match.
+    """
+    if not svc_map or not host:
+        return ('', 'N/A')
+    info = svc_map.get(host)
+    if not info:
+        try:
+            resolved = socket.gethostbyname(host)
+            info = svc_map.get(resolved)
+        except Exception:
+            pass
+    if info:
+        return (f"{info['name']} ({info['type']})", info['lb_status'])
+    return ('', 'N/A')
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -927,13 +998,14 @@ def print_connectivity_table(console: Console, endpoints: List[ConnectionEndpoin
         return
 
     has_db_probe = any(ep.db_probe_status for ep in endpoints)
+    has_lb       = any(ep.lb_name for ep in endpoints)
 
-    table = Table(
-        title="🔌 Validación de Conectividad" + (" (TCP + DB Probe)" if has_db_probe else " (TCP)"),
-        box=box.ROUNDED,
-        header_style="bold cyan",
-        border_style="dim"
-    )
+    title_parts = ["TCP"]
+    if has_lb:       title_parts.append("LB")
+    if has_db_probe: title_parts.append("DB Probe")
+    title = f"🔌 Validación de Conectividad ({' + '.join(title_parts)})"
+
+    table = Table(title=title, box=box.ROUNDED, header_style="bold cyan", border_style="dim")
     table.add_column("Origen",   style="white",  width=10)
     table.add_column("Recurso",  style="white",  width=18)
     table.add_column("Conexión", justify="center", width=10)
@@ -942,11 +1014,12 @@ def print_connectivity_table(console: Console, endpoints: List[ConnectionEndpoin
     table.add_column("Puerto",   justify="center", width=6)
     table.add_column("TCP",      justify="center", width=12)
     table.add_column("Latencia", justify="right",  width=8)
+    if has_lb:
+        table.add_column("Load Balancer", justify="center", width=18)
     if has_db_probe:
         table.add_column("DB Probe", justify="center", width=12)
 
     for ep in endpoints:
-        tcp_ok = ep.status in ('OK',)
         tcp_style = (
             "green"  if ep.status == 'OK' else
             "yellow" if ep.status in ('TIMEOUT', 'DB_PROBE_WARN') else
@@ -965,6 +1038,17 @@ def print_connectivity_table(console: Console, endpoints: List[ConnectionEndpoin
             f"[{tcp_style}]{ep.status}[/{tcp_style}]",
             latency_str,
         ]
+        if has_lb:
+            if ep.lb_name:
+                lb_style = (
+                    "green"  if ep.lb_status == 'OK' else
+                    "yellow" if ep.lb_status == 'PENDING' else
+                    "dim"
+                )
+                lb_icon  = "✅" if ep.lb_status == 'OK' else "⚠️" if ep.lb_status == 'PENDING' else "➖"
+                row.append(f"[{lb_style}]{lb_icon} {ep.lb_name}[/{lb_style}]")
+            else:
+                row.append("[dim]—[/]")
         if has_db_probe:
             ps, pe = _probe_status_style(ep.db_probe_status)
             probe_label = ep.db_probe_status or '—'
@@ -974,6 +1058,11 @@ def print_connectivity_table(console: Console, endpoints: List[ConnectionEndpoin
 
     console.print(table)
 
+    if has_lb:
+        console.print(
+            "[dim]🔇 Load Balancer: K8s Service detectado como intermediario. "
+            "OK = IP externa asignada. PENDING = LB en aprovisionamiento.[/]"
+        )
     if has_db_probe:
         console.print(
             "[dim]🔬 DB Probe: protocolo nativo del motor. "
@@ -1065,6 +1154,8 @@ def export_report(report: ValidationReport, filepath: str, format: str):
                     "tcp_status":       e.status,
                     "tcp_message":      e.message,
                     "latency_ms":       e.latency_ms,
+                    "lb_name":          e.lb_name   or None,
+                    "lb_status":        e.lb_status or None,
                     "db_probe_status":  e.db_probe_status  or None,
                     "db_probe_message": e.db_probe_message or None,
                 }
@@ -1077,17 +1168,23 @@ def export_report(report: ValidationReport, filepath: str, format: str):
         import csv
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(["Type", "Category", "Resource", "Key", "Severity", "Message",
-                             "TCP_Status", "Host", "Port", "DB_Probe_Status", "DB_Probe_Message"])
+            writer.writerow([
+                "Type", "Category", "Resource", "Key", "Severity", "Message",
+                "TCP_Status", "Host", "Port",
+                "LB_Name", "LB_Status",
+                "DB_Probe_Status", "DB_Probe_Message"
+            ])
             for finding in report.findings:
                 writer.writerow([
                     "Finding", finding.category, finding.resource_name, finding.key,
-                    finding.severity.value, finding.message, "", "", "", "", ""
+                    finding.severity.value, finding.message,
+                    "", "", "", "", "", "", ""
                 ])
             for ep in report.endpoints:
                 writer.writerow([
                     "Connectivity", ep.source_type, ep.source_name, ep.key,
                     "", "", ep.status, ep.host, ep.port,
+                    ep.lb_name or "", ep.lb_status or "",
                     ep.db_probe_status or "", ep.db_probe_message or ""
                 ])
 

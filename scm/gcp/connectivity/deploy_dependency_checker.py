@@ -53,7 +53,7 @@ DEFAULT_REGION = "us-central1"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_PROBE_IMAGE = "jrecord/nettools:latest"
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 URL_PATTERN = re.compile(r"(jdbc:)?((?P<engine>postgres(?:ql)?|mysql|mssql|sqlserver|oracle|mongodb|redis|cockroachdb)://[^\s'\"` ]+)", re.IGNORECASE)
 HOST_PORT_PATTERN = re.compile(r"([a-zA-Z0-9.-]+):(\d{2,5})")
@@ -419,6 +419,8 @@ def collect_connections(configmaps: List[str], namespace: str, debug: bool = Fal
                     'elapsed': 0.0,
                     'db_probe_status':  '',
                     'db_probe_message': '',
+                    'lb_name':          '',
+                    'lb_status':        '',
                 })
     return connections
 
@@ -563,6 +565,58 @@ def test_db_probe_via_pod(
         return 'FAILED', output or f"Sin respuesta (código {code})"
 
 
+def build_services_map(namespace: str, debug: bool = False) -> Dict:
+    """Construye mapa {IP/hostname → info} con K8s Services del namespace para detectar LBs."""
+    cmd = ['kubectl', 'get', 'svc', '-n', namespace, '-o', 'json']
+    code, stdout, _ = run_command(cmd, debug)
+    if code != 0 or not stdout:
+        return {}
+    try:
+        items = json.loads(stdout).get('items', [])
+    except json.JSONDecodeError:
+        return {}
+    svc_map: Dict = {}
+    for svc in items:
+        meta       = svc.get('metadata', {})
+        spec       = svc.get('spec', {})
+        status     = svc.get('status', {})
+        name       = meta.get('name', '')
+        ns         = meta.get('namespace', namespace)
+        svc_type   = spec.get('type', 'ClusterIP')
+        cluster_ip = spec.get('clusterIP', '')
+        ingress    = status.get('loadBalancer', {}).get('ingress', [])
+        ext_ip     = (ingress[0].get('ip') or ingress[0].get('hostname', '')) if ingress else ''
+        lb_status  = 'OK' if ext_ip else ('PENDING' if svc_type == 'LoadBalancer' else 'N/A')
+        info = {'name': name, 'namespace': ns, 'type': svc_type,
+                'lb_status': lb_status, 'external_ip': ext_ip, 'cluster_ip': cluster_ip}
+        if cluster_ip and cluster_ip not in ('None', ''):
+            svc_map[cluster_ip] = info
+        if ext_ip:
+            svc_map[ext_ip] = info
+        for dns in [name, f"{name}.{ns}", f"{name}.{ns}.svc",
+                    f"{name}.{ns}.svc.cluster.local"]:
+            if dns:
+                svc_map[dns] = info
+    return svc_map
+
+
+def resolve_lb_for_host(host: str, svc_map: Dict) -> Tuple[str, str]:
+    """Determina si un host es un K8s Service/LB. Returns (lb_label, lb_status)."""
+    if not svc_map or not host:
+        return ('', 'N/A')
+    info = svc_map.get(host)
+    if not info:
+        try:
+            import socket as _sock
+            resolved = _sock.gethostbyname(host)
+            info = svc_map.get(resolved)
+        except Exception:
+            pass
+    if info:
+        return (f"{info['name']} ({info['type']})", info['lb_status'])
+    return ('', 'N/A')
+
+
 def export_results(connections: List[Dict], filepath: str, export_format: str, metadata: Dict):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     if export_format == 'csv':
@@ -570,6 +624,7 @@ def export_results(connections: List[Dict], filepath: str, export_format: str, m
         fieldnames = [
             'project', 'deployment', 'namespace', 'configmap', 'key', 'db_type',
             'host', 'port', 'tcp_status', 'message', 'elapsed', 'raw_value',
+            'lb_name', 'lb_status',
             'db_probe_status', 'db_probe_message', 'timestamp',
         ]
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
@@ -585,6 +640,8 @@ def export_results(connections: List[Dict], filepath: str, export_format: str, m
             'tcp_ok':          sum(1 for c in connections if c.get('status') == 'OK'),
             'tcp_timeout':     sum(1 for c in connections if c.get('status') == 'TIMEOUT'),
             'tcp_error':       sum(1 for c in connections if c.get('status') in ('ERROR', 'UNREACHABLE')),
+            'lb_ok':           sum(1 for c in connections if c.get('lb_status') == 'OK'),
+            'lb_pending':      sum(1 for c in connections if c.get('lb_status') == 'PENDING'),
             'db_probe_alive':  sum(1 for c in connections if c.get('db_probe_status') == 'ALIVE'),
             'db_probe_failed': sum(1 for c in connections if c.get('db_probe_status') == 'FAILED'),
             'skipped':         sum(1 for c in connections if c.get('status') == 'SKIPPED'),
@@ -603,6 +660,8 @@ def export_results(connections: List[Dict], filepath: str, export_format: str, m
                     'tcp_status':       c.get('status', ''),
                     'tcp_message':      c.get('message', ''),
                     'elapsed_s':        c.get('elapsed', 0.0),
+                    'lb_name':          c.get('lb_name') or None,
+                    'lb_status':        c.get('lb_status') or None,
                     'db_probe_status':  c.get('db_probe_status') or None,
                     'db_probe_message': c.get('db_probe_message') or None,
                     'timestamp':        c.get('timestamp', ''),
@@ -652,54 +711,6 @@ def _probe_badge(status: str) -> str:
         'SKIPPED':  '[dim]⏭ SKIP[/]',
     }
     return mapping.get(status, f'[dim]{status or "—"}[/]')
-
-
-def print_results(console: Optional[Console], connections: List[Dict]):
-    if RICH_AVAILABLE and console:
-        has_db_probe = any(c.get('db_probe_status') for c in connections)
-        title = "🔌 Resultados de Conectividad" + (" (TCP + DB Probe)" if has_db_probe else " (TCP)")
-        table = Table(title=title, title_style="bold magenta", header_style="bold cyan", border_style="dim")
-        table.add_column("ConfigMap",  style="white")
-        table.add_column("Key",        style="white")
-        table.add_column("Conexión",   justify="center", width=10)
-        table.add_column("Tipo DB",    justify="left")
-        table.add_column("Host",       justify="left")
-        table.add_column("Puerto",     justify="center")
-        table.add_column("TCP",        justify="center", width=12)
-        table.add_column("Mensaje",    justify="left", max_width=45)
-        if has_db_probe:
-            table.add_column("DB Probe", justify="center", width=12)
-        for conn in connections:
-            tcp_style = 'green' if conn['status'] == 'OK' else 'yellow' if conn['status'] == 'TIMEOUT' else 'red'
-            conn_type = get_connection_type(conn.get('raw_value', ''))
-            row = [
-                conn['configmap'],
-                conn['key'],
-                f"[cyan]{conn_type}[/]",
-                conn.get('db_type', 'unknown'),
-                conn['host'],
-                str(conn['port']),
-                f"[{tcp_style}]{conn['status']}[/{tcp_style}]",
-                conn['message'],
-            ]
-            if has_db_probe:
-                row.append(_probe_badge(conn.get('db_probe_status', '')))
-            table.add_row(*row)
-        console.print(table)
-        if has_db_probe:
-            console.print(
-                "[dim]🔬 DB Probe: protocolo nativo del motor. "
-                "ALIVE = motor responde. FAILED = TCP OK pero BD no responde.[/]"
-            )
-    else:
-        print("ConfigMap\tKey\tConexión\tTipo\tHost\tPort\tTCP_Status\tDB_Probe\tMessage")
-        for conn in connections:
-            conn_type = get_connection_type(conn.get('raw_value', ''))
-            print(
-                f"{conn['configmap']}\t{conn['key']}\t{conn_type}\t"
-                f"{conn.get('db_type', 'unknown')}\t{conn['host']}\t{conn['port']}\t"
-                f"{conn['status']}\t{conn.get('db_probe_status', '')}\t{conn['message']}"
-            )
 
 
 def print_summary_counts(console: Optional[Console], connections: List[Dict]):
@@ -855,6 +866,11 @@ def main():
                     print(warning_msg)
                 probe_mode = "local"
 
+        # ── Pre-resolución de Load Balancers (una sola llamada kubectl) ────────
+        svc_map = build_services_map(namespace, args.debug)
+        if svc_map and RICH_AVAILABLE and console:
+            console.print(f"[dim]\U0001f50d Detectados {len(svc_map)} K8s Services para correlaci\u00f3n LB[/]")
+
         for conn in connections:
             host = conn.get('host')
             port = conn.get('port')
@@ -862,6 +878,8 @@ def main():
                 conn['status'] = 'SKIPPED'
                 conn['message'] = conn.get('raw_value', 'No se pudo interpretar host/puerto')
                 continue
+            # ── LB lookup ────────────────────────────────────────
+            conn['lb_name'], conn['lb_status'] = resolve_lb_for_host(host, svc_map)
             if probe_mode == "pod" and probe_pod_name:
                 status, message, elapsed = test_connectivity_via_pod(probe_pod_name, namespace, host, int(port), timeout, args.debug)
             else:

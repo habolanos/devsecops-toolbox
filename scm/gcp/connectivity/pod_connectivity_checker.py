@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 
 class CheckStatus(Enum):
@@ -263,6 +263,7 @@ class ConnectivityChecker:
         self._vpc_info: Optional[Dict] = None
         self._deployment_info: Optional[Dict] = None
         self._services: List[Dict] = []
+        self._lb_ip_map: Dict[str, str] = {}  # {external_ip: "svc_name (LB_status)"
 
     def run_gcloud(self, args: List[str], format_json: bool = True) -> tuple[bool, Any]:
         """Ejecuta un comando gcloud y retorna el resultado."""
@@ -619,6 +620,9 @@ class ConnectivityChecker:
                 message=f"IP externa asignada: {external_ip}",
                 details=f"Namespace: {svc_namespace}"
             ))
+            # Registrar en el mapa para correlación en connectivity test
+            if external_ip and external_ip != "pending":
+                self._lb_ip_map[external_ip] = f"{svc_name} (OK)"
             
             # Verificar el backend en GCP
             self._check_gcp_load_balancer(svc_name, external_ip)
@@ -1382,11 +1386,15 @@ class ConnectivityChecker:
         except OSError as e:
             tcp_msg = f"Conexión rechazada: {e}"
 
+        # ── Correlacionar con K8s Load Balancer si aplica ─────────────────
+        lb_label = self._lb_ip_map.get(sql_ip, "")
+        lb_detail = f"  LB: {lb_label}" if lb_label else ""
+
         self.add_result(CheckResult(
             name="TCP Direct Connectivity",
             status=tcp_status,
-            message=tcp_msg,
-            details=f"Host: {sql_ip}  Puerto: {sql_port}",
+            message=tcp_msg + (f" — K8s LB: {lb_label}" if lb_label else ""),
+            details=f"Host: {sql_ip}  Puerto: {sql_port}{lb_detail}",
             remediation=None if tcp_status == CheckStatus.PASS
                 else f"nc -zv {sql_ip} {sql_port}"
         ))
