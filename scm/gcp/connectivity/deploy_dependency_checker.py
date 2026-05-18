@@ -53,7 +53,7 @@ DEFAULT_REGION = "us-central1"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_PROBE_IMAGE = "jrecord/nettools:latest"
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 URL_PATTERN = re.compile(r"(jdbc:)?((?P<engine>postgres(?:ql)?|mysql|mssql|sqlserver|oracle|mongodb|redis|cockroachdb)://[^\s'\"` ]+)", re.IGNORECASE)
 HOST_PORT_PATTERN = re.compile(r"([a-zA-Z0-9.-]+):(\d{2,5})")
@@ -530,6 +530,37 @@ _DB_PROBE_SCRIPTS['mssql']     = _DB_PROBE_SCRIPTS['mysql']
 _DB_PROBE_SCRIPTS['sqlserver'] = _DB_PROBE_SCRIPTS['mysql']
 
 
+# Fallback shell-based probe scripts para imágenes sin python3 (e.g. jrecord/nettools).
+# Se ejecutan via: kubectl exec POD -- sh -c "SCRIPT"
+# Requieren: nc, printf, od, head, tr  (disponibles en Alpine/busybox)
+_DB_PROBE_SCRIPTS_SH: Dict[str, str] = {
+    'postgresql': (
+        # Envía SSL-request (8 bytes), verifica respuesta N/S/E (0x4e/0x53/0x45)
+        "r=$(printf '\\000\\000\\000\\010\\004\\322\\026\\057' "
+        "| nc -w {timeout} {host} {port} 2>/dev/null "
+        "| head -c1 | od -An -tx1 | tr -d ' \\n'); "
+        "case $r in 4e|53|45) echo ALIVE;; "
+        "'') echo FAILED:no-response;; "
+        "*) echo FAILED:unexpected_$r;; esac"
+    ),
+    'mysql': (
+        # MySQL envía greeting inmediatamente al conectar
+        "r=$(nc -w {timeout} {host} {port} 2>/dev/null | head -c5 | wc -c | tr -d ' '); "
+        "[ \"${{r:-0}}\" -ge 4 ] 2>/dev/null && echo ALIVE || echo FAILED:recv=$r"
+    ),
+    'redis': (
+        # Envía PING RESP, espera +PONG o *PONG
+        "r=$(printf '*1\\r\\n$4\\r\\nPING\\r\\n' "
+        "| nc -w {timeout} {host} {port} 2>/dev/null "
+        "| head -c16); "
+        "case \"$r\" in *PONG*) echo ALIVE;; *) echo FAILED;; esac"
+    ),
+}
+_DB_PROBE_SCRIPTS_SH['postgres']   = _DB_PROBE_SCRIPTS_SH['postgresql']
+_DB_PROBE_SCRIPTS_SH['mssql']      = _DB_PROBE_SCRIPTS_SH['mysql']
+_DB_PROBE_SCRIPTS_SH['sqlserver']  = _DB_PROBE_SCRIPTS_SH['mysql']
+
+
 def test_db_probe_via_pod(
     pod_name: str, namespace: str,
     host: str, port: int, db_type: str,
@@ -537,8 +568,8 @@ def test_db_probe_via_pod(
 ) -> Tuple[str, str]:
     """
     Verificación de conectividad nivel 2 (protocolo nativo DB).
-    Envía un paquete del protocolo real del motor para descartar falsos positivos
-    de load balancers que aceptan TCP pero tienen la BD apagada.
+    Intenta primero con python3; si no está disponible en el pod (código 127),
+    usa fallback shell (sh + nc + printf) para imágenes sin python3 (e.g. nettools).
     Returns (status, message): ALIVE / FAILED / UNEXPECTED / SKIPPED
     """
     engine = db_type.lower()
@@ -546,23 +577,50 @@ def test_db_probe_via_pod(
     if not script_template:
         return 'SKIPPED', f"Motor '{db_type}' sin probe implementado (soportados: postgresql, mysql, redis)"
 
+    def _parse_output(out: str, code: int) -> Tuple[str, str]:
+        if 'ALIVE' in out:
+            return 'ALIVE', f"Motor {db_type.upper()} respondió al protocolo nativo"
+        elif out.startswith('FAILED:'):
+            return 'FAILED', out[7:] or "Conexión rechazada por el motor"
+        elif out.startswith('UNEXPECTED:'):
+            return 'UNEXPECTED', f"Respuesta no reconocida: {out[11:]}"
+        elif code == 124:
+            return 'FAILED', f"Timeout {timeout}s — motor no respondió"
+        return None, None  # caller decides
+
+    # ── Intento 1: python3 ──────────────────────────────────────────────────
     script = script_template.format(host=host, port=port, timeout=timeout)
     exec_cmd = ['kubectl', 'exec', pod_name, '-n', namespace, '--', 'python3', '-c', script]
     code, stdout, stderr = run_command(exec_cmd, debug, timeout=timeout + 15)
-
     output = (stdout or stderr or '').strip()
-    if 'ALIVE' in output:
-        return 'ALIVE', f"Motor {db_type.upper()} respondió al protocolo nativo"
-    elif output.startswith('FAILED:'):
-        return 'FAILED', output[7:] or "Conexión rechazada por el motor"
-    elif output.startswith('UNEXPECTED:'):
-        return 'UNEXPECTED', f"Respuesta no reconocida: {output[11:]}"
-    elif code == 127 or 'not found' in output.lower():
-        return 'SKIPPED', "python3 no disponible en el pod de prueba"
-    elif code == 124:
-        return 'FAILED', f"Timeout {timeout}s — motor no respondió"
-    else:
-        return 'FAILED', output or f"Sin respuesta (código {code})"
+
+    status, msg = _parse_output(output, code)
+    if status:
+        return status, msg
+
+    py3_missing = (code == 127 or
+                   'not found' in output.lower() or
+                   'no such file' in output.lower())
+
+    # ── Intento 2: fallback sh/nc (para imágenes sin python3) ───────────────
+    if py3_missing:
+        sh_template = _DB_PROBE_SCRIPTS_SH.get(engine)
+        if sh_template:
+            if debug:
+                print(f"[DEBUG] python3 no disponible, usando fallback sh para {engine}")
+            sh_script = sh_template.format(host=host, port=port, timeout=timeout)
+            exec_cmd = ['kubectl', 'exec', pod_name, '-n', namespace, '--', 'sh', '-c', sh_script]
+            code, stdout, stderr = run_command(exec_cmd, debug, timeout=timeout + 15)
+            output = (stdout or stderr or '').strip()
+            status, msg = _parse_output(output, code)
+            if status:
+                return status, msg
+            if code == 127 or 'not found' in output.lower():
+                return 'SKIPPED', "nc/sh no disponible en el pod de prueba"
+            return 'FAILED', output or f"Sin respuesta sh (código {code})"
+        return 'SKIPPED', "python3 no disponible y sin fallback sh para este motor"
+
+    return 'FAILED', output or f"Sin respuesta (código {code})"
 
 
 def build_services_map(namespace: str, debug: bool = False) -> Dict:

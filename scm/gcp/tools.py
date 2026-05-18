@@ -42,7 +42,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.9.2"
+__version__ = "1.9.3"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas GCP"
 
@@ -861,11 +861,13 @@ def run_tool(tool_key: str):
         args.extend(["--timeout", str(timeout_val)])
 
     if "--db-probe" in tool_args:
-        print(f"\n{Colors.BOLD}¿Activar DB Probe nivel 2 (verificación protocolo nativo del motor)? (s/n) [n]:{Colors.ENDC} ", end="")
+        print(f"\n{Colors.BOLD}¿Activar DB Probe nivel 2 (verificación protocolo nativo del motor)? (s/n) [s]:{Colors.ENDC} ", end="")
         db_probe_choice = input().strip().lower()
-        if db_probe_choice == "s":
+        if db_probe_choice != "n":  # default s
             args.append("--db-probe")
             print(f"{Colors.GREEN}DB Probe activado: se verificará protocolo PostgreSQL/MySQL/Redis tras TCP OK.{Colors.ENDC}")
+        else:
+            print("DB Probe desactivado.")
 
     if "--view" in tool_args:
         # Determinar opciones de vista según la herramienta
