@@ -18,24 +18,28 @@ Herramientas para validar conectividad, configuración y dependencias de Deploym
 Herramienta completa para validar deployments de Kubernetes:
 - ✅ Valida existencia y contenido de **ConfigMaps** y **Secrets** referenciados
 - ✅ Detecta valores vacíos, placeholders o mal configurados
-- ✅ Extrae cadenas de conexión a bases de datos
-- ✅ Valida conectividad TCP usando pod temporal con `nettools`
+- ✅ Extrae cadenas de conexión a bases de datos (**incluye JDBC URLs sin puerto explícito**)
+- ✅ Valida conectividad **Nivel 1 TCP** usando pod temporal con `nettools`
+- ✅ Valida conectividad **Nivel 2 DB Probe** (`--db-probe`): protocolo nativo del motor para evitar falsos positivos de load balancers
 - ✅ Genera reportes detallados con recomendaciones
 
 ### Uso Básico
 
 ```bash
-# Validar todo (ConfigMaps, Secrets, Conectividad)
+# Validar todo (ConfigMaps, Secrets, Conectividad TCP)
 python deployment_validator.py --deployment my-app --namespace production
+
+# Validar + DB Probe nivel 2 (descarta falsos positivos de load balancers)
+python deployment_validator.py -d my-app -n production --db-probe
 
 # Solo validar Secrets
 python deployment_validator.py -d my-app -n prod --validate secrets
 
-# Solo validar conectividad
-python deployment_validator.py -d my-app --validate connectivity
+# Solo validar conectividad con DB probe
+python deployment_validator.py -d my-app --validate connectivity --db-probe
 
-# Exportar reporte a JSON
-python deployment_validator.py -d my-app -o json
+# Exportar reporte a JSON (incluye tcp_status, db_probe_status, db_probe_message)
+python deployment_validator.py -d my-app -o json --db-probe
 ```
 
 ### Argumentos
@@ -50,6 +54,7 @@ python deployment_validator.py -d my-app -o json
 | `--validate` | Tipo: `all`, `secrets`, `configmaps`, `connectivity` | `all` |
 | `--probe-image` | Imagen para pod temporal | `jrecord/nettools:latest` |
 | `--timeout` | Timeout para pruebas TCP (segundos) | `5` |
+| `--db-probe` | Nivel 2: envía protocolo nativo del motor DB para confirmar que la BD responde (evita falsos positivos de LB) | `false` |
 | `--output, -o` | Exportar a `json` o `csv` | - |
 | `--severity` | Filtrar: `critical`, `warning`, `info`, `all` | `all` |
 | `--debug` | Modo debug | `false` |
@@ -74,10 +79,17 @@ python deployment_validator.py -d my-app -o json
 │    └─ Detectar claves vacías o placeholder                          │
 │    └─ Parsear cadenas de conexión (JDBC, MongoDB, Redis)            │
 ├─────────────────────────────────────────────────────────────────────┤
-│ 4. CONNECTIVITY TEST                                                 │
+│ 4. CONNECTIVITY TEST — Nivel 1: TCP                                 │
 │    └─ kubectl run validator-probe-xxx --image=jrecord/nettools      │
 │    └─ nc -zv <host> <port> para cada endpoint                       │
 │    └─ Reportar latencia y estado (OK/TIMEOUT/UNREACHABLE)           │
+├─────────────────────────────────────────────────────────────────────┤
+│ 5. DB PROBE (--db-probe) — Nivel 2: protocolo nativo del motor      │
+│    └─ Solo si TCP = OK (no tiene sentido si el TCP ya falla)        │
+│    └─ PostgreSQL: SSL-request packet (8 bytes) → espera 'N'/'S'    │
+│    └─ MySQL: espera greeting packet (≥4 bytes al conectar)          │
+│    └─ Redis: envía PING RESP → espera +PONG                        │
+│    └─ Si FAILED: status cambia a DB_PROBE_FAIL (falso positivo LB)  │
 │    └─ Cleanup automático del pod temporal                           │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -588,6 +600,7 @@ gcloud services vpc-peerings connect \
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-05-18 | 1.0.1 | `deployment_validator.py`: (1) **Bug fix** — JDBC URLs sin puerto explícito (`jdbc:postgresql://host/db`) eran silenciosamente ignoradas por `parse_connection_string`; corregido usando `DB_DEFAULT_PORTS` por engine (PG=5432, MySQL=3306, etc.); (2) **Nueva feature** `--db-probe` — verificación nivel 2 con protocolo nativo del motor (PostgreSQL SSL-request, MySQL greeting, Redis PING) para detectar falsos positivos de load balancers; nuevos estados `DB_PROBE_FAIL` / `ALIVE` / `UNEXPECTED`; columna extra en tabla de conectividad y en JSON/CSV exportado |
 | 2026-03-26 | 1.4.0 | Agregar `--cluster` y `--region` a deployment_validator.py y deploy_dependency_checker.py para configurar contexto kubectl automáticamente |
 | 2026-03-09 | 1.3.0 | Nuevo deploy_dependency_checker.py con `--probe-mode` (default pod) para validar dependencias de ConfigMaps y conexiones DB |
 | 2026-02-19 | 1.2.0 | Validación de conexión GCP al inicio, renombrado a pod_connectivity_checker.py |
