@@ -52,10 +52,10 @@ python tools.py
 | 13 | Networking | IP Addresses Checker | Analiza capacidad de red de clusters GKE (IPs de pods y servicios) |
 | 14 | Kubernetes | GKE Cluster Checker | Monitorea clusters GKE, versiones, nodos y pods |
 | 15 | Kubernetes | Secrets & ConfigMaps Checker | Valida referencias de Secrets y ConfigMaps en GKE |
-| 16 | Kubernetes | Pod Connectivity Checker | Valida conectividad desde un Pod GKE hasta Cloud SQL |
-| 17 | Kubernetes | Deploy Dependency Checker | Analiza ConfigMaps de un deployment y valida conexiones a BD |
+| 16 | Kubernetes | Pod Connectivity Checker | Valida conectividad Pod → Cloud SQL (TCP + infraestructura GCP: IAM, VPC, FW, WI). Exporta JSON/CSV (`-o`) |
+| 17 | Kubernetes | Deploy Dependency Checker | Analiza ConfigMaps de un deployment y valida conexiones a BD (TCP + `--db-probe` nivel 2) |
 | 18 | Kubernetes | Cloud Run Checker | Analiza servicios Cloud Run, revisiones, Jobs, IAM y networking |
-| 19 | Kubernetes | **Deployment Validator** | **Valida ConfigMaps, Secrets y conectividad de un Deployment** |
+| 19 | Kubernetes | **Deployment Validator** | **Valida ConfigMaps, Secrets y conectividad de un Deployment (TCP + `--db-probe` nivel 2, `--validate`)** |
 | 20 | Artifacts | Artifact Registry Tag Filter | Filtra y exporta imágenes de Artifact Registry a Excel |
 | 22 | Inventory | Inventario GKE + Cloud SQL | Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar) |
 | 21 | Reports | Visualizar Reportes JSON | Genera dashboard HTML con gráficos desde reportes JSON |
@@ -120,6 +120,7 @@ gcp/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-05-18 | 1.9.2 | `tools.py`: (1) Tool **16** `pod_connectivity_checker` — agrega `-o` a args (soporta exportar JSON/CSV); (2) Tool **17** `deploy_dependency_checker` — agrega `--db-probe` a args + nuevo handler interactivo en `run_tool`; (3) Tool **19** `deployment_validator` — agrega `--db-probe` a args + handler; (4) nuevo handler `--validate` en `run_tool` para elegir `all/configmaps/secrets/connectivity` (existía en args pero nunca se pasaba al script); (5) descripciones de herramientas 16/17/19 actualizadas |
 | 2026-04-16 | 1.9.0 | Nueva herramienta: Inventario GKE + Cloud SQL - Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar) |
 | 2026-03-26 | 1.8.0 | Nueva herramienta: Deployment Validator - Valida ConfigMaps, Secrets y conectividad de Deployments |
 | 2026-03-25 | 1.7.0 | Nueva herramienta: Cloud Run Checker para analizar servicios, revisiones, jobs, IAM y networking |

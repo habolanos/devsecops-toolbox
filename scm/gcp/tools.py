@@ -42,7 +42,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.9.1"
+__version__ = "1.9.2"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas GCP"
 
@@ -261,18 +261,18 @@ TOOLS = {
     },
     "16": {
         "name": "Pod Connectivity Checker",
-        "description": "Valida conectividad desde un Pod GKE hasta Cloud SQL",
+        "description": "Valida conectividad desde un Pod GKE hasta Cloud SQL (TCP + infraestructura GCP)",
         "path": "connectivity/pod_connectivity_checker.py",
-        "args": ["--deployment", "--sql-instance"],
+        "args": ["--deployment", "--sql-instance", "-o"],
         "requirements": None,
         "group": "kubernetes",
         "status": "ready"
     },
     "17": {
         "name": "Deploy Dependency Checker",
-        "description": "Analiza ConfigMaps de un deployment y valida conexiones a bases de datos",
+        "description": "Analiza ConfigMaps de un deployment y valida conexiones a bases de datos (TCP + DB Probe opcional)",
         "path": "connectivity/deploy_dependency_checker.py",
-        "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--probe-mode", "--probe-image", "--timeout", "-o"],
+        "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--probe-mode", "--probe-image", "--timeout", "--db-probe", "-o"],
         "requirements": None,
         "group": "kubernetes",
         "status": "ready"
@@ -288,9 +288,9 @@ TOOLS = {
     },
     "19": {
         "name": "Deployment Validator",
-        "description": "Valida ConfigMaps, Secrets y conectividad de un Deployment",
+        "description": "Valida ConfigMaps, Secrets y conectividad de un Deployment (TCP + DB Probe opcional)",
         "path": "connectivity/deployment_validator.py",
-        "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--validate", "--probe-image", "--timeout", "--severity", "-o"],
+        "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--validate", "--probe-image", "--timeout", "--db-probe", "--severity", "-o"],
         "requirements": None,
         "group": "kubernetes",
         "status": "ready"
@@ -823,6 +823,15 @@ def run_tool(tool_key: str):
             print(f"{Colors.GREEN}Usando puerto: {port}{Colors.ENDC}")
         args.append(port)  # Script shell usa argumento posicional para puerto
 
+    if "--validate" in tool_args:
+        print(f"\n{Colors.BOLD}Validaciones a ejecutar (all/configmaps/secrets/connectivity) [all]:{Colors.ENDC} ", end="")
+        validate_choice = input().strip().lower()
+        if validate_choice in ["configmaps", "secrets", "connectivity"]:
+            args.extend(["--validate", validate_choice])
+        else:
+            if validate_choice not in ("", "all"):
+                print(f"{Colors.GREEN}Opción inválida, usando: all{Colors.ENDC}")
+
     if "--probe-mode" in tool_args:
         print(f"\n{Colors.BOLD}Seleccione modo de validación (pod/local) [pod]:{Colors.ENDC} ", end="")
         probe_mode = input().strip().lower()
@@ -850,6 +859,13 @@ def run_tool(tool_key: str):
             timeout_val = 5
             print(f"{Colors.GREEN}Usando timeout: {timeout_val}{Colors.ENDC}")
         args.extend(["--timeout", str(timeout_val)])
+
+    if "--db-probe" in tool_args:
+        print(f"\n{Colors.BOLD}¿Activar DB Probe nivel 2 (verificación protocolo nativo del motor)? (s/n) [n]:{Colors.ENDC} ", end="")
+        db_probe_choice = input().strip().lower()
+        if db_probe_choice == "s":
+            args.append("--db-probe")
+            print(f"{Colors.GREEN}DB Probe activado: se verificará protocolo PostgreSQL/MySQL/Redis tras TCP OK.{Colors.ENDC}")
 
     if "--view" in tool_args:
         # Determinar opciones de vista según la herramienta
