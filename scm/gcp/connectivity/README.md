@@ -8,12 +8,103 @@ Herramientas para validar conectividad, configuración y dependencias de Deploym
 |---------|-------------|
 | `pod_connectivity_checker.py` | Valida conectividad Pod → Cloud SQL |
 | `deploy_dependency_checker.py` | Detecta dependencias de un Deployment (ConfigMaps) y valida conectividad DB |
-| `deployment_validator.py` | **NUEVO** - Valida ConfigMaps, Secrets y conectividad de un Deployment |
+| `deployment_validator.py` | Valida ConfigMaps, Secrets y conectividad de un Deployment |
 | `README.md` | Documentación detallada |
 
 ---
 
-## 🛡️ Deployment Validator (NUEVO)
+## 🗺️ Especialidad de Cada Herramienta
+
+Los tres scripts tienen **propósito, alcance y público objetivo diferentes**, aunque todos validan conectividad en GKE/GCP.
+
+### `deployment_validator.py` — Validador Integral de Deployments
+
+> **Pregunta que responde:** *¿Está mi Deployment correctamente configurado y puede alcanzar sus dependencias?*
+
+Herramienta más completa. Valida en **4 capas** partiendo del nombre de un Deployment:
+
+| Capa | Qué valida |
+|------|-----------|
+| **ConfigMaps** | Existencia, claves vacías, placeholders (`<CHANGE_ME>`, `TODO`) |
+| **Secrets** | Existencia, claves sensibles vacías (base64 → `""`), datos binarios |
+| **TCP Nivel 1** | Conectividad de red usando pod temporal + `nc -z` |
+| **DB Probe Nivel 2** | Protocolo nativo del motor (PostgreSQL SSL-request, MySQL greeting, Redis PING) para descartar falsos positivos de LB |
+
+**Flags únicos:** `--validate configmaps|secrets|connectivity|all`, `--db-probe`, `--severity`.
+
+---
+
+### `deploy_dependency_checker.py` — Checker de Dependencias por ConfigMaps
+
+> **Pregunta que responde:** *¿A qué bases de datos apuntan los ConfigMaps de mi Deployment y puedo conectarme?*
+
+Herramienta ligera y rápida. Foco **exclusivo en conectividad DB desde ConfigMaps**:
+
+| Característica | Detalle |
+|----------------|---------|
+| **Alcance** | Solo ConfigMaps (no analiza Secrets ni severidades) |
+| **Modo local** | `--probe-mode=local` prueba TCP con `socket` Python desde el host — sin necesitar crear pods |
+| **Modo pod** | `--probe-mode=pod` crea pod temporal igual que `deployment_validator.py` |
+| **DB Probe** | Mismo mecanismo `--db-probe` que `deployment_validator.py` |
+
+**Diferencia clave vs `deployment_validator.py`:** más rápido porque no analiza Secrets ni severidades. `--probe-mode=local` permite usarlo sin acceso completo a kubectl.
+
+---
+
+### `pod_connectivity_checker.py` — Validador de Infraestructura Cloud SQL
+
+> **Pregunta que responde:** *¿Está toda la infraestructura GCP correctamente configurada para que mis pods alcancen Cloud SQL?*
+
+Herramienta de diagnóstico profundo. Analiza **9 capas de infraestructura GCP** usando `gcloud` y `kubectl` — **no crea pods temporales**:
+
+| Sección | Qué valida |
+|---------|-----------|
+| **0. Discovery** | Proyecto, cluster, namespace, KSA, GSA desde contexto kubectl/gcloud |
+| **1. Cloud SQL** | Existencia de la instancia, estado (`RUNNABLE`/`STOPPED`), IPs privada/pública |
+| **2. GKE Cluster** | VPC-native (alias IP), Workload Identity habilitado |
+| **3. VPC & PSC** | Red VPC, rangos IP, VPC Peering con `servicenetwork` de Google |
+| **4. Firewall** | Reglas de egress al puerto SQL (5432/3306) |
+| **5. IAM** | Roles `cloudsql.client`/`cloudsql.instanceUser` en el GSA |
+| **6. Workload Identity** | Anotación KSA ↔ GSA, IAM binding `roles/iam.workloadIdentityUser` |
+| **7. SQL Auth Proxy** | Detecta sidecar `cloud-sql-proxy` |
+| **8. Load Balancers** | Servicios LB/NodePort/ClusterIP, Forwarding Rules, Backend Health |
+| **9. Connectivity** | TCP directo con latencia + `gcloud network-management` test |
+
+**Diferencia clave:** es el único que diagnostica la **capa de infraestructura GCP** (IAM, VPC, Firewall, Workload Identity). Los otros dos asumen que la infraestructura existe y solo verifican si la conexión funciona.
+
+---
+
+### Cuadro Comparativo
+
+| Característica | `deployment_validator` | `deploy_dependency_checker` | `pod_connectivity_checker` |
+|---|:---:|:---:|:---:|
+| Valida ConfigMaps | ✅ | ✅ | ❌ |
+| Valida Secrets | ✅ | ❌ | ❌ |
+| JDBC URL sin puerto (default port) | ✅ | ✅ | ❌ N/A |
+| TCP via pod temporal | ✅ | ✅ | ❌ |
+| TCP local (socket Python) | ❌ | ✅ `--probe-mode=local` | ✅ directo |
+| DB Probe nivel 2 (`--db-probe`) | ✅ | ✅ | ❌ |
+| Diagnóstico IAM GCP | ❌ | ❌ | ✅ |
+| Diagnóstico VPC / Firewall | ❌ | ❌ | ✅ |
+| Workload Identity check | ❌ | ❌ | ✅ |
+| Cloud SQL instance check | ❌ | ❌ | ✅ |
+| Export JSON / CSV | ✅ | ✅ | ✅ |
+| Requiere `--sql-instance` | ❌ | ❌ | ✅ requerido |
+| Severidades (CRITICAL/WARNING/INFO) | ✅ | ❌ | ❌ |
+
+### ¿Cuándo usar cada uno?
+
+| Situación | Herramienta recomendada |
+|-----------|------------------------|
+| Revisión completa pre-release de un Deployment | `deployment_validator.py` |
+| Verificar rápido si las BDs en ConfigMaps son alcanzables | `deploy_dependency_checker.py` |
+| Diagnosticar por qué los pods no se conectan a Cloud SQL | `pod_connectivity_checker.py` |
+| Detectar falsos positivos de load balancers (BD apagada) | Cualquiera con `--db-probe` |
+| Sin acceso completo a kubectl (solo red local) | `deploy_dependency_checker.py --probe-mode=local` |
+
+---
+
+## 🛡️ Deployment Validator
 
 Herramienta completa para validar deployments de Kubernetes:
 - ✅ Valida existencia y contenido de **ConfigMaps** y **Secrets** referenciados
@@ -600,6 +691,7 @@ gcloud services vpc-peerings connect \
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-05-18 | 1.2.1 | `README.md`: nueva sección **🗺️ Especialidad de Cada Herramienta** con descripción individual, cuadro comparativo de 13 características y tabla de decisión *¿Cuándo usar cada uno?* |
 | 2026-05-18 | 1.2.1 | `pod_connectivity_checker.py`: (1) Nuevos imports `os`, `socket`, `timezone`; (2) `check_connectivity_test` ahora ejecuta primero un **TCP socket directo** (`socket.create_connection`) con latencia medida, reportado como `TCP Direct Connectivity` (PASS/FAIL real); el test de `gcloud network-management` pasa a secundario/INFO ya que requiere permisos adicionales; (3) nueva función `export_results` exporta metadata, summary (total/pass/fail/warn/info/skip/critical_ok) y lista de resultados; (4) nuevo flag `--output json|csv` para exportar a `outcome/pod_connectivity_<instance>_<ts>.<ext>`; versión `1.2.0 → 1.2.1` |
 | 2026-05-18 | 1.0.1 | `deploy_dependency_checker.py`: (1) mismo **JDBC port bug fix** que `deployment_validator.py` — `DB_DEFAULT_PORTS` por engine en `parse_connection_values`; (2) nuevo flag `--db-probe` igual que `deployment_validator.py` — protocolo nativo PostgreSQL/MySQL/Redis vía `kubectl exec python3 -c`; (3) `export_results` JSON reestructurado con `metadata`, `summary` (tcp_ok/db_probe_alive/etc.) y `connections` con campos separados `tcp_status`/`db_probe_status`/`db_probe_message`; (4) CSV actualizado con nuevas columnas `tcp_status`, `db_probe_status`, `db_probe_message`; (5) tabla Rich condicional con columna **DB Probe**; (6) `print_summary_counts` muestra `DB ALIVE` / `DB FAIL` |
 | 2026-05-18 | 1.0.1 | `deployment_validator.py`: (1) **Bug fix** — JDBC URLs sin puerto explícito (`jdbc:postgresql://host/db`) eran silenciosamente ignoradas por `parse_connection_string`; corregido usando `DB_DEFAULT_PORTS` por engine (PG=5432, MySQL=3306, etc.); (2) **Nueva feature** `--db-probe` — verificación nivel 2 con protocolo nativo del motor (PostgreSQL SSL-request, MySQL greeting, Redis PING) para detectar falsos positivos de load balancers; nuevos estados `DB_PROBE_FAIL` / `ALIVE` / `UNEXPECTED`; columna extra en tabla de conectividad y en JSON/CSV exportado |
