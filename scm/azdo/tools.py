@@ -40,7 +40,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__     = "1.3.1"
+__version__     = "1.3.2"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -271,6 +271,16 @@ TOOLS: Dict = {
         "args":        ["--pat", "--org", "--project", "--repo", "--component",
                         "--source", "--target", "--context", "--severity",
                         "--only-diff", "--no-content", "--output"],
+        "group":       "quality",
+        "status":      "ready",
+    },
+    "20": {
+        "name":        "Repo Branch Diff",
+        "description": "[Informe Ejecutivo] Analiza el impacto de cambios entre dos ramas de cualquier repositorio. Clasifica archivos por riesgo (CRITICAL/HIGH/MEDIUM/LOW): CI/CD, seguridad, K8s, build, BD, código, tests. Score 0-100, commits, autores y recomendaciones automáticas. Exit 0=OK / 1=HIGH / 2=CRITICAL.",
+        "path":        "azdo_repo_branch_diff.py",
+        "args":        ["--pat", "--org", "--project", "--repo",
+                        "--source", "--target", "--top-files", "--top-commits",
+                        "--no-commits", "--no-authors", "--severity", "--output"],
         "group":       "quality",
         "status":      "ready",
     },
@@ -846,6 +856,30 @@ def run_tool(tool_key: str):
         val = input().strip().lower()
         if val == "s":
             extra.append("--no-content")
+
+    if "--top-files" in tool_args:
+        print(f"{Colors.BOLD}Máx. archivos en tabla (0=todos) [60]:{Colors.ENDC} ", end="")
+        val = input().strip()
+        if val and val.isdigit():
+            extra += ["--top-files", val]
+
+    if "--top-commits" in tool_args:
+        print(f"{Colors.BOLD}Máx. commits en tabla [25]:{Colors.ENDC} ", end="")
+        val = input().strip()
+        if val and val.isdigit():
+            extra += ["--top-commits", val]
+
+    if "--no-commits" in tool_args:
+        print(f"{Colors.BOLD}¿Omitir tabla de commits del informe? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--no-commits")
+
+    if "--no-authors" in tool_args:
+        print(f"{Colors.BOLD}¿Omitir estadísticas por autor? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--no-authors")
 
     cmd = [venv_python, str(script_path)] + extra
 

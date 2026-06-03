@@ -64,6 +64,16 @@
       "target_branch":  "master",
       "context_lines":  3,
       "output_format":  "excel"
+    },
+
+    "repo_branch_diff": {
+      "_info": "azdo_repo_branch_diff.py — Informe ejecutivo de impacto de cambios entre dos ramas de cualquier repositorio.",
+      "repo":           "",
+      "source_branch":  "develop",
+      "target_branch":  "master",
+      "top_files":      60,
+      "top_commits":    25,
+      "output_format":  "excel"
     }
   }
 }
