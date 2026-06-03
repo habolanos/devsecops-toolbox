@@ -22,7 +22,7 @@ Clasificación de riesgo por archivo:
   🔵 LOW      → Tests, documentación, assets estáticos
   ⚪ NONE     → Archivos no clasificados
 
-Score de impacto (0–100):
+Score de impacto (0-100):
   Ponderado por riesgo de cada archivo + bonus por volumen de commits.
   Útil como quality gate en CD pipelines (exit 0 / 1 / 2).
 
