@@ -47,6 +47,7 @@ DEFAULT_SYNC_PATHS = [
     "scm/gcp",
     "scm/aws",
     "scm/azdo",
+    "scm/terminal",
     "scm/__init__.py",
     "scm/main.py",
     "scm/README.md",
