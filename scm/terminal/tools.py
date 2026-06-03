@@ -288,7 +288,7 @@ def run_script(script_key: str):
         return
     
     # Construir comando
-    cmd = ["sh", str(script_path)]
+    cmd = ["bash", str(script_path)]
     
     # Solicitar argumentos
     args = script.get("args", [])

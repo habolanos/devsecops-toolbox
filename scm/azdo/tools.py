@@ -16,6 +16,7 @@ Uso:
 """
 
 import datetime
+import hashlib
 import json
 import os
 import platform
@@ -81,7 +82,7 @@ TOOL_GROUPS = {
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
     "inventory":  {"name": "Inventario",         "emoji": "📋", "color": "bright_white"},
     "health":     {"name": "Health Score",       "emoji": "📊", "color": "bright_cyan"},
-    "quality":    {"name": "Calidad Despliegue",  "emoji": "🎯", "color": "green"},
+    "quality":    {"name": "Calidad Deploy",     "emoji": "🎯", "color": "orange"},
     "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
 
@@ -365,23 +366,30 @@ def get_venv_python() -> Optional[str]:
     return str(venv_python)
 
 
-def get_installed_requirements() -> set:
-    if not INSTALLED_MARKER.exists():
-        return set()
+def _req_hash(req_file: Path) -> str:
+    """MD5 del contenido de requirements.txt para detectar cambios."""
     try:
-        with open(INSTALLED_MARKER, "r", encoding="utf-8") as f:
-            return {line.strip() for line in f if line.strip()}
+        return hashlib.md5(req_file.read_bytes()).hexdigest()
     except Exception:
-        return set()
+        return ""
 
 
-def mark_requirements_installed(req_path: str):
-    installed = get_installed_requirements()
-    installed.add(req_path)
+def get_installed_marker() -> str:
+    """Retorna el token almacenado en el marker o cadena vacía."""
+    if not INSTALLED_MARKER.exists():
+        return ""
+    try:
+        return INSTALLED_MARKER.read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def mark_requirements_installed(req_file: Path):
+    """Guarda 'filename:hash' en el marker para validación futura."""
+    token = f"{REQUIREMENTS_FILE}:{_req_hash(req_file)}"
     try:
         INSTALLED_MARKER.parent.mkdir(parents=True, exist_ok=True)
-        with open(INSTALLED_MARKER, "w", encoding="utf-8") as f:
-            f.write("\n".join(sorted(installed)))
+        INSTALLED_MARKER.write_text(token, encoding="utf-8")
     except Exception:
         pass
 
@@ -392,15 +400,22 @@ def install_requirements(python_exec: str, force: bool = False) -> bool:
         print(f"{Colors.WARNING}Advertencia: No se encontró {req_file}{Colors.ENDC}")
         return True
 
-    if not force and REQUIREMENTS_FILE in get_installed_requirements():
+    current_token = f"{REQUIREMENTS_FILE}:{_req_hash(req_file)}"
+    cached_token  = get_installed_marker()
+
+    if not force and current_token == cached_token:
         print(f"{Colors.GREEN}Dependencias ya instaladas (usando caché).{Colors.ENDC}")
         return True
 
-    print(f"\n{Colors.CYAN}Instalando dependencias de {req_file} en el venv...{Colors.ENDC}")
+    if cached_token and current_token != cached_token:
+        print(f"{Colors.WARNING}requirements.txt actualizado — reinstalando dependencias...{Colors.ENDC}")
+    else:
+        print(f"\n{Colors.CYAN}Instalando dependencias de {req_file} en el venv...{Colors.ENDC}")
+
     try:
         subprocess.check_call([python_exec, "-m", "pip", "install", "-r", str(req_file)])
         print(f"{Colors.GREEN}Dependencias instaladas correctamente.{Colors.ENDC}")
-        mark_requirements_installed(REQUIREMENTS_FILE)
+        mark_requirements_installed(req_file)
         return True
     except subprocess.CalledProcessError as e:
         print(f"{Colors.FAIL}Error al instalar dependencias: {e}{Colors.ENDC}")
