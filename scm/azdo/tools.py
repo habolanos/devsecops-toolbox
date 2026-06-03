@@ -713,9 +713,18 @@ def run_tool(tool_key: str):
         extra += ["--release-id", val]
 
     if "--repo" in tool_args:
-        val = prompt("Filtrar por repo/nombre (vacío = todos)", default="")
-        if val:
+        if tool_key == "19":
+            cfg_props_repo = config_get(cfg, "tools", "properties_branch_diff", "repo", default="")
+            val = prompt("Repositorio de propiedades (ej: retail-properties)", default=cfg_props_repo)
+            if not val:
+                print(f"{Colors.FAIL}Se requiere el nombre del repositorio de propiedades.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
             extra += ["--repo", val]
+        else:
+            val = prompt("Filtrar por repo/nombre (vacío = todos)", default="")
+            if val:
+                extra += ["--repo", val]
 
     if "--branch" in tool_args:
         cfg_branch = config_get(cfg, "tools", "pr_master_checker", "target_branch", default="master")
@@ -834,19 +843,35 @@ def run_tool(tool_key: str):
             extra.append("--use-cache-only")
 
     if "--source" in tool_args:
-        val = prompt("Rama ORIGEN (la que se desplegará, ej: release/release-1.6.0)", default="develop")
+        if tool_key == "19":
+            cfg_src = config_get(cfg, "tools", "properties_branch_diff", "source_branch", default="develop")
+        else:
+            cfg_src = config_get(cfg, "tools", "repo_branch_diff", "source_branch", default="develop")
+        val = prompt("Rama ORIGEN (la que se desplegará, ej: release/release-1.6.0)", default=cfg_src)
         if val:
             extra += ["--source", val]
 
     if "--target" in tool_args:
-        val = prompt("Rama DESTINO (entorno receptor, ej: master)", default="master")
+        if tool_key == "19":
+            cfg_tgt = config_get(cfg, "tools", "properties_branch_diff", "target_branch", default="master")
+        else:
+            cfg_tgt = config_get(cfg, "tools", "repo_branch_diff", "target_branch", default="master")
+        val = prompt("Rama DESTINO (entorno receptor, ej: master)", default=cfg_tgt)
         if val:
             extra += ["--target", val]
 
     if "--component" in tool_args:
-        val = prompt("Componente / carpeta dentro del repo (vacío = prompt interactivo en el script)", default="")
-        if val:
+        if tool_key == "19":
+            val = prompt("Nombre del servicio/componente a analizar (ej: ps-om-com-customerorder)", default="")
+            if not val:
+                print(f"{Colors.FAIL}Se requiere el nombre del servicio/componente.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
             extra += ["--component", val]
+        else:
+            val = prompt("Componente / carpeta dentro del repo (vacío = prompt interactivo en el script)", default="")
+            if val:
+                extra += ["--component", val]
 
     if "--context" in tool_args:
         print(f"{Colors.BOLD}Líneas de contexto en el diff [3]:{Colors.ENDC} ", end="")
