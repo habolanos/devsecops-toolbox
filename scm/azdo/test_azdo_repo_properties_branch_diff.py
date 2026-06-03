@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-test_azdo_properties_branch_diff.py
+test_azdo_repo_properties_branch_diff.py
 
-Pruebas unitarias para azdo_properties_branch_diff.py
+Pruebas unitarias para azdo_repo_properties_branch_diff.py
 
 Cubre:
   - build_unified_diff: generación de diff y conteo de líneas
@@ -22,7 +22,7 @@ from pathlib import Path
 # Asegurar que el módulo es importable desde el mismo directorio
 sys.path.insert(0, str(Path(__file__).parent))
 
-from azdo_properties_branch_diff import (
+from azdo_repo_properties_branch_diff import (
     FileDiff,
     SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_LOW, SEV_NONE,
     CHANGE_ADD, CHANGE_DELETE, CHANGE_EDIT, CHANGE_RENAME, CHANGE_NONE,
@@ -247,8 +247,8 @@ class TestAnalyzeComponent(unittest.TestCase):
     def _fake_headers(self):
         return make_headers("fake-token")
 
-    @patch("azdo_properties_branch_diff.get_branch_diffs")
-    @patch("azdo_properties_branch_diff.get_file_content")
+    @patch("azdo_repo_properties_branch_diff.get_branch_diffs")
+    @patch("azdo_repo_properties_branch_diff.get_file_content")
     def test_edit_detected_high(self, mock_content, mock_diffs):
         mock_diffs.return_value = [{
             "changeType": "edit",
@@ -268,8 +268,8 @@ class TestAnalyzeComponent(unittest.TestCase):
         self.assertEqual(results[0].change_type, CHANGE_EDIT)
         self.assertEqual(results[0].severity, SEV_HIGH)
 
-    @patch("azdo_properties_branch_diff.get_branch_diffs")
-    @patch("azdo_properties_branch_diff.get_file_content")
+    @patch("azdo_repo_properties_branch_diff.get_branch_diffs")
+    @patch("azdo_repo_properties_branch_diff.get_file_content")
     def test_delete_detected_critical(self, mock_content, mock_diffs):
         mock_diffs.return_value = [{
             "changeType": "delete",
@@ -284,8 +284,8 @@ class TestAnalyzeComponent(unittest.TestCase):
         self.assertEqual(results[0].severity, SEV_CRITICAL)
         self.assertEqual(results[0].change_type, CHANGE_DELETE)
 
-    @patch("azdo_properties_branch_diff.get_branch_diffs")
-    @patch("azdo_properties_branch_diff.get_file_content")
+    @patch("azdo_repo_properties_branch_diff.get_branch_diffs")
+    @patch("azdo_repo_properties_branch_diff.get_file_content")
     def test_add_detected_medium(self, mock_content, mock_diffs):
         mock_diffs.return_value = [{
             "changeType": "add",
@@ -300,9 +300,9 @@ class TestAnalyzeComponent(unittest.TestCase):
         self.assertEqual(results[0].severity, SEV_MEDIUM)
         self.assertEqual(results[0].change_type, CHANGE_ADD)
 
-    @patch("azdo_properties_branch_diff.get_branch_diffs")
-    @patch("azdo_properties_branch_diff.get_items_in_path")
-    @patch("azdo_properties_branch_diff.get_file_content")
+    @patch("azdo_repo_properties_branch_diff.get_branch_diffs")
+    @patch("azdo_repo_properties_branch_diff.get_items_in_path")
+    @patch("azdo_repo_properties_branch_diff.get_file_content")
     def test_fallback_to_items_when_diffs_empty(
         self, mock_content, mock_items, mock_diffs
     ):
@@ -323,9 +323,9 @@ class TestAnalyzeComponent(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].change_type, CHANGE_EDIT)
 
-    @patch("azdo_properties_branch_diff.get_branch_diffs")
-    @patch("azdo_properties_branch_diff.get_items_in_path")
-    @patch("azdo_properties_branch_diff.get_file_content")
+    @patch("azdo_repo_properties_branch_diff.get_branch_diffs")
+    @patch("azdo_repo_properties_branch_diff.get_items_in_path")
+    @patch("azdo_repo_properties_branch_diff.get_file_content")
     def test_identical_files_yield_none_severity(
         self, mock_content, mock_items, mock_diffs
     ):
@@ -342,9 +342,9 @@ class TestAnalyzeComponent(unittest.TestCase):
         )
         self.assertTrue(all(r.severity == SEV_NONE for r in results))
 
-    @patch("azdo_properties_branch_diff.get_branch_diffs")
-    @patch("azdo_properties_branch_diff.get_items_in_path")
-    @patch("azdo_properties_branch_diff.get_file_content")
+    @patch("azdo_repo_properties_branch_diff.get_branch_diffs")
+    @patch("azdo_repo_properties_branch_diff.get_items_in_path")
+    @patch("azdo_repo_properties_branch_diff.get_file_content")
     def test_file_only_in_target_is_critical(
         self, mock_content, mock_items, mock_diffs
     ):
@@ -363,9 +363,9 @@ class TestAnalyzeComponent(unittest.TestCase):
         self.assertEqual(results[0].change_type, CHANGE_DELETE)
         self.assertEqual(results[0].severity, SEV_CRITICAL)
 
-    @patch("azdo_properties_branch_diff.get_branch_diffs")
-    @patch("azdo_properties_branch_diff.get_items_in_path")
-    @patch("azdo_properties_branch_diff.get_file_content")
+    @patch("azdo_repo_properties_branch_diff.get_branch_diffs")
+    @patch("azdo_repo_properties_branch_diff.get_items_in_path")
+    @patch("azdo_repo_properties_branch_diff.get_file_content")
     def test_only_comment_changes_is_low(
         self, mock_content, mock_items, mock_diffs
     ):

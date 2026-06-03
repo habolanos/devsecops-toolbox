@@ -58,7 +58,7 @@
     },
 
     "properties_branch_diff": {
-      "_info": "azdo_properties_branch_diff.py — Compara config de un componente entre dos ramas de un repo de propiedades.",
+      "_info": "azdo_repo_properties_branch_diff.py — Compara config de un componente entre dos ramas de un repositorio de propiedades.",
       "repo":           "<nombre-del-repo-de-properties>",
       "source_branch":  "develop",
       "target_branch":  "master",

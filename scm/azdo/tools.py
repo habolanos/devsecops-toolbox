@@ -266,8 +266,8 @@ TOOLS: Dict = {
     },
     "19": {
         "name":        "Properties Branch Diff",
-        "description": "Compara la configuración de un componente (carpeta) entre dos ramas de un repo de propiedades. Detecta diferencias que puedan impactar un despliegue productivo. Exit 0=OK / 1=HIGH / 2=CRITICAL.",
-        "path":        "azdo_properties_branch_diff.py",
+        "description": "Compara la configuración de un componente (carpeta) entre dos ramas de un repositorio de propiedades. Detecta diferencias de configuración que puedan impactar un despliegue productivo. Exit 0=OK / 1=HIGH / 2=CRITICAL.",
+        "path":        "azdo_repo_properties_branch_diff.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--component",
                         "--source", "--target", "--context", "--severity",
                         "--only-diff", "--no-content", "--output"],

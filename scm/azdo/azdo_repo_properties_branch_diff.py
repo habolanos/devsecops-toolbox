@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-azdo_properties_branch_diff.py
+azdo_repo_properties_branch_diff.py
 
 Compara la configuración de un componente (carpeta) entre dos ramas de un
 repositorio de propiedades en Azure DevOps.  Detecta diferencias que puedan
@@ -159,13 +159,13 @@ def get_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ejemplos:
-  python azdo_properties_branch_diff.py --pat TOKEN --repo retail-properties \\
+  python azdo_repo_properties_branch_diff.py --pat TOKEN --repo retail-properties \\
          --component ps-om-com-customerorder --source release/release-1.6.0 --target master
 
-  python azdo_properties_branch_diff.py --pat TOKEN --repo retail-properties \\
+  python azdo_repo_properties_branch_diff.py --pat TOKEN --repo retail-properties \\
          --component ps-om-com-customerorder --source develop --target master --output excel
 
-  python azdo_properties_branch_diff.py --pat TOKEN   # modo interactivo completo
+  python azdo_repo_properties_branch_diff.py --pat TOKEN   # modo interactivo completo
         """,
     )
     p.add_argument("--org",        "-g",  default=DEFAULT_ORG_URL,
@@ -771,7 +771,7 @@ def export_results(
     summary = {s: sum(1 for r in results if r.severity == s)
                for s in (SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_LOW, SEV_NONE)}
     metadata = {
-        "tool":          "azdo_properties_branch_diff",
+        "tool":          "azdo_repo_properties_branch_diff",
         "version":       __version__,
         "organization":  org,
         "project":       project,
