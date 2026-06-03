@@ -818,6 +818,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-06-03 | 1.6.2 | **Terminal Script 6**: `k8s-deploy-manifest-diff.sh` — Diff ejecutivo de manifiestos K8s entre deploy actual y revisión anterior. Analiza imagen, recursos, env vars, ConfigMaps, Secrets, probes, HPA, volumes y eventos. Clasificación CRITICAL/HIGH/MEDIUM/LOW con recomendaciones automáticas. `terminal/tools.py` v1.0.1. `terminal/README.md` creado. |
 | 2026-04-24 | 1.6.1 | **Global Output Directory**: `DEVSECOPS_OUTPUT_DIR` implementado en 45+ scripts de AZDO, GCP y AWS. Nuevo `scm/utils.py` con `get_output_dir()`. `main.py` inyecta `scm/` en `PYTHONPATH` para imports compartidos. Todos los reportes (.xlsx, .html, .csv, .json) respetan el directorio centralizado configurado en `config.json`. |
 | 2026-04-24 | 1.6.0 | **Migración Comercial → Toolbox**: 7 scripts migrados desde `Comercial/` al toolbox principal. GCP: GKE Node Monitor (#24), GKE Pod Monitor (#25). AZDO: CICD Inventory (#9), GKE Pipelines (#10), Pending Approvals (#11), Branches Created (#12), Hotfix Branches (#13). Todos parametrizables con `--org`, `--project`, `--pat`. |
 | 2026-04-08 | 1.5.2 | **Docker Container**: Dockerfile con Azure CLI, AWS CLI v2, Google Cloud SDK, kubectl, Helm, Terraform y herramientas netshoot (ping, dig, tcpdump, nmap, etc.). Entrypoint script con auto-configuración de credenciales. Healthcheck integrado. |

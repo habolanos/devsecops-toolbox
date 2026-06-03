@@ -53,7 +53,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -157,6 +157,13 @@ SCRIPTS = {
         "description": "Muestra eventos recientes relacionados con Deployments",
         "path": "deployments-recent-events.sh",
         "args": ["limit", "namespace"],
+        "status": "ready"
+    },
+    "6": {
+        "name": "K8s Deploy Manifest Diff",
+        "description": "[Informe Ejecutivo] Compara manifiestos del deploy actual vs revisi\u00f3n anterior: imagen, recursos, env vars, ConfigMaps, Secrets, probes, HPA, volumes. Clasifica riesgos (CRITICAL/HIGH/MEDIUM/LOW). Export --export. Exit 0/1/2.",
+        "path": "k8s-deploy-manifest-diff.sh",
+        "args": ["deployment", "namespace", "flags"],
         "status": "ready"
     },
     "Q": {
@@ -319,11 +326,36 @@ def run_script(script_key: str):
             limit = "15"
         cmd.append(limit)
     
-    if "namespace" in args:
+    if "namespace" in args and "deployment" not in args:
         ns = input(f"{Colors.BOLD}Namespace (vacío para todos): {Colors.ENDC}").strip()
         if ns:
             cmd.append(ns)
-    
+
+    if "deployment" in args:
+        deploy = input(f"{Colors.BOLD}Nombre del Deployment (ej: orders-service): {Colors.ENDC}").strip()
+        if not deploy:
+            print(f"{Colors.FAIL}Se requiere el nombre del Deployment.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        ns = input(f"{Colors.BOLD}Namespace (ej: prod): {Colors.ENDC}").strip()
+        if not ns:
+            print(f"{Colors.FAIL}Se requiere el namespace.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        cmd.append(deploy)
+        cmd.append(ns)
+
+    if "flags" in args:
+        exp = input(f"{Colors.BOLD}¿Exportar informe a outcome/? (s/n) [n]: {Colors.ENDC}").strip().lower()
+        if exp == "s":
+            cmd.append("--export")
+        full_env = input(f"{Colors.BOLD}¿Mostrar valores de env vars directas? (s/n) [n]: {Colors.ENDC}").strip().lower()
+        if full_env == "s":
+            cmd.append("--full-env")
+        no_ev = input(f"{Colors.BOLD}¿Omitir sección de eventos? (s/n) [n]: {Colors.ENDC}").strip().lower()
+        if no_ev == "s":
+            cmd.append("--no-events")
+
     print(f"\n{Colors.CYAN}Ejecutando: {' '.join(cmd)}{Colors.ENDC}\n")
     
     # Preparar variables de entorno con configuración
