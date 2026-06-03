@@ -14,11 +14,13 @@
 #   --export        Exporta el informe a outcome/k8s_diff_*.txt
 #   --full-env      Muestra valores de env vars directas (ocultos por default)
 #   --no-events     Omite la sección de eventos
+#   --no-commands   Desactiva la exportación de comandos de inspección (activo por defecto)
 #
 # Ejemplos:
 #   ./k8s-deploy-manifest-diff.sh orders-service prod
 #   ./k8s-deploy-manifest-diff.sh payments-api staging --export
 #   ./k8s-deploy-manifest-diff.sh gateway default --export --no-events
+#   ./k8s-deploy-manifest-diff.sh orders-service prod --no-commands
 #
 # Dependencias: kubectl, jq (apt-get install jq / brew install jq)
 # Agnostic: GKE, EKS, AKS, OpenShift, Minikube, cualquier clúster K8s
@@ -38,19 +40,22 @@ NAMESPACE="${2:-}"
 EXPORT_FLAG=false
 FULL_ENV=false
 NO_EVENTS=false
+SHOW_COMMANDS=true
 
 for arg in "${@:3}"; do
     case "$arg" in
-        --export)    EXPORT_FLAG=true ;;
-        --full-env)  FULL_ENV=true ;;
-        --no-events) NO_EVENTS=true ;;
+        --export)      EXPORT_FLAG=true ;;
+        --full-env)    FULL_ENV=true ;;
+        --no-events)   NO_EVENTS=true ;;
+        --no-commands) SHOW_COMMANDS=false ;;
     esac
 done
 
 usage() {
     echo ""
-    echo "Uso: $0 <deployment> <namespace> [--export] [--full-env] [--no-events]"
+    echo "Uso: $0 <deployment> <namespace> [--export] [--full-env] [--no-events] [--no-commands]"
     echo "Ej.: $0 orders-service prod --export"
+    echo "     $0 orders-service prod --no-commands"
     echo ""
     exit 1
 }
@@ -81,8 +86,10 @@ fi
 # ─── Work dir (temp files evitan problemas de subshell con arrays) ───────────
 WORK_DIR=$(mktemp -d)
 RISK_FILE="$WORK_DIR/risks.txt"
-touch "$RISK_FILE"
+CMDS_TEMP="$WORK_DIR/cmds.txt"
+touch "$RISK_FILE" "$CMDS_TEMP"
 trap 'rm -rf "$WORK_DIR"' EXIT
+TS_RUN=$(TZ="$TZ_ZONE" date '+%Y%m%d_%H%M%S')
 
 # ─── Output helper ────────────────────────────────────────────────────────────
 out() {
@@ -96,6 +103,34 @@ out() {
 add_risk() { echo "${1}|${2}" >> "$RISK_FILE"; }
 
 count_risk() { grep -c "^${1}|" "$RISK_FILE" 2>/dev/null || true; }
+
+# ─── Commands export helpers ──────────────────────────────────────────────────
+add_cmd() {
+    $SHOW_COMMANDS || return 0
+    printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$CMDS_TEMP"
+}
+
+write_commands_json() {
+    local json_file="$1"
+    mkdir -p "$(dirname "$json_file")"
+    {
+        printf '{\n'
+        printf '  "meta": {\n'
+        printf '    "deployment": "%s",\n'       "$DEPLOY_NAME"
+        printf '    "namespace": "%s",\n'        "$NAMESPACE"
+        printf '    "revision_current": "%s",\n' "$CURR_REV"
+        printf '    "revision_previous": "%s",\n' "$PREV_REV"
+        printf '    "selector": "%s",\n'         "$DEPLOY_SELECTOR"
+        printf '    "timestamp": "%s",\n'        "$TIMESTAMP"
+        printf '    "generated_by": "k8s-deploy-manifest-diff.sh v1.1",\n'
+        printf '    "purpose": "Comandos de inspeccion para equipo con acceso a PRD"\n'
+        printf '  },\n'
+        printf '  "commands": '
+        jq -Rn '[inputs | split("\t") | {"section": .[0], "description": .[1], "command": .[2]}]' \
+            < "$CMDS_TEMP"
+        printf '\n}'
+    } > "$json_file"
+}
 
 risk_badge() {
     case "$1" in
@@ -214,6 +249,11 @@ fi
 out "  ${WHITE}Estrategia :${NC} ${STRATEGY}  (maxSurge: ${MAX_SURGE} | maxUnavailable: ${MAX_UNAVAIL})"
 [[ "$UNAVAILABLE" -gt 0 ]] && { out "  ${YELLOW}⚠️  ${UNAVAILABLE} réplica(s) no disponible(s)${NC}"; add_risk "HIGH" "${UNAVAILABLE} réplica(s) no disponibles post-deploy"; }
 
+add_cmd "Rollout" "Estado del rollout" "kubectl rollout status deployment/${DEPLOY_NAME} -n ${NAMESPACE}"
+add_cmd "Rollout" "Historial de revisiones" "kubectl rollout history deployment/${DEPLOY_NAME} -n ${NAMESPACE}"
+add_cmd "Rollout" "Descriptor completo" "kubectl describe deployment ${DEPLOY_NAME} -n ${NAMESPACE}"
+add_cmd "Rollout" "YAML del deployment" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o yaml"
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # [2] DIFF DE IMAGEN
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -250,6 +290,9 @@ while IFS='|' read -r cname cimage; do
 done < "$WORK_DIR/curr_images.txt"
 
 $IMAGE_CHANGED || out "  ${GREEN}✅ Sin cambios en imágenes${NC}"
+
+add_cmd "Imagen" "Pods activos con imagen" "kubectl get pods -n ${NAMESPACE} -l ${DEPLOY_SELECTOR} -o wide"
+add_cmd "Imagen" "Imagen actual por contenedor" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[*].image}'"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # [3] DIFF DE RECURSOS (CPU / Memory)
@@ -294,6 +337,9 @@ else
         fi
     done < "$WORK_DIR/curr_res.txt"
 fi
+
+add_cmd "Recursos" "Uso de CPU/Memoria en tiempo real" "kubectl top pods -n ${NAMESPACE} -l ${DEPLOY_SELECTOR}"
+add_cmd "Recursos" "Limits y requests configurados" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[*].resources}' | jq ."
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # [4] DIFF DE ENV VARS Y REFERENCIAS (ConfigMap / Secret)
@@ -383,6 +429,9 @@ else
     done < "$WORK_DIR/refs_removed.txt"
 fi
 
+add_cmd "EnvVars" "Variables de entorno del pod template" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[*].env}' | jq ."
+add_cmd "EnvVars" "Variables desde pod en ejecucion" "kubectl exec -n ${NAMESPACE} deployment/${DEPLOY_NAME} -- env | sort"
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # [5] CONFIGMAPS REFERENCIADOS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -424,6 +473,7 @@ done < "$WORK_DIR/cms_removed.txt"
         CM_COUNT=$(echo "$CM_DATA" | jq '.data | length // 0' 2>/dev/null || echo 0)
         out "     ${DIM}${CM_COUNT} key(s): ${CM_KEYS}${NC}"
         out "     ${DIM}⚠  Diff de valores históricos requiere GitOps/Flux — mostrando estado actual${NC}"
+        add_cmd "ConfigMap" "Contenido de ConfigMap: ${cm}" "kubectl get configmap ${cm} -n ${NAMESPACE} -o yaml"
     else
         out "     ${RED_BOLD}❌ NO ENCONTRADO en el cluster${NC}"
         add_risk "CRITICAL" "ConfigMap '${cm}' referenciado no existe en cluster"
@@ -476,6 +526,7 @@ done < "$WORK_DIR/secs_removed.txt"
             -o json 2>/dev/null | jq '.data | length // 0' 2>/dev/null || echo 0)
         out "     ${DIM}${SEC_COUNT} key(s): ${SEC_KEYS}${NC}"
         out "     ${DIM}(Valores no mostrados por seguridad)${NC}"
+        add_cmd "Secret" "Keys del Secret (sin valores): ${sec}" "kubectl get secret ${sec} -n ${NAMESPACE} -o json | jq '.data | keys'"
     else
         out "     ${RED_BOLD}❌ NO ENCONTRADO en el cluster${NC}"
         add_risk "CRITICAL" "Secret '${sec}' referenciado no existe en cluster"
@@ -551,6 +602,9 @@ else
     done < "$WORK_DIR/curr_probes.txt"
 fi
 
+add_cmd "Probes" "Liveness probe configurada" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[*].livenessProbe}' | jq ."
+add_cmd "Probes" "Readiness probe configurada" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[*].readinessProbe}' | jq ."
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # [8] HPA / VOLUMES / SERVICEACCOUNT
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -571,9 +625,13 @@ if kubectl get hpa "$DEPLOY_NAME" -n "$NAMESPACE" &>/dev/null; then
         out "  $(risk_badge HIGH) spec.replicas (${DESIRED}) > HPA maxReplicas (${HPA_MAX})"
         add_risk "HIGH" "spec.replicas > HPA maxReplicas — HPA reescalará a la baja"
     fi
+    add_cmd "HPA" "Estado y métricas del HPA" "kubectl get hpa ${DEPLOY_NAME} -n ${NAMESPACE} -o yaml"
 else
     out "  ${DIM}Sin HPA configurado${NC}"
 fi
+
+add_cmd "HPA" "Volumes declarados en el deployment" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.volumes}' | jq ."
+add_cmd "HPA" "ServiceAccount del deployment" "kubectl get deployment ${DEPLOY_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.serviceAccountName}'"
 
 divider
 
@@ -633,6 +691,12 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 # [9] EVENTOS RECIENTES
 # ═══════════════════════════════════════════════════════════════════════════════
+add_cmd "Eventos" "Eventos recientes del deployment" "kubectl get events -n ${NAMESPACE} --field-selector involvedObject.name=${DEPLOY_NAME} --sort-by=.metadata.creationTimestamp"
+add_cmd "Eventos" "Logs recientes de todos los pods" "kubectl logs -n ${NAMESPACE} -l ${DEPLOY_SELECTOR} --tail=50 --prefix=true"
+add_cmd "Rollback" "Revertir a revision anterior" "kubectl rollout undo deployment/${DEPLOY_NAME} -n ${NAMESPACE}"
+add_cmd "Rollback" "Revertir a revision especifica" "kubectl rollout undo deployment/${DEPLOY_NAME} -n ${NAMESPACE} --to-revision=${PREV_REV}"
+add_cmd "Rollback" "Verificar estado post-rollback" "kubectl rollout status deployment/${DEPLOY_NAME} -n ${NAMESPACE} --timeout=5m"
+
 if ! $NO_EVENTS; then
     section 9 $TOTAL_SECTIONS "EVENTOS RECIENTES DEL DEPLOYMENT Y PODS"
 
@@ -729,9 +793,38 @@ out "  ${DIM}  • Consultar: kubectl rollout history deploy/${DEPLOY_NAME} -n $
 out "  ${DIM}  • Rollback:  kubectl rollout undo deploy/${DEPLOY_NAME} -n ${NAMESPACE}${NC}"
 
 out ""
-out "${DIM}  K8s Deploy Manifest Diff v1.0 | devsecops-toolbox | ${TIMESTAMP}${NC}"
+out "${DIM}  K8s Deploy Manifest Diff v1.1 | devsecops-toolbox | ${TIMESTAMP}${NC}"
 [[ -n "$EXPORT_FILE" ]] && out "${GREEN}  📁 Informe exportado: ${EXPORT_FILE}${NC}"
 out ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMANDOS DE INSPECCIÓN PARA PRD
+# ═══════════════════════════════════════════════════════════════════════════════
+if $SHOW_COMMANDS && [[ -s "$CMDS_TEMP" ]]; then
+    out ""
+    out "${WHITE}╔═════════════════════════════════════════════════════════════════╗${NC}"
+    out "${WHITE}║   📋 COMANDOS DE INSPECCIÓN PARA PRD                          ║${NC}"
+    out "${WHITE}╚═════════════════════════════════════════════════════════════════╝${NC}"
+    out "  ${DIM}Comparte estos comandos con el equipo que tiene acceso a PRD.${NC}"
+    out "  ${DIM}Deployment: ${DEPLOY_NAME} | Namespace: ${NAMESPACE} | Rev: #${CURR_REV}${NC}"
+    out ""
+    PREV_SECTION=""
+    while IFS=$'\t' read -r _sec _desc _cmd; do
+        [[ -z "$_sec" ]] && continue
+        if [[ "$_sec" != "$PREV_SECTION" ]]; then
+            [[ -n "$PREV_SECTION" ]] && out ""
+            out "  ${WHITE}── ${_sec} ──${NC}"
+            PREV_SECTION="$_sec"
+        fi
+        out "  ${DIM}  ${_desc}${NC}"
+        out "  ${CYAN}  \$ ${_cmd}${NC}"
+    done < "$CMDS_TEMP"
+    out ""
+    mkdir -p outcome
+    CMDS_JSON_FILE="outcome/k8s_commands_${DEPLOY_NAME}_${NAMESPACE}_${TS_RUN}.json"
+    write_commands_json "$CMDS_JSON_FILE"
+    out "  ${GREEN}📄 Comandos exportados: ${CMDS_JSON_FILE}${NC}"
+fi
 
 # ─── Exit code ────────────────────────────────────────────────────────────────
 case "$MAX_RISK" in

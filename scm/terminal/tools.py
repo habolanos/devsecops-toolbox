@@ -53,7 +53,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -355,6 +355,9 @@ def run_script(script_key: str):
         no_ev = input(f"{Colors.BOLD}¿Omitir sección de eventos? (s/n) [n]: {Colors.ENDC}").strip().lower()
         if no_ev == "s":
             cmd.append("--no-events")
+        no_cmds = input(f"{Colors.BOLD}¿Desactivar exportación de comandos PRD? (s/n) [n]: {Colors.ENDC}").strip().lower()
+        if no_cmds == "s":
+            cmd.append("--no-commands")
 
     print(f"\n{Colors.CYAN}Ejecutando: {' '.join(cmd)}{Colors.ENDC}\n")
     

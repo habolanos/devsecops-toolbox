@@ -75,23 +75,37 @@ de riesgos con clasificación automática de severidad.
 | 🟡 **MEDIUM** | Env var agregada, ConfigMap nuevo, volume mount agregado, recursos ajustados, 1-3 Warning events |
 | 🔵 **LOW** | Cambios menores de configuración |
 
+#### Opciones disponibles
+
+| Flag | Default | Descripción |
+|------|---------|-------------|
+| `--export` | off | Exporta el informe de análisis a `outcome/k8s_diff_*.txt` |
+| `--full-env` | off | Muestra valores literales de env vars directas |
+| `--no-events` | off | Omite la sección de eventos (más rápido) |
+| `--no-commands` | **on** | Desactiva la exportación de comandos de inspección PRD |
+
+> `--no-commands` es el único flag activo por defecto. Los comandos se generan y exportan siempre a menos que se indique este flag.
+
 #### Uso
 
 ```bash
-# Análisis básico
-./k8s-deploy-manifest-diff.sh <deployment> <namespace>
+# Análisis básico (incluye sección de comandos PRD por defecto)
+./k8s-deploy-manifest-diff.sh orders-service prod
 
-# Con exportación a outcome/
+# Con exportación completa (informe .txt + comandos .json)
 ./k8s-deploy-manifest-diff.sh orders-service prod --export
 
-# Mostrando valores de env vars directas (ocultos por defecto)
+# Solo informe de riesgos, sin comandos
+./k8s-deploy-manifest-diff.sh orders-service prod --no-commands
+
+# Mostrando valores de env vars directas
 ./k8s-deploy-manifest-diff.sh payments-api staging --full-env
 
-# Omitir sección de eventos (más rápido)
-./k8s-deploy-manifest-diff.sh gateway default --no-events
+# Máxima velocidad (sin eventos, sin comandos)
+./k8s-deploy-manifest-diff.sh gateway default --no-events --no-commands
 
-# Combinar opciones
-./k8s-deploy-manifest-diff.sh my-svc prod --export --no-events
+# Combinación completa
+./k8s-deploy-manifest-diff.sh my-svc prod --export --full-env
 ```
 
 #### Exit codes (útiles como quality gate en CI/CD)
@@ -101,6 +115,34 @@ de riesgos con clasificación automática de severidad.
 1 → Riesgo MEDIUM o HIGH detectado
 2 → Riesgo CRITICAL detectado
 ```
+
+#### Salida de comandos de inspección (activo por defecto)
+
+Al final del informe se muestra un bloque agrupado por sección con comandos
+listos para copiar y ejecutar en PRD:
+
+```
+╔═════════════════════════════════════════════════════════════════╗
+║   📋 COMANDOS DE INSPECCIÓN PARA PRD                          ║
+╚═════════════════════════════════════════════════════════════════╝
+  Deployment: orders-service | Namespace: prod | Rev: #8
+
+  ── Rollout ──
+    Estado del rollout
+  $ kubectl rollout status deployment/orders-service -n prod
+    Historial de revisiones
+  $ kubectl rollout history deployment/orders-service -n prod
+  ...
+  ── Rollback ──
+    Revertir a revision anterior
+  $ kubectl rollout undo deployment/orders-service -n prod
+  ...
+
+  📄 Comandos exportados: outcome/k8s_commands_orders-service_prod_20260603_160000.json
+```
+
+El JSON exportado a `outcome/` incluye metadatos (deployment, namespace, revisiones,
+timestamp) y el array `commands[]` con `section`, `description` y `command` por entrada.
 
 #### Cómo obtiene la versión anterior
 
@@ -145,5 +187,6 @@ Verifica conectividad a instancias PostgreSQL.
 
 | Fecha | Versión | Cambio | Archivos |
 |-------|---------|--------|---------|
+| 2026-06-03 | 1.0.2 | **Script 6 v1.1: `--no-commands` desactivable** — Flag `--no-commands` añadido (activo por defecto). Exporta comandos de inspección para equipo PRD al final de cada ejecución: bloque por sección (Rollout/Imagen/Recursos/EnvVars/ConfigMap/Secret/Probes/HPA/Eventos/Rollback) + JSON `outcome/k8s_commands_*.json` con metadatos. `tools.py` v1.0.2 incluye prompt `--no-commands`. | `k8s-deploy-manifest-diff.sh` v1.1, `tools.py`, `README.md` |
 | 2026-06-03 | 1.0.1 | **Script 6: `k8s-deploy-manifest-diff.sh`** — Diff ejecutivo de manifiestos K8s: imagen, recursos, env vars, ConfigMaps, Secrets, probes, HPA, volumes, ServiceAccount, eventos. Clasificación de riesgo en 4 niveles (24+ reglas). Score de impacto. Recomendaciones automáticas. Export `--export`. Flags `--full-env`, `--no-events`. Exit 0/1/2. `tools.py` v1.0.1 con handlers para deployment/namespace/flags | `k8s-deploy-manifest-diff.sh` (nuevo), `tools.py`, `README.md` |
 | 2026-06-01 | 1.0.0 | Scripts iniciales: Certificate TLS, DB Checker, Deployments Last News/Update/Events | `check-certificate-report.sh`, `db-connections-checker.sh`, `deployments-*.sh`, `tools.py` |
