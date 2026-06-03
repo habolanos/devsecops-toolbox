@@ -66,7 +66,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -132,7 +132,7 @@ PLATFORMS = {
         "emoji": "🐧",
         "color": "gray",
         "path": "terminal/tools.py",
-        "description": "Scripts shell agnósticos: certificados TLS, DB connections, K8s deployments (5 herramientas)",
+        "description": "Scripts shell agnósticos: TLS, DB, K8s deployments, manifest diff (6 herramientas)",
         "status": "ready"
     },
     "Q": {
