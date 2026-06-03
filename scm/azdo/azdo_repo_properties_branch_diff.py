@@ -904,6 +904,9 @@ def prompt_select_repo(repos: List[Dict], console: Optional[Any]) -> Optional[Di
     if choice.isdigit():
         idx = int(choice) - 1
         return repos[idx] if 0 <= idx < len(repos) else None
+    exact = [r for r in repos if choice.lower() == r["name"].lower()]
+    if exact:
+        return exact[0]
     hits = [r for r in repos if choice.lower() in r["name"].lower()]
     if len(hits) == 1:
         return hits[0]
@@ -986,12 +989,16 @@ def main() -> int:
         return 1
 
     if args.repo:
-        hits = [r for r in repos if args.repo.lower() in r["name"].lower()]
-        if not hits:
-            msg = f"❌ No se encontró repositorio con '{args.repo}'."
-            (console.print(f"[red]{msg}[/]") if RICH_AVAILABLE and console else print(msg))
-            return 1
-        selected_repo = hits[0] if len(hits) == 1 else prompt_select_repo(hits, console)
+        exact = [r for r in repos if args.repo.lower() == r["name"].lower()]
+        if exact:
+            selected_repo = exact[0]
+        else:
+            hits = [r for r in repos if args.repo.lower() in r["name"].lower()]
+            if not hits:
+                msg = f"❌ No se encontró repositorio con '{args.repo}'."
+                (console.print(f"[red]{msg}[/]") if RICH_AVAILABLE and console else print(msg))
+                return 1
+            selected_repo = hits[0] if len(hits) == 1 else prompt_select_repo(hits, console)
     else:
         selected_repo = prompt_select_repo(repos, console)
 

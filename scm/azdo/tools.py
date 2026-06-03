@@ -82,7 +82,7 @@ TOOL_GROUPS = {
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
     "inventory":  {"name": "Inventario",         "emoji": "📋", "color": "bright_white"},
     "health":     {"name": "Health Score",       "emoji": "📊", "color": "bright_cyan"},
-    "quality":    {"name": "Calidad Deploy",     "emoji": "🎯", "color": "orange"},
+    "quality":    {"name": "Calidad Deploy",     "emoji": "🎯", "color": "green"},
     "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
 
