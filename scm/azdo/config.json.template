@@ -55,6 +55,15 @@
       "_info": "azdo_pipeline_drift.py — Drift entre pipeline actual y snapshot del último release (stages/vars/approvals/tasks).",
       "min_severity": null,
       "sort":         "severity"
+    },
+
+    "properties_branch_diff": {
+      "_info": "azdo_properties_branch_diff.py — Compara config de un componente entre dos ramas de un repo de propiedades.",
+      "repo":           "<nombre-del-repo-de-properties>",
+      "source_branch":  "develop",
+      "target_branch":  "master",
+      "context_lines":  3,
+      "output_format":  "excel"
     }
   }
 }

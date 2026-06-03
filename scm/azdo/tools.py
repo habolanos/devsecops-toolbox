@@ -40,7 +40,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__     = "1.3.0"
+__version__     = "1.3.1"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -81,10 +81,11 @@ TOOL_GROUPS = {
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
     "inventory":  {"name": "Inventario",         "emoji": "📋", "color": "bright_white"},
     "health":     {"name": "Health Score",       "emoji": "📊", "color": "bright_cyan"},
+    "quality":    {"name": "Calidad Despliegue",  "emoji": "🎯", "color": "green"},
     "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
 
-GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "inventory", "health", "system"]
+GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "inventory", "health", "quality", "system"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HERRAMIENTAS DISPONIBLES
@@ -261,6 +262,16 @@ TOOLS: Dict = {
         "path":        "cicd_pipeline_status.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--inactive-days", "--type", "--only-deprecated", "--output", "--force-refresh"],
         "group":       "health",
+        "status":      "ready",
+    },
+    "19": {
+        "name":        "Properties Branch Diff",
+        "description": "Compara la configuración de un componente (carpeta) entre dos ramas de un repo de propiedades. Detecta diferencias que puedan impactar un despliegue productivo. Exit 0=OK / 1=HIGH / 2=CRITICAL.",
+        "path":        "azdo_properties_branch_diff.py",
+        "args":        ["--pat", "--org", "--project", "--repo", "--component",
+                        "--source", "--target", "--context", "--severity",
+                        "--only-diff", "--no-content", "--output"],
+        "group":       "quality",
         "status":      "ready",
     },
     "A": {
@@ -796,6 +807,45 @@ def run_tool(tool_key: str):
         val = input().strip().lower()
         if val == "s":
             extra.append("--use-cache-only")
+
+    if "--source" in tool_args:
+        val = prompt("Rama ORIGEN (la que se desplegará, ej: release/release-1.6.0)", default="develop")
+        if val:
+            extra += ["--source", val]
+
+    if "--target" in tool_args:
+        val = prompt("Rama DESTINO (entorno receptor, ej: master)", default="master")
+        if val:
+            extra += ["--target", val]
+
+    if "--component" in tool_args:
+        val = prompt("Componente / carpeta dentro del repo (vacío = prompt interactivo en el script)", default="")
+        if val:
+            extra += ["--component", val]
+
+    if "--context" in tool_args:
+        print(f"{Colors.BOLD}Líneas de contexto en el diff [3]:{Colors.ENDC} ", end="")
+        val = input().strip()
+        if val and val.isdigit():
+            extra += ["--context", val]
+
+    if "--severity" in tool_args and "--source" in tool_args:  # solo para tool 19
+        print(f"{Colors.BOLD}Filtrar severidad mínima (CRITICAL/HIGH/MEDIUM/LOW/NONE, vacío=todos):{Colors.ENDC} ", end="")
+        val = input().strip().upper()
+        if val in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"):
+            extra += ["--severity", val]
+
+    if "--only-diff" in tool_args:
+        print(f"{Colors.BOLD}¿Mostrar solo archivos con diferencias? (s/n) [s]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val != "n":
+            extra.append("--only-diff")
+
+    if "--no-content" in tool_args:
+        print(f"{Colors.BOLD}¿Omitir detalle de diff de contenido? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--no-content")
 
     cmd = [venv_python, str(script_path)] + extra
 
