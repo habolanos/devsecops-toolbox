@@ -755,8 +755,9 @@ def _print_side_by_side(
     target_branch: str,
     console: Any,
 ):
-    """Muestra diff lado-a-lado en una tabla Rich de dos columnas."""
-    rows = build_side_by_side_rows(r.target_content or "", r.source_content or "")
+    """Muestra diff lado-a-lado: origen izquierda, destino derecha, con nros de línea."""
+    # Izquierda = source/origen | Derecha = target/destino
+    rows = build_side_by_side_rows(r.source_content or "", r.target_content or "")
 
     changed = {i for i, (tag, _, _) in enumerate(rows) if tag != "equal"}
     visible: set = set()
@@ -765,6 +766,18 @@ def _print_side_by_side(
             idx = ci + off
             if 0 <= idx < len(rows):
                 visible.add(idx)
+
+    # Pre-calcular números de línea independientes por cada lado
+    line_nums: List[Tuple[str, str]] = []
+    ln_src, ln_tgt = 0, 0
+    for tag, _, _ in rows:
+        if tag in ("equal", "delete", "replace"):
+            ln_src += 1
+        if tag in ("equal", "insert", "replace"):
+            ln_tgt += 1
+        l_num = str(ln_src) if tag in ("equal", "delete", "replace") else ""
+        r_num = str(ln_tgt) if tag in ("equal", "insert", "replace") else ""
+        line_nums.append((l_num, r_num))
 
     t = Table(
         show_header=True,
@@ -775,23 +788,26 @@ def _print_side_by_side(
         show_lines=True,
         padding=(0, 1),
     )
-    t.add_column(f"◀  {target_branch}  (actual)",    ratio=1, no_wrap=False, overflow="fold")
-    t.add_column(f"▶  {source_branch}  (entrante)", ratio=1, no_wrap=False, overflow="fold")
+    t.add_column("#",  justify="right", width=4,  no_wrap=True,  style="dim")
+    t.add_column(f"◀  {source_branch}  (origen)",  ratio=1, no_wrap=False, overflow="fold")
+    t.add_column("#",  justify="right", width=4,  no_wrap=True,  style="dim")
+    t.add_column(f"▶  {target_branch}  (destino)", ratio=1, no_wrap=False, overflow="fold")
 
     prev = -1
     for i, (tag, left, right) in enumerate(rows):
         if i not in visible:
             continue
         if prev >= 0 and i > prev + 1:
-            t.add_row("[dim]  ···[/]", "[dim]  ···[/]")
+            t.add_row("[dim]···[/]", "[dim]  ···[/]", "[dim]···[/]", "[dim]  ···[/]")
+        l_num, r_num = line_nums[i]
         if tag == "equal":
-            t.add_row(f"[dim]{left}[/]", f"[dim]{right}[/]")
+            t.add_row(l_num, f"[dim]{left}[/]",            r_num, f"[dim]{right}[/]")
         elif tag == "delete":
-            t.add_row(f"[bold red]- {left}[/]", "")
+            t.add_row(l_num, f"[bold red]- {left}[/]",     "",    "")
         elif tag == "insert":
-            t.add_row("", f"[bold green]+ {right}[/]")
+            t.add_row("",    "",                            r_num, f"[bold green]+ {right}[/]")
         else:
-            t.add_row(f"[red]~ {left}[/]", f"[green]~ {right}[/]")
+            t.add_row(l_num, f"[red]~ {left}[/]",          r_num, f"[green]~ {right}[/]")
         prev = i
 
     console.print(Panel(t, title=title, border_style=border, expand=True))
