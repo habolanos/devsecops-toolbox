@@ -785,7 +785,7 @@ def _print_side_by_side(
         box=box.SIMPLE_HEAD,
         border_style=border,
         expand=True,
-        show_lines=True,
+        show_lines=False,
         padding=(0, 1),
     )
     t.add_column("#",  justify="right", width=4,  no_wrap=True,  style="dim")
