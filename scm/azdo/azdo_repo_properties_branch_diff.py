@@ -365,6 +365,42 @@ def build_unified_diff(
     return diff, added, removed
 
 
+def build_side_by_side_rows(
+    old_content: str, new_content: str
+) -> List[Tuple[str, str, str]]:
+    """
+    Alinea las líneas de ambas versiones con SequenceMatcher.
+    Retorna lista de (tag, left_line, right_line):
+      'equal'   → misma línea en ambas ramas
+      'delete'  → solo en target/old (izquierda)
+      'insert'  → solo en source/new (derecha)
+      'replace' → línea modificada (izquierda=old, derecha=new)
+    """
+    old_lines = (old_content or "").splitlines()
+    new_lines = (new_content or "").splitlines()
+    matcher   = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
+    rows: List[Tuple[str, str, str]] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for ol, nl in zip(old_lines[i1:i2], new_lines[j1:j2]):
+                rows.append(("equal", ol, nl))
+        elif tag == "replace":
+            old_chunk = old_lines[i1:i2]
+            new_chunk = new_lines[j1:j2]
+            n = max(len(old_chunk), len(new_chunk))
+            for k in range(n):
+                ol = old_chunk[k] if k < len(old_chunk) else ""
+                nl = new_chunk[k] if k < len(new_chunk) else ""
+                rows.append(("replace", ol, nl))
+        elif tag == "delete":
+            for ol in old_lines[i1:i2]:
+                rows.append(("delete", ol, ""))
+        elif tag == "insert":
+            for nl in new_lines[j1:j2]:
+                rows.append(("insert", "", nl))
+    return rows
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATA MODEL
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -697,8 +733,62 @@ def print_summary_table(
     )
 
 
-def print_file_diffs(results: List[FileDiff], console: Any):
-    """Muestra el diff unificado de cada archivo con diferencias."""
+def _print_side_by_side(
+    r: FileDiff,
+    context: int,
+    border: str,
+    title: str,
+    source_branch: str,
+    target_branch: str,
+    console: Any,
+):
+    """Muestra diff lado-a-lado en una tabla Rich de dos columnas."""
+    rows = build_side_by_side_rows(r.target_content or "", r.source_content or "")
+
+    changed = {i for i, (tag, _, _) in enumerate(rows) if tag != "equal"}
+    visible: set = set()
+    for ci in changed:
+        for off in range(-context, context + 1):
+            idx = ci + off
+            if 0 <= idx < len(rows):
+                visible.add(idx)
+
+    t = Table(
+        show_header=True,
+        header_style="bold white",
+        box=box.SIMPLE_HEAD,
+        border_style=border,
+        expand=True,
+        show_lines=True,
+        padding=(0, 1),
+    )
+    t.add_column(f"◀  {target_branch}  (actual)",    ratio=1, no_wrap=False, overflow="fold")
+    t.add_column(f"▶  {source_branch}  (entrante)", ratio=1, no_wrap=False, overflow="fold")
+
+    prev = -1
+    for i, (tag, left, right) in enumerate(rows):
+        if i not in visible:
+            continue
+        if prev >= 0 and i > prev + 1:
+            t.add_row("[dim]  ···[/]", "[dim]  ···[/]")
+        if tag == "equal":
+            t.add_row(f"[dim]{left}[/]", f"[dim]{right}[/]")
+        elif tag == "delete":
+            t.add_row(f"[bold red]- {left}[/]", "")
+        elif tag == "insert":
+            t.add_row("", f"[bold green]+ {right}[/]")
+        else:
+            t.add_row(f"[red]~ {left}[/]", f"[green]~ {right}[/]")
+        prev = i
+
+    console.print(Panel(t, title=title, border_style=border, expand=True))
+
+
+def print_file_diffs(results: List[FileDiff], console: Any,
+                    context: int = 3,
+                    source_branch: str = "source",
+                    target_branch: str = "target"):
+    """Muestra diff lado-a-lado (o contenido completo) por cada archivo con diferencias."""
     diff_files = [r for r in results if r.change_type != CHANGE_NONE and
                   (r.diff_lines or r.source_content or r.target_content)]
     if not diff_files:
@@ -708,7 +798,7 @@ def print_file_diffs(results: List[FileDiff], console: Any):
     console.print("[bold cyan]══════════════════════ DETALLE POR ARCHIVO ══════════════════════[/]")
 
     for r in diff_files:
-        sev_color  = SEV_COLOR.get(r.severity, "white")
+        sev_color       = SEV_COLOR.get(r.severity, "white")
         ch_style, ch_label = CHANGE_LABEL.get(r.change_type, ("dim", r.change_type))
         title = (
             f"{SEV_EMOJI.get(r.severity, '')} "
@@ -718,12 +808,7 @@ def print_file_diffs(results: List[FileDiff], console: Any):
         )
         border = SEV_BORDER.get(r.severity, "dim")
 
-        if r.diff_lines:
-            diff_text = "\n".join(r.diff_lines)
-            syntax    = Syntax(diff_text, "diff", theme="ansi_dark",
-                               line_numbers=False, word_wrap=True)
-            console.print(Panel(syntax, title=title, border_style=border, expand=False))
-        elif r.change_type == CHANGE_ADD and r.source_content:
+        if r.change_type == CHANGE_ADD and r.source_content:
             syntax = Syntax(r.source_content, "yaml", theme="ansi_dark",
                             line_numbers=True, word_wrap=True)
             console.print(Panel(syntax,
@@ -735,6 +820,13 @@ def print_file_diffs(results: List[FileDiff], console: Any):
             console.print(Panel(syntax,
                                 title=f"[red]🗑  ARCHIVO ELIMINADO[/]  {r.path}",
                                 border_style="red", expand=False))
+        elif r.source_content is not None or r.target_content is not None:
+            _print_side_by_side(r, context, border, title, source_branch, target_branch, console)
+        elif r.diff_lines:
+            diff_text = "\n".join(r.diff_lines)
+            syntax    = Syntax(diff_text, "diff", theme="ansi_dark",
+                               line_numbers=False, word_wrap=True)
+            console.print(Panel(syntax, title=title, border_style=border, expand=False))
         console.print()
 
 
@@ -1109,7 +1201,7 @@ def main() -> int:
     if RICH_AVAILABLE and console:
         print_summary_table(results, source_branch, target_branch, component, console)
         if not args.no_content:
-            print_file_diffs(results, console)
+            print_file_diffs(results, console, args.context, source_branch, target_branch)
     else:
         print_plain(results, source_branch, target_branch, component)
 
