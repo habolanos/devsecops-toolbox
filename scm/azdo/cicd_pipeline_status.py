@@ -263,6 +263,14 @@ def parse_date(value: str) -> Optional[datetime]:
     return None
 
 
+def _safe_tz(name: str):
+    """Devuelve ZoneInfo(name) o timezone.utc si tzdata no está disponible."""
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return timezone.utc
+
+
 def days_since(dt: Optional[datetime]) -> Optional[int]:
     if dt is None:
         return None
@@ -895,7 +903,7 @@ def export_results(rows: List[Dict], output_format: str, tz_name: str) -> Option
         payload  = {
             "metadata": {
                 "tool": "cicd_pipeline_status", "version": __version__,
-                "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
+                "generated_at": datetime.now(_safe_tz(tz_name)).isoformat(),
             },
             "summary": {
                 "total": len(rows),
@@ -952,7 +960,7 @@ def main():
     except Exception:
         tz_name = DEFAULT_TIMEZONE
 
-    revision_time = datetime.now(ZoneInfo(tz_name)).strftime(f"%Y-%m-%d %H:%M:%S ({tz_name})")
+    revision_time = datetime.now(_safe_tz(tz_name)).strftime(f"%Y-%m-%d %H:%M:%S ({tz_name})")
 
     # ── Cache check ──────────────────────────────────────────────────────────
     cache_used = False
