@@ -188,15 +188,15 @@ class TestFmtDate:
 
     @pytest.mark.unit
     def test_empty_returns_dash(self):
-        assert fmt_date("", "America/Mazatlan") == "—"
+        assert fmt_date("", "UTC") == "—"
 
     @pytest.mark.unit
     def test_none_returns_dash(self):
-        assert fmt_date(None, "America/Mazatlan") == "—"
+        assert fmt_date(None, "UTC") == "—"
 
     @pytest.mark.unit
     def test_valid_date_returns_formatted(self):
-        result = fmt_date("2024-05-01T10:30:00Z", "America/Mazatlan")
+        result = fmt_date("2024-05-01T10:30:00Z", "UTC")
         assert result != "—"
         assert "2024" in result
 
@@ -231,7 +231,7 @@ class TestBuildCIRow:
     def test_enabled_pipeline_fields(self):
         """Pipeline enabled con ejecución reciente."""
         defn = self._make_defn(queue_status="enabled")
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         assert row["tipo"] == "CI"
         assert row["nombre"] == "pipeline-test"
         assert row["queue_status"] == "enabled"
@@ -241,7 +241,7 @@ class TestBuildCIRow:
     def test_disabled_pipeline_is_deprecated(self):
         """Pipeline disabled siempre es deprecado."""
         defn = self._make_defn(queue_status="disabled")
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         assert row["deprecado"] == DEPRECADO_SI
         assert "Deshabilitado" in row["estado"]
 
@@ -249,7 +249,7 @@ class TestBuildCIRow:
     def test_paused_pipeline_estado(self):
         """Pipeline pausado muestra estado correcto."""
         defn = self._make_defn(queue_status="paused")
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         assert "Pausado" in row["estado"]
 
     @pytest.mark.unit
@@ -258,7 +258,7 @@ class TestBuildCIRow:
         defn = self._make_defn(finish_time=None)
         defn["latestCompletedBuild"] = None
         defn["latestBuild"] = None
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         assert row["deprecado"] == DEPRECADO_SI
         assert row["dias_inactivo"] == "Nunca"
 
@@ -269,7 +269,7 @@ class TestBuildCIRow:
             "%Y-%m-%dT%H:%M:%SZ"
         )
         defn = self._make_defn(finish_time=old_date)
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         assert row["deprecado"] == DEPRECADO_SI
 
     @pytest.mark.unit
@@ -279,14 +279,14 @@ class TestBuildCIRow:
             "%Y-%m-%dT%H:%M:%SZ"
         )
         defn = self._make_defn(queue_status="enabled", finish_time=recent_date)
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         assert row["deprecado"] == DEPRECADO_NO
 
     @pytest.mark.unit
     def test_row_has_required_keys(self):
         """El row tiene todas las claves requeridas."""
         defn = self._make_defn()
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         required_keys = [
             "tipo", "id", "nombre", "path", "estado", "queue_status",
             "deprecado", "ultima_act", "ultima_act_raw", "ultimo_run",
@@ -302,7 +302,7 @@ class TestBuildCIRow:
             "%Y-%m-%dT%H:%M:%SZ"
         )
         defn = self._make_defn(finish_time=recent)
-        row = build_ci_row(defn, inactive_days=90, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=90, tz_name="UTC")
         assert row["dias_inactivo"].isdigit()
 
 
@@ -601,7 +601,7 @@ class TestClassifyPipelineGroup:
             "latestCompletedBuild": {"finishTime": dt.strftime("%Y-%m-%dT%H:%M:%SZ")},
             "url": "https://dev.azure.com/org",
         }
-        row = build_ci_row(defn, inactive_days=365, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=365, tz_name="UTC")
         assert row["grupo"] == "WMS"
 
     @pytest.mark.unit
@@ -628,7 +628,7 @@ class TestDefaultDeprecationThreshold:
             "latestCompletedBuild": {"finishTime": dt.strftime("%Y-%m-%dT%H:%M:%SZ")},
             "url": "https://dev.azure.com/org/proj/_apis/build/definitions/1",
         }
-        row = build_ci_row(defn, inactive_days=365, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=365, tz_name="UTC")
         assert row["deprecado"] == DEPRECADO_NO
 
     @pytest.mark.unit
@@ -642,7 +642,7 @@ class TestDefaultDeprecationThreshold:
             "latestCompletedBuild": {"finishTime": dt.strftime("%Y-%m-%dT%H:%M:%SZ")},
             "url": "https://dev.azure.com/org/proj/_apis/build/definitions/2",
         }
-        row = build_ci_row(defn, inactive_days=365, tz_name="America/Mazatlan")
+        row = build_ci_row(defn, inactive_days=365, tz_name="UTC")
         assert row["deprecado"] == DEPRECADO_SI
 
 
@@ -791,7 +791,7 @@ class TestCdWorker:
         from scm.azdo.cicd_pipeline_status import _cd_worker
         defn = self._make_defn()
         with patch("scm.azdo.cicd_pipeline_status.get_latest_release", return_value=None):
-            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "UTC", False)
         assert row["deprecado"] == DEPRECADO_SI
         assert row["dias_inactivo"] == "Nunca"
         assert row["tipo"] == "CD"
@@ -803,7 +803,7 @@ class TestCdWorker:
         defn = self._make_defn()
         with patch("scm.azdo.cicd_pipeline_status.get_latest_release",
                    return_value={"createdOn": recent}):
-            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "UTC", False)
         assert row["deprecado"] == DEPRECADO_NO
         assert "✅" in row["estado"]
 
@@ -814,7 +814,7 @@ class TestCdWorker:
         defn = self._make_defn()
         with patch("scm.azdo.cicd_pipeline_status.get_latest_release",
                    return_value={"createdOn": old}):
-            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "UTC", False)
         assert row["deprecado"] == DEPRECADO_SI
         assert "🔴" in row["estado"]
 
@@ -825,7 +825,7 @@ class TestCdWorker:
         defn = self._make_defn()
         with patch("scm.azdo.cicd_pipeline_status.get_latest_release",
                    return_value={"createdOn": mid}):
-            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "UTC", False)
         assert "⚠" in row["estado"]
 
     @pytest.mark.unit
@@ -833,7 +833,7 @@ class TestCdWorker:
         from scm.azdo.cicd_pipeline_status import _cd_worker
         defn = self._make_defn()
         with patch("scm.azdo.cicd_pipeline_status.get_latest_release", return_value=None):
-            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "America/Mazatlan", False)
+            row = _cd_worker(defn, "https://dev.azure.com/org", "Project", {}, 90, "UTC", False)
         for key in ["tipo", "id", "nombre", "estado", "deprecado", "dias_inactivo", "url"]:
             assert key in row
 
@@ -898,7 +898,7 @@ class TestExportResults:
         from scm.azdo.cicd_pipeline_status import export_results
         rows = self._sample_rows()
         with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
-            filepath = export_results(rows, "json", "America/Mazatlan")
+            filepath = export_results(rows, "json", "UTC")
         assert filepath is not None
         assert Path(filepath).exists()
         with open(filepath, encoding="utf-8") as f:
@@ -915,7 +915,7 @@ class TestExportResults:
         from scm.azdo.cicd_pipeline_status import export_results
         rows = self._sample_rows()
         with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
-            filepath = export_results(rows, "csv", "America/Mazatlan")
+            filepath = export_results(rows, "csv", "UTC")
         assert filepath is not None
         assert Path(filepath).exists()
         with open(filepath, newline="", encoding="utf-8") as f:
@@ -931,7 +931,7 @@ class TestExportResults:
         from scm.azdo.cicd_pipeline_status import export_results
         rows = self._sample_rows()
         with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
-            result = export_results(rows, "xml", "America/Mazatlan")
+            result = export_results(rows, "xml", "UTC")
         assert result is None
 
     @pytest.mark.unit
@@ -940,7 +940,7 @@ class TestExportResults:
         from scm.azdo.cicd_pipeline_status import export_results
         rows = self._sample_rows()
         with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
-            filepath = export_results(rows, "json", "America/Mazatlan")
+            filepath = export_results(rows, "json", "UTC")
         with open(filepath, encoding="utf-8") as f:
             data = json.load(f)
         assert data["summary"]["deprecated"] == 1
