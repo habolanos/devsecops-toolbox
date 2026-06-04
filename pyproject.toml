@@ -10,7 +10,7 @@ readme = "scm/README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Harold Adrian", email = "harold@example.com"}
+    {name = "Harold Adrian", email = "haroldadrian@gmail.com"}
 ]
 keywords = ["devsecops", "gcp", "azure", "aws", "cloud", "security"]
 classifiers = [
@@ -106,6 +106,31 @@ omit = [
     "scm/**/config.json.template",
     "scm/__pycache__/*",
     "scm/**/__pycache__/*",
+    "scm/aws/**",
+    "scm/gcp/**",
+    "scm/terminal/**",
+    "scm/azdo/azdo_branch_lock_checker.py",
+    "scm/azdo/azdo_branch_policy_checker.py",
+    "scm/azdo/azdo_pipeline_drift.py",
+    "scm/azdo/azdo_pr_pipeline_analyzer.py",
+    "scm/azdo/azdo_release_cd_health.py",
+    "scm/azdo/azdo_release_deep_dive.py",
+    "scm/azdo/azdo_repo_branch_diff.py",
+    "scm/azdo/azdo_repo_properties_branch_diff.py",
+    "scm/azdo/azdo_scan_pipeline_logs.py",
+    "scm/azdo/azdo_scan_repos_vulnerabilities.py",
+    "scm/azdo/azdo_task_validator.py",
+    "scm/azdo/cicd_inventory.py",
+    "scm/azdo/cicd_inventory_branches_created.py",
+    "scm/azdo/cicd_inventory_cd_detailed.py",
+    "scm/azdo/cicd_inventory_ci_detailed.py",
+    "scm/azdo/cicd_inventory_gke_pipelines.py",
+    "scm/azdo/cicd_inventory_health_score.py",
+    "scm/azdo/cicd_inventory_hotfix_branches.py",
+    "scm/azdo/cicd_inventory_pending_approvals.py",
+    "scm/azdo/cicd_inventory_prod_deploy.py",
+    "scm/azdo/test_azdo_repo_branch_diff.py",
+    "scm/azdo/test_azdo_repo_properties_branch_diff.py",
 ]
 branch = true
 
