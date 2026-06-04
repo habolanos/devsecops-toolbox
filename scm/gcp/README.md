@@ -1,5 +1,7 @@
 # Google Cloud Platform Tools
 
+[![Toolbox Version](../../README.version.md)](../../README.version.md)
+
 Este directorio contiene herramientas y scripts para interactuar con Google Cloud Platform (GCP) y automatizar tareas comunes de operaciones en la nube.
 
 ## 📋 Contenido
@@ -120,6 +122,7 @@ gcp/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-06-04 | **1.6.8** | `aws/tools.py` homologado visualmente con `gcp/tools.py` — estructura, colores y nombres de grupos alineados | Referencia cruzada AWS↔GCP |
 | 2026-05-18 | 1.9.2 | `tools.py`: (1) Tool **16** `pod_connectivity_checker` — agrega `-o` a args (soporta exportar JSON/CSV); (2) Tool **17** `deploy_dependency_checker` — agrega `--db-probe` a args + nuevo handler interactivo en `run_tool`; (3) Tool **19** `deployment_validator` — agrega `--db-probe` a args + handler; (4) nuevo handler `--validate` en `run_tool` para elegir `all/configmaps/secrets/connectivity` (existía en args pero nunca se pasaba al script); (5) descripciones de herramientas 16/17/19 actualizadas |
 | 2026-04-16 | 1.9.0 | Nueva herramienta: Inventario GKE + Cloud SQL - Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar) |
 | 2026-03-26 | 1.8.0 | Nueva herramienta: Deployment Validator - Valida ConfigMaps, Secrets y conectividad de Deployments |
@@ -133,6 +136,8 @@ gcp/
 | 2026-01-12 | 1.2.0 | Launcher actualizado: agregadas herramientas Cloud SQL Connectivity Checker, Cloud SQL Disk Monitor y Artifact Registry Tag Filter |
 | 2026-01-12 | 1.1.0 | Actualización de documentación: tabla de contenidos, estructura de directorios, detalle del launcher |
 | 2025-01-01 | 1.0.0 | Versión inicial del README |
+
+> 📋 **Historial completo del toolbox**: ver [README.version.md](../../README.version.md)
 
 ---
 

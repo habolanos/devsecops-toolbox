@@ -13,6 +13,7 @@ Punto de entrada unificado para herramientas de múltiples plataformas cloud y D
 | `terminal/` | Scripts universales agnósticos de cloud (K8s, TLS, DBs) |
 | [Testing](#-testing) | Guía paso a paso para ejecutar tests |
 | [Compilar](#-compilar-distribuible) | Guía para crear el ZIP distribuible |
+| [Versiones](../README.version.md) | Historial completo de versiones del toolbox |
 
 ---
 
@@ -818,15 +819,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
-| 2026-06-03 | 1.6.2 | **Terminal Script 6**: `k8s-deploy-manifest-diff.sh` — Diff ejecutivo de manifiestos K8s entre deploy actual y revisión anterior. 9 secciones: imagen, recursos, env vars, ConfigMaps, Secrets, probes, HPA/volumes/SA, eventos. Clasificación CRITICAL/HIGH/MEDIUM/LOW con recomendaciones automáticas. Exit 0/1/2. `terminal/tools.py` v1.0.1 (handlers deployment/namespace/flags). `terminal/README.md` creado. `main.py` v1.6.1 (descripción plataforma Terminal actualizada a 6 herramientas). `sync_repos.py` incluye `scm/terminal` en DEFAULT_SYNC_PATHS. |
-| 2026-04-24 | 1.6.1 | **Global Output Directory**: `DEVSECOPS_OUTPUT_DIR` implementado en 45+ scripts de AZDO, GCP y AWS. Nuevo `scm/utils.py` con `get_output_dir()`. `main.py` inyecta `scm/` en `PYTHONPATH` para imports compartidos. Todos los reportes (.xlsx, .html, .csv, .json) respetan el directorio centralizado configurado en `config.json`. |
-| 2026-04-24 | 1.6.0 | **Migración Comercial → Toolbox**: 7 scripts migrados desde `Comercial/` al toolbox principal. GCP: GKE Node Monitor (#24), GKE Pod Monitor (#25). AZDO: CICD Inventory (#9), GKE Pipelines (#10), Pending Approvals (#11), Branches Created (#12), Hotfix Branches (#13). Todos parametrizables con `--org`, `--project`, `--pat`. |
-| 2026-04-08 | 1.5.2 | **Docker Container**: Dockerfile con Azure CLI, AWS CLI v2, Google Cloud SDK, kubectl, Helm, Terraform y herramientas netshoot (ping, dig, tcpdump, nmap, etc.). Entrypoint script con auto-configuración de credenciales. Healthcheck integrado. |
-| 2026-04-02 | 1.5.1 | **Testing Suite**: Arquitectura profesional de testing con pytest, cobertura 70%+, mocks para GCP/AZDO/AWS, CI/CD con GitHub Actions. Tests unitarios e integración con 500+ assertions. |
-| 2026-04-02 | 1.5.0 | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. |
-| 2026-03-31 | 1.4.1 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |
-| 2026-03-31 | 1.1.1 | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas (ver `ARCHITECTURE_ANALYSIS_PRO.md`) |
-| 2026-03-26 | 1.0.0 | Versión inicial - Launcher unificado para GCP y Azure DevOps |
+| 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
 
 ---
 

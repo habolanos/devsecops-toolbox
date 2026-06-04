@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.5.2-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.8-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -23,7 +23,7 @@
 - [📁 Estructura del Proyecto](#-estructura-del-proyecto)
 - [📝 Contribuir](#-contribuir)
 - [📜 Licencia](#-licencia)
-- [📚 Historial de Cambios](#-historial-de-cambios)
+- [📚 Historial de Cambios](README.version.md)
 
 ---
 
@@ -371,20 +371,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
-| 2026-06-04 | 1.6.7 | **Wheel Fix W004**: Resuelto `check-wheel-contents W004` (módulos en paths no importables). Añadidos `__init__.py` a 19 sub-paquetes válidos; configurado `[tool.setuptools]` con `include-package-data = false` y `namespaces = false` para excluir directorios con guiones y keyword `lambda` del wheel. |
-| 2026-04-19 | 1.6.5 | **Terminal Scripts**: Nueva sección en main.py (opción 4) con 5 scripts shell universales agnósticos de cloud provider. Reubicados desde gcp/scripts-console/ a terminal/: Certificate TLS Report, DB Connections Checker, Deployments Last News/Update/Events. |
-| 2026-04-19 | 1.6.4 | **Validación de plataforma**: tools.py ahora detecta si se ejecuta en Windows y muestra un diálogo informativo cuando se intenta usar herramientas exclusivas de Linux (scripts .sh), sugiriendo WSL/Git Bash como alternativas. |
-| 2026-04-19 | 1.6.3 | **Certificate TLS Report**: Nueva herramienta (23) para validar certificados SSL/TLS remotos desde GKE con valores reales de TLS version y cipher. Integrada en tools.py con soporte para scripts shell. |
-| 2026-04-18 | 1.6.2 | **Cross-platform venv**: Valida que el python del venv funcione antes de usarlo; si fue creado en otra plataforma (Linux/WSL vs Windows), lo recrea automáticamente y limpia caché de requirements. |
-| 2026-04-17 | 1.6.1 | **make_dist.ps1**: Solo empaqueta folder `scm/`, lee exclusiones dinámicamente desde `.gitignore` en vez de hardcodearlas. |
-| 2026-04-16 | 1.6.0 | **Rich UI Inventory**: Reescritura de `generar-inventario-csv.sh` a Python con Rich (spinners, barras de progreso por hilo, Panel/Tabla). Auto-instalación de rich en venv. Launcher `run_inventory.py` con importación directa (no subprocess). |
-| 2026-04-16 | 1.5.3 | **Sync Repos**: Script `sync_repos.py` para sincronización bidireccional toolbox ↔ azdo con commit automático. Nueva herramienta Inventario GKE+Cloud SQL (opción 22). |
-| 2026-04-08 | 1.5.2 | **Docker Container**: Dockerfile slim con Azure/AWS/GCP CLI, kubectl, Helm, Terraform, netshoot. Docker Compose con 3 servicios. Entrypoint script con auto-configuración. |
-| 2026-04-02 | 1.5.1 | **Testing Suite**: Arquitectura profesional de testing con pytest, cobertura 70%+, mocks para GCP/AZDO/AWS, CI/CD con GitHub Actions. Tests unitarios e integración con 500+ assertions. |
-| 2026-04-02 | 1.5.0 | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. |
-| 2026-03-31 | 1.4.1 | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch) |
-| 2026-03-31 | 1.1.1 | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas |
-| 2026-03-26 | 1.0.0 | Versión inicial - Launcher unificado para GCP y Azure DevOps |
+| 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](README.version.md) |
 
 ---
 

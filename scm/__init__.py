@@ -9,7 +9,7 @@ Example:
     >>> main()
 """
 
-__version__ = "1.6.7"
+__version__ = "1.6.8"
 __author__ = "Harold Adrian"
 __email__ = "harold@example.com"
 __license__ = "MIT"

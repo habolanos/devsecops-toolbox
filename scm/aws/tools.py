@@ -55,14 +55,14 @@ console = Console() if RICH_AVAILABLE else None
 # GRUPOS DE HERRAMIENTAS
 # ═══════════════════════════════════════════════════════════════════════════════
 TOOL_GROUPS = {
+    "monitoring": {"name": "Monitoreo", "emoji": "📊", "color": "cyan"},
     "iam": {"name": "IAM & Security", "emoji": "🔐", "color": "yellow"},
     "security": {"name": "Security", "emoji": "🛡️", "color": "red"},
-    "database": {"name": "Database (RDS/EBS)", "emoji": "💾", "color": "magenta"},
-    "network": {"name": "Networking & WAF", "emoji": "🌐", "color": "blue"},
-    "kubernetes": {"name": "Kubernetes (EKS)", "emoji": "☸️", "color": "green"},
-    "artifacts": {"name": "Artifacts (ECR)", "emoji": "📦", "color": "red"},
-    "compute": {"name": "Compute", "emoji": "💻", "color": "cyan"},
-    "monitoring": {"name": "Monitoring", "emoji": "📊", "color": "bright_white"},
+    "database": {"name": "Database", "emoji": "💾", "color": "magenta"},
+    "network": {"name": "Networking", "emoji": "🌐", "color": "blue"},
+    "kubernetes": {"name": "Kubernetes", "emoji": "☸️", "color": "green"},
+    "artifacts": {"name": "Artifacts", "emoji": "📦", "color": "red"},
+    "compute": {"name": "Compute", "emoji": "💻", "color": "bright_blue"},
     "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
@@ -317,6 +317,7 @@ def print_header_rich():
     """Imprime el encabezado del menú con Rich (versión moderna)."""
     clear_screen()
 
+    # Título principal con panel
     title = Text()
     title.append("☁️  ", style="bold white")
     title.append("SRE Tools for AWS Cloud Platform", style="bold cyan")
@@ -388,6 +389,7 @@ def get_menu_order(include_exit: bool = True) -> List[str]:
 
 def print_menu_rich():
     """Muestra el menú principal con Rich (versión moderna con tabla)."""
+    # Crear tabla principal
     table = Table(
         title="🛠️  Menú Principal",
         title_style="bold white",
@@ -399,19 +401,23 @@ def print_menu_rich():
         expand=False,
     )
 
+    # Definir columnas con anchos proporcionales
     table.add_column("#", justify="center", style="bold white", width=4)
-    table.add_column("Grupo", justify="left", width=22)
+    table.add_column("Grupo", justify="left", width=18)
     table.add_column("Herramienta", justify="left", style="white")
     table.add_column("Descripción", justify="left", style="dim", min_width=40)
 
     sorted_keys = get_menu_order()
 
+    # Agregar filas
     for key in sorted_keys:
         tool = TOOLS[key]
         group_key = tool.get("group", "system")
         group_info = TOOL_GROUPS.get(group_key, TOOL_GROUPS["system"])
+        # Formato del grupo con emoji y color
         group_text = f"{group_info['emoji']} {group_info['name']}"
 
+        # Estilo especial para opciones de sistema
         if key == "Q":
             key_style = "bold yellow"
             name_style = "yellow"

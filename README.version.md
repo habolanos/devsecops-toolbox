@@ -1,0 +1,73 @@
+# 📋 Historial de Versiones
+
+> **Único punto de verdad para el versionado del proyecto.**
+> Las fechas y versiones aquí documentadas se aplican a todo el toolbox (GCP, AZDO, AWS, Terminal).
+
+---
+
+## Versión Actual
+
+**`1.6.8`** — 2026-06-04
+
+---
+
+## Registro de Cambios
+
+| Fecha | Versión | Descripción | Archivos / Scope |
+|-------|---------|-------------|----------------|
+| 2026-06-04 | **1.6.8** | **AWS/GCP Homologation**: `scm/aws/tools.py` alineado visualmente con `scm/gcp/tools.py` — mismos colores (`Monitoreo` cyan, `Compute` bright_blue), emojis, nombres en español, GROUP_ORDER (monitoring primero) y estructura del menú Rich (columna Grupo width=18). `scm/aws/` validado: todos los sub-paquetes válidos tienen `__init__.py`. | `scm/aws/tools.py`, `scm/aws/**/__init__.py` |
+| 2026-06-04 | **1.6.7** | **Wheel Fix W004**: Resuelto `check-wheel-contents W004` (módulos en paths no importables). Añadidos `__init__.py` a 19 sub-paquetes válidos (`azdo`, `aws/*`, `gcp/connectivity|monitoring|rolesypermisos`, `terminal`). Configurado `[tool.setuptools]` con `include-package-data = false` y `namespaces = false` para excluir directorios con guiones y keyword `lambda` del wheel. | `pyproject.toml`, 19× `__init__.py` |
+| 2026-06-04 | **1.6.7p** | **Coverage Fix**: `omit` en `[tool.coverage.run]` para excluir módulos AWS/GCP/Terminal sin tests. Restaura umbral `fail-under=35` (38% total, 190/190 tests). | `pyproject.toml` |
+| 2026-04-19 | **1.6.5** | **Terminal Scripts**: Nueva sección en `main.py` (opción 4) con 5 scripts shell universales agnósticos de cloud. Reubicados desde `gcp/scripts-console/` a `terminal/`: Certificate TLS Report, DB Connections Checker, Deployments Last News/Update/Events. | `scm/main.py`, `scm/terminal/` |
+| 2026-04-19 | **1.6.4** | **Validación de plataforma**: `tools.py` detecta ejecución en Windows y muestra diálogo informativo cuando se intenta usar herramientas exclusivas de Linux (scripts `.sh`), sugiriendo WSL/Git Bash. | `scm/**/tools.py` |
+| 2026-04-19 | **1.6.3** | **Certificate TLS Report**: Nueva herramienta (23) para validar certificados SSL/TLS remotos desde GKE con valores reales de TLS version y cipher. Integrada en `tools.py` con soporte para scripts shell. | `scm/terminal/` |
+| 2026-04-18 | **1.6.2** | **Cross-platform venv**: Valida que el python del venv funcione antes de usarlo; si fue creado en otra plataforma (Linux/WSL vs Windows), lo recrea automáticamente y limpia caché de requirements. | `scm/**/tools.py` |
+| 2026-04-17 | **1.6.1** | **make_dist.ps1**: Solo empaqueta folder `scm/`, lee exclusiones dinámicamente desde `.gitignore` en vez de hardcodearlas. | `make_dist.ps1` |
+| 2026-04-16 | **1.6.0** | **Rich UI Inventory**: Reescritura de `generar-inventario-csv.sh` a Python con Rich (spinners, barras de progreso por hilo, Panel/Tabla). Auto-instalación de rich en venv. Launcher `run_inventory.py` con importación directa (no subprocess). | `scm/gcp/inventory/` |
+| 2026-04-16 | **1.5.3** | **Sync Repos**: Script `sync_repos.py` para sincronización bidireccional toolbox ↔ azdo con commit automático. Nueva herramienta Inventario GKE+Cloud SQL (opción 22). | `sync_repos.py`, `scm/gcp/inventory/` |
+| 2026-04-08 | **1.5.2** | **Docker Container**: Dockerfile slim con Azure/AWS/GCP CLI, kubectl, Helm, Terraform, netshoot. Docker Compose con 3 servicios. Entrypoint script con auto-configuración. | `Dockerfile`, `docker-compose.yml` |
+| 2026-04-02 | **1.5.1** | **Testing Suite**: Arquitectura profesional de testing con pytest, cobertura 70%+, mocks para GCP/AZDO/AWS, CI/CD con GitHub Actions. Tests unitarios e integración con 500+ assertions. | `scm/tests/`, `pytest.ini` |
+| 2026-04-02 | **1.5.0** | **Config Unificado**: Template `config.json.template` para gestión centralizada de tokens/credenciales de AZDO, GCP y AWS. Variables de entorno automáticas al lanzar plataformas. | `config.json.template`, `scm/main.py` |
+| 2026-03-31 | **1.4.1** | **AWS Toolbox**: 13 herramientas DevSecOps para AWS (IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch). | `scm/aws/` |
+| 2026-03-31 | **1.1.1** | **Análisis Pro**: Reporte completo de arquitectura con 15+ mejoras priorizadas. | `ARCHITECTURE_ANALYSIS_PRO.md` |
+| 2026-03-26 | **1.0.0** | **Versión inicial**: Launcher unificado para GCP y Azure DevOps. | `scm/main.py`, `scm/gcp/`, `scm/azdo/` |
+
+---
+
+## Versiones por Sub-proyecto
+
+Las herramientas individuales de cada plataforma mantienen su propia versión interna en `tools.py`:
+
+| Plataforma | `tools.py` Version | Notas |
+|------------|-------------------|-------|
+| **GCP** | `1.9.3` | Launcher GCP (25 herramientas) |
+| **AZDO** | `1.0.0` | Launcher Azure DevOps (13+ herramientas) |
+| **AWS** | `1.0.1` | Launcher AWS (19 herramientas) — homologado visualmente con GCP en v1.6.8 |
+| **Terminal** | `1.0.1` | Scripts universales agnósticos de cloud (6 herramientas) |
+
+> **Nota**: La versión del toolbox (`1.6.8`) es independiente de la versión interna de cada launcher. La versión del toolbox se usa para empaquetado (wheel), Docker tags y releases de GitHub.
+
+---
+
+## Convención de Versionado
+
+El proyecto sigue [Semantic Versioning 2.0.0](https://semver.org/lang/es/):
+
+```
+MAJOR.MINOR.PATCH
+
+MAJOR — Cambios incompatibles con versiones anteriores
+MINOR — Nuevas funcionalidades (compatibles hacia atrás)
+PATCH — Correcciones de bugs (compatibles hacia atrás)
+```
+
+**Regla del proyecto**: solo se generan versiones PATCH (ej: 1.6.7 → 1.6.8). No se generan versiones MAJOR ni MINOR.
+
+---
+
+## Referencias
+
+- `VERSION` — Archivo fuente de verdad (versión actual del toolbox)
+- `pyproject.toml` — Metadatos del paquete Python (build/wheel)
+- `scm/__init__.py` — `__version__` (importable desde Python)
+- Badges en `README.md` — Referencia visual al archivo `VERSION`

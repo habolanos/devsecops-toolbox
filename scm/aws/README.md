@@ -1,5 +1,7 @@
 # Amazon Web Services Tools
 
+[![Toolbox Version](../../README.version.md)](../../README.version.md)
+
 Herramientas DevSecOps para análisis y monitoreo de recursos AWS.
 
 ## 📋 Contenido
@@ -209,9 +211,12 @@ python eks/aws_eks_checker.py --cluster my-cluster -o json
 
 | Fecha | Versión | Descripción | Archivos |
 |-------|---------|-------------|----------|
+| 2026-06-04 | **1.6.8** | `aws/tools.py` homologado visualmente con `gcp/tools.py` — mismos colores, emojis, nombres en español y estructura del menú Rich | `tools.py` |
 | 2026-05-03 | 1.0.2 | feat: log_commands global — log_command() registra comandos ejecutados en scm/outcome/commands_YYYYMMDD.log cuando DEVSECOPS_LOG_COMMANDS=1 | tools.py |
 | 2026-05-03 | 1.0.1 | +6 herramientas nuevas replicadas de GCP: EBS (14), EKS Pod Monitor (15), EKS Node Monitor (16), Secrets Manager+SSM (17), WAF (18), Inventory Generator (19). Directorios: secretsmanager/, waf/, inventory/, notification/ | tools.py, ec2/aws_ebs_checker.py, eks/aws_eks_pod_checker.py, eks/aws_eks_node_checker.py, secretsmanager/aws_secrets_checker.py, waf/aws_waf_checker.py, inventory/aws_inventory_generator.py, notification/aws_notify.sh |
 | 2026-03-31 | 1.0.0 | Versión inicial - 13 herramientas DevSecOps | Todos |
+
+> 📋 **Historial completo del toolbox**: ver [README.version.md](../../README.version.md)
 
 ---
 
