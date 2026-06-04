@@ -82,7 +82,7 @@ TOOL_GROUPS = {
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
     "inventory":  {"name": "Inventario",         "emoji": "📋", "color": "bright_white"},
     "health":     {"name": "Health Score",       "emoji": "📊", "color": "bright_cyan"},
-    "quality":    {"name": "Calidad Deploy",     "emoji": "🎯", "color": "green"},
+    "quality":    {"name": "Calidad Deploy",     "emoji": "🎯", "color": "pink"},
     "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
 
@@ -930,10 +930,19 @@ def run_tool(tool_key: str):
 
     log_command(cmd)
     try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        log_command(cmd, "ERROR")
-        print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
+        result = subprocess.run(cmd)
+        rc = result.returncode
+        if rc not in (0, 1, 2):
+            log_command(cmd, "ERROR")
+            print(f"{Colors.FAIL}Error al ejecutar la herramienta (exit {rc}).{Colors.ENDC}")
+        elif rc == 2:
+            msg = "🚨 Quality gate: CRITICAL (exit 2)"
+            (console.print(f"[bold red]{msg}[/]") if RICH_AVAILABLE and console
+             else print(f"{Colors.FAIL}{msg}{Colors.ENDC}"))
+        elif rc == 1:
+            msg = "🔴 Quality gate: HIGH (exit 1)"
+            (console.print(f"[yellow]{msg}[/]") if RICH_AVAILABLE and console
+             else print(f"{Colors.WARNING}{msg}{Colors.ENDC}"))
     except KeyboardInterrupt:
         print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
 
@@ -1035,11 +1044,14 @@ def run_all_tools():
 
         log_command(cmd)
         try:
-            subprocess.run(cmd, check=True)
-            results.append((tool["name"], "OK", "Completado"))
-        except subprocess.CalledProcessError as e:
-            log_command(cmd, "ERROR")
-            results.append((tool["name"], "ERROR", str(e)))
+            result = subprocess.run(cmd)
+            rc = result.returncode
+            if rc in (0, 1, 2):
+                label = {0: "OK", 1: "HIGH", 2: "CRITICAL"}.get(rc, "OK")
+                results.append((tool["name"], "OK", label))
+            else:
+                log_command(cmd, "ERROR")
+                results.append((tool["name"], "ERROR", f"exit {rc}"))
         except KeyboardInterrupt:
             print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
             break
@@ -1138,11 +1150,14 @@ def run_all_json():
 
         log_command(cmd)
         try:
-            subprocess.run(cmd, check=True)
-            results.append((tool["name"], "OK", "Completado"))
-        except subprocess.CalledProcessError as e:
-            log_command(cmd, "ERROR")
-            results.append((tool["name"], "ERROR", str(e)))
+            result = subprocess.run(cmd)
+            rc = result.returncode
+            if rc in (0, 1, 2):
+                label = {0: "OK", 1: "HIGH", 2: "CRITICAL"}.get(rc, "OK")
+                results.append((tool["name"], "OK", label))
+            else:
+                log_command(cmd, "ERROR")
+                results.append((tool["name"], "ERROR", f"exit {rc}"))
         except KeyboardInterrupt:
             print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
             break
