@@ -66,6 +66,8 @@ try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
+    import types as _types
+    requests = _types.SimpleNamespace(get=None, HTTPError=Exception)  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
 __version__     = "1.1.1"

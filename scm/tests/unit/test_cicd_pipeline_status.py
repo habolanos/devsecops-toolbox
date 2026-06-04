@@ -670,10 +670,9 @@ class TestApiGet:
     @pytest.mark.unit
     def test_returns_none_on_http_error(self):
         from scm.azdo.cicd_pipeline_status import api_get
-        import requests as req_module
         mock_resp = MagicMock()
         mock_resp.status_code = 401
-        mock_resp.raise_for_status.side_effect = req_module.HTTPError("401")
+        mock_resp.raise_for_status.side_effect = Exception("401 Unauthorized")
         mock_resp.text = "Unauthorized"
         with patch("scm.azdo.cicd_pipeline_status.requests.get", return_value=mock_resp):
             result = api_get("http://test.url", {}, debug=False)
