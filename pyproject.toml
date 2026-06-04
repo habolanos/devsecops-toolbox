@@ -57,6 +57,15 @@ Homepage = "https://github.com/haroldadrian/devsecops-toolbox"
 Repository = "https://github.com/haroldadrian/devsecops-toolbox"
 Issues = "https://github.com/haroldadrian/devsecops-toolbox/issues"
 
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scm*"]
+exclude = ["scm.tests*"]
+namespaces = false
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["scm/tests"]

@@ -371,6 +371,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-06-04 | 1.6.7 | **Wheel Fix W004**: Resuelto `check-wheel-contents W004` (módulos en paths no importables). Añadidos `__init__.py` a 19 sub-paquetes válidos; configurado `[tool.setuptools]` con `include-package-data = false` y `namespaces = false` para excluir directorios con guiones y keyword `lambda` del wheel. |
 | 2026-04-19 | 1.6.5 | **Terminal Scripts**: Nueva sección en main.py (opción 4) con 5 scripts shell universales agnósticos de cloud provider. Reubicados desde gcp/scripts-console/ a terminal/: Certificate TLS Report, DB Connections Checker, Deployments Last News/Update/Events. |
 | 2026-04-19 | 1.6.4 | **Validación de plataforma**: tools.py ahora detecta si se ejecuta en Windows y muestra un diálogo informativo cuando se intenta usar herramientas exclusivas de Linux (scripts .sh), sugiriendo WSL/Git Bash como alternativas. |
 | 2026-04-19 | 1.6.3 | **Certificate TLS Report**: Nueva herramienta (23) para validar certificados SSL/TLS remotos desde GKE con valores reales de TLS version y cipher. Integrada en tools.py con soporte para scripts shell. |
