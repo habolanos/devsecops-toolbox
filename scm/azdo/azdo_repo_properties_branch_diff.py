@@ -965,18 +965,89 @@ def export_results(
         for ci in range(1, len(cols) + 1):
             ws.column_dimensions[get_column_letter(ci)].width = 22
 
-        # ── Hoja 2: Diff detallado ─────────────────────────────────────────────
-        ws2 = wb.create_sheet("Diff Detallado")
-        for ci, h in enumerate(["Path", "Cambio", "Diff"], 1):
+        # ── Hoja 2: Diff Lado-a-Lado (una fila por línea) ────────────────────
+        ws2 = wb.create_sheet("Diff Lado-a-Lado")
+        diff_cols = ["Archivo", "Severidad", "Tipo", "# Orig",
+                     f"◀ {source_branch} (origen)",
+                     "# Dest",
+                     f"▶ {target_branch} (destino)"]
+        for ci, h in enumerate(diff_cols, 1):
             c = ws2.cell(row=1, column=ci, value=h)
             c.fill, c.font = hdr_fill, hdr_font
-        for ri, r in enumerate(results, 2):
-            ws2.cell(row=ri, column=1, value=r.path)
-            ws2.cell(row=ri, column=2, value=r.change_type.upper())
-            ws2.cell(row=ri, column=3, value="\n".join(r.diff_lines) if r.diff_lines else "")
-            ws2.cell(row=ri, column=3).alignment = Alignment(wrap_text=True)
-        ws2.column_dimensions["A"].width = 45
-        ws2.column_dimensions["C"].width = 80
+            c.alignment = Alignment(horizontal="center", wrap_text=True)
+
+        # Rellenos por tipo de cambio
+        DIFF_FILL = {
+            "delete":  PatternFill("solid", fgColor="FFCCCC"),  # rojo claro
+            "insert":  PatternFill("solid", fgColor="CCFFCC"),  # verde claro
+            "replace": PatternFill("solid", fgColor="FFFACC"),  # amarillo claro
+            "equal":   PatternFill("solid", fgColor="F7F7F7"),  # gris muy claro
+        }
+        DIFF_PREFIX = {"delete": "- ", "insert": "+ ", "replace": "~ ", "equal": "  "}
+
+        ws2_row = 2
+        for r in results:
+            if r.change_type == CHANGE_NONE:
+                continue
+
+            # Calcular filas lado-a-lado
+            sbs_rows = build_side_by_side_rows(
+                r.source_content or "", r.target_content or ""
+            )
+
+            # Pre-calcular números de línea
+            ln_src, ln_tgt = 0, 0
+            ln_list: List[Tuple[str, str]] = []
+            for tag, _, _ in sbs_rows:
+                if tag in ("equal", "delete", "replace"):
+                    ln_src += 1
+                if tag in ("equal", "insert", "replace"):
+                    ln_tgt += 1
+                ln_list.append((
+                    str(ln_src) if tag in ("equal", "delete", "replace") else "",
+                    str(ln_tgt) if tag in ("equal", "insert", "replace") else "",
+                ))
+
+            # Fila separadora con nombre del archivo
+            sep_fill = SEV_FILL.get(r.severity, PatternFill())
+            sep_font = Font(bold=True)
+            file_label = f"{SEV_EMOJI.get(r.severity,'')} {r.path}  [{r.change_type.upper()}]"
+            for ci in range(1, len(diff_cols) + 1):
+                c = ws2.cell(row=ws2_row, column=ci, value=file_label if ci == 1 else "")
+                c.fill, c.font = sep_fill, sep_font
+            ws2_row += 1
+
+            # Una fila por línea de comparación
+            for i, (tag, left, right) in enumerate(sbs_rows):
+                fill   = DIFF_FILL.get(tag, PatternFill())
+                prefix = DIFF_PREFIX.get(tag, "  ")
+                l_num, r_num = ln_list[i]
+
+                row_data = [
+                    "",                               # Archivo (vacío, ya está en sep)
+                    "",                               # Severidad
+                    prefix.strip() or "=",            # Tipo: -, +, ~, =
+                    l_num,                            # # Orig
+                    f"{prefix}{left}" if left else "", # Contenido origen
+                    r_num,                            # # Dest
+                    f"{prefix}{right}" if right else "", # Contenido destino
+                ]
+                bold_line = tag in ("delete", "insert", "replace")
+                for ci, val in enumerate(row_data, 1):
+                    c = ws2.cell(row=ws2_row, column=ci, value=val)
+                    c.fill = fill
+                    if bold_line and ci in (5, 7):
+                        c.font = Font(bold=True)
+                    c.alignment = Alignment(wrap_text=False)
+                ws2_row += 1
+
+            ws2_row += 1  # línea en blanco entre archivos
+
+        # Anchos de columna
+        col_widths = [40, 12, 6, 6, 60, 6, 60]
+        for ci, w in enumerate(col_widths, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = w
+        ws2.freeze_panes = "A2"
 
         # ── Hoja 3: Metadata ───────────────────────────────────────────────────
         ws3 = wb.create_sheet("Metadata")
