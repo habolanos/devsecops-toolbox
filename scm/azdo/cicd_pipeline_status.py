@@ -35,7 +35,13 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import quote
 from typing import Any, Dict, List, Optional, Tuple
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python < 3.9
+    try:
+        from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
+    except ImportError:
+        ZoneInfo = None  # type: ignore[assignment,misc]
 
 try:
     from utils import get_output_dir

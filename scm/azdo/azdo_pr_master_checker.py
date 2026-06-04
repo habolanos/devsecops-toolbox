@@ -36,7 +36,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python < 3.9
+    try:
+        from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
+    except ImportError:
+        ZoneInfo = None  # type: ignore[assignment,misc]
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
@@ -540,6 +546,14 @@ def has_stage(release_def_detail: Dict, stage_name: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATE / URL HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
+def _safe_tz(name: str):
+    """Devuelve ZoneInfo(name) o timezone.utc si tzdata/Python<3.9 no disponible."""
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return timezone.utc
+
+
 def format_date(date_str: str, tz_name: str) -> str:
     if not date_str:
         return "—"
@@ -659,7 +673,7 @@ def export_results(rows: List[Dict], output_format: str, script_dir: str, stage_
                 "tool": "azdo_pr_master_checker",
                 "version": __version__,
                 "stage_searched": stage_name,
-                "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
+                "generated_at": datetime.now(_safe_tz(tz_name)).isoformat(),
             },
             "total": len(rows),
             "data": rows,
@@ -714,7 +728,7 @@ def main():
             console.print(f"[yellow]⚠️ Zona horaria '{tz_name}' inválida. Usando {DEFAULT_TIMEZONE}[/]")
         tz_name = DEFAULT_TIMEZONE
 
-    revision_time = datetime.now(ZoneInfo(tz_name)).strftime(f"%Y-%m-%d %H:%M:%S ({tz_name})")
+    revision_time = datetime.now(_safe_tz(tz_name)).strftime(f"%Y-%m-%d %H:%M:%S ({tz_name})")
     headers = make_headers(args.pat)
 
     if RICH_AVAILABLE and console:
