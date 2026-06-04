@@ -540,14 +540,27 @@ def _process_changes(
                if RICH_AVAILABLE and console else None
 
         for change in changes:
-            file_path   = change.get("item", {}).get("path", "")
-            change_type = _normalize_change_type(change.get("changeType", "edit"))
-            severity    = _initial_severity(change_type)
+            file_path    = change.get("item", {}).get("path", "")
+            change_type  = _normalize_change_type(change.get("changeType", "edit"))
 
-            sc = None if change_type == CHANGE_DELETE else \
-                 get_file_content(org, project, repo_id, file_path, source_branch, headers, debug)
-            tc = None if change_type == CHANGE_ADD else \
-                 get_file_content(org, project, repo_id, file_path, target_branch, headers, debug)
+            # Siempre descarga ambas versiones para habilitar la vista lado-a-lado.
+            # La API diffs/commits a veces clasifica incorrectamente (ej. ADD cuando
+            # el archivo existe en ambas ramas). Re-evaluamos con el contenido real.
+            sc = get_file_content(org, project, repo_id, file_path, source_branch, headers, debug)
+            tc = get_file_content(org, project, repo_id, file_path, target_branch, headers, debug)
+
+            # Re-validar change_type con base en el contenido real obtenido
+            if sc is not None and tc is None:
+                change_type = CHANGE_ADD
+            elif sc is None and tc is not None:
+                change_type = CHANGE_DELETE
+            elif sc is not None and tc is not None:
+                if sc.strip() == tc.strip():
+                    change_type = CHANGE_NONE
+                elif change_type not in (CHANGE_RENAME,):
+                    change_type = CHANGE_EDIT
+
+            severity = _initial_severity(change_type)
 
             diff_lines, added, removed = build_unified_diff(
                 sc, tc, file_path.rsplit("/", 1)[-1], source_branch, target_branch, context
