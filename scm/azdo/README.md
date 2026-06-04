@@ -871,6 +871,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-06-03 | 1.3.7 | **Excel Diff Lado-a-Lado línea por línea** — Hoja "Diff Lado-a-Lado": una fila por línea de comparación con columnas `# Orig │ ◀ origen │ # Dest │ ▶ destino`. Colores por tipo: delete=rojo, insert=verde, replace=amarillo, equal=gris. Fila separadora por archivo con color de severidad. `freeze_panes` en fila 2 | `azdo_repo_properties_branch_diff.py` |
 | 2026-06-03 | 1.3.6 | **Vista lado-a-lado sin líneas vacías entre filas** — `show_lines=False` en la tabla Rich elimina el separador horizontal entre cada fila | `azdo_repo_properties_branch_diff.py` |
 | 2026-06-03 | 1.3.5 | **Fix orden columnas y números de línea en vista lado-a-lado** — Columna izquierda = source/origen, derecha = target/destino. Números de línea independientes por lado (`ln_src`/`ln_tgt`): incrementa solo en el lado donde existe la línea | `azdo_repo_properties_branch_diff.py` |
 | 2026-06-03 | 1.3.4 | **Fix descarga de ambas ramas para comparativa** — `_process_changes()` ahora descarga siempre `sc` y `tc` (antes ponía `None` para ADD/DELETE). Re-evalúa `change_type` con contenido real: ambos presentes+distintos→EDIT activa vista lado-a-lado | `azdo_repo_properties_branch_diff.py` |
