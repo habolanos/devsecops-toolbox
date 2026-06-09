@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.8-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.9-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -32,10 +32,11 @@
 | Característica | Descripción |
 |---------------|-------------|
 | 🎯 **Launcher Unificado** | Punto de entrada único para todas las plataformas cloud |
-| 🐳 **Docker Ready** | Contenedor optimizado con todas las herramientas CLI (Azure, AWS, GCP, Kubernetes, Terraform) |
+| � **KPI Analyzer** | Análisis de métricas DevSecOps con modelo de madurez de 6 niveles y dashboards interactivos |
+| �� **Docker Ready** | Contenedor optimizado con todas las herramientas CLI (Azure, AWS, GCP, Kubernetes, Terraform) |
 | 🧪 **Testing Profesional** | Suite completa de tests unitarios e integración con pytest (70%+ cobertura) |
 | 🔐 **Configuración Segura** | Gestión centralizada de credenciales vía `config.json` (excluido de git) |
-| 📊 **Reportes** | Generación de reportes y análisis de arquitectura |
+| � **Reportes** | Generación de reportes y análisis de arquitectura |
 | 🌐 **Multi-Cloud** | Soporte nativo para GCP, Azure DevOps y AWS |
 | 🏷️ **SemVer** | Versionado semántico automatizado |
 

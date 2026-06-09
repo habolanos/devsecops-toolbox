@@ -1,0 +1,688 @@
+# KPI Schema — DevSecOps Toolbox
+# Version: 1.0.0
+# Last Updated: 2026-06-09
+
+# =============================================================================
+# DIMENSIÓN 1: ENTREGA CONTINUA (20%)
+# =============================================================================
+
+entrega_continua:
+  weight: 0.20
+  kpis:
+    
+    - id: ec_001
+      name: "Deployment Frequency"
+      description: "Frecuencia de deployments exitosos a producción"
+      formula: "count(deployments where status='success' and environment='prod' in last 7 days) / 7"
+      unit: "deploys/día"
+      frameworks:
+        - DORA
+      sources:
+        - script: "azdo/cicd_inventory_prod_deploy.py"
+          fields: ["deployments[].status", "deployments[].environment", "deployments[].timestamp"]
+        - script: "azdo/cicd_pipeline_status.py"
+          fields: ["pipelines[].last_run", "pipelines[].status"]
+      benchmarks:
+        elite: ">= 1"  # Al menos 1 deploy/día
+        high: "0.14-1"  # 1/semana a 1/día
+        medium: "0.03-0.14"  # 1/mes a 1/semana
+        low: "< 0.03"  # Menos de 1/mes
+      maturity_level_required: 3  # Nivel Definido
+      periodicity: "daily"
+      
+    - id: ec_002
+      name: "Change Failure Rate"
+      description: "Porcentaje de deployments que resultan en fallo o requieren rollback"
+      formula: "count(deployments where status='failed' or rollback=true) / count(total_deployments) * 100"
+      unit: "%"
+      frameworks:
+        - DORA
+      sources:
+        - script: "azdo/cicd_inventory_prod_deploy.py"
+          fields: ["deployments[].status", "deployments[].rollback"]
+        - script: "azdo/cicd_pipeline_status.py"
+          fields: ["pipelines[].failure_count_7d", "pipelines[].total_runs_7d"]
+      benchmarks:
+        elite: "< 5"
+        high: "5-15"
+        medium: "15-30"
+        low: "> 30"
+      maturity_level_required: 3
+      periodicity: "daily"
+      
+    - id: ec_003
+      name: "Lead Time for Changes"
+      description: "Tiempo desde commit hasta deploy en producción"
+      formula: "avg(deployment_timestamp - commit_timestamp)"
+      unit: "horas"
+      frameworks:
+        - DORA
+      sources:
+        - script: "azdo/cicd_inventory.py"
+          fields: ["repos[].last_commit_date"]
+        - script: "azdo/cicd_inventory_prod_deploy.py"
+          fields: ["deployments[].timestamp"]
+      benchmarks:
+        elite: "< 24"  # Menos de 1 día
+        high: "24-168"  # 1-7 días
+        medium: "168-720"  # 1-4 semanas
+        low: "> 720"  # Más de 1 mes
+      maturity_level_required: 3
+      periodicity: "daily"
+      
+    - id: ec_004
+      name: "Deployment Success Rate"
+      description: "Porcentaje de deployments exitosos sin intervención manual"
+      formula: "count(deployments where status='success') / count(total_deployments) * 100"
+      unit: "%"
+      frameworks:
+        - DORA
+        - SRE
+      sources:
+        - script: "azdo/cicd_inventory_prod_deploy.py"
+          fields: ["deployments[].status"]
+      benchmarks:
+        elite: "> 95"
+        high: "85-95"
+        medium: "70-85"
+        low: "< 70"
+      maturity_level_required: 2
+      periodicity: "daily"
+      
+    - id: ec_005
+      name: "Pipeline Execution Time"
+      description: "Tiempo promedio de ejecución de pipelines CI/CD"
+      formula: "avg(pipeline_duration_minutes)"
+      unit: "minutos"
+      frameworks:
+        - DORA
+      sources:
+        - script: "azdo/cicd_inventory_ci_detailed.py"
+          fields: ["pipelines[].avg_duration_minutes"]
+        - script: "azdo/cicd_inventory_cd_detailed.py"
+          fields: ["pipelines[].avg_duration_minutes"]
+      benchmarks:
+        elite: "< 10"
+        high: "10-30"
+        medium: "30-60"
+        low: "> 60"
+      maturity_level_required: 2
+      periodicity: "daily"
+
+# =============================================================================
+# DIMENSIÓN 2: CONFIABILIDAD (20%)
+# =============================================================================
+
+confiabilidad:
+  weight: 0.20
+  kpis:
+    
+    - id: conf_001
+      name: "Mean Time to Recovery (MTTR)"
+      description: "Tiempo promedio para recuperarse de un incidente"
+      formula: "avg(time_resolved - time_detected)"
+      unit: "minutos"
+      frameworks:
+        - DORA
+        - SRE
+        - ITIL
+      sources:
+        - script: "azdo/cicd_inventory_health_score.py"
+          fields: ["pipelines[].mttr_minutes"]
+        - script: "azdo/cicd_pipeline_status.py"
+          fields: ["pipelines[].last_failure_timestamp", "pipelines[].last_success_timestamp"]
+      benchmarks:
+        elite: "< 60"  # Menos de 1 hora
+        high: "60-1440"  # 1-24 horas
+        medium: "1440-10080"  # 1-7 días
+        low: "> 10080"  # Más de 7 días
+      maturity_level_required: 3
+      periodicity: "daily"
+      
+    - id: conf_002
+      name: "Service Availability"
+      description: "Porcentaje de uptime de servicios críticos"
+      formula: "sum(uptime_minutes) / sum(total_minutes) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+        - ITIL
+      sources:
+        - script: "gcp/load-balancer/gcp_load_balancer_checker.py"
+          fields: ["load_balancers[].backends[].healthy_count", "load_balancers[].backends[].total_count"]
+        - script: "aws/elb/aws_load_balancer_checker.py"
+          fields: ["load_balancers[].healthy_targets", "load_balancers[].total_targets"]
+      benchmarks:
+        elite: "> 99.9"  # 4 nines
+        high: "99.5-99.9"  # 3 nines
+        medium: "99.0-99.5"
+        low: "< 99.0"
+      maturity_level_required: 4
+      periodicity: "hourly"
+      
+    - id: conf_003
+      name: "Error Budget Remaining"
+      description: "Porcentaje de error budget restante en el período"
+      formula: "(1 - (actual_downtime / allowed_downtime)) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/monitoring/gcp_monitor.py"
+          fields: ["resources[].status"]
+        - script: "azdo/cicd_inventory_health_score.py"
+          fields: ["pipelines[].health_score"]
+      benchmarks:
+        elite: "> 50"  # Más del 50% restante
+        high: "25-50"
+        medium: "10-25"
+        low: "< 10"  # Menos del 10% restante
+      maturity_level_required: 4
+      periodicity: "daily"
+      
+    - id: conf_004
+      name: "Mean Time Between Failures (MTBF)"
+      description: "Tiempo promedio entre fallos de servicio"
+      formula: "total_uptime_hours / count(incidents)"
+      unit: "días"
+      frameworks:
+        - SRE
+        - ITIL
+      sources:
+        - script: "azdo/cicd_pipeline_status.py"
+          fields: ["pipelines[].failure_count_7d", "pipelines[].total_runs_7d"]
+      benchmarks:
+        elite: "> 180"  # Más de 6 meses
+        high: "90-180"  # 3-6 meses
+        medium: "30-90"  # 1-3 meses
+        low: "< 30"  # Menos de 1 mes
+      maturity_level_required: 3
+      periodicity: "weekly"
+      
+    - id: conf_005
+      name: "Pod/Container Restart Rate"
+      description: "Tasa de reinicios de pods/containers en últimos 7 días"
+      formula: "sum(restart_count) / count(pods)"
+      unit: "reinicios/pod"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/monitoring/gke_pod_monitor.py"
+          fields: ["pods[].restart_count"]
+        - script: "aws/eks/aws_eks_pod_checker.py"
+          fields: ["pods[].restart_count"]
+      benchmarks:
+        elite: "< 1"
+        high: "1-3"
+        medium: "3-10"
+        low: "> 10"
+      maturity_level_required: 2
+      periodicity: "daily"
+      
+    - id: conf_006
+      name: "Database Connection Health"
+      description: "Porcentaje de conexiones DB exitosas"
+      formula: "count(connections where status='success') / count(total_connections) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "terminal/db-connections-checker.sh"
+          fields: ["connections[].status"]
+        - script: "gcp/connectivity/deploy_dependency_checker.py"
+          fields: ["dependencies[].status"]
+      benchmarks:
+        elite: "100"
+        high: "99-100"
+        medium: "95-99"
+        low: "< 95"
+      maturity_level_required: 2
+      periodicity: "hourly"
+
+# =============================================================================
+# DIMENSIÓN 3: SEGURIDAD (20%)
+# =============================================================================
+
+seguridad:
+  weight: 0.20
+  kpis:
+    
+    - id: seg_001
+      name: "MFA Coverage"
+      description: "Porcentaje de usuarios con MFA habilitado"
+      formula: "count(users where mfa_enabled=true) / count(total_users) * 100"
+      unit: "%"
+      frameworks:
+        - NIST_CSF
+        - ISO_20000
+      sources:
+        - script: "aws/iam/aws_iam_checker.py"
+          fields: ["users[].mfa_enabled"]
+        - script: "gcp/service-account/gcp_service_account_checker.py"
+          fields: ["service_accounts[].mfa_enabled"]
+      benchmarks:
+        elite: "100"
+        high: "90-100"
+        medium: "70-90"
+        low: "< 70"
+      maturity_level_required: 3
+      periodicity: "daily"
+      
+    - id: seg_002
+      name: "Certificate Expiry Risk"
+      description: "Porcentaje de certificados que expiran en < 30 días"
+      formula: "count(certs where days_to_expiry < 30) / count(total_certs) * 100"
+      unit: "%"
+      frameworks:
+        - NIST_CSF
+        - ITIL
+      sources:
+        - script: "gcp/certificate-manager/gcp_certificate_checker.py"
+          fields: ["certificates[].days_to_expiry"]
+        - script: "aws/acm/aws_acm_checker.py"
+          fields: ["certificates[].days_to_expiry"]
+        - script: "terminal/certificate-tls-report.sh"
+          fields: ["certificates[].days_remaining"]
+      benchmarks:
+        elite: "0"
+        high: "0-5"
+        medium: "5-15"
+        low: "> 15"
+      maturity_level_required: 2
+      periodicity: "daily"
+      
+    - id: seg_003
+      name: "Secret Rotation Coverage"
+      description: "Porcentaje de secretos rotados en últimos 90 días"
+      formula: "count(secrets where last_rotated < 90d) / count(total_secrets) * 100"
+      unit: "%"
+      frameworks:
+        - NIST_CSF
+      sources:
+        - script: "gcp/secrets-configmaps/gcp_secrets_configmaps_checker.py"
+          fields: ["secrets[].rotation_days"]
+        - script: "aws/secretsmanager/aws_secrets_checker.py"
+          fields: ["secrets[].days_since_rotation"]
+      benchmarks:
+        elite: "100"
+        high: "80-100"
+        medium: "50-80"
+        low: "< 50"
+      maturity_level_required: 3
+      periodicity: "weekly"
+      
+    - id: seg_004
+      name: "IAM Over-Permissioning Rate"
+      description: "Porcentaje de roles con permisos wildcard (*)"
+      formula: "count(roles where has_wildcard=true) / count(total_roles) * 100"
+      unit: "%"
+      frameworks:
+        - NIST_CSF
+        - ISO_20000
+      sources:
+        - script: "gcp/rolesypermisos/gcp_iam_roles_report.py"
+          fields: ["bindings[].has_wildcard"]
+        - script: "aws/iam/aws_roles_checker.py"
+          fields: ["roles[].has_wildcard"]
+      benchmarks:
+        elite: "0"
+        high: "0-5"
+        medium: "5-15"
+        low: "> 15"
+      maturity_level_required: 3
+      periodicity: "weekly"
+      
+    - id: seg_005
+      name: "Vulnerability Remediation Time"
+      description: "Tiempo promedio para remediar vulnerabilidades críticas"
+      formula: "avg(remediation_date - detection_date)"
+      unit: "días"
+      frameworks:
+        - NIST_CSF
+      sources:
+        - script: "azdo/azdo_scan_repos_vulnerabilities.py"
+          fields: ["vulnerabilities[].detected_date", "vulnerabilities[].remediated_date"]
+      benchmarks:
+        elite: "< 7"
+        high: "7-30"
+        medium: "30-90"
+        low: "> 90"
+      maturity_level_required: 3
+      periodicity: "weekly"
+      
+    - id: seg_006
+      name: "WAF Coverage"
+      description: "Porcentaje de recursos públicos protegidos por WAF"
+      formula: "count(resources where waf_enabled=true) / count(public_resources) * 100"
+      unit: "%"
+      frameworks:
+        - NIST_CSF
+      sources:
+        - script: "gcp/cloud-armor/gcp_cloud_armor_checker.py"
+          fields: ["policies[].enabled", "policies[].associated_resources"]
+        - script: "aws/waf/aws_waf_checker.py"
+          fields: ["web_acls[].associated_resources"]
+      benchmarks:
+        elite: "100"
+        high: "80-100"
+        medium: "50-80"
+        low: "< 50"
+      maturity_level_required: 3
+      periodicity: "weekly"
+
+# =============================================================================
+# DIMENSIÓN 4: OBSERVABILIDAD (15%)
+# =============================================================================
+
+observabilidad:
+  weight: 0.15
+  kpis:
+    
+    - id: obs_001
+      name: "Monitoring Coverage"
+      description: "Porcentaje de servicios con monitoreo activo"
+      formula: "count(services where monitoring_enabled=true) / count(total_services) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/monitoring/gcp_monitor.py"
+          fields: ["resources[].type", "resources[].status"]
+        - script: "aws/cloudwatch/aws_cloudwatch_checker.py"
+          fields: ["alarms[].metric"]
+      benchmarks:
+        elite: "> 95"
+        high: "80-95"
+        medium: "60-80"
+        low: "< 60"
+      maturity_level_required: 3
+      periodicity: "daily"
+      
+    - id: obs_002
+      name: "SLO Compliance"
+      description: "Porcentaje de SLOs cumplidos en el período"
+      formula: "count(slos where actual >= target) / count(total_slos) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/monitoring/gcp_monitor.py"
+          fields: ["resources[].status"]
+      benchmarks:
+        elite: "> 99"
+        high: "95-99"
+        medium: "90-95"
+        low: "< 90"
+      maturity_level_required: 4
+      periodicity: "daily"
+      
+    - id: obs_003
+      name: "Resource Utilization Efficiency"
+      description: "Ratio de recursos solicitados vs límites (CPU/Memory)"
+      formula: "avg(requested / limits)"
+      unit: "ratio"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/monitoring/gke_pod_monitor.py"
+          fields: ["pods[].cpu_request", "pods[].cpu_limit", "pods[].memory_request", "pods[].memory_limit"]
+        - script: "aws/eks/aws_eks_pod_checker.py"
+          fields: ["pods[].cpu_request", "pods[].memory_request"]
+      benchmarks:
+        elite: "0.6-0.8"  # Optimal range
+        high: "0.5-0.9"
+        medium: "0.4-1.0"
+        low: "< 0.4 or > 1.0"
+      maturity_level_required: 3
+      periodicity: "hourly"
+      
+    - id: obs_004
+      name: "Alerting Response Time"
+      description: "Tiempo promedio desde alerta hasta primera respuesta"
+      formula: "avg(first_response_time - alert_time)"
+      unit: "minutos"
+      frameworks:
+        - SRE
+        - ITIL
+      sources:
+        - script: "azdo/cicd_pipeline_status.py"
+          fields: ["pipelines[].last_failure_timestamp"]
+      benchmarks:
+        elite: "< 15"
+        high: "15-60"
+        medium: "60-240"
+        low: "> 240"
+      maturity_level_required: 3
+      periodicity: "daily"
+      
+    - id: obs_005
+      name: "Log Aggregation Coverage"
+      description: "Porcentaje de servicios con logs centralizados"
+      formula: "count(services where logs_centralized=true) / count(total_services) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/monitoring/gcp_monitor.py"
+          fields: ["resources[].type"]
+      benchmarks:
+        elite: "> 95"
+        high: "80-95"
+        medium: "60-80"
+        low: "< 60"
+      maturity_level_required: 2
+      periodicity: "weekly"
+
+# =============================================================================
+# DIMENSIÓN 5: CUMPLIMIENTO (15%)
+# =============================================================================
+
+cumplimiento:
+  weight: 0.15
+  kpis:
+    
+    - id: cump_001
+      name: "Policy Adherence Rate"
+      description: "Porcentaje de recursos que cumplen políticas definidas"
+      formula: "count(resources where compliant=true) / count(total_resources) * 100"
+      unit: "%"
+      frameworks:
+        - ITIL
+        - ISO_20000
+      sources:
+        - script: "azdo/azdo_branch_policy_checker.py"
+          fields: ["repos[].policies[].compliant"]
+        - script: "azdo/azdo_pr_master_checker.py"
+          fields: ["prs[].compliant"]
+      benchmarks:
+        elite: "> 95"
+        high: "85-95"
+        medium: "70-85"
+        low: "< 70"
+      maturity_level_required: 3
+      periodicity: "daily"
+      
+    - id: cump_002
+      name: "Pipeline Drift Rate"
+      description: "Porcentaje de pipelines con drift detectado"
+      formula: "count(pipelines where has_drift=true) / count(total_pipelines) * 100"
+      unit: "%"
+      frameworks:
+        - ITIL
+      sources:
+        - script: "azdo/azdo_pipeline_drift.py"
+          fields: ["pipelines[].has_drift"]
+      benchmarks:
+        elite: "0"
+        high: "0-5"
+        medium: "5-15"
+        low: "> 15"
+      maturity_level_required: 3
+      periodicity: "weekly"
+      
+    - id: cump_003
+      name: "Approval Workflow Coverage"
+      description: "Porcentaje de deployments con aprobación requerida"
+      formula: "count(deployments where approval_required=true) / count(total_deployments) * 100"
+      unit: "%"
+      frameworks:
+        - ITIL
+        - ISO_20000
+      sources:
+        - script: "azdo/cicd_inventory_pending_approvals.py"
+          fields: ["approvals[].required"]
+      benchmarks:
+        elite: "100"
+        high: "90-100"
+        medium: "70-90"
+        low: "< 70"
+      maturity_level_required: 2
+      periodicity: "daily"
+      
+    - id: cump_004
+      name: "Branch Lock Compliance"
+      description: "Porcentaje de ramas críticas con lock habilitado"
+      formula: "count(branches where locked=true and critical=true) / count(critical_branches) * 100"
+      unit: "%"
+      frameworks:
+        - ITIL
+      sources:
+        - script: "azdo/azdo_branch_lock_checker.py"
+          fields: ["repos[].branches[].locked"]
+      benchmarks:
+        elite: "100"
+        high: "90-100"
+        medium: "70-90"
+        low: "< 70"
+      maturity_level_required: 2
+      periodicity: "daily"
+      
+    - id: cump_005
+      name: "Deprecated Task Usage"
+      description: "Porcentaje de pipelines usando tasks deprecadas"
+      formula: "count(pipelines where has_deprecated_tasks=true) / count(total_pipelines) * 100"
+      unit: "%"
+      frameworks:
+        - ITIL
+      sources:
+        - script: "azdo/azdo_task_validator.py"
+          fields: ["pipelines[].tasks[].deprecated"]
+      benchmarks:
+        elite: "0"
+        high: "0-5"
+        medium: "5-15"
+        low: "> 15"
+      maturity_level_required: 2
+      periodicity: "weekly"
+
+# =============================================================================
+# DIMENSIÓN 6: EFICIENCIA OPERATIVA (10%)
+# =============================================================================
+
+eficiencia_operativa:
+  weight: 0.10
+  kpis:
+    
+    - id: efic_001
+      name: "Resource Utilization Rate"
+      description: "Porcentaje promedio de utilización de recursos (CPU/Memory)"
+      formula: "avg(used / allocated) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/monitoring/gke_node_monitor.py"
+          fields: ["nodes[].cpu_allocatable", "nodes[].memory_allocatable"]
+        - script: "aws/eks/aws_eks_node_checker.py"
+          fields: ["nodes[].cpu_allocatable", "nodes[].memory_allocatable"]
+        - script: "aws/ec2/aws_ec2_checker.py"
+          fields: ["instances[].cpu_utilization"]
+      benchmarks:
+        elite: "75-85"  # Optimal range
+        high: "60-90"
+        medium: "40-95"
+        low: "< 40 or > 95"
+      maturity_level_required: 3
+      periodicity: "hourly"
+      
+    - id: efic_002
+      name: "Storage Utilization"
+      description: "Porcentaje de almacenamiento utilizado"
+      formula: "avg(used_gb / allocated_gb) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/cloud-sql/gcp_disk_checker.py"
+          fields: ["instances[].disk_used_gb", "instances[].disk_size_gb"]
+        - script: "aws/rds/aws_rds_storage_checker.py"
+          fields: ["instances[].storage_used_percent"]
+        - script: "aws/ec2/aws_ebs_checker.py"
+          fields: ["volumes[].size_gb"]
+      benchmarks:
+        elite: "60-80"
+        high: "50-85"
+        medium: "40-90"
+        low: "< 40 or > 90"
+      maturity_level_required: 2
+      periodicity: "daily"
+      
+    - id: efic_003
+      name: "Unused Resource Rate"
+      description: "Porcentaje de recursos no utilizados (idle)"
+      formula: "count(resources where status='idle' or in_use=false) / count(total_resources) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/vpc-networks/gcp_ip_addresses_checker.py"
+          fields: ["addresses[].in_use"]
+        - script: "aws/ec2/aws_ebs_checker.py"
+          fields: ["volumes[].attached"]
+      benchmarks:
+        elite: "< 5"
+        high: "5-15"
+        medium: "15-30"
+        low: "> 30"
+      maturity_level_required: 3
+      periodicity: "weekly"
+      
+    - id: efic_004
+      name: "Auto-Scaling Effectiveness"
+      description: "Porcentaje de clusters con auto-scaling habilitado y funcionando"
+      formula: "count(clusters where autoscaling_enabled=true and autoscaling_working=true) / count(total_clusters) * 100"
+      unit: "%"
+      frameworks:
+        - SRE
+      sources:
+        - script: "gcp/cluster-gke/gcp_cluster_checker.py"
+          fields: ["clusters[].autoscaling_enabled"]
+        - script: "aws/eks/aws_eks_checker.py"
+          fields: ["clusters[].autoscaling_enabled"]
+      benchmarks:
+        elite: "> 95"
+        high: "80-95"
+        medium: "60-80"
+        low: "< 60"
+      maturity_level_required: 3
+      periodicity: "weekly"
+      
+    - id: efic_005
+      name: "Inventory Freshness"
+      description: "Edad promedio del último inventario de recursos"
+      formula: "avg(current_date - last_inventory_date)"
+      unit: "días"
+      frameworks:
+        - ITIL
+      sources:
+        - script: "gcp/inventory/generar-inventario-csv.py"
+          fields: ["metadata.generated_at"]
+        - script: "aws/inventory/aws_inventory_generator.py"
+          fields: ["metadata.generated_at"]
+      benchmarks:
+        elite: "< 7"
+        high: "7-30"
+        medium: "30-90"
+        low: "> 90"
+      maturity_level_required: 2
+      periodicity: "weekly"

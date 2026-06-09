@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.6.8`** — 2026-06-04
+**`1.6.9`** — 2026-06-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-06-09 | **1.6.9** | **KPI Analyzer**: Sistema completo de análisis de KPIs DevSecOps con modelo de madurez de 6 niveles (0-5), 30 KPIs organizados en 6 dimensiones, benchmarks de industria (DORA, SRE, ITIL, NIST CSF, ISO 20000), análisis automático desde salidas JSON, reportes (JSON/CSV/HTML), y documentación completa. Incluye: `analyze_kpis.py`, `analyzer.py`, `reporter.py`, `maturity_model.py`, `benchmarks.py`, `kpi_schema.yaml`, `docs/kpi_sources_inventory.md`, `docs/DevSecOps_Maturity_Model.md`, `docs/KPIs_Frameworks_DevSecOps.md`. | `scm/kpi_analyzer/`, `docs/` |
 | 2026-06-04 | **1.6.8** | **AWS/GCP Homologation**: `scm/aws/tools.py` alineado visualmente con `scm/gcp/tools.py` — mismos colores (`Monitoreo` cyan, `Compute` bright_blue), emojis, nombres en español, GROUP_ORDER (monitoring primero) y estructura del menú Rich (columna Grupo width=18). `scm/aws/` validado: todos los sub-paquetes válidos tienen `__init__.py`. | `scm/aws/tools.py`, `scm/aws/**/__init__.py` |
 | 2026-06-04 | **1.6.7** | **Wheel Fix W004**: Resuelto `check-wheel-contents W004` (módulos en paths no importables). Añadidos `__init__.py` a 19 sub-paquetes válidos (`azdo`, `aws/*`, `gcp/connectivity|monitoring|rolesypermisos`, `terminal`). Configurado `[tool.setuptools]` con `include-package-data = false` y `namespaces = false` para excluir directorios con guiones y keyword `lambda` del wheel. | `pyproject.toml`, 19× `__init__.py` |
 | 2026-06-04 | **1.6.7p** | **Coverage Fix**: `omit` en `[tool.coverage.run]` para excluir módulos AWS/GCP/Terminal sin tests. Restaura umbral `fail-under=35` (38% total, 190/190 tests). | `pyproject.toml` |

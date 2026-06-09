@@ -1,0 +1,19 @@
+# Requirements para KPI Analyzer — DevSecOps Toolbox
+# Análisis de KPIs y dashboards interactivos
+
+# Core dependencies
+pyyaml>=6.0.0
+rich>=13.0.0
+
+# Dashboard dependencies
+streamlit>=1.28.0
+plotly>=5.17.0
+
+# PDF generation
+reportlab>=4.0.0
+
+# Data processing
+pandas>=2.0.0
+
+# Optional: for enhanced visualizations
+matplotlib>=3.7.0
