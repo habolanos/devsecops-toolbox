@@ -315,8 +315,44 @@ def main():
         exported_files.append(("CSV", csv_file))
     
     if args.output in ['all', 'html'] or args.dashboard:
-        html_file = reporter.export_html_simple(results)
-        exported_files.append(("HTML", html_file))
+        if args.dashboard:
+            # Generate full interactive dashboard
+            maturity_assessment = None
+            if args.maturity:
+                kpi_values = {}
+                for kpi in results.get('kpis', []):
+                    kpi_id = kpi.get('id')
+                    value = kpi.get('value')
+                    if kpi_id and value is not None:
+                        if kpi_id == "ec_001":
+                            kpi_values["deployment_frequency"] = value
+                        elif kpi_id == "ec_002":
+                            kpi_values["change_failure_rate"] = value
+                        elif kpi_id == "conf_001":
+                            kpi_values["mttr"] = value
+                        elif kpi_id == "conf_002":
+                            kpi_values["availability"] = value
+                        elif kpi_id == "seg_001":
+                            kpi_values["mfa_coverage"] = value
+                        elif kpi_id == "obs_001":
+                            kpi_values["monitoring_coverage"] = value
+                        elif kpi_id == "cump_001":
+                            kpi_values["policy_adherence"] = value
+                        elif kpi_id == "efic_001":
+                            kpi_values["resource_utilization"] = value
+                
+                assessment = assess_maturity(kpi_values)
+                maturity_assessment = {
+                    'global_level': assessment.global_level,
+                    'global_level_name': get_level_name(assessment.global_level),
+                    'global_score': assessment.global_score
+                }
+            
+            dashboard_file = dashboard_gen.generate_dashboard(results, maturity_assessment)
+            exported_files.append(("Dashboard", dashboard_file))
+        else:
+            html_file = reporter.export_html_simple(results)
+            exported_files.append(("HTML", html_file))
     
     # Print exported files
     if console:
