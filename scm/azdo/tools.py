@@ -655,6 +655,9 @@ def ask_common_params(cfg: Dict, tool_key: str = "common") -> Optional[Dict]:
     org  = prompt("Organización URL", default=def_org)
     proj = prompt("Proyecto",         default=def_proj)
     
+    # Normalizar org: eliminar prefijo https://dev.azure.com/ si existe
+    org = org.replace("https://dev.azure.com/", "").strip("/")
+    
     params = {"pat": pat, "org": org, "project": proj}
     
     # Guardar parámetros para próxima ejecución
