@@ -215,7 +215,7 @@ def print_maturity_assessment(results, console=None):
         f"[bold]Next Level:[/bold] {get_level_name(assessment.next_level)}\n"
         f"[bold]Gap to Next:[/bold] {assessment.gap_to_next:.1f}%",
         title="🎯 Maturity Assessment",
-        border_style=level_color.replace('#', '')
+        border_style=level_color
     ))
     
     # Dimension scores table
