@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from kpi_analyzer.analyzer import KPIAnalyzer
 from kpi_analyzer.reporter import KPIReporter
+from kpi_analyzer.dashboard_generator import DashboardGenerator
 from kpi_analyzer.maturity_model import assess_maturity, get_level_name, get_level_color
 from kpi_analyzer.benchmarks import get_benchmark_level, get_benchmark_emoji, get_benchmark_color
 
@@ -270,6 +271,7 @@ def main():
     
     analyzer = KPIAnalyzer()
     reporter = KPIReporter()
+    dashboard_gen = DashboardGenerator()
     
     # Analyze KPIs
     platform = None if args.platform == 'all' else args.platform
