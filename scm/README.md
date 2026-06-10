@@ -11,6 +11,7 @@ Punto de entrada unificado para herramientas de múltiples plataformas cloud y D
 | `azdo/` | Herramientas para Azure DevOps |
 | `aws/` | Herramientas DevSecOps para Amazon Web Services |
 | `terminal/` | Scripts universales agnósticos de cloud (K8s, TLS, DBs) |
+| `kpi_analyzer/` | Sistema de análisis de KPIs DevSecOps con modelo de madurez y dashboards |
 | [Testing](#-testing) | Guía paso a paso para ejecutar tests |
 | [Compilar](#-compilar-distribuible) | Guía para crear el ZIP distribuible |
 | [Versiones](../README.version.md) | Historial completo de versiones del toolbox |
@@ -28,6 +29,7 @@ python gcp/tools.py
 python azdo/tools.py
 python aws/tools.py
 python terminal/tools.py  # Scripts universales
+python kpi_analyzer/analyze_kpis.py  # Análisis de KPIs DevSecOps
 ```
 
 ---
@@ -160,6 +162,39 @@ En el menú principal:
 - 💻 Compute (EC2, Lambda)
 - 📊 Monitoring (CloudWatch Alarms)
 
+### 📊 KPI Analyzer
+
+| Característica | Descripción |
+|----------------|-------------|
+| **KPIs** | 30 KPIs organizados en 6 dimensiones |
+| **Modelo de Madurez** | 6 niveles (0: Caótico → 5: Optimizado) |
+| **Benchmarks** | DORA, Google SRE, ITIL 4, NIST CSF, ISO 20000 |
+| **Análisis Automático** | Desde 67 salidas JSON del toolbox |
+| **Reportes** | JSON, CSV, HTML |
+| **Dashboards** | Estático (Chart.js) e Interactivo (Streamlit) |
+
+**Dimensiones de KPIs:**
+- 🚀 Entrega Continua (20%)
+- 🛡️ Confiabilidad (20%)
+- 🔐 Seguridad (20%)
+- 📊 Observabilidad (15%)
+- ✅ Cumplimiento (15%)
+- ⚡ Eficiencia Operativa (10%)
+
+**Uso rápido:**
+```bash
+# Análisis básico
+python kpi_analyzer/analyze_kpis.py --maturity
+
+# Dashboard estático HTML
+python kpi_analyzer/analyze_kpis.py --dashboard
+
+# Dashboard interactivo Streamlit
+streamlit run kpi_analyzer/streamlit_app.py
+```
+
+📚 **Documentación completa**: [README.kpis_analyzer.md](README.kpis_analyzer.md)
+
 ---
 
 ## 📦 Requisitos
@@ -216,18 +251,31 @@ scm/
 │   ├── azdo_pr_master_checker.py
 │   ├── azdo_branch_policy_checker.py
 │   └── ...
-└── aws/                 # Amazon Web Services
-    ├── tools.py         # Launcher AWS (v1.0.0)
-    ├── iam/             # IAM Users & Roles Checker
-    ├── acm/             # ACM Certificate Checker
-    ├── rds/             # RDS Instance & Storage Checker
-    ├── vpc/             # VPC & Security Groups Checker
-    ├── elb/             # Load Balancer Checker
-    ├── eks/             # EKS Cluster Checker
-    ├── ecr/             # ECR Repository Checker
-    ├── ec2/             # EC2 Instances Checker
-    ├── lambda/          # Lambda Functions Checker
-    └── cloudwatch/      # CloudWatch Alarms Checker
+├── aws/                 # Amazon Web Services
+│   ├── tools.py         # Launcher AWS (v1.0.0)
+│   ├── iam/             # IAM Users & Roles Checker
+│   ├── acm/             # ACM Certificate Checker
+│   ├── rds/             # RDS Instance & Storage Checker
+│   ├── vpc/             # VPC & Security Groups Checker
+│   ├── elb/             # Load Balancer Checker
+│   ├── eks/             # EKS Cluster Checker
+│   ├── ecr/             # ECR Repository Checker
+│   ├── ec2/             # EC2 Instances Checker
+│   ├── lambda/          # Lambda Functions Checker
+│   └── cloudwatch/      # CloudWatch Alarms Checker
+├── terminal/            # Scripts universales
+│   ├── tools.py         # Launcher Terminal (v1.0.1)
+│   └── ...              # Scripts shell agnósticos
+└── kpi_analyzer/        # KPI Analyzer (v1.0.0)
+    ├── analyze_kpis.py  # Script principal CLI
+    ├── analyzer.py      # Motor de análisis
+    ├── benchmarks.py    # Benchmarks de industria
+    ├── maturity_model.py # Modelo de madurez
+    ├── reporter.py      # Generadores de reportes
+    ├── dashboard_generator.py # Dashboard HTML estático
+    ├── streamlit_app.py # Dashboard interactivo
+    ├── kpi_schema.yaml  # Schema de 30 KPIs
+    └── README.md        # Documentación completa
 ```
 
 ---
@@ -819,6 +867,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
 
 ---
