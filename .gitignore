@@ -15,6 +15,7 @@
 *.secret
 *.key
 secrets/
+**/.last_params.json
 
 #IAs
 .windsurf

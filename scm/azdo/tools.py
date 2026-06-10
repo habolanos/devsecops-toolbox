@@ -55,6 +55,7 @@ HOST_PYTHON       = sys.executable or "python"
 VENV_DIR          = BASE_DIR / ".venv"
 INSTALLED_MARKER  = VENV_DIR / ".installed_requirements"
 CONFIG_FILE       = BASE_DIR / "config.json"
+LAST_PARAMS_FILE  = BASE_DIR / ".last_params.json"  # Cache de últimos parámetros
 REQUIREMENTS_FILE = "requirements.txt"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -329,6 +330,35 @@ def load_config() -> Dict:
         return {}
 
 
+def load_last_params(tool_key: str = "common") -> Dict:
+    """Carga los últimos parámetros usados para una herramienta."""
+    if not LAST_PARAMS_FILE.exists():
+        return {}
+    try:
+        with open(LAST_PARAMS_FILE, "r", encoding="utf-8") as f:
+            all_params = json.load(f)
+            return all_params.get(tool_key, {})
+    except Exception:
+        return {}
+
+
+def save_last_params(tool_key: str, params: Dict) -> None:
+    """Guarda los parámetros usados para una herramienta."""
+    try:
+        all_params = {}
+        if LAST_PARAMS_FILE.exists():
+            with open(LAST_PARAMS_FILE, "r", encoding="utf-8") as f:
+                all_params = json.load(f)
+        
+        all_params[tool_key] = params
+        
+        with open(LAST_PARAMS_FILE, "w", encoding="utf-8") as f:
+            json.dump(all_params, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        # Silenciosamente ignorar errores de guardado
+        pass
+
+
 def config_get(cfg: Dict, *keys, default=""):
     """Acceso seguro a claves anidadas del config."""
     val = cfg
@@ -600,16 +630,23 @@ def print_menu():
 # ═══════════════════════════════════════════════════════════════════════════════
 # PROMPT DE PARÁMETROS COMUNES (PAT / ORG / PROYECTO)
 # ═══════════════════════════════════════════════════════════════════════════════
-def ask_common_params(cfg: Dict) -> Optional[Dict]:
+def ask_common_params(cfg: Dict, tool_key: str = "common") -> Optional[Dict]:
     """
-    Solicita PAT, org URL y proyecto. Usa config.json como defaults.
+    Solicita PAT, org URL y proyecto. Usa últimos parámetros o config.json como defaults.
     Retorna dict con los valores o None si el usuario cancela.
     """
-    def_pat  = config_get(cfg, "organization", "pat")
-    def_org  = config_get(cfg, "organization", "url",     default="https://dev.azure.com/Coppel-Retail")
-    def_proj = config_get(cfg, "organization", "project", default="Compras.RMI")
+    # Cargar últimos parámetros usados
+    last_params = load_last_params(tool_key)
+    
+    # Prioridad: last_params > config.json > hardcoded defaults
+    def_pat  = last_params.get("pat") or config_get(cfg, "organization", "pat")
+    def_org  = last_params.get("org") or config_get(cfg, "organization", "url", default="https://dev.azure.com/Coppel-Retail")
+    def_proj = last_params.get("project") or config_get(cfg, "organization", "project", default="Compras.RMI")
 
     print()
+    if last_params:
+        print(f"{Colors.CYAN}💾 Usando últimos parámetros guardados (presione Enter para mantener){Colors.ENDC}")
+    
     pat = prompt("PAT (Personal Access Token)", default=def_pat, secret=True)
     if not pat or pat.startswith("<"):
         print(f"{Colors.FAIL}Se requiere un PAT válido.{Colors.ENDC}")
@@ -617,7 +654,13 @@ def ask_common_params(cfg: Dict) -> Optional[Dict]:
 
     org  = prompt("Organización URL", default=def_org)
     proj = prompt("Proyecto",         default=def_proj)
-    return {"pat": pat, "org": org, "project": proj}
+    
+    params = {"pat": pat, "org": org, "project": proj}
+    
+    # Guardar parámetros para próxima ejecución
+    save_last_params(tool_key, params)
+    
+    return params
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -689,7 +732,7 @@ def run_tool(tool_key: str):
         return
 
     cfg    = load_config()
-    params = ask_common_params(cfg)
+    params = ask_common_params(cfg, tool_key=tool_key)
     if not params:
         input("\nPresione Enter para continuar...")
         return
@@ -985,7 +1028,7 @@ def run_all_tools():
             print(f"  • {TOOLS.get(k, {}).get('name', '')}")
 
     cfg    = load_config()
-    params = ask_common_params(cfg)
+    params = ask_common_params(cfg, tool_key="run_all")
     if not params:
         input("\nPresione Enter para continuar...")
         return
@@ -1093,7 +1136,7 @@ def run_all_json():
             print(f"  • {tool.get('name', '')}{note}")
 
     cfg    = load_config()
-    params = ask_common_params(cfg)
+    params = ask_common_params(cfg, tool_key="run_all_json")
     if not params:
         input("\nPresione Enter para continuar...")
         return
