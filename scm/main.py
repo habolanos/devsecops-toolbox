@@ -140,7 +140,7 @@ PLATFORMS = {
         "short": "KPI",
         "emoji": "📊",
         "color": "magenta",
-        "path": "kpi_analyzer/analyze_kpis.py",
+        "path": "kpi_analyzer/tools.py",
         "description": "Análisis de KPIs DevSecOps con modelo de madurez de 6 niveles y benchmarks de industria",
         "status": "ready"
     },

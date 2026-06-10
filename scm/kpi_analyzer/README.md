@@ -44,7 +44,29 @@ pip install -r scm/requirements.txt
 
 ## 🚀 Uso
 
-### 1. Análisis Básico
+### Menú Interactivo (Recomendado) ⭐
+
+```bash
+# Lanzar menú interactivo del KPI Analyzer
+python scm/kpi_analyzer/tools.py
+```
+
+**Opciones disponibles en el menú**:
+1. 📊 Análisis Básico de KPIs
+2. 🎯 Análisis por Plataforma (GCP, AZDO, AWS, Terminal)
+3. 🎯 Evaluación de Madurez
+4. 📄 Generar Reporte JSON
+5. 📊 Generar Reporte CSV
+6. 🌐 Generar Reporte HTML Simple
+7. 📈 Dashboard Estático (HTML + Chart.js)
+8. 🚀 Dashboard Interactivo (Streamlit)
+9. 📦 Análisis Completo (Todos los Reportes)
+10. 🧪 Ejecutar Tests Unitarios
+Q. 🔙 Volver al Menú Principal
+
+---
+
+### 1. Análisis Básico (Línea de Comandos)
 
 ```bash
 # Analizar todos los KPIs
@@ -115,6 +137,7 @@ streamlit run scm/kpi_analyzer/streamlit_app.py
 ```
 scm/kpi_analyzer/
 ├── __init__.py                 # Package initialization
+├── tools.py                    # ⭐ Menú interactivo (launcher)
 ├── analyze_kpis.py             # Script principal CLI
 ├── analyzer.py                 # Motor de análisis de KPIs
 ├── benchmarks.py               # Benchmarks de industria
