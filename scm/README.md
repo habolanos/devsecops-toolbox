@@ -213,22 +213,36 @@ pip install rich
 El launcher principal muestra un menú interactivo:
 
 ```
-╔══════════════════════════════════════════════════════════════╗
-║                   🛡️  DevSecOps Toolbox  🛡️                   ║
-║                  v1.0.0 | by Harold Adrian                   ║
-║             DevSecOps Toolbox - Launcher Principal           ║
-╚══════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        🛡️  DevSecOps Toolbox  🛡️                             ║
+║                       v1.6.9 | by Harold Adrian                             ║
+║                  DevSecOps Toolbox - Launcher Principal                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 
-┌──────────────────────────────────────────────────────────────┐
-│                  🚀 Seleccione una Plataforma                │
-├────┬────────┬─────────────────────────┬──────────────────────┤
-│ #  │ Estado │ Plataforma              │ Descripción          │
-├────┼────────┼─────────────────────────┼──────────────────────┤
-│ 1  │ 🟢     │ ☁️ Google Cloud Platform │ Herramientas SRE...  │
-│ 2  │ 🟢     │ 🔷 Azure DevOps          │ PRs, políticas...    │
-│ 3  │ �     │ 🟠 Amazon Web Services   │ IAM, RDS, VPC...     │
-│ Q  │ 🚪     │ 🚪 Salir                 │ Salir del launcher   │
-└────┴────────┴─────────────────────────┴──────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                       🚀 Seleccione una Plataforma                           │
+├────┬────────┬──────────────────────────┬────────────────────────────────────┤
+│ #  │ Config │ Plataforma               │ Descripción                        │
+├────┼────────┼──────────────────────────┼────────────────────────────────────┤
+│ 1  │ ✅     │ ☁️ Google Cloud Platform  │ 22 herramientas SRE: monitoreo,   │
+│    │        │                          │ IAM, networking, K8s, inventario  │
+├────┼────────┼──────────────────────────┼────────────────────────────────────┤
+│ 2  │ ✅     │ 🔷 Azure DevOps           │ Herramientas para PRs, políticas  │
+│    │        │                          │ de rama, releases y drift         │
+├────┼────────┼──────────────────────────┼────────────────────────────────────┤
+│ 3  │ ✅     │ 🟠 Amazon Web Services    │ IAM, RDS, VPC, EKS, ECR, EC2,     │
+│    │        │                          │ Lambda, CloudWatch (13 tools)     │
+├────┼────────┼──────────────────────────┼────────────────────────────────────┤
+│ 4  │ ✅     │ 🐧 Terminal Scripts       │ Scripts shell agnósticos: TLS,    │
+│    │        │                          │ DB, K8s deployments, manifest     │
+├────┼────────┼──────────────────────────┼────────────────────────────────────┤
+│ 5  │ ✅     │ 📊 KPI Analyzer           │ Análisis de KPIs DevSecOps con    │
+│    │        │                          │ modelo de madurez de 6 niveles    │
+├────┼────────┼──────────────────────────┼────────────────────────────────────┤
+│ Q  │        │ 🚪 Salir                  │ Salir del launcher                │
+└────┴────────┴──────────────────────────┴────────────────────────────────────┘
+
+💡 Tip: 'info' = información | 'config' = estado de configuración
 ```
 
 ---
