@@ -47,6 +47,7 @@ try:
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
+    Console = None  # Type hint fallback
 
 DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
 DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
