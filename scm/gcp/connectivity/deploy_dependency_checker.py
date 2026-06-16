@@ -1242,11 +1242,10 @@ def main():
         print_summary_counts(console, connections)
 
         if args.output:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            outcome_dir = os.path.join(script_dir, 'outcome')
+            outcome_dir = get_output_dir("outcome")
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
             filename = f"deploy_dependency_{deployment}_{timestamp}.{args.output}"
-            filepath = os.path.join(outcome_dir, filename)
+            filepath = os.path.join(str(outcome_dir), filename)
             metadata = {
                 'project': project_id,
                 'deployment': deployment,
