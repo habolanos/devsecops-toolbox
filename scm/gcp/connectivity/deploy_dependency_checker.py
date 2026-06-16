@@ -8,6 +8,8 @@ cadenas de conexión a bases de datos y validar la conectividad TCP hacia cada h
 Soporta referencias a GCP Secret Manager para obtener credenciales de conexión de forma segura.
 """
 
+from __future__ import annotations
+
 import argparse
 import subprocess
 import json
@@ -18,11 +20,8 @@ import time
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
-
-if TYPE_CHECKING:
-    from rich.console import Console
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
@@ -42,7 +41,7 @@ except ImportError:
 # -------------------------------------------------------------------
 
 try:
-    from rich.console import Console as RichConsole
+    from rich.console import Console
     from rich.table import Table
     from rich.panel import Panel
     from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -50,7 +49,7 @@ try:
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
-    RichConsole = None
+    Console = None  # Runtime fallback
 
 DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
 DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
@@ -1073,7 +1072,7 @@ def print_execution_time(start_time: float, console: Optional[Console], tz_name:
 def main():
     start_time = time.time()
     args = get_args()
-    console = RichConsole() if RICH_AVAILABLE else None
+    console = Console() if RICH_AVAILABLE else None
 
     if args.help:
         show_help(console)
