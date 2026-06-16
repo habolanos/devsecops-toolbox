@@ -1073,7 +1073,21 @@ def print_execution_time(start_time: float, console: Optional[Console], tz_name:
 def main():
     start_time = time.time()
     args = get_args()
-    console = Console() if RICH_AVAILABLE else None
+    
+    # Intentar crear console - si Rich está instalado debe funcionar
+    console = None
+    if RICH_AVAILABLE:
+        try:
+            console = Console()
+            if args.debug:
+                console.print("[DEBUG] Rich Console creado exitosamente")
+        except Exception as e:
+            if args.debug:
+                print(f"[DEBUG] Error creando Console: {e}")
+            console = None
+    else:
+        if args.debug:
+            print(f"[DEBUG] RICH_AVAILABLE=False - Rich no está disponible")
 
     if args.help:
         show_help(console)
