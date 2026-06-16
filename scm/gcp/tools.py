@@ -273,7 +273,7 @@ TOOLS = {
         "description": "Analiza ConfigMaps de un deployment y valida conexiones a bases de datos (TCP + DB Probe opcional)",
         "path": "connectivity/deploy_dependency_checker.py",
         "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--probe-mode", "--probe-image", "--timeout", "--db-probe", "-o"],
-        "requirements": None,
+        "requirements": "requirements.txt",
         "group": "kubernetes",
         "status": "ready"
     },
@@ -291,7 +291,7 @@ TOOLS = {
         "description": "Valida ConfigMaps, Secrets y conectividad de un Deployment (TCP + DB Probe opcional)",
         "path": "connectivity/deployment_validator.py",
         "args": ["--project", "--cluster", "--region", "--deployment", "--namespace", "--validate", "--probe-image", "--timeout", "--db-probe", "--severity", "-o"],
-        "requirements": None,
+        "requirements": "requirements.txt",
         "group": "kubernetes",
         "status": "ready"
     },
