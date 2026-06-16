@@ -7,6 +7,7 @@ Herramienta completa para validar deployments de Kubernetes:
 - Valida existencia y contenido de ConfigMaps y Secrets referenciados
 - Detecta valores vacíos, placeholders o mal configurados
 - Extrae cadenas de conexión a bases de datos
+- Soporta referencias a GCP Secret Manager para obtener credenciales de forma segura
 - Valida conectividad TCP usando pod temporal con nettools
 - Genera reportes detallados con recomendaciones
 
@@ -61,7 +62,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN Y CONSTANTES
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "Harold Adrian"
 
 DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
@@ -132,7 +133,7 @@ class Finding:
 @dataclass
 class ConnectionEndpoint:
     """Representa un endpoint de conexión detectado."""
-    source_type: str  # ConfigMap o Secret
+    source_type: str  # ConfigMap, Secret, o SecretManager
     source_name: str
     key: str
     host: str
@@ -146,6 +147,10 @@ class ConnectionEndpoint:
     db_probe_message: str = ""  # Detalle del probe de protocolo DB
     lb_name: str = ""           # Nombre del K8s Service si el host es un LB
     lb_status: str = ""         # OK | PENDING | N/A
+    secret_project: str = ""    # GCP Secret Manager: project ID
+    secret_name: str = ""       # GCP Secret Manager: secret name
+    secret_version: str = ""    # GCP Secret Manager: version
+    sm_key: str = ""            # GCP Secret Manager: connection key
 
 
 @dataclass
@@ -373,6 +378,74 @@ def parse_connection_string(value: str) -> List[Tuple[str, int, str, str]]:
             continue
     
     return results
+
+
+def parse_secret_manager_references(value: str) -> List[Dict]:
+    """Parsea referencias a Secret Manager desde un valor de ConfigMap (YAML)."""
+    if not value or 'secretManager' not in value:
+        return []
+
+    # Intentar usar PyYAML si está disponible
+    try:
+        import yaml
+        data = yaml.safe_load(value)
+        if not isinstance(data, dict):
+            return []
+        sm = data.get('secretManager')
+        if not isinstance(sm, dict):
+            return []
+        project_id = sm.get('projectId', '')
+        secrets = sm.get('secrets', {})
+        if not isinstance(secrets, dict):
+            return []
+        results: List[Dict] = []
+        for key, cfg in secrets.items():
+            if isinstance(cfg, dict):
+                results.append({
+                    'connection_key': key,
+                    'project_id': str(project_id),
+                    'secret_name': str(cfg.get('name', '')),
+                    'secret_version': str(cfg.get('version', 'latest')),
+                })
+        return results
+    except Exception:
+        pass
+
+    # Fallback: parsing con regex cuando yaml no está disponible
+    results: List[Dict] = []
+    project_match = re.search(r'projectId\s*:\s*([^\s\n]+)', value)
+    project_id = project_match.group(1) if project_match else ''
+
+    pattern = re.compile(
+        r'(\w+)\s*:\s*\n\s+name\s*:\s*([^\s\n]+)\s*\n\s+version\s*:\s*([^\s\n]+)',
+        re.MULTILINE
+    )
+    for m in pattern.finditer(value):
+        results.append({
+            'connection_key': m.group(1),
+            'project_id': project_id,
+            'secret_name': m.group(2),
+            'secret_version': m.group(3),
+        })
+    return results
+
+
+def fetch_gcp_secret(project_id: str, secret_name: str, version: str, debug: bool = False) -> Optional[Dict]:
+    """Obtiene el valor de un secreto de GCP Secret Manager vía gcloud."""
+    if not secret_name or not project_id:
+        return None
+    cmd = [
+        'gcloud', 'secrets', 'versions', 'access', version,
+        '--secret', secret_name,
+        '--project', project_id,
+    ]
+    code, stdout, stderr = run_command(cmd, debug, timeout=30)
+    if code != 0 or not stdout:
+        return None
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        return {'raw': stdout}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -732,7 +805,7 @@ def validate_configmaps(configmap_names: Set[str], namespace: str,
                     remediation=f"kubectl edit configmap {cm_name} -n {namespace}"
                 ))
             
-            # Extraer endpoints de conexión
+            # Extraer endpoints de conexión tradicionales
             for host, port, raw, db_type in parse_connection_string(value):
                 endpoints.append(ConnectionEndpoint(
                     source_type="ConfigMap",
@@ -743,6 +816,68 @@ def validate_configmaps(configmap_names: Set[str], namespace: str,
                     db_type=db_type,
                     raw_value=raw
                 ))
+            
+            # Extraer referencias a Secret Manager
+            for sm_ref in parse_secret_manager_references(value):
+                secret_name = sm_ref.get('secret_name', '')
+                secret_version = sm_ref.get('secret_version', 'latest')
+                secret_project = sm_ref.get('project_id', '')
+                connection_key = sm_ref.get('connection_key', '')
+                
+                secret_value = fetch_gcp_secret(secret_project, secret_name, secret_version, debug)
+                
+                if secret_value is None:
+                    report.findings.append(Finding(
+                        category="ConfigMap",
+                        resource_type="SecretManager",
+                        resource_name=f"{secret_name} (project: {secret_project})",
+                        key=connection_key,
+                        severity=Severity.CRITICAL,
+                        message=f"No se pudo obtener el secreto de Secret Manager",
+                        remediation=f"Verificar permisos y existencia del secreto: gcloud secrets describe {secret_name} --project {secret_project}"
+                    ))
+                    continue
+                
+                if isinstance(secret_value, dict) and 'raw' not in secret_value:
+                    host = secret_value.get('host', '')
+                    port = secret_value.get('port')
+                    db_type = secret_value.get('type', 'unknown')
+                    if host and port:
+                        try:
+                            port_int = int(port)
+                        except (ValueError, TypeError):
+                            port_int = DB_DEFAULT_PORTS.get(str(db_type).lower())
+                        if port_int:
+                            endpoints.append(ConnectionEndpoint(
+                                source_type="SecretManager",
+                                source_name=cm_name,
+                                key=key,
+                                host=host,
+                                port=port_int,
+                                db_type=str(db_type).lower(),
+                                raw_value=json.dumps(secret_value),
+                                secret_project=secret_project,
+                                secret_name=secret_name,
+                                secret_version=secret_version,
+                                sm_key=connection_key
+                            ))
+                else:
+                    # Intentar parsear como cadena de conexión
+                    raw_str = secret_value.get('raw', '') if isinstance(secret_value, dict) else str(secret_value)
+                    for host, port, raw, db_type in parse_connection_string(raw_str):
+                        endpoints.append(ConnectionEndpoint(
+                            source_type="SecretManager",
+                            source_name=cm_name,
+                            key=key,
+                            host=host,
+                            port=port,
+                            db_type=db_type,
+                            raw_value=raw,
+                            secret_project=secret_project,
+                            secret_name=secret_name,
+                            secret_version=secret_version,
+                            sm_key=connection_key
+                        ))
     
     return endpoints
 
@@ -1054,15 +1189,19 @@ def print_connectivity_table(console: Console, endpoints: List[ConnectionEndpoin
 
     has_db_probe = any(ep.db_probe_status for ep in endpoints)
     has_lb       = any(ep.lb_name for ep in endpoints)
+    has_sm       = any(ep.source_type == 'SecretManager' for ep in endpoints)
 
     title_parts = ["TCP"]
     if has_lb:       title_parts.append("LB")
     if has_db_probe: title_parts.append("DB Probe")
+    if has_sm:       title_parts.append("Secret Manager")
     title = f"🔌 Validación de Conectividad ({' + '.join(title_parts)})"
 
     table = Table(title=title, box=box.ROUNDED, header_style="bold cyan", border_style="dim")
     table.add_column("Origen",   style="white",  width=10)
     table.add_column("Recurso",  style="white",  width=18)
+    if has_sm:
+        table.add_column("Source",   justify="center", width=10)
     table.add_column("Conexión", justify="center", width=10)
     table.add_column("Tipo DB",  justify="center", width=10)
     table.add_column("Host",     style="white",  width=25)
@@ -1082,17 +1221,24 @@ def print_connectivity_table(console: Console, endpoints: List[ConnectionEndpoin
         )
         latency_str = f"{ep.latency_ms:.0f}ms" if ep.latency_ms > 0 else "-"
         conn_type = get_connection_type(ep.raw_value)
+        
+        source_icon = '🔐' if ep.source_type == 'SecretManager' else ('🔑' if ep.source_type == 'Secret' else '📋')
+        source_label = 'SM' if ep.source_type == 'SecretManager' else ('K8s' if ep.source_type == 'Secret' else 'CM')
 
         row = [
             ep.source_type,
             ep.source_name,
+        ]
+        if has_sm:
+            row.append(f"[magenta]{source_icon} {source_label}[/]")
+        row.extend([
             f"[cyan]{conn_type}[/]",
             ep.db_type,
             ep.host,
             str(ep.port),
             f"[{tcp_style}]{ep.status}[/{tcp_style}]",
             latency_str,
-        ]
+        ])
         if has_lb:
             if ep.lb_name:
                 lb_style = (
@@ -1213,6 +1359,10 @@ def export_report(report: ValidationReport, filepath: str, format: str):
                     "lb_status":        e.lb_status or None,
                     "db_probe_status":  e.db_probe_status  or None,
                     "db_probe_message": e.db_probe_message or None,
+                    "secret_project":   e.secret_project or None,
+                    "secret_name":      e.secret_name or None,
+                    "secret_version":   e.secret_version or None,
+                    "sm_key":           e.sm_key or None,
                 }
                 for e in report.endpoints
             ]
@@ -1227,20 +1377,24 @@ def export_report(report: ValidationReport, filepath: str, format: str):
                 "Type", "Category", "Resource", "Key", "Severity", "Message",
                 "TCP_Status", "Host", "Port",
                 "LB_Name", "LB_Status",
-                "DB_Probe_Status", "DB_Probe_Message"
+                "DB_Probe_Status", "DB_Probe_Message",
+                "Secret_Project", "Secret_Name", "Secret_Version", "SM_Key"
             ])
             for finding in report.findings:
                 writer.writerow([
                     "Finding", finding.category, finding.resource_name, finding.key,
                     finding.severity.value, finding.message,
-                    "", "", "", "", "", "", ""
+                    "", "", "", "", "", "", "",
+                    "", "", "", ""
                 ])
             for ep in report.endpoints:
                 writer.writerow([
                     "Connectivity", ep.source_type, ep.source_name, ep.key,
                     "", "", ep.status, ep.host, ep.port,
                     ep.lb_name or "", ep.lb_status or "",
-                    ep.db_probe_status or "", ep.db_probe_message or ""
+                    ep.db_probe_status or "", ep.db_probe_message or "",
+                    ep.secret_project or "", ep.secret_name or "", 
+                    ep.secret_version or "", ep.sm_key or ""
                 ])
 
 
