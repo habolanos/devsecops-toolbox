@@ -49,7 +49,8 @@ try:
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
-    Console = None  # Runtime fallback
+    # Type hint fallback - won't be used at runtime if Rich is available
+    Console = type(None)
 
 DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
 DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
