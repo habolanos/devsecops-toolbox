@@ -1074,13 +1074,20 @@ def main():
     start_time = time.time()
     args = get_args()
     
-    # Intentar crear console - si Rich está instalado debe funcionar
+    # Intentar crear console - forzar Rich incluso en subprocesos
     console = None
     if RICH_AVAILABLE:
         try:
-            console = Console()
+            # Forzar terminal con color y unicode para subprocesos
+            console = Console(
+                force_terminal=True,
+                force_interactive=False,
+                color_system="auto",
+                legacy_windows=False
+            )
             if args.debug:
-                console.print("[DEBUG] Rich Console creado exitosamente")
+                console.print("[bold green][DEBUG] Rich Console creado exitosamente ✓[/]")
+                console.print(f"[dim]Terminal: {console.is_terminal}, Color: {console.color_system}[/]")
         except Exception as e:
             if args.debug:
                 print(f"[DEBUG] Error creando Console: {e}")
