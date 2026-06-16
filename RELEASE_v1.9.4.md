@@ -1,4 +1,4 @@
-# Release v1.9.4 - GCP Secret Manager Integration 🔐
+# Release 1.9.4 - GCP Secret Manager Integration 🔐
 
 **Fecha:** 16 de Junio, 2026  
 **Autor:** Harold Adrian

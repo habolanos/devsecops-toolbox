@@ -66,7 +66,7 @@ python scm/gcp/tools.py
 - **Source code** (tar.gz)
 - **Distribution**: `devsecops-toolbox_dist_20260616_132218.zip` (1.294 MB, 201 files)
 
-## 🔄 Migration from v1.9.3
+## 🔄 Migration from 1.9.3
 
 100% backward compatible. No breaking changes.
 
