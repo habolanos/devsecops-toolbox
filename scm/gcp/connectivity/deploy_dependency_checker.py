@@ -5,6 +5,7 @@ Deploy Dependency Checker
 
 Analiza los ConfigMaps referenciados por un Deployment de GKE para identificar
 cadenas de conexión a bases de datos y validar la conectividad TCP hacia cada host:puerto detectado.
+Soporta referencias a GCP Secret Manager para obtener credenciales de conexión de forma segura.
 """
 
 import argparse
@@ -53,7 +54,7 @@ DEFAULT_REGION = "us-central1"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_PROBE_IMAGE = "jrecord/nettools:latest"
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 URL_PATTERN = re.compile(r"(jdbc:)?((?P<engine>postgres(?:ql)?|mysql|mssql|sqlserver|oracle|mongodb|redis|cockroachdb)://[^\s'\"` ]+)", re.IGNORECASE)
 HOST_PORT_PATTERN = re.compile(r"([a-zA-Z0-9.-]+):(\d{2,5})")
@@ -380,6 +381,74 @@ def parse_connection_values(value: str) -> List[Tuple[str, int, str, str]]:
     return results
 
 
+def parse_secret_manager_references(value: str) -> List[Dict]:
+    """Parsea referencias a Secret Manager desde un valor de ConfigMap (YAML)."""
+    if not value or 'secretManager' not in value:
+        return []
+
+    # Intentar usar PyYAML si está disponible
+    try:
+        import yaml
+        data = yaml.safe_load(value)
+        if not isinstance(data, dict):
+            return []
+        sm = data.get('secretManager')
+        if not isinstance(sm, dict):
+            return []
+        project_id = sm.get('projectId', '')
+        secrets = sm.get('secrets', {})
+        if not isinstance(secrets, dict):
+            return []
+        results: List[Dict] = []
+        for key, cfg in secrets.items():
+            if isinstance(cfg, dict):
+                results.append({
+                    'connection_key': key,
+                    'project_id': str(project_id),
+                    'secret_name': str(cfg.get('name', '')),
+                    'secret_version': str(cfg.get('version', 'latest')),
+                })
+        return results
+    except Exception:
+        pass
+
+    # Fallback: parsing con regex cuando yaml no está disponible
+    results: List[Dict] = []
+    project_match = re.search(r'projectId\s*:\s*([^\s\n]+)', value)
+    project_id = project_match.group(1) if project_match else ''
+
+    pattern = re.compile(
+        r'(\w+)\s*:\s*\n\s+name\s*:\s*([^\s\n]+)\s*\n\s+version\s*:\s*([^\s\n]+)',
+        re.MULTILINE
+    )
+    for m in pattern.finditer(value):
+        results.append({
+            'connection_key': m.group(1),
+            'project_id': project_id,
+            'secret_name': m.group(2),
+            'secret_version': m.group(3),
+        })
+    return results
+
+
+def fetch_gcp_secret(project_id: str, secret_name: str, version: str, debug: bool = False) -> Optional[Dict]:
+    """Obtiene el valor de un secreto de GCP Secret Manager vía gcloud."""
+    if not secret_name or not project_id:
+        return None
+    cmd = [
+        'gcloud', 'secrets', 'versions', 'access', version,
+        '--secret', secret_name,
+        '--project', project_id,
+    ]
+    code, stdout, stderr = run_command(cmd, debug, timeout=30)
+    if code != 0 or not stdout:
+        return None
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        return {'raw': stdout}
+
+
 def get_current_namespace(debug: bool = False) -> str:
     cmd = ['kubectl', 'config', 'view', '--minify', '--output', 'jsonpath={..namespace}']
     code, stdout, stderr = run_command(cmd, debug)
@@ -389,39 +458,109 @@ def get_current_namespace(debug: bool = False) -> str:
     return ns
 
 
+def _make_connection_dict(
+    configmap: str, key: str, host: str, port, raw_value: str,
+    status: str, message: str, db_type: str = 'unknown',
+    source_type: str = 'configmap', secret_project: str = '',
+    secret_name: str = '', secret_version: str = '', sm_key: str = ''
+) -> Dict:
+    """Helper para construir un diccionario de conexión uniforme."""
+    return {
+        'configmap':      configmap,
+        'key':            key,
+        'host':           host,
+        'port':           port,
+        'db_type':        db_type,
+        'raw_value':      raw_value,
+        'status':         status,
+        'message':        message,
+        'elapsed':        0.0,
+        'db_probe_status':  '',
+        'db_probe_message': '',
+        'lb_name':          '',
+        'lb_status':        '',
+        'source_type':      source_type,
+        'secret_project':   secret_project,
+        'secret_name':      secret_name,
+        'secret_version':   secret_version,
+        'sm_key':           sm_key,
+    }
+
+
 def collect_connections(configmaps: List[str], namespace: str, debug: bool = False) -> List[Dict]:
     connections: List[Dict] = []
     for cm in configmaps:
         data = get_configmap_data(cm, namespace, debug)
         if data is None:
-            connections.append({
-                'configmap': cm,
-                'key': '-',
-                'host': '-',
-                'port': '-',
-                'raw_value': 'ConfigMap no accesible',
-                'status': 'ERROR',
-                'message': 'kubectl no pudo obtener el ConfigMap',
-                'elapsed': 0.0
-            })
+            connections.append(_make_connection_dict(
+                cm, '-', '-', '-', 'ConfigMap no accesible',
+                'ERROR', 'kubectl no pudo obtener el ConfigMap'
+            ))
             continue
         for key, value in data.items():
+            # 1) Cadenas de conexión tradicionales (JDBC, host:puerto, etc.)
             for host, port, raw, db_type in parse_connection_values(value):
-                connections.append({
-                    'configmap': cm,
-                    'key': key,
-                    'host': host,
-                    'port': port,
-                    'db_type': db_type,
-                    'raw_value': raw,
-                    'status': 'PENDING',
-                    'message': 'Pendiente de validación',
-                    'elapsed': 0.0,
-                    'db_probe_status':  '',
-                    'db_probe_message': '',
-                    'lb_name':          '',
-                    'lb_status':        '',
-                })
+                connections.append(_make_connection_dict(
+                    cm, key, host, port, raw,
+                    'PENDING', 'Pendiente de validación', db_type
+                ))
+
+            # 2) Referencias a Secret Manager
+            for sm_ref in parse_secret_manager_references(value):
+                secret_name = sm_ref.get('secret_name', '')
+                secret_version = sm_ref.get('secret_version', 'latest')
+                secret_project = sm_ref.get('project_id', '')
+                connection_key = sm_ref.get('connection_key', '')
+
+                secret_value = fetch_gcp_secret(secret_project, secret_name, secret_version, debug)
+
+                if secret_value is None:
+                    connections.append(_make_connection_dict(
+                        cm, key, '-', '-',
+                        f"SecretManager ref: {connection_key} -> {secret_name}:{secret_version} (project: {secret_project})",
+                        'ERROR', f"No se pudo obtener el secreto {secret_name} del proyecto {secret_project}",
+                        'unknown', 'secretmanager', secret_project, secret_name, secret_version, connection_key
+                    ))
+                    continue
+
+                if isinstance(secret_value, dict):
+                    host = secret_value.get('host', '')
+                    port = secret_value.get('port')
+                    db_type = secret_value.get('type', 'unknown')
+                    if host and port:
+                        try:
+                            port_int = int(port)
+                        except (ValueError, TypeError):
+                            port_int = DB_DEFAULT_PORTS.get(str(db_type).lower())
+                        if port_int:
+                            connections.append(_make_connection_dict(
+                                cm, key, host, port_int, json.dumps(secret_value),
+                                'PENDING', 'Pendiente de validación', str(db_type).lower(),
+                                'secretmanager', secret_project, secret_name, secret_version, connection_key
+                            ))
+                        continue
+                    # Secreto obtenido pero no tiene host/puerto
+                    connections.append(_make_connection_dict(
+                        cm, key, '-', '-', json.dumps(secret_value),
+                        'SKIPPED', 'Secreto obtenido pero no contiene host/puerto',
+                        'unknown', 'secretmanager', secret_project, secret_name, secret_version, connection_key
+                    ))
+                else:
+                    # Valor raw (string): intentar parsear como cadena de conexión
+                    found = False
+                    for host, port, raw, db_type in parse_connection_values(str(secret_value)):
+                        found = True
+                        connections.append(_make_connection_dict(
+                            cm, key, host, port, raw,
+                            'PENDING', 'Pendiente de validación', db_type,
+                            'secretmanager', secret_project, secret_name, secret_version, connection_key
+                        ))
+                    if not found:
+                        connections.append(_make_connection_dict(
+                            cm, key, '-', '-', str(secret_value),
+                            'SKIPPED', 'Secreto obtenido pero no contiene cadena de conexión reconocible',
+                            'unknown', 'secretmanager', secret_project, secret_name, secret_version, connection_key
+                        ))
     return connections
 
 
@@ -692,7 +831,9 @@ def export_results(connections: List[Dict], filepath: str, export_format: str, m
             'project', 'deployment', 'namespace', 'configmap', 'key', 'db_type',
             'host', 'port', 'tcp_status', 'message', 'elapsed', 'raw_value',
             'lb_name', 'lb_status',
-            'db_probe_status', 'db_probe_message', 'timestamp',
+            'db_probe_status', 'db_probe_message',
+            'source_type', 'secret_project', 'secret_name', 'secret_version', 'sm_key',
+            'timestamp',
         ]
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
@@ -731,6 +872,11 @@ def export_results(connections: List[Dict], filepath: str, export_format: str, m
                     'lb_status':        c.get('lb_status') or None,
                     'db_probe_status':  c.get('db_probe_status') or None,
                     'db_probe_message': c.get('db_probe_message') or None,
+                    'source_type':      c.get('source_type', 'configmap'),
+                    'secret_project':   c.get('secret_project') or None,
+                    'secret_name':      c.get('secret_name') or None,
+                    'secret_version':   c.get('secret_version') or None,
+                    'sm_key':           c.get('sm_key') or None,
                     'timestamp':        c.get('timestamp', ''),
                 }
                 for c in connections
@@ -784,13 +930,17 @@ def print_results(console: Optional[Console], connections: List[Dict]):
     if RICH_AVAILABLE and console:
         has_db_probe = any(c.get('db_probe_status') for c in connections)
         has_lb       = any(c.get('lb_name') for c in connections)
+        has_sm       = any(c.get('source_type') == 'secretmanager' for c in connections)
         title_parts  = ["TCP"]
         if has_lb:       title_parts.append("LB")
         if has_db_probe: title_parts.append("DB Probe")
+        if has_sm:       title_parts.append("Secret Manager")
         title = f"\U0001f50c Resultados de Conectividad ({' + '.join(title_parts)})"
         table = Table(title=title, title_style="bold magenta", header_style="bold cyan", border_style="dim")
         table.add_column("ConfigMap",  style="white")
         table.add_column("Key",        style="white")
+        if has_sm:
+            table.add_column("Source",     justify="center", width=10)
         table.add_column("Conexi\u00f3n",   justify="center", width=10)
         table.add_column("Tipo DB",    justify="left")
         table.add_column("Host",       justify="left")
@@ -815,16 +965,24 @@ def print_results(console: Optional[Console], connections: List[Dict]):
             else:
                 tcp_cell = f'[red]{tcp_raw}[/]'
             conn_type = get_connection_type(conn.get('raw_value', ''))
+            source_type = conn.get('source_type', 'configmap')
+            source_icon = '🔐' if source_type == 'secretmanager' else '📋'
+            source_label = 'SM' if source_type == 'secretmanager' else 'CM'
+            
             row = [
                 conn['configmap'],
                 conn['key'],
+            ]
+            if has_sm:
+                row.append(f"[magenta]{source_icon} {source_label}[/]")
+            row.extend([
                 f"[cyan]{conn_type}[/]",
                 conn.get('db_type', 'unknown'),
                 conn['host'],
                 str(conn['port']),
                 tcp_cell,
                 conn['message'],
-            ]
+            ])
             if has_lb:
                 lb_name   = conn.get('lb_name', '')
                 lb_status = conn.get('lb_status', '')
