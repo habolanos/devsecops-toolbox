@@ -251,26 +251,40 @@ def update_branch_config_variable(definition: Dict, new_value: str) -> None:
 
 def update_task_script(definition: Dict, task_name: str, old_pattern: str, new_pattern: str) -> Tuple[bool, int]:
     """
-    Busca y actualiza el script de una tarea específica.
+    Busca y actualiza el script de una tarea específica en todos los environments.
     
     Args:
         definition: Definición del pipeline
-        task_name: Display name de la tarea a buscar
+        task_name: Name o displayName de la tarea a buscar
         old_pattern: Patrón a buscar en el script
         new_pattern: Patrón de reemplazo
         
     Returns:
         Tuple (found, count) - Si se encontró la tarea y cuántas veces se reemplazó
     """
-    print(f"{Colors.CYAN}>>> Buscando tarea '{task_name}'...{Colors.ENDC}")
+    print(f"{Colors.CYAN}>>> Buscando tarea '{task_name}' en todos los environments...{Colors.ENDC}")
     
     task_found = False
     replacement_count = 0
+    environments_updated = []
     
     if 'environments' not in definition:
         print(f"{Colors.RED}✗ No se encontraron environments en la definición{Colors.ENDC}")
         return False, 0
     
+    # Primero, listar todas las tareas para debug
+    print(f"{Colors.DIM}Tareas disponibles por environment:{Colors.ENDC}")
+    for env in definition['environments']:
+        env_name = env.get('name', 'Unknown')
+        if 'deployPhases' in env:
+            for phase in env['deployPhases']:
+                if 'workflowTasks' in phase:
+                    task_names = [t.get('name', t.get('displayName', 'N/A')) for t in phase['workflowTasks']]
+                    print(f"{Colors.DIM}  [{env_name}]: {', '.join(task_names[:5])}{'...' if len(task_names) > 5 else ''}{Colors.ENDC}")
+    
+    print()
+    
+    # Buscar y actualizar
     for env in definition['environments']:
         env_name = env.get('name', 'Unknown')
         
@@ -282,7 +296,11 @@ def update_task_script(definition: Dict, task_name: str, old_pattern: str, new_p
                 continue
                 
             for task in phase['workflowTasks']:
-                if task.get('displayName') == task_name:
+                # Buscar por 'name' o 'displayName'
+                task_display_name = task.get('displayName', '')
+                task_simple_name = task.get('name', '')
+                
+                if task_display_name == task_name or task_simple_name == task_name:
                     task_found = True
                     print(f"{Colors.YELLOW}  ✓ Tarea encontrada en environment: {env_name}{Colors.ENDC}")
                     
@@ -293,16 +311,23 @@ def update_task_script(definition: Dict, task_name: str, old_pattern: str, new_p
                         if old_script != new_script:
                             task['inputs']['script'] = new_script
                             replacement_count += 1
+                            environments_updated.append(env_name)
                             
-                            print(f"{Colors.GREEN}  Script actualizado:{Colors.ENDC}")
-                            print(f"{Colors.YELLOW}    ANT: {old_pattern}{Colors.ENDC}")
-                            print(f"{Colors.GREEN}    NEW: {new_pattern}{Colors.ENDC}")
+                            print(f"{Colors.GREEN}    Script actualizado:{Colors.ENDC}")
+                            print(f"{Colors.YELLOW}      Patrón antiguo: {old_pattern}{Colors.ENDC}")
+                            print(f"{Colors.GREEN}      Patrón nuevo:   {new_pattern}{Colors.ENDC}")
                         else:
-                            print(f"{Colors.YELLOW}  ⚠ No se encontró el patrón '{old_pattern}' en el script{Colors.ENDC}")
+                            print(f"{Colors.YELLOW}    ⚠ No se encontró el patrón '{old_pattern}' en el script{Colors.ENDC}")
+                    else:
+                        print(f"{Colors.YELLOW}    ⚠ La tarea no tiene script o inputs{Colors.ENDC}")
     
     if not task_found:
-        print(f"{Colors.RED}✗ No se encontró la tarea con displayName '{task_name}'{Colors.ENDC}")
-        print(f"{Colors.YELLOW}  Revisa el nombre exacto en la UI de Azure DevOps{Colors.ENDC}")
+        print(f"{Colors.RED}✗ No se encontró la tarea '{task_name}'{Colors.ENDC}")
+        print(f"{Colors.YELLOW}  Tip: Revisa el nombre exacto en la lista de tareas arriba{Colors.ENDC}")
+    else:
+        print(f"\n{Colors.GREEN}✓ Resumen: {replacement_count} script(s) actualizado(s) en {len(environments_updated)} environment(s){Colors.ENDC}")
+        if environments_updated:
+            print(f"{Colors.CYAN}  Environments actualizados: {', '.join(environments_updated)}{Colors.ENDC}")
     
     return task_found, replacement_count
 
