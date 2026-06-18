@@ -31,6 +31,13 @@ El menú interactivo solicitará:
 
 ### Uso Directo (CLI)
 
+**Uso más simple (con valores por defecto)**:
+```bash
+# Solo requiere el PAT, usa todos los defaults
+python scm/terminal/update-pipeline-cd-branchconfig.py --pat YOUR_PAT_HERE
+```
+
+**Uso completo (especificando todos los parámetros)**:
 ```bash
 python scm/terminal/update-pipeline-cd-branchconfig.py \
   --org Coppel-Retail \
@@ -58,15 +65,17 @@ python scm/terminal/update-pipeline-cd-branchconfig.py \
 
 | Parámetro | Requerido | Default | Descripción |
 |-----------|-----------|---------|-------------|
-| `--org` | ✅ | - | Organización de Azure DevOps |
-| `--project` | ✅ | - | Nombre del proyecto |
-| `--definition-id` | ✅ | - | ID del Release Pipeline |
-| `--pat` | ✅ | - | Personal Access Token |
+| `--org` | ❌ | `Coppel-Retail` | Organización de Azure DevOps |
+| `--project` | ❌ | `Cadena_de_Suministros` | Nombre del proyecto |
+| `--definition-id` | ❌ | `123` | ID del Release Pipeline |
+| `--pat` | ✅ | - | Personal Access Token (REQUERIDO) |
 | `--branch-config` | ❌ | `config-cadenaSuministro` | Nuevo valor para variable branchConfig |
 | `--task-name` | ❌ | `get file k8-manifest` | Display name de la tarea a actualizar |
 | `--old-pattern` | ❌ | `$(path_pipelineConfig)` | Patrón a buscar en el script |
 | `--new-pattern` | ❌ | `$(path_pipelineConfigYml)` | Patrón de reemplazo |
 | `--dry-run` | ❌ | `False` | Simula cambios sin guardarlos |
+
+**Nota**: Solo el PAT es requerido. Todos los demás parámetros tienen valores por defecto configurados según el script PowerShell original.
 
 ## 🔐 Configuración del PAT
 
