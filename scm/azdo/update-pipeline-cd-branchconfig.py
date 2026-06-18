@@ -134,10 +134,27 @@ def interactive_mode() -> Dict:
         config.get('project', 'Cadena_de_Suministros')
     )
     
-    params['definition_id'] = int(prompt_with_default(
-        "ID del Release Pipeline",
+    definition_ids_str = prompt_with_default(
+        "ID(s) del Release Pipeline (separados por coma, máx 100)",
         config.get('definition_id', 123)
-    ))
+    )
+    
+    # Parsear y validar IDs
+    try:
+        if ',' in str(definition_ids_str):
+            definition_ids = [int(id.strip()) for id in str(definition_ids_str).split(',')]
+        else:
+            definition_ids = [int(definition_ids_str)]
+        
+        if len(definition_ids) > 100:
+            print(f"{Colors.RED}✗ Error: Máximo 100 pipelines permitidos. Se proporcionaron {len(definition_ids)}{Colors.ENDC}")
+            sys.exit(1)
+        
+        params['definition_ids'] = definition_ids
+        print(f"{Colors.GREEN}  ✓ {len(definition_ids)} pipeline(s) a actualizar{Colors.ENDC}")
+    except ValueError as e:
+        print(f"{Colors.RED}✗ Error: IDs inválidos. Deben ser números enteros separados por coma.{Colors.ENDC}")
+        sys.exit(1)
     
     params['pat'] = prompt_with_default(
         "Personal Access Token (PAT)",
@@ -394,6 +411,10 @@ Ejemplos:
     --pat TOKEN --branch-config config-production \\
     --task-name "deploy manifest" \\
     --old-pattern "$(oldVar)" --new-pattern "$(newVar)"
+  
+  # Múltiples pipelines
+  python update-pipeline-cd-branchconfig.py \\
+    --definition-id "123,456,789" --pat TOKEN
         """
     )
     
@@ -401,8 +422,8 @@ Ejemplos:
                         help='Nombre de la organización de Azure DevOps (default: Coppel-Retail)')
     parser.add_argument('--project', default='Cadena_de_Suministros',
                         help='Nombre del proyecto (default: Cadena_de_Suministros)')
-    parser.add_argument('--definition-id', type=int, default=123,
-                        help='ID del Release Pipeline (default: 123)')
+    parser.add_argument('--definition-id', type=str, default='123',
+                        help='ID(s) del Release Pipeline separados por coma (ej: "123,456,789", máx 100)')
     parser.add_argument('--pat', required=False,
                         help='Personal Access Token con permisos Release (Read & Write). Requerido si no se usa --interactive con config.json')
     
@@ -438,7 +459,7 @@ def main():
         # Sobrescribir args con params del modo interactivo
         args.org = params['org']
         args.project = params['project']
-        args.definition_id = params['definition_id']
+        definition_ids = params['definition_ids']  # Lista de IDs
         args.pat = params['pat']
         args.branch_config = params['branch_config']
         args.task_name = params['task_name']
@@ -452,6 +473,20 @@ def main():
             print(f"{Colors.YELLOW}Usa --interactive para modo interactivo con config.json{Colors.ENDC}")
             sys.exit(1)
         
+        # Parsear definition_ids desde CLI
+        try:
+            if ',' in args.definition_id:
+                definition_ids = [int(id.strip()) for id in args.definition_id.split(',')]
+            else:
+                definition_ids = [int(args.definition_id)]
+            
+            if len(definition_ids) > 100:
+                print(f"{Colors.RED}✗ Error: Máximo 100 pipelines permitidos. Se proporcionaron {len(definition_ids)}{Colors.ENDC}")
+                sys.exit(1)
+        except ValueError:
+            print(f"{Colors.RED}✗ Error: IDs inválidos. Deben ser números enteros separados por coma.{Colors.ENDC}")
+            sys.exit(1)
+        
         print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
         print(f"{Colors.BOLD}  Azure DevOps Release Pipeline - Branch Config Updater v{__version__}{Colors.ENDC}")
         print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
@@ -459,56 +494,101 @@ def main():
     print(f"\n{Colors.CYAN}Configuración:{Colors.ENDC}")
     print(f"  Organización: {args.org}")
     print(f"  Proyecto: {args.project}")
-    print(f"  Pipeline ID: {args.definition_id}")
+    print(f"  Pipeline IDs: {', '.join(map(str, definition_ids))} ({len(definition_ids)} pipeline(s))")
     print(f"  Modo: {'DRY-RUN (sin guardar)' if args.dry_run else 'PRODUCCIÓN'}")
     print()
     
+    # Estadísticas de procesamiento
+    stats = {
+        'total': len(definition_ids),
+        'success': 0,
+        'failed': 0,
+        'skipped': 0,
+        'results': []
+    }
+    
     try:
-        # 1. Obtener definición actual
-        definition = get_release_definition(args.org, args.project, args.definition_id, args.pat)
-        
-        # 2. Actualizar variable branchConfig
-        update_branch_config_variable(definition, args.branch_config)
-        
-        # 3. Actualizar script de tarea
-        task_found, replacements = update_task_script(
-            definition,
-            args.task_name,
-            args.old_pattern,
-            args.new_pattern
-        )
-        
-        if not task_found:
-            print(f"\n{Colors.RED}✗ No se pudo completar la actualización{Colors.ENDC}")
-            sys.exit(1)
-        
-        # 4. Agregar comentario con resumen de cambios
         import datetime
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        comment_parts = [
-            f"[Pipeline Updater - {timestamp}]",
-            f"✓ Variable branchConfig: {args.branch_config}",
-            f"✓ Tarea '{args.task_name}': {replacements} script(s) actualizado(s)",
-            f"✓ Patrón: {args.old_pattern} → {args.new_pattern}"
-        ]
-        definition['comment'] = " | ".join(comment_parts)
         
-        print(f"\n{Colors.CYAN}>>> Comentario agregado:{Colors.ENDC}")
-        print(f"{Colors.DIM}  {definition['comment']}{Colors.ENDC}")
+        # Procesar cada pipeline
+        for idx, definition_id in enumerate(definition_ids, 1):
+            print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}Pipeline {idx}/{len(definition_ids)}: ID {definition_id}{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            
+            try:
+                # 1. Obtener definición actual
+                definition = get_release_definition(args.org, args.project, definition_id, args.pat)
+                
+                # 2. Actualizar variable branchConfig
+                update_branch_config_variable(definition, args.branch_config)
+                
+                # 3. Actualizar script de tarea
+                task_found, replacements = update_task_script(
+                    definition,
+                    args.task_name,
+                    args.old_pattern,
+                    args.new_pattern
+                )
+                
+                if not task_found:
+                    print(f"{Colors.YELLOW}⚠ Pipeline {definition_id}: Tarea no encontrada, se omite{Colors.ENDC}")
+                    stats['skipped'] += 1
+                    stats['results'].append({'id': definition_id, 'status': 'skipped', 'reason': 'Tarea no encontrada'})
+                    continue
+                
+                # 4. Agregar comentario con resumen de cambios
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                comment_parts = [
+                    f"[Pipeline Updater - {timestamp}]",
+                    f"✓ Variable branchConfig: {args.branch_config}",
+                    f"✓ Tarea '{args.task_name}': {replacements} script(s) actualizado(s)",
+                    f"✓ Patrón: {args.old_pattern} → {args.new_pattern}"
+                ]
+                definition['comment'] = " | ".join(comment_parts)
+                
+                print(f"{Colors.CYAN}>>> Comentario agregado:{Colors.ENDC}")
+                print(f"{Colors.DIM}  {definition['comment']}{Colors.ENDC}")
+                
+                # 5. Guardar cambios (si no es dry-run)
+                if args.dry_run:
+                    print(f"{Colors.YELLOW}>>> Modo DRY-RUN: Cambios NO guardados{Colors.ENDC}")
+                    stats['success'] += 1
+                    stats['results'].append({'id': definition_id, 'status': 'dry-run', 'replacements': replacements})
+                else:
+                    response = save_release_definition(args.org, args.project, definition_id, args.pat, definition)
+                    stats['success'] += 1
+                    stats['results'].append({'id': definition_id, 'status': 'success', 'replacements': replacements, 'revision': response.get('revision', 'N/A')})
+                
+                print(f"{Colors.GREEN}✓ Pipeline {definition_id} actualizado exitosamente{Colors.ENDC}")
+                
+            except Exception as e:
+                print(f"{Colors.RED}✗ Error en pipeline {definition_id}: {e}{Colors.ENDC}")
+                stats['failed'] += 1
+                stats['results'].append({'id': definition_id, 'status': 'failed', 'error': str(e)})
+                continue
         
-        # 5. Guardar cambios (si no es dry-run)
-        if args.dry_run:
-            print(f"\n{Colors.YELLOW}>>> Modo DRY-RUN: Cambios NO guardados{Colors.ENDC}")
-            print(f"{Colors.CYAN}  Variable branchConfig actualizada: {args.branch_config}{Colors.ENDC}")
-            print(f"{Colors.CYAN}  Reemplazos en scripts: {replacements}{Colors.ENDC}")
-        else:
-            response = save_release_definition(args.org, args.project, args.definition_id, args.pat, definition)
+        # Resumen final
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}  📊 RESUMEN DE EJECUCIÓN{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.CYAN}Total procesados:    {stats['total']}{Colors.ENDC}")
+        print(f"{Colors.GREEN}✓ Exitosos:          {stats['success']}{Colors.ENDC}")
+        print(f"{Colors.YELLOW}⚠ Omitidos:          {stats['skipped']}{Colors.ENDC}")
+        print(f"{Colors.RED}✗ Fallidos:          {stats['failed']}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
         
-        print(f"\n{Colors.GREEN}{'='*70}{Colors.ENDC}")
-        print(f"{Colors.GREEN}  ✓ Proceso completado exitosamente{Colors.ENDC}")
-        print(f"{Colors.GREEN}{'='*70}{Colors.ENDC}\n")
+        # Detalles de resultados
+        if stats['failed'] > 0 or stats['skipped'] > 0:
+            print(f"{Colors.CYAN}Detalles:{Colors.ENDC}")
+            for result in stats['results']:
+                if result['status'] == 'failed':
+                    print(f"  {Colors.RED}✗ Pipeline {result['id']}: {result.get('error', 'Error desconocido')}{Colors.ENDC}")
+                elif result['status'] == 'skipped':
+                    print(f"  {Colors.YELLOW}⚠ Pipeline {result['id']}: {result.get('reason', 'Omitido')}{Colors.ENDC}")
+            print()
         
-        return 0
+        return 0 if stats['failed'] == 0 else 1
         
     except KeyboardInterrupt:
         print(f"\n{Colors.YELLOW}>>> Proceso interrumpido por el usuario{Colors.ENDC}")
