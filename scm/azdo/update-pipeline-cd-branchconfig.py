@@ -349,6 +349,48 @@ def update_task_script(definition: Dict, task_name: str, old_pattern: str, new_p
     return task_found, replacement_count
 
 
+def create_backup(definition: Dict, definition_id: int, output_dir: str = "outcome/backups") -> str:
+    """
+    Crea un backup completo de la definición del pipeline antes de modificarlo.
+    
+    Args:
+        definition: Definición completa del pipeline
+        definition_id: ID del pipeline
+        output_dir: Directorio de backups
+        
+    Returns:
+        Ruta del archivo de backup creado
+    """
+    import datetime
+    import os
+    
+    # Crear directorio si no existe
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Timestamp para el nombre del archivo
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"pipeline_{definition_id}_backup_{timestamp}.json"
+    filepath = os.path.join(output_dir, filename)
+    
+    # Agregar metadata al backup
+    backup_data = {
+        "backup_metadata": {
+            "pipeline_id": definition_id,
+            "pipeline_name": definition.get('name', 'Unknown'),
+            "backup_timestamp": datetime.datetime.now().isoformat(),
+            "original_revision": definition.get('revision', 'N/A'),
+            "tool_version": __version__
+        },
+        "pipeline_definition": definition
+    }
+    
+    # Guardar backup
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(backup_data, f, indent=2, ensure_ascii=False)
+    
+    return filepath
+
+
 def export_execution_report(stats: Dict, args, definition_ids: list, output_dir: str = "outcome") -> str:
     """
     Exporta un reporte JSON con toda la información de la ejecución.
@@ -400,6 +442,15 @@ def export_execution_report(stats: Dict, args, definition_ids: list, output_dir:
             "failed": stats['failed'],
             "success_rate": f"{(stats['success'] / stats['total'] * 100):.1f}%" if stats['total'] > 0 else "0%"
         },
+        "backups_created": [
+            {
+                "pipeline_id": r['id'],
+                "backup_file": r.get('backup_file', 'N/A'),
+                "original_revision": r.get('original_revision', 'N/A'),
+                "new_revision": r.get('revision', 'N/A')
+            }
+            for r in stats['results'] if 'backup_file' in r
+        ],
         "results": {
             "successful_pipelines": [
                 {
@@ -628,11 +679,17 @@ def main():
             try:
                 # 1. Obtener definición actual
                 definition = get_release_definition(args.org, args.project, definition_id, args.pat)
+                original_revision = definition.get('revision', 'N/A')
                 
-                # 2. Actualizar variable branchConfig
+                # 2. Crear backup antes de modificar
+                print(f"{Colors.CYAN}>>> Creando backup...{Colors.ENDC}")
+                backup_file = create_backup(definition, definition_id)
+                print(f"{Colors.GREEN}  ✓ Backup guardado: {backup_file}{Colors.ENDC}")
+                
+                # 3. Actualizar variable branchConfig
                 update_branch_config_variable(definition, args.branch_config)
                 
-                # 3. Actualizar script de tarea
+                # 4. Actualizar script de tarea
                 task_found, replacements = update_task_script(
                     definition,
                     args.task_name,
@@ -643,31 +700,51 @@ def main():
                 if not task_found:
                     print(f"{Colors.YELLOW}⚠ Pipeline {definition_id}: Tarea no encontrada, se omite{Colors.ENDC}")
                     stats['skipped'] += 1
-                    stats['results'].append({'id': definition_id, 'status': 'skipped', 'reason': 'Tarea no encontrada'})
+                    stats['results'].append({
+                        'id': definition_id, 
+                        'status': 'skipped', 
+                        'reason': 'Tarea no encontrada',
+                        'backup_file': backup_file,
+                        'original_revision': original_revision
+                    })
                     continue
                 
-                # 4. Agregar comentario con resumen de cambios
+                # 5. Agregar comentario con resumen de cambios
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 comment_parts = [
                     f"[Pipeline Updater - {timestamp}]",
                     f"✓ Variable branchConfig: {args.branch_config}",
                     f"✓ Tarea '{args.task_name}': {replacements} script(s) actualizado(s)",
-                    f"✓ Patrón: {args.old_pattern} → {args.new_pattern}"
+                    f"✓ Patrón: {args.old_pattern} → {args.new_pattern}",
+                    f"✓ Backup: {backup_file}"
                 ]
                 definition['comment'] = " | ".join(comment_parts)
                 
                 print(f"{Colors.CYAN}>>> Comentario agregado:{Colors.ENDC}")
                 print(f"{Colors.DIM}  {definition['comment']}{Colors.ENDC}")
                 
-                # 5. Guardar cambios (si no es dry-run)
+                # 6. Guardar cambios (si no es dry-run)
                 if args.dry_run:
                     print(f"{Colors.YELLOW}>>> Modo DRY-RUN: Cambios NO guardados{Colors.ENDC}")
                     stats['success'] += 1
-                    stats['results'].append({'id': definition_id, 'status': 'dry-run', 'replacements': replacements})
+                    stats['results'].append({
+                        'id': definition_id, 
+                        'status': 'dry-run', 
+                        'replacements': replacements,
+                        'backup_file': backup_file,
+                        'original_revision': original_revision
+                    })
                 else:
                     response = save_release_definition(args.org, args.project, definition_id, args.pat, definition)
                     stats['success'] += 1
-                    stats['results'].append({'id': definition_id, 'status': 'success', 'replacements': replacements, 'revision': response.get('revision', 'N/A')})
+                    stats['results'].append({
+                        'id': definition_id, 
+                        'status': 'success', 
+                        'replacements': replacements, 
+                        'revision': response.get('revision', 'N/A'),
+                        'backup_file': backup_file,
+                        'original_revision': original_revision
+                    })
                 
                 print(f"{Colors.GREEN}✓ Pipeline {definition_id} actualizado exitosamente{Colors.ENDC}")
                 
