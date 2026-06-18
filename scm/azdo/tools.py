@@ -779,57 +779,216 @@ def run_tool(tool_key: str):
     
     # ── Caso especial: Pipeline Rollback (tool 22) ────────────────────────────
     if tool_key == "22":
-        # Primero listar backups disponibles
-        cmd_list = [str(venv_python), str(script_path), "--list-backups"]
-        print(f"\n{Colors.CYAN}▶ Listando backups disponibles...{Colors.ENDC}\n")
-        subprocess.run(cmd_list, cwd=BASE_DIR)
-        
-        # Preguntar si desea hacer rollback
-        print(f"\n{Colors.BOLD}¿Deseas hacer rollback de algún pipeline? (s/n):{Colors.ENDC} ", end="")
-        do_rollback = input().strip().lower()
-        
-        if do_rollback != 's':
-            print(f"{Colors.WARNING}Operación cancelada.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        
-        # Solicitar archivo de backup
-        print(f"{Colors.BOLD}Ruta del archivo de backup:{Colors.ENDC} ", end="")
-        backup_file = input().strip()
-        
-        if not backup_file:
-            print(f"{Colors.RED}✗ Ruta de backup requerida{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        
-        # Solicitar PAT
-        params = ask_common_params(cfg, tool_key=tool_key)
-        if not params:
-            input("\nPresione Enter para continuar...")
-            return
-        
-        # Preguntar si dry-run
-        print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
-        dry_run = input().strip().lower()
-        
-        # Construir comando
-        cmd = [str(venv_python), str(script_path), "--backup-file", backup_file, "--pat", params["pat"]]
-        if dry_run == 's':
-            cmd.append("--dry-run")
-        
-        print(f"\n{Colors.CYAN}▶ Ejecutando rollback...{Colors.ENDC}\n")
-        try:
-            result = subprocess.run(cmd, cwd=BASE_DIR)
+        while True:
+            # Mostrar menú de opciones de rollback
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}  🚀 Pipeline Rollback - Seleccione una opción{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Full Backup Restore (restaurar backup completo)")
+            print(f"{Colors.CYAN}[2]{Colors.ENDC} Hybrid Rollback (revisión del backup desde Azure DevOps)")
+            print(f"{Colors.CYAN}[3]{Colors.ENDC} Manual Revision (rollback a revisión específica)")
+            print(f"{Colors.CYAN}[4]{Colors.ENDC} Listar backups disponibles")
+            print(f"{Colors.CYAN}[5]{Colors.ENDC} Listar revisiones de un pipeline")
+            print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+            print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
             
-            if result.returncode == 0:
-                print(f"\n{Colors.GREEN}✅ Rollback completado exitosamente.{Colors.ENDC}")
+            option = input().strip()
+            
+            # Opción 0: Volver
+            if option == "0":
+                return
+            
+            # Opción 4: Listar backups
+            elif option == "4":
+                cmd_list = [str(venv_python), str(script_path), "--list-backups"]
+                print(f"\n{Colors.CYAN}▶ Listando backups disponibles...{Colors.ENDC}\n")
+                subprocess.run(cmd_list, cwd=BASE_DIR)
+                input("\nPresione Enter para continuar...")
+                continue
+            
+            # Opción 5: Listar revisiones
+            elif option == "5":
+                print(f"\n{Colors.BOLD}Pipeline ID:{Colors.ENDC} ", end="")
+                pipeline_id = input().strip()
+                if not pipeline_id:
+                    print(f"{Colors.RED}✗ Pipeline ID requerido{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                params = ask_common_params(cfg, tool_key=tool_key)
+                if not params:
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                cmd_list = [
+                    str(venv_python), str(script_path),
+                    "--list-revisions",
+                    "--pipeline-id", pipeline_id,
+                    "--org", params["org"],
+                    "--project", params["project"],
+                    "--pat", params["pat"]
+                ]
+                print(f"\n{Colors.CYAN}▶ Listando revisiones del pipeline {pipeline_id}...{Colors.ENDC}\n")
+                subprocess.run(cmd_list, cwd=BASE_DIR)
+                input("\nPresione Enter para continuar...")
+                continue
+            
+            # Opción 1: Full Backup Restore
+            elif option == "1":
+                # Listar backups primero
+                cmd_list = [str(venv_python), str(script_path), "--list-backups"]
+                print(f"\n{Colors.CYAN}▶ Listando backups disponibles...{Colors.ENDC}\n")
+                subprocess.run(cmd_list, cwd=BASE_DIR)
+                
+                # Solicitar archivo de backup
+                print(f"\n{Colors.BOLD}Ruta del archivo de backup:{Colors.ENDC} ", end="")
+                backup_file = input().strip()
+                
+                if not backup_file:
+                    print(f"{Colors.RED}✗ Ruta de backup requerida{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Solicitar PAT
+                params = ask_common_params(cfg, tool_key=tool_key)
+                if not params:
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Preguntar si dry-run
+                print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
+                dry_run = input().strip().lower()
+                
+                # Construir comando
+                cmd = [str(venv_python), str(script_path), "--backup-file", backup_file, "--pat", params["pat"]]
+                if dry_run == 's':
+                    cmd.append("--dry-run")
+                
+                print(f"\n{Colors.CYAN}▶ Ejecutando Full Backup Restore...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Rollback completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Rollback falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                
+                input("\nPresione Enter para continuar...")
+                continue
+            
+            # Opción 2: Hybrid Rollback
+            elif option == "2":
+                # Listar backups primero
+                cmd_list = [str(venv_python), str(script_path), "--list-backups"]
+                print(f"\n{Colors.CYAN}▶ Listando backups disponibles...{Colors.ENDC}\n")
+                subprocess.run(cmd_list, cwd=BASE_DIR)
+                
+                # Solicitar archivo de backup
+                print(f"\n{Colors.BOLD}Ruta del archivo de backup:{Colors.ENDC} ", end="")
+                backup_file = input().strip()
+                
+                if not backup_file:
+                    print(f"{Colors.RED}✗ Ruta de backup requerida{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Solicitar PAT
+                params = ask_common_params(cfg, tool_key=tool_key)
+                if not params:
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Preguntar si dry-run
+                print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
+                dry_run = input().strip().lower()
+                
+                # Construir comando con --hybrid
+                cmd = [str(venv_python), str(script_path), "--backup-file", backup_file, "--hybrid", "--pat", params["pat"]]
+                if dry_run == 's':
+                    cmd.append("--dry-run")
+                
+                print(f"\n{Colors.CYAN}▶ Ejecutando Hybrid Rollback...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Rollback híbrido completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Rollback híbrido falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                
+                input("\nPresione Enter para continuar...")
+                continue
+            
+            # Opción 3: Manual Revision
+            elif option == "3":
+                print(f"\n{Colors.BOLD}Pipeline ID:{Colors.ENDC} ", end="")
+                pipeline_id = input().strip()
+                if not pipeline_id:
+                    print(f"{Colors.RED}✗ Pipeline ID requerido{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Solicitar PAT y otros parámetros
+                params = ask_common_params(cfg, tool_key=tool_key)
+                if not params:
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Listar revisiones del pipeline
+                cmd_list = [
+                    str(venv_python), str(script_path),
+                    "--list-revisions",
+                    "--pipeline-id", pipeline_id,
+                    "--org", params["org"],
+                    "--project", params["project"],
+                    "--pat", params["pat"]
+                ]
+                print(f"\n{Colors.CYAN}▶ Listando revisiones del pipeline {pipeline_id}...{Colors.ENDC}\n")
+                subprocess.run(cmd_list, cwd=BASE_DIR)
+                
+                # Solicitar número de revisión
+                print(f"\n{Colors.BOLD}Número de revisión objetivo:{Colors.ENDC} ", end="")
+                to_revision = input().strip()
+                if not to_revision:
+                    print(f"{Colors.RED}✗ Número de revisión requerido{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Preguntar si dry-run
+                print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
+                dry_run = input().strip().lower()
+                
+                # Construir comando
+                cmd = [
+                    str(venv_python), str(script_path),
+                    "--pipeline-id", pipeline_id,
+                    "--to-revision", to_revision,
+                    "--org", params["org"],
+                    "--project", params["project"],
+                    "--pat", params["pat"]
+                ]
+                if dry_run == 's':
+                    cmd.append("--dry-run")
+                
+                print(f"\n{Colors.CYAN}▶ Ejecutando Manual Revision Rollback...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Rollback a revisión {to_revision} completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Rollback a revisión {to_revision} falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                
+                input("\nPresione Enter para continuar...")
+                continue
+            
             else:
-                print(f"\n{Colors.RED}✗ Rollback falló (exit {result.returncode}){Colors.ENDC}")
-        except Exception as e:
-            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
-        
-        input("\nPresione Enter para continuar...")
-        return
+                print(f"{Colors.RED}✗ Opción inválida. Por favor seleccione 0-5.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
     
     params = ask_common_params(cfg, tool_key=tool_key)
     if not params:
