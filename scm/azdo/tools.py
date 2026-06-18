@@ -748,13 +748,10 @@ def run_tool(tool_key: str):
     if tool_key == "21":
         # Pipeline Updater maneja sus propios parámetros en modo interactivo
         cmd = [str(venv_python), str(script_path), "--interactive"]
-        log_execution(cmd, "running")
         
         print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
         try:
             result = subprocess.run(cmd, cwd=BASE_DIR)
-            status = "success" if result.returncode == 0 else f"error (exit {result.returncode})"
-            log_execution(cmd, status)
             
             if result.returncode == 0:
                 print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
@@ -763,7 +760,6 @@ def run_tool(tool_key: str):
             else:
                 print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
         except Exception as e:
-            log_execution(cmd, f"exception: {e}")
             print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
         
         input("\nPresione Enter para continuar...")
