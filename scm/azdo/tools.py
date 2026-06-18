@@ -41,7 +41,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__     = "1.3.3"
+__version__     = "1.3.4"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -291,6 +291,14 @@ TOOLS: Dict = {
         "description": "Actualiza variable branchConfig y scripts de tareas en Release Pipelines vía API REST. Modo interactivo con config.json.",
         "path":        "update-pipeline-cd-branchconfig.py",
         "args":        ["--interactive"],
+        "group":       "release",
+        "status":      "ready",
+    },
+    "22": {
+        "name":        "Pipeline Rollback",
+        "description": "Revierte cambios en Release Pipelines usando backups locales o revisiones de Azure DevOps.",
+        "path":        "rollback-pipeline.py",
+        "args":        ["--list-backups", "--backup-file", "--pat", "--dry-run"],
         "group":       "release",
         "status":      "ready",
     },
@@ -759,6 +767,60 @@ def run_tool(tool_key: str):
                 print(f"\n{Colors.YELLOW}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
             else:
                 print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+        
+        input("\nPresione Enter para continuar...")
+        return
+    
+    # ── Caso especial: Pipeline Rollback (tool 22) ────────────────────────────
+    if tool_key == "22":
+        # Primero listar backups disponibles
+        cmd_list = [str(venv_python), str(script_path), "--list-backups"]
+        print(f"\n{Colors.CYAN}▶ Listando backups disponibles...{Colors.ENDC}\n")
+        subprocess.run(cmd_list, cwd=BASE_DIR)
+        
+        # Preguntar si desea hacer rollback
+        print(f"\n{Colors.BOLD}¿Deseas hacer rollback de algún pipeline? (s/n):{Colors.ENDC} ", end="")
+        do_rollback = input().strip().lower()
+        
+        if do_rollback != 's':
+            print(f"{Colors.YELLOW}Operación cancelada.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Solicitar archivo de backup
+        print(f"{Colors.BOLD}Ruta del archivo de backup:{Colors.ENDC} ", end="")
+        backup_file = input().strip()
+        
+        if not backup_file:
+            print(f"{Colors.RED}✗ Ruta de backup requerida{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Solicitar PAT
+        params = ask_common_params(cfg, tool_key=tool_key)
+        if not params:
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Preguntar si dry-run
+        print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
+        dry_run = input().strip().lower()
+        
+        # Construir comando
+        cmd = [str(venv_python), str(script_path), "--backup-file", backup_file, "--pat", params["pat"]]
+        if dry_run == 's':
+            cmd.append("--dry-run")
+        
+        print(f"\n{Colors.CYAN}▶ Ejecutando rollback...{Colors.ENDC}\n")
+        try:
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+            
+            if result.returncode == 0:
+                print(f"\n{Colors.GREEN}✅ Rollback completado exitosamente.{Colors.ENDC}")
+            else:
+                print(f"\n{Colors.RED}✗ Rollback falló (exit {result.returncode}){Colors.ENDC}")
         except Exception as e:
             print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
         
