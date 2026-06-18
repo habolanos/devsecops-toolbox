@@ -39,9 +39,9 @@ class Colors:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def load_config() -> Dict:
-    """Carga configuración desde scm/azdo/config.json si existe."""
-    # Buscar config.json en el mismo directorio que el script
-    config_file = Path(__file__).parent / "config.json"
+    """Carga configuración desde scm/config.json (centralizado) si existe."""
+    # Buscar config.json en la raíz de scm (un nivel arriba de azdo/)
+    config_file = Path(__file__).parent.parent / "config.json"
     if config_file.exists():
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
