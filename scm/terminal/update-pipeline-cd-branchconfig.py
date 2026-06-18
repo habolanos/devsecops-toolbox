@@ -46,9 +46,24 @@ def load_config() -> Dict:
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                # Leer desde azdo.pipeline_updater
                 azdo_config = config.get('azdo', {})
-                return azdo_config.get('pipeline_updater', {})
+                
+                # Extraer organization del organization_url si existe
+                org_url = azdo_config.get('organization_url', '')
+                organization = org_url.split('/')[-1] if org_url else ''
+                
+                # Configuración base desde azdo (nivel superior)
+                base_config = {
+                    'organization': organization,
+                    'project': azdo_config.get('project', ''),
+                    'pat': azdo_config.get('pat', '')
+                }
+                
+                # Sobrescribir con valores específicos de pipeline_updater
+                pipeline_config = azdo_config.get('pipeline_updater', {})
+                base_config.update(pipeline_config)
+                
+                return base_config
         except Exception as e:
             print(f"{Colors.YELLOW}⚠ No se pudo cargar config.json: {e}{Colors.ENDC}")
     return {}

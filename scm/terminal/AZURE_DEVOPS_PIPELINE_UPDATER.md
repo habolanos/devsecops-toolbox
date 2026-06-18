@@ -74,11 +74,11 @@ Para usar el modo interactivo, configura `scm/config.json`:
 ```json
 {
   "azdo": {
+    "organization_url": "https://dev.azure.com/Coppel-Retail",
+    "project": "Cadena_de_Suministros",
+    "pat": "TU_PAT_AQUI",
     "pipeline_updater": {
-      "organization": "Coppel-Retail",
-      "project": "Cadena_de_Suministros",
       "definition_id": 123,
-      "pat": "TU_PAT_AQUI",
       "branch_config": "config-cadenaSuministro",
       "task_name": "get file k8-manifest",
       "old_pattern": "$(path_pipelineConfig)",
@@ -87,6 +87,8 @@ Para usar el modo interactivo, configura `scm/config.json`:
   }
 }
 ```
+
+**Nota**: `pipeline_updater` hereda `organization`, `project` y `pat` del nivel superior `azdo`.
 
 **Pasos**:
 1. Copia `scm/config.json.template` a `scm/config.json`
