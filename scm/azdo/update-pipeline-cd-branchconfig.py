@@ -496,6 +496,30 @@ def main():
     print(f"  Proyecto: {args.project}")
     print(f"  Pipeline IDs: {', '.join(map(str, definition_ids))} ({len(definition_ids)} pipeline(s))")
     print(f"  Modo: {'DRY-RUN (sin guardar)' if args.dry_run else 'PRODUCCIÓN'}")
+    
+    print(f"\n{Colors.CYAN}Cambios a aplicar:{Colors.ENDC}")
+    print(f"  • Variable branchConfig → {Colors.GREEN}{args.branch_config}{Colors.ENDC}")
+    print(f"  • Tarea a modificar → {Colors.GREEN}{args.task_name}{Colors.ENDC}")
+    print(f"  • Patrón a buscar → {Colors.YELLOW}{args.old_pattern}{Colors.ENDC}")
+    print(f"  • Patrón nuevo → {Colors.GREEN}{args.new_pattern}{Colors.ENDC}")
+    
+    # Confirmación antes de ejecutar
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.YELLOW}⚠  CONFIRMACIÓN REQUERIDA{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"Estás a punto de actualizar {Colors.BOLD}{len(definition_ids)} pipeline(s){Colors.ENDC}")
+    if not args.dry_run:
+        print(f"{Colors.RED}Los cambios se aplicarán INMEDIATAMENTE y serán PERMANENTES{Colors.ENDC}")
+    else:
+        print(f"{Colors.YELLOW}Modo DRY-RUN: Solo se simularán los cambios{Colors.ENDC}")
+    
+    confirm = input(f"\n{Colors.BOLD}¿Deseas continuar? (escribe 'SI' para confirmar): {Colors.ENDC}").strip()
+    
+    if confirm != 'SI':
+        print(f"\n{Colors.YELLOW}✗ Operación cancelada por el usuario{Colors.ENDC}")
+        return 0
+    
+    print(f"\n{Colors.GREEN}✓ Confirmación recibida. Iniciando procesamiento...{Colors.ENDC}")
     print()
     
     # Estadísticas de procesamiento
@@ -578,15 +602,43 @@ def main():
         print(f"{Colors.RED}✗ Fallidos:          {stats['failed']}{Colors.ENDC}")
         print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
         
-        # Detalles de resultados
-        if stats['failed'] > 0 or stats['skipped'] > 0:
-            print(f"{Colors.CYAN}Detalles:{Colors.ENDC}")
+        # Detalles de pipelines exitosos
+        if stats['success'] > 0:
+            print(f"{Colors.GREEN}✓ Pipelines actualizados exitosamente:{Colors.ENDC}")
+            for result in stats['results']:
+                if result['status'] in ('success', 'dry-run'):
+                    mode = " (DRY-RUN)" if result['status'] == 'dry-run' else ""
+                    revision = f" - Rev: {result.get('revision', 'N/A')}" if result['status'] == 'success' else ""
+                    print(f"  • Pipeline {result['id']}: {result.get('replacements', 0)} script(s) actualizado(s){revision}{mode}")
+            print()
+        
+        # Detalles de pipelines omitidos
+        if stats['skipped'] > 0:
+            print(f"{Colors.YELLOW}⚠ Pipelines omitidos:{Colors.ENDC}")
+            for result in stats['results']:
+                if result['status'] == 'skipped':
+                    print(f"  • Pipeline {result['id']}: {result.get('reason', 'Omitido')}")
+            print()
+        
+        # Detalles de pipelines con error
+        if stats['failed'] > 0:
+            print(f"{Colors.RED}✗ Pipelines con errores:{Colors.ENDC}")
             for result in stats['results']:
                 if result['status'] == 'failed':
-                    print(f"  {Colors.RED}✗ Pipeline {result['id']}: {result.get('error', 'Error desconocido')}{Colors.ENDC}")
-                elif result['status'] == 'skipped':
-                    print(f"  {Colors.YELLOW}⚠ Pipeline {result['id']}: {result.get('reason', 'Omitido')}{Colors.ENDC}")
+                    error_msg = result.get('error', 'Error desconocido')
+                    # Truncar mensajes muy largos
+                    if len(error_msg) > 100:
+                        error_msg = error_msg[:97] + "..."
+                    print(f"  • Pipeline {result['id']}: {error_msg}")
             print()
+        
+        # Mensaje final
+        if stats['failed'] == 0 and stats['skipped'] == 0:
+            print(f"{Colors.GREEN}🎉 ¡Todos los pipelines fueron actualizados exitosamente!{Colors.ENDC}\n")
+        elif stats['failed'] == 0:
+            print(f"{Colors.YELLOW}⚠ Proceso completado con algunos pipelines omitidos{Colors.ENDC}\n")
+        else:
+            print(f"{Colors.RED}⚠ Proceso completado con errores. Revisa los detalles arriba.{Colors.ENDC}\n")
         
         return 0 if stats['failed'] == 0 else 1
         
