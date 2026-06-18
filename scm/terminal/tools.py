@@ -361,23 +361,20 @@ def run_script(script_key: str):
 
     if "azdo_org" in args:
         # Azure DevOps Pipeline Updater
-        org = input(f"{Colors.BOLD}Organización de Azure DevOps (ej: Coppel-Retail): {Colors.ENDC}").strip()
-        if not org:
-            print(f"{Colors.FAIL}Se requiere la organización.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
+        print(f"\n{Colors.CYAN}Configuración de Azure DevOps{Colors.ENDC}")
+        print(f"{Colors.DIM}(Presione Enter para usar valores por defecto){Colors.ENDC}\n")
         
-        project = input(f"{Colors.BOLD}Proyecto (ej: Cadena_de_Suministros): {Colors.ENDC}").strip()
-        if not project:
-            print(f"{Colors.FAIL}Se requiere el proyecto.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
+        org = input(f"{Colors.BOLD}Organización [Coppel-Retail]: {Colors.ENDC}").strip()
+        if org:
+            cmd.extend(["--org", org])
         
-        definition_id = input(f"{Colors.BOLD}ID del Release Pipeline (visible en la URL): {Colors.ENDC}").strip()
-        if not definition_id:
-            print(f"{Colors.FAIL}Se requiere el ID del pipeline.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
+        project = input(f"{Colors.BOLD}Proyecto [Cadena_de_Suministros]: {Colors.ENDC}").strip()
+        if project:
+            cmd.extend(["--project", project])
+        
+        definition_id = input(f"{Colors.BOLD}ID del Release Pipeline [123]: {Colors.ENDC}").strip()
+        if definition_id:
+            cmd.extend(["--definition-id", definition_id])
         
         pat = input(f"{Colors.BOLD}Personal Access Token (PAT) con permisos Release: {Colors.ENDC}").strip()
         if not pat:
@@ -385,7 +382,7 @@ def run_script(script_key: str):
             input("\nPresione Enter para continuar...")
             return
         
-        cmd.extend(["--org", org, "--project", project, "--definition-id", definition_id, "--pat", pat])
+        cmd.extend(["--pat", pat])
         
         # Opciones adicionales
         branch_config = input(f"{Colors.BOLD}Nuevo valor para branchConfig [config-cadenaSuministro]: {Colors.ENDC}").strip()

@@ -220,12 +220,10 @@ def get_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ejemplos:
-  python update-pipeline-cd-branchconfig.py \\
-    --org Coppel-Retail \\
-    --project Cadena_de_Suministros \\
-    --definition-id 123 \\
-    --pat YOUR_PAT_HERE
+  # Usando valores por defecto (Coppel-Retail/Cadena_de_Suministros)
+  python update-pipeline-cd-branchconfig.py --pat YOUR_PAT_HERE
 
+  # Especificando organización y proyecto diferentes
   python update-pipeline-cd-branchconfig.py \\
     --org MyOrg --project MyProject --definition-id 456 \\
     --pat TOKEN --branch-config config-production \\
@@ -234,12 +232,12 @@ Ejemplos:
         """
     )
     
-    parser.add_argument('--org', '--organization', required=True,
-                        help='Nombre de la organización de Azure DevOps')
-    parser.add_argument('--project', required=True,
-                        help='Nombre del proyecto')
-    parser.add_argument('--definition-id', type=int, required=True,
-                        help='ID del Release Pipeline (visible en la URL)')
+    parser.add_argument('--org', '--organization', default='Coppel-Retail',
+                        help='Nombre de la organización de Azure DevOps (default: Coppel-Retail)')
+    parser.add_argument('--project', default='Cadena_de_Suministros',
+                        help='Nombre del proyecto (default: Cadena_de_Suministros)')
+    parser.add_argument('--definition-id', type=int, default=123,
+                        help='ID del Release Pipeline (default: 123)')
     parser.add_argument('--pat', required=True,
                         help='Personal Access Token con permisos Release (Read & Write)')
     
