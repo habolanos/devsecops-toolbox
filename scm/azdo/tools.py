@@ -70,6 +70,10 @@ class Colors:
     FAIL      = '\033[91m'
     ENDC      = '\033[0m'
     BOLD      = '\033[1m'
+    
+    # Aliases para compatibilidad
+    RED       = FAIL
+    YELLOW    = WARNING
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # GRUPOS DE HERRAMIENTAS
