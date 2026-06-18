@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.6.10`** — 2026-06-09
+**`1.6.10`** — 2026-06-18
 
 ---
 
@@ -15,7 +15,8 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
-| 2026-06-09 | **1.6.10** | **KPI Analyzer Fixes**: Correcciones críticas para KPI Analyzer: (1) Fix `MissingStyle` error eliminando `.replace('#', '')` en `border_style` (Rich requiere `#` en colores hex), (2) Fix `NameError` agregando import y inicialización de `DashboardGenerator`, (3) Agregadas dependencias faltantes a `requirements.txt` (pyyaml, pandas, plotly, streamlit), (4) Creados 17 unit tests en `test_kpi_analyzer.py` para mejorar cobertura. **AZDO Tools Fix**: Normalización de URL de organización en `tools.py` para prevenir duplicación de prefijo `https://dev.azure.com/` que causaba errores 400 Bad Request en todos los scripts AZDO. | `scm/kpi_analyzer/analyze_kpis.py`, `scm/requirements.txt`, `scm/tests/unit/test_kpi_analyzer.py`, `scm/azdo/tools.py` |
+| 2026-06-18 | **1.6.10** | **Azure DevOps Pipeline Updater & Rollback System**: (1) **Pipeline Updater** (Tool 21, v1.0.6): Actualización masiva de pipelines (hasta 100) con batch processing, backup automático antes de cada cambio, confirmación con resumen de cambios, reportes JSON detallados, modo dry-run, y comentarios automáticos en pipelines. (2) **Pipeline Rollback** (Tool 22, v1.2.0): Sistema completo de rollback con 3 métodos - Full Backup Restore (máxima seguridad), Hybrid Rollback (usa revisión del backup desde Azure DevOps, lo mejor de ambos mundos), y Manual Revision (máxima flexibilidad). Incluye listado de backups/revisiones, validación de estructura, confirmaciones obligatorias, y modo dry-run. Backups almacenados en `outcome/backups/` con metadata completa. **AZDO Tools** actualizado a v1.3.4 con integración de ambas herramientas. | `scm/azdo/update-pipeline-cd-branchconfig.py`, `scm/azdo/rollback-pipeline.py`, `scm/azdo/tools.py` |
+| 2026-06-09 | **1.6.9p** | **KPI Analyzer Fixes**: Correcciones críticas para KPI Analyzer: (1) Fix `MissingStyle` error eliminando `.replace('#', '')` en `border_style` (Rich requiere `#` en colores hex), (2) Fix `NameError` agregando import y inicialización de `DashboardGenerator`, (3) Agregadas dependencias faltantes a `requirements.txt` (pyyaml, pandas, plotly, streamlit), (4) Creados 17 unit tests en `test_kpi_analyzer.py` para mejorar cobertura. **AZDO Tools Fix**: Normalización de URL de organización en `tools.py` para prevenir duplicación de prefijo `https://dev.azure.com/` que causaba errores 400 Bad Request en todos los scripts AZDO. | `scm/kpi_analyzer/analyze_kpis.py`, `scm/requirements.txt`, `scm/tests/unit/test_kpi_analyzer.py`, `scm/azdo/tools.py` |
 | 2026-06-09 | **1.6.9** | **KPI Analyzer**: Sistema completo de análisis de KPIs DevSecOps con modelo de madurez de 6 niveles (0-5), 30 KPIs organizados en 6 dimensiones, benchmarks de industria (DORA, SRE, ITIL, NIST CSF, ISO 20000), análisis automático desde salidas JSON, reportes (JSON/CSV/HTML), y documentación completa. Incluye: `analyze_kpis.py`, `analyzer.py`, `reporter.py`, `maturity_model.py`, `benchmarks.py`, `kpi_schema.yaml`, `docs/kpi_sources_inventory.md`, `docs/DevSecOps_Maturity_Model.md`, `docs/KPIs_Frameworks_DevSecOps.md`. | `scm/kpi_analyzer/`, `docs/` |
 | 2026-06-04 | **1.6.8** | **AWS/GCP Homologation**: `scm/aws/tools.py` alineado visualmente con `scm/gcp/tools.py` — mismos colores (`Monitoreo` cyan, `Compute` bright_blue), emojis, nombres en español, GROUP_ORDER (monitoring primero) y estructura del menú Rich (columna Grupo width=18). `scm/aws/` validado: todos los sub-paquetes válidos tienen `__init__.py`. | `scm/aws/tools.py`, `scm/aws/**/__init__.py` |
 | 2026-06-04 | **1.6.7** | **Wheel Fix W004**: Resuelto `check-wheel-contents W004` (módulos en paths no importables). Añadidos `__init__.py` a 19 sub-paquetes válidos (`azdo`, `aws/*`, `gcp/connectivity|monitoring|rolesypermisos`, `terminal`). Configurado `[tool.setuptools]` con `include-package-data = false` y `namespaces = false` para excluir directorios con guiones y keyword `lambda` del wheel. | `pyproject.toml`, 19× `__init__.py` |
@@ -43,11 +44,11 @@ Las herramientas individuales de cada plataforma mantienen su propia versión in
 | Plataforma | `tools.py` Version | Notas |
 |------------|-------------------|-------|
 | **GCP** | `1.9.3` | Launcher GCP (25 herramientas) |
-| **AZDO** | `1.0.0` | Launcher Azure DevOps (13+ herramientas) |
+| **AZDO** | `1.3.4` | Launcher Azure DevOps (22 herramientas) — incluye Pipeline Updater y Rollback |
 | **AWS** | `1.0.1` | Launcher AWS (19 herramientas) — homologado visualmente con GCP en v1.6.8 |
-| **Terminal** | `1.0.1` | Scripts universales agnósticos de cloud (6 herramientas) |
+| **Terminal** | `1.0.2` | Scripts universales agnósticos de cloud (6 herramientas) |
 
-> **Nota**: La versión del toolbox (`1.6.8`) es independiente de la versión interna de cada launcher. La versión del toolbox se usa para empaquetado (wheel), Docker tags y releases de GitHub.
+> **Nota**: La versión del toolbox (`1.6.10`) es independiente de la versión interna de cada launcher. La versión del toolbox se usa para empaquetado (wheel), Docker tags y releases de GitHub.
 
 ---
 
