@@ -41,7 +41,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__     = "1.3.2"
+__version__     = "1.3.3"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -284,6 +284,14 @@ TOOLS: Dict = {
                         "--source", "--target", "--top-files", "--top-commits",
                         "--no-commits", "--no-authors", "--severity", "--output"],
         "group":       "quality",
+        "status":      "ready",
+    },
+    "21": {
+        "name":        "Pipeline Updater",
+        "description": "Actualiza variable branchConfig y scripts de tareas en Release Pipelines vía API REST. Modo interactivo con config.json.",
+        "path":        "update-pipeline-cd-branchconfig.py",
+        "args":        ["--interactive"],
+        "group":       "release",
         "status":      "ready",
     },
     "A": {

@@ -53,7 +53,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.3"
+__version__ = "1.0.2"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -165,14 +165,6 @@ SCRIPTS = {
         "path": "k8s-deploy-manifest-diff.sh",
         "args": ["deployment", "namespace", "flags"],
         "status": "ready"
-    },
-    "7": {
-        "name": "Azure DevOps Pipeline Updater",
-        "description": "Actualiza variable branchConfig y scripts de tareas en Release Pipelines de Azure DevOps vía API REST",
-        "path": "update-pipeline-cd-branchconfig.py",
-        "args": ["azdo_org", "azdo_project", "azdo_definition_id", "azdo_pat", "azdo_options"],
-        "status": "ready",
-        "type": "python"
     },
     "Q": {
         "name": "Volver al menú principal",
@@ -358,10 +350,6 @@ def run_script(script_key: str):
             return
         cmd.append(deploy)
         cmd.append(ns)
-
-    if "azdo_org" in args:
-        # Azure DevOps Pipeline Updater - usar modo interactivo del script
-        cmd.append("--interactive")
 
     if "flags" in args:
         exp = input(f"{Colors.BOLD}¿Exportar informe a outcome/? (s/n) [n]: {Colors.ENDC}").strip().lower()
