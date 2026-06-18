@@ -39,13 +39,16 @@ class Colors:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def load_config() -> Dict:
-    """Carga configuración desde config.json si existe."""
-    config_file = Path(__file__).parent / "config.json"
+    """Carga configuración desde scm/config.json si existe."""
+    # Buscar config.json en la raíz de scm (un nivel arriba de terminal/)
+    config_file = Path(__file__).parent.parent / "config.json"
     if config_file.exists():
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                return config.get('azure_devops', {})
+                # Leer desde azdo.pipeline_updater
+                azdo_config = config.get('azdo', {})
+                return azdo_config.get('pipeline_updater', {})
         except Exception as e:
             print(f"{Colors.YELLOW}⚠ No se pudo cargar config.json: {e}{Colors.ENDC}")
     return {}

@@ -12,6 +12,17 @@
       "timezone": "America/Mazatlan",
       "threads": 8,
       "output_format": "csv"
+    },
+    "pipeline_updater": {
+      "_info": "Configuración para Azure DevOps Pipeline Updater (Terminal Tools)",
+      "organization": "Coppel-Retail",
+      "project": "Cadena_de_Suministros",
+      "definition_id": 123,
+      "pat": "<TU_PAT_TOKEN>",
+      "branch_config": "config-cadenaSuministro",
+      "task_name": "get file k8-manifest",
+      "old_pattern": "$(path_pipelineConfig)",
+      "new_pattern": "$(path_pipelineConfigYml)"
     }
   },
 
