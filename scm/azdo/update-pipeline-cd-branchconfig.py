@@ -19,7 +19,7 @@ from typing import Dict, Optional, Tuple
 import urllib.request
 import urllib.error
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
