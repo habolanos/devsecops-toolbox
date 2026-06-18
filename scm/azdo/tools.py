@@ -296,9 +296,9 @@ TOOLS: Dict = {
     },
     "22": {
         "name":        "Pipeline Rollback",
-        "description": "Revierte cambios en Release Pipelines usando backups locales o revisiones de Azure DevOps.",
+        "description": "Revierte cambios en Release Pipelines con 3 métodos: (1) Full Backup Restore (máxima seguridad), (2) Hybrid Rollback (revisión del backup desde Azure DevOps), (3) Manual Revision (rollback a revisión específica). Incluye listado de backups/revisiones, validación y dry-run.",
         "path":        "rollback-pipeline.py",
-        "args":        ["--list-backups", "--backup-file", "--pat", "--dry-run"],
+        "args":        ["--list-backups", "--list-revisions", "--backup-file", "--hybrid", "--pipeline-id", "--to-revision", "--pat", "--dry-run"],
         "group":       "release",
         "status":      "ready",
     },
