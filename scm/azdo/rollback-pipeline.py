@@ -30,7 +30,7 @@ import urllib.request
 import urllib.error
 import os
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -359,6 +359,112 @@ def rollback_from_backup(backup_file: str, pat: str, dry_run: bool = False):
     return 0
 
 
+def rollback_hybrid(backup_file: str, pat: str, dry_run: bool = False):
+    """
+    Rollback híbrido: usa la revisión guardada en el backup para revertir
+    directamente a esa revisión en Azure DevOps (sin restaurar el backup completo).
+    
+    Args:
+        backup_file: Ruta al archivo de backup
+        pat: Personal Access Token
+        dry_run: Si es True, solo simula el rollback
+    """
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  Azure DevOps Pipeline Rollback v{__version__} (MODO HÍBRIDO){Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    
+    # Cargar backup para obtener metadata
+    print(f"{Colors.CYAN}>>> Cargando metadata del backup: {backup_file}{Colors.ENDC}")
+    backup_data = load_backup_file(backup_file)
+    
+    metadata = backup_data['backup_metadata']
+    definition = backup_data['pipeline_definition']
+    
+    print(f"{Colors.GREEN}✓ Metadata cargada exitosamente{Colors.ENDC}")
+    
+    # Extraer información
+    pipeline_id = metadata['pipeline_id']
+    target_revision = metadata['original_revision']
+    
+    # Extraer org y project de la definición
+    org = definition.get('_links', {}).get('self', {}).get('href', '').split('/')[3] if '_links' in definition else None
+    project = definition.get('projectReference', {}).get('name', None)
+    
+    if not org or not project:
+        print(f"{Colors.RED}✗ No se pudo extraer organización o proyecto del backup{Colors.ENDC}")
+        sys.exit(1)
+    
+    print(f"\n{Colors.CYAN}Información del backup:{Colors.ENDC}")
+    print(f"  Pipeline ID: {pipeline_id}")
+    print(f"  Pipeline Name: {metadata['pipeline_name']}")
+    print(f"  Backup Date: {metadata['backup_timestamp']}")
+    print(f"  Revisión objetivo: {target_revision}")
+    print(f"  Organización: {org}")
+    print(f"  Proyecto: {project}")
+    
+    # Obtener definición actual
+    print(f"\n{Colors.CYAN}>>> Obteniendo definición actual del pipeline...{Colors.ENDC}")
+    current_definition = get_release_definition(org, project, pipeline_id, pat)
+    current_revision = current_definition.get('revision', 'N/A')
+    print(f"{Colors.GREEN}✓ Definición actual obtenida (Revision: {current_revision}){Colors.ENDC}")
+    
+    # Validar que la revisión objetivo existe y es anterior
+    if target_revision >= current_revision:
+        print(f"{Colors.YELLOW}⚠ La revisión del backup ({target_revision}) no es anterior a la actual ({current_revision}){Colors.ENDC}")
+        print(f"{Colors.CYAN}  Usando rollback desde backup completo en su lugar...{Colors.ENDC}")
+        return rollback_from_backup(backup_file, pat, dry_run)
+    
+    # Obtener definición de la revisión objetivo desde Azure DevOps
+    print(f"\n{Colors.CYAN}>>> Obteniendo revisión {target_revision} desde Azure DevOps...{Colors.ENDC}")
+    target_definition = get_pipeline_revision(org, project, pipeline_id, target_revision, pat)
+    print(f"{Colors.GREEN}✓ Revisión {target_revision} obtenida desde Azure DevOps{Colors.ENDC}")
+    
+    # Mostrar información de la revisión
+    print(f"\n{Colors.CYAN}Información de la revisión objetivo:{Colors.ENDC}")
+    print(f"  Modificado por: {target_definition.get('modifiedBy', {}).get('displayName', 'Unknown')}")
+    print(f"  Fecha: {target_definition.get('modifiedOn', 'Unknown')}")
+    print(f"  Comentario: {target_definition.get('comment', 'No comment')}")
+    
+    # Confirmación
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.YELLOW}⚠  CONFIRMACIÓN DE ROLLBACK HÍBRIDO{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"Estás a punto de revertir el pipeline {Colors.BOLD}{pipeline_id}{Colors.ENDC}")
+    print(f"  Método: Rollback híbrido (revisión de Azure DevOps)")
+    print(f"  Revisión actual: {current_revision}")
+    print(f"  Revisión objetivo: {target_revision} (desde backup)")
+    print(f"  Backup de referencia: {backup_file}")
+    if not dry_run:
+        print(f"{Colors.RED}Los cambios se aplicarán INMEDIATAMENTE y serán PERMANENTES{Colors.ENDC}")
+    else:
+        print(f"{Colors.YELLOW}Modo DRY-RUN: Solo se simulará el rollback{Colors.ENDC}")
+    
+    confirm = input(f"\n{Colors.BOLD}¿Deseas continuar? (escribe 'SI' para confirmar): {Colors.ENDC}").strip()
+    
+    if confirm != 'SI':
+        print(f"\n{Colors.YELLOW}✗ Rollback cancelado por el usuario{Colors.ENDC}")
+        return 0
+    
+    print(f"\n{Colors.GREEN}✓ Confirmación recibida. Iniciando rollback híbrido...{Colors.ENDC}\n")
+    
+    # Realizar rollback
+    if dry_run:
+        print(f"{Colors.YELLOW}>>> Modo DRY-RUN: Cambios NO aplicados{Colors.ENDC}")
+        print(f"{Colors.CYAN}  Se restauraría la revisión {target_revision} desde Azure DevOps{Colors.ENDC}")
+    else:
+        # Modificar el comentario para indicar rollback híbrido
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        target_definition['comment'] = f"[Rollback Híbrido - {timestamp}] Reverted to revision {target_revision} (from backup {backup_file})"
+        
+        response = restore_pipeline_definition(org, project, pipeline_id, pat, target_definition)
+        print(f"\n{Colors.GREEN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.GREEN}  ✓ Rollback híbrido completado exitosamente{Colors.ENDC}")
+        print(f"{Colors.GREEN}{'='*70}{Colors.ENDC}\n")
+    
+    return 0
+
+
 def rollback_to_revision(pipeline_id: int, to_revision: int, org: str, project: str, pat: str, dry_run: bool = False):
     """
     Realiza rollback a una revisión específica de Azure DevOps.
@@ -452,11 +558,17 @@ Ejemplos:
   # Listar backups disponibles
   python rollback-pipeline.py --list-backups
   
-  # Rollback desde backup local
+  # Rollback desde backup local (restaura backup completo)
   python rollback-pipeline.py --backup-file outcome/backups/pipeline_2758_backup_20260618_153645.json --pat YOUR_PAT
   
-  # Rollback a revisión específica
+  # Rollback híbrido (usa revisión del backup desde Azure DevOps)
+  python rollback-pipeline.py --backup-file outcome/backups/pipeline_2758_backup_20260618_153645.json --hybrid --pat YOUR_PAT
+  
+  # Rollback a revisión específica (manual)
   python rollback-pipeline.py --pipeline-id 2758 --to-revision 42 --org Coppel-Retail --project Cadena_de_Suministros --pat YOUR_PAT
+  
+  # Listar revisiones de un pipeline
+  python rollback-pipeline.py --list-revisions --pipeline-id 2758 --org Coppel-Retail --project Cadena_de_Suministros --pat YOUR_PAT
   
   # Dry-run
   python rollback-pipeline.py --backup-file outcome/backups/pipeline_2758_backup_20260618_153645.json --pat YOUR_PAT --dry-run
@@ -479,6 +591,8 @@ Ejemplos:
                         help='Listar todos los backups disponibles')
     parser.add_argument('--list-revisions', action='store_true',
                         help='Listar revisiones de un pipeline (requiere --pipeline-id, --org, --project, --pat)')
+    parser.add_argument('--hybrid', action='store_true',
+                        help='Modo híbrido: usa revisión del backup para rollback desde Azure DevOps (requiere --backup-file)')
     parser.add_argument('--dry-run', action='store_true',
                         help='Simular rollback sin aplicar cambios')
     parser.add_argument('--interactive', action='store_true',
@@ -516,7 +630,12 @@ def main():
     
     # Rollback desde backup
     if args.backup_file:
-        return rollback_from_backup(args.backup_file, args.pat, args.dry_run)
+        # Modo híbrido: usa revisión del backup para rollback desde Azure DevOps
+        if args.hybrid:
+            return rollback_hybrid(args.backup_file, args.pat, args.dry_run)
+        # Modo normal: restaura backup completo
+        else:
+            return rollback_from_backup(args.backup_file, args.pat, args.dry_run)
     
     # Rollback por revisión
     if args.pipeline_id and args.to_revision:
