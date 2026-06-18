@@ -378,8 +378,8 @@ Ejemplos:
                         help='Nombre del proyecto (default: Cadena_de_Suministros)')
     parser.add_argument('--definition-id', type=int, default=123,
                         help='ID del Release Pipeline (default: 123)')
-    parser.add_argument('--pat', required=True,
-                        help='Personal Access Token con permisos Release (Read & Write)')
+    parser.add_argument('--pat', required=False,
+                        help='Personal Access Token con permisos Release (Read & Write). Requerido si no se usa --interactive con config.json')
     
     parser.add_argument('--branch-config', default='config-cadenaSuministro',
                         help='Nuevo valor para la variable branchConfig (default: config-cadenaSuministro)')
@@ -421,6 +421,12 @@ def main():
         args.new_pattern = params['new_pattern']
         args.dry_run = params['dry_run']
     else:
+        # En modo no-interactivo, PAT es obligatorio
+        if not args.pat:
+            print(f"{Colors.RED}✗ Error: --pat es requerido cuando no se usa --interactive{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Usa --interactive para modo interactivo con config.json{Colors.ENDC}")
+            sys.exit(1)
+        
         print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
         print(f"{Colors.BOLD}  Azure DevOps Release Pipeline - Branch Config Updater v{__version__}{Colors.ENDC}")
         print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
