@@ -53,7 +53,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -166,6 +166,14 @@ SCRIPTS = {
         "args": ["deployment", "namespace", "flags"],
         "status": "ready"
     },
+    "7": {
+        "name": "Azure DevOps Pipeline Updater",
+        "description": "Actualiza variable branchConfig y scripts de tareas en Release Pipelines de Azure DevOps vía API REST",
+        "path": "update-pipeline-cd-branchconfig.py",
+        "args": ["azdo_org", "azdo_project", "azdo_definition_id", "azdo_pat", "azdo_options"],
+        "status": "ready",
+        "type": "python"
+    },
     "Q": {
         "name": "Volver al menú principal",
         "description": "Regresar al launcher principal",
@@ -276,10 +284,6 @@ def run_script(script_key: str):
     print(f"\n{Colors.HEADER}=== {script['name']} ==={Colors.ENDC}")
     print(f"{script['description']}\n")
     
-    # Verificar compatibilidad con Windows
-    if not check_windows_compatibility():
-        return
-    
     script_path = BASE_DIR / script["path"]
     
     if not script_path.exists():
@@ -287,8 +291,18 @@ def run_script(script_key: str):
         input("\nPresione Enter para continuar...")
         return
     
-    # Construir comando
-    cmd = ["bash", str(script_path)]
+    # Determinar tipo de script
+    script_type = script.get("type", "shell")
+    
+    # Verificar compatibilidad con Windows para scripts shell
+    if script_type == "shell" and not check_windows_compatibility():
+        return
+    
+    # Construir comando base
+    if script_type == "python":
+        cmd = [sys.executable, str(script_path)]
+    else:
+        cmd = ["bash", str(script_path)]
     
     # Solicitar argumentos
     args = script.get("args", [])
@@ -344,6 +358,55 @@ def run_script(script_key: str):
             return
         cmd.append(deploy)
         cmd.append(ns)
+
+    if "azdo_org" in args:
+        # Azure DevOps Pipeline Updater
+        org = input(f"{Colors.BOLD}Organización de Azure DevOps (ej: Coppel-Retail): {Colors.ENDC}").strip()
+        if not org:
+            print(f"{Colors.FAIL}Se requiere la organización.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        project = input(f"{Colors.BOLD}Proyecto (ej: Cadena_de_Suministros): {Colors.ENDC}").strip()
+        if not project:
+            print(f"{Colors.FAIL}Se requiere el proyecto.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        definition_id = input(f"{Colors.BOLD}ID del Release Pipeline (visible en la URL): {Colors.ENDC}").strip()
+        if not definition_id:
+            print(f"{Colors.FAIL}Se requiere el ID del pipeline.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        pat = input(f"{Colors.BOLD}Personal Access Token (PAT) con permisos Release: {Colors.ENDC}").strip()
+        if not pat:
+            print(f"{Colors.FAIL}Se requiere el PAT.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        cmd.extend(["--org", org, "--project", project, "--definition-id", definition_id, "--pat", pat])
+        
+        # Opciones adicionales
+        branch_config = input(f"{Colors.BOLD}Nuevo valor para branchConfig [config-cadenaSuministro]: {Colors.ENDC}").strip()
+        if branch_config:
+            cmd.extend(["--branch-config", branch_config])
+        
+        task_name = input(f"{Colors.BOLD}Nombre de la tarea a actualizar [get file k8-manifest]: {Colors.ENDC}").strip()
+        if task_name:
+            cmd.extend(["--task-name", task_name])
+        
+        old_pattern = input(f"{Colors.BOLD}Patrón a buscar [$(path_pipelineConfig)]: {Colors.ENDC}").strip()
+        if old_pattern:
+            cmd.extend(["--old-pattern", old_pattern])
+        
+        new_pattern = input(f"{Colors.BOLD}Patrón de reemplazo [$(path_pipelineConfigYml)]: {Colors.ENDC}").strip()
+        if new_pattern:
+            cmd.extend(["--new-pattern", new_pattern])
+        
+        dry_run = input(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin guardar)? (s/n) [n]: {Colors.ENDC}").strip().lower()
+        if dry_run == "s":
+            cmd.append("--dry-run")
 
     if "flags" in args:
         exp = input(f"{Colors.BOLD}¿Exportar informe a outcome/? (s/n) [n]: {Colors.ENDC}").strip().lower()
