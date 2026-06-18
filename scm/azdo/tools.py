@@ -764,7 +764,7 @@ def run_tool(tool_key: str):
             if result.returncode == 0:
                 print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
             elif result.returncode == 1:
-                print(f"\n{Colors.YELLOW}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
+                print(f"\n{Colors.WARNING}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
             else:
                 print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
         except Exception as e:
@@ -785,7 +785,7 @@ def run_tool(tool_key: str):
         do_rollback = input().strip().lower()
         
         if do_rollback != 's':
-            print(f"{Colors.YELLOW}Operación cancelada.{Colors.ENDC}")
+            print(f"{Colors.WARNING}Operación cancelada.{Colors.ENDC}")
             input("\nPresione Enter para continuar...")
             return
         
