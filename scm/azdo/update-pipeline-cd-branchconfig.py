@@ -349,6 +349,91 @@ def update_task_script(definition: Dict, task_name: str, old_pattern: str, new_p
     return task_found, replacement_count
 
 
+def export_execution_report(stats: Dict, args, definition_ids: list, output_dir: str = "outcome") -> str:
+    """
+    Exporta un reporte JSON con toda la información de la ejecución.
+    
+    Args:
+        stats: Diccionario con estadísticas de ejecución
+        args: Argumentos de la ejecución
+        definition_ids: Lista de IDs procesados
+        output_dir: Directorio de salida
+        
+    Returns:
+        Ruta del archivo generado
+    """
+    import datetime
+    import os
+    
+    # Crear directorio si no existe
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Timestamp para el nombre del archivo
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"pipeline_updater_report_{timestamp}.json"
+    filepath = os.path.join(output_dir, filename)
+    
+    # Construir reporte
+    report = {
+        "metadata": {
+            "tool": "Azure DevOps Pipeline Updater",
+            "version": __version__,
+            "execution_timestamp": datetime.datetime.now().isoformat(),
+            "mode": "dry-run" if args.dry_run else "production"
+        },
+        "configuration": {
+            "organization": args.org,
+            "project": args.project,
+            "pipeline_ids": definition_ids,
+            "total_pipelines": len(definition_ids)
+        },
+        "changes_applied": {
+            "branch_config": args.branch_config,
+            "task_name": args.task_name,
+            "old_pattern": args.old_pattern,
+            "new_pattern": args.new_pattern
+        },
+        "statistics": {
+            "total_processed": stats['total'],
+            "successful": stats['success'],
+            "skipped": stats['skipped'],
+            "failed": stats['failed'],
+            "success_rate": f"{(stats['success'] / stats['total'] * 100):.1f}%" if stats['total'] > 0 else "0%"
+        },
+        "results": {
+            "successful_pipelines": [
+                {
+                    "pipeline_id": r['id'],
+                    "status": r['status'],
+                    "scripts_updated": r.get('replacements', 0),
+                    "revision": r.get('revision', 'N/A')
+                }
+                for r in stats['results'] if r['status'] in ('success', 'dry-run')
+            ],
+            "skipped_pipelines": [
+                {
+                    "pipeline_id": r['id'],
+                    "reason": r.get('reason', 'Unknown')
+                }
+                for r in stats['results'] if r['status'] == 'skipped'
+            ],
+            "failed_pipelines": [
+                {
+                    "pipeline_id": r['id'],
+                    "error": r.get('error', 'Unknown error')
+                }
+                for r in stats['results'] if r['status'] == 'failed'
+            ]
+        }
+    }
+    
+    # Guardar archivo
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    
+    return filepath
+
+
 def save_release_definition(org: str, project: str, definition_id: int, pat: str, definition: Dict) -> Dict:
     """
     Guarda la definición actualizada del Release Pipeline.
@@ -639,6 +724,13 @@ def main():
             print(f"{Colors.YELLOW}⚠ Proceso completado con algunos pipelines omitidos{Colors.ENDC}\n")
         else:
             print(f"{Colors.RED}⚠ Proceso completado con errores. Revisa los detalles arriba.{Colors.ENDC}\n")
+        
+        # Exportar reporte JSON
+        try:
+            report_path = export_execution_report(stats, args, definition_ids)
+            print(f"{Colors.CYAN}📄 Reporte exportado: {report_path}{Colors.ENDC}\n")
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠ No se pudo exportar el reporte JSON: {e}{Colors.ENDC}\n")
         
         return 0 if stats['failed'] == 0 else 1
         
