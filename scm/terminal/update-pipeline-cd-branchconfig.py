@@ -14,11 +14,12 @@ import argparse
 import base64
 import json
 import sys
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 import urllib.request
 import urllib.error
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -31,6 +32,127 @@ class Colors:
     RED = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
+    DIM = '\033[2m'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURACIÓN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def load_config() -> Dict:
+    """Carga configuración desde config.json si existe."""
+    config_file = Path(__file__).parent / "config.json"
+    if config_file.exists():
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return config.get('azure_devops', {})
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠ No se pudo cargar config.json: {e}{Colors.ENDC}")
+    return {}
+
+
+def prompt_with_default(prompt_text: str, default_value: any, required: bool = False) -> str:
+    """
+    Solicita input con valor por defecto.
+    
+    Args:
+        prompt_text: Texto del prompt
+        default_value: Valor por defecto
+        required: Si es True, no permite valor vacío
+    
+    Returns:
+        Valor ingresado o default
+    """
+    default_str = str(default_value) if default_value is not None else ""
+    
+    if default_str:
+        full_prompt = f"{Colors.BOLD}{prompt_text} [{Colors.CYAN}{default_str}{Colors.ENDC}{Colors.BOLD}]: {Colors.ENDC}"
+    else:
+        full_prompt = f"{Colors.BOLD}{prompt_text}: {Colors.ENDC}"
+    
+    value = input(full_prompt).strip()
+    
+    if not value:
+        if required and not default_str:
+            print(f"{Colors.RED}✗ Este campo es requerido{Colors.ENDC}")
+            return prompt_with_default(prompt_text, default_value, required)
+        return default_str
+    
+    return value
+
+
+def interactive_mode() -> Dict:
+    """
+    Modo interactivo para solicitar parámetros.
+    Carga defaults desde config.json y permite iteración.
+    
+    Returns:
+        Dict con los parámetros configurados
+    """
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  Azure DevOps Pipeline Updater - Modo Interactivo{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    
+    # Cargar configuración
+    config = load_config()
+    
+    if config:
+        print(f"{Colors.GREEN}✓ Configuración cargada desde config.json{Colors.ENDC}")
+    else:
+        print(f"{Colors.YELLOW}⚠ No se encontró config.json, usando valores por defecto{Colors.ENDC}")
+    
+    print(f"{Colors.DIM}Presione Enter para aceptar el valor por defecto{Colors.ENDC}\n")
+    
+    # Solicitar parámetros con defaults desde config
+    params = {}
+    
+    params['org'] = prompt_with_default(
+        "Organización de Azure DevOps",
+        config.get('organization', 'Coppel-Retail')
+    )
+    
+    params['project'] = prompt_with_default(
+        "Proyecto",
+        config.get('project', 'Cadena_de_Suministros')
+    )
+    
+    params['definition_id'] = int(prompt_with_default(
+        "ID del Release Pipeline",
+        config.get('definition_id', 123)
+    ))
+    
+    params['pat'] = prompt_with_default(
+        "Personal Access Token (PAT)",
+        config.get('pat', ''),
+        required=True
+    )
+    
+    print(f"\n{Colors.CYAN}Opciones de actualización:{Colors.ENDC}\n")
+    
+    params['branch_config'] = prompt_with_default(
+        "Nuevo valor para branchConfig",
+        config.get('branch_config', 'config-cadenaSuministro')
+    )
+    
+    params['task_name'] = prompt_with_default(
+        "Nombre de la tarea a actualizar",
+        config.get('task_name', 'get file k8-manifest')
+    )
+    
+    params['old_pattern'] = prompt_with_default(
+        "Patrón a buscar en el script",
+        config.get('old_pattern', '$(path_pipelineConfig)')
+    )
+    
+    params['new_pattern'] = prompt_with_default(
+        "Patrón de reemplazo",
+        config.get('new_pattern', '$(path_pipelineConfigYml)')
+    )
+    
+    dry_run = input(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin guardar)? (s/n) [{Colors.CYAN}n{Colors.ENDC}{Colors.BOLD}]: {Colors.ENDC}").strip().lower()
+    params['dry_run'] = dry_run == 's'
+    
+    return params
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FUNCIONES PRINCIPALES
@@ -252,6 +374,8 @@ Ejemplos:
     
     parser.add_argument('--dry-run', action='store_true',
                         help='Simula los cambios sin guardarlos')
+    parser.add_argument('--interactive', '-i', action='store_true',
+                        help='Modo interactivo: solicita parámetros uno por uno con defaults desde config.json')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     
     return parser.parse_args()
@@ -265,11 +389,25 @@ def main():
     """Función principal."""
     args = get_args()
     
-    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.BOLD}  Azure DevOps Release Pipeline - Branch Config Updater v{__version__}{Colors.ENDC}")
-    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    # Si se especifica modo interactivo, obtener parámetros interactivamente
+    if args.interactive:
+        params = interactive_mode()
+        # Sobrescribir args con params del modo interactivo
+        args.org = params['org']
+        args.project = params['project']
+        args.definition_id = params['definition_id']
+        args.pat = params['pat']
+        args.branch_config = params['branch_config']
+        args.task_name = params['task_name']
+        args.old_pattern = params['old_pattern']
+        args.new_pattern = params['new_pattern']
+        args.dry_run = params['dry_run']
+    else:
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}  Azure DevOps Release Pipeline - Branch Config Updater v{__version__}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
     
-    print(f"{Colors.CYAN}Configuración:{Colors.ENDC}")
+    print(f"\n{Colors.CYAN}Configuración:{Colors.ENDC}")
     print(f"  Organización: {args.org}")
     print(f"  Proyecto: {args.project}")
     print(f"  Pipeline ID: {args.definition_id}")

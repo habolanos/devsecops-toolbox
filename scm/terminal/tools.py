@@ -360,50 +360,8 @@ def run_script(script_key: str):
         cmd.append(ns)
 
     if "azdo_org" in args:
-        # Azure DevOps Pipeline Updater
-        print(f"\n{Colors.CYAN}Configuración de Azure DevOps{Colors.ENDC}")
-        print(f"{Colors.DIM}(Presione Enter para usar valores por defecto){Colors.ENDC}\n")
-        
-        org = input(f"{Colors.BOLD}Organización [Coppel-Retail]: {Colors.ENDC}").strip()
-        if org:
-            cmd.extend(["--org", org])
-        
-        project = input(f"{Colors.BOLD}Proyecto [Cadena_de_Suministros]: {Colors.ENDC}").strip()
-        if project:
-            cmd.extend(["--project", project])
-        
-        definition_id = input(f"{Colors.BOLD}ID del Release Pipeline [123]: {Colors.ENDC}").strip()
-        if definition_id:
-            cmd.extend(["--definition-id", definition_id])
-        
-        pat = input(f"{Colors.BOLD}Personal Access Token (PAT) con permisos Release: {Colors.ENDC}").strip()
-        if not pat:
-            print(f"{Colors.FAIL}Se requiere el PAT.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        
-        cmd.extend(["--pat", pat])
-        
-        # Opciones adicionales
-        branch_config = input(f"{Colors.BOLD}Nuevo valor para branchConfig [config-cadenaSuministro]: {Colors.ENDC}").strip()
-        if branch_config:
-            cmd.extend(["--branch-config", branch_config])
-        
-        task_name = input(f"{Colors.BOLD}Nombre de la tarea a actualizar [get file k8-manifest]: {Colors.ENDC}").strip()
-        if task_name:
-            cmd.extend(["--task-name", task_name])
-        
-        old_pattern = input(f"{Colors.BOLD}Patrón a buscar [$(path_pipelineConfig)]: {Colors.ENDC}").strip()
-        if old_pattern:
-            cmd.extend(["--old-pattern", old_pattern])
-        
-        new_pattern = input(f"{Colors.BOLD}Patrón de reemplazo [$(path_pipelineConfigYml)]: {Colors.ENDC}").strip()
-        if new_pattern:
-            cmd.extend(["--new-pattern", new_pattern])
-        
-        dry_run = input(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin guardar)? (s/n) [n]: {Colors.ENDC}").strip().lower()
-        if dry_run == "s":
-            cmd.append("--dry-run")
+        # Azure DevOps Pipeline Updater - usar modo interactivo del script
+        cmd.append("--interactive")
 
     if "flags" in args:
         exp = input(f"{Colors.BOLD}¿Exportar informe a outcome/? (s/n) [n]: {Colors.ENDC}").strip().lower()
