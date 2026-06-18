@@ -31,7 +31,13 @@ El menú interactivo solicitará:
 
 ### Uso Directo (CLI)
 
-**Uso más simple (con valores por defecto)**:
+**Uso más simple (modo interactivo con config.json)**:
+```bash
+# Lee PAT y defaults desde scm/config.json
+python scm/terminal/update-pipeline-cd-branchconfig.py --interactive
+```
+
+**Uso con parámetros CLI (sin interacción)**:
 ```bash
 # Solo requiere el PAT, usa todos los defaults
 python scm/terminal/update-pipeline-cd-branchconfig.py --pat YOUR_PAT_HERE
@@ -60,6 +66,35 @@ python scm/terminal/update-pipeline-cd-branchconfig.py \
   --new-pattern "$(newVar)" \
   --dry-run
 ```
+
+## ⚙️ Configuración (config.json)
+
+Para usar el modo interactivo, configura `scm/config.json`:
+
+```json
+{
+  "azdo": {
+    "pipeline_updater": {
+      "organization": "Coppel-Retail",
+      "project": "Cadena_de_Suministros",
+      "definition_id": 123,
+      "pat": "TU_PAT_AQUI",
+      "branch_config": "config-cadenaSuministro",
+      "task_name": "get file k8-manifest",
+      "old_pattern": "$(path_pipelineConfig)",
+      "new_pattern": "$(path_pipelineConfigYml)"
+    }
+  }
+}
+```
+
+**Pasos**:
+1. Copia `scm/config.json.template` a `scm/config.json`
+2. Edita la sección `azdo.pipeline_updater`
+3. Agrega tu PAT
+4. Ejecuta con `--interactive`
+
+**Nota**: `scm/config.json` está en `.gitignore` y nunca se subirá al repositorio.
 
 ## 📝 Parámetros
 
