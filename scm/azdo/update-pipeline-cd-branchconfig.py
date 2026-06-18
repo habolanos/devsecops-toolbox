@@ -482,7 +482,21 @@ def main():
             print(f"\n{Colors.RED}✗ No se pudo completar la actualización{Colors.ENDC}")
             sys.exit(1)
         
-        # 4. Guardar cambios (si no es dry-run)
+        # 4. Agregar comentario con resumen de cambios
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        comment_parts = [
+            f"[Pipeline Updater - {timestamp}]",
+            f"✓ Variable branchConfig: {args.branch_config}",
+            f"✓ Tarea '{args.task_name}': {replacements} script(s) actualizado(s)",
+            f"✓ Patrón: {args.old_pattern} → {args.new_pattern}"
+        ]
+        definition['comment'] = " | ".join(comment_parts)
+        
+        print(f"\n{Colors.CYAN}>>> Comentario agregado:{Colors.ENDC}")
+        print(f"{Colors.DIM}  {definition['comment']}{Colors.ENDC}")
+        
+        # 5. Guardar cambios (si no es dry-run)
         if args.dry_run:
             print(f"\n{Colors.YELLOW}>>> Modo DRY-RUN: Cambios NO guardados{Colors.ENDC}")
             print(f"{Colors.CYAN}  Variable branchConfig actualizada: {args.branch_config}{Colors.ENDC}")
