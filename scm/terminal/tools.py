@@ -59,8 +59,9 @@ __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
 console = Console() if RICH_AVAILABLE else None
 BASE_DIR = Path(__file__).parent.absolute()
-CONFIG_FILE = BASE_DIR / "config.json"
-CONFIG_TEMPLATE = BASE_DIR / "config.json.template"
+SCM_ROOT = BASE_DIR.parent  # Raíz de scm/
+CONFIG_FILE = SCM_ROOT / "config.json"  # Ahora apunta a scm/config.json
+CONFIG_TEMPLATE = SCM_ROOT / "config.json.template"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # GESTIÓN DE CONFIGURACIÓN

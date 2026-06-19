@@ -1,25 +1,86 @@
 {
   "_info": "Template de configuración unificada para DevSecOps Toolbox. Copia como config.json y completa los valores. NUNCA subas config.json al repositorio.",
-  "_version": "1.0.0",
+  "_version": "1.6.10",
 
   "azdo": {
     "_info": "Configuración de Azure DevOps",
     "enabled": true,
     "organization_url": "https://dev.azure.com/<TU_ORGANIZACION>",
+    "organization": "<TU_ORGANIZACION>",
     "project": "<TU_PROYECTO>",
     "pat": "<TU_PAT_TOKEN>",
+    
+    "pat_permissions": {
+      "_info": "Permisos mínimos requeridos en el PAT para cada herramienta",
+      "pr_master_checker": ["Code (Read)", "Release (Read)"],
+      "branch_policy_checker": ["Code (Read)", "Project and Team (Read)"],
+      "release_cd_health": ["Release (Read)"],
+      "pipeline_drift": ["Release (Read)"],
+      "pipeline_updater": ["Release (Read & Write)"],
+      "pipeline_rollback": ["Release (Read & Write)"]
+    },
+    
     "defaults": {
       "timezone": "America/Mazatlan",
       "threads": 8,
-      "output_format": "csv"
+      "output_format": "csv",
+      "pipelines_clone_dir": "~/.devsecops-toolbox/cache",
+      "debug": false
     },
-    "pipeline_updater": {
-      "_info": "Configuración para Azure DevOps Pipeline Updater (Terminal Tools). Usa organization, project y pat del nivel superior.",
-      "definition_id": 9999999,
-      "branch_config": "config-cadenaSuministro",
-      "task_name": "get file k8-manifest",
-      "old_pattern": "$(path_pipelineConfig)",
-      "new_pattern": "$(path_pipelineConfigYml)"
+    
+    "tools": {
+      "pr_master_checker": {
+        "_info": "Lista PRs hacia master con pipeline CD y stage validador",
+        "target_branch": "master",
+        "pr_status": "active",
+        "stage_name": "validador",
+        "top_prs": 500,
+        "threads": 6
+      },
+      "branch_policy_checker": {
+        "_info": "Audita políticas de rama para master/main, QA y develop",
+        "branches": {
+          "master": ["master", "main"],
+          "qa": ["qa", "QA", "release"],
+          "develop": ["develop", "dev"]
+        }
+      },
+      "release_cd_health": {
+        "_info": "Score de salud de Release Pipelines CD",
+        "top_releases": 15,
+        "sort": "score",
+        "diagram": false
+      },
+      "pipeline_drift": {
+        "_info": "Drift entre pipeline actual y snapshot del último release",
+        "min_severity": null,
+        "sort": "severity"
+      },
+      "properties_branch_diff": {
+        "_info": "Compara config de un componente entre dos ramas",
+        "repo": "<nombre-del-repo-de-properties>",
+        "source_branch": "develop",
+        "target_branch": "master",
+        "context_lines": 3,
+        "output_format": "excel"
+      },
+      "repo_branch_diff": {
+        "_info": "Informe ejecutivo de impacto de cambios entre ramas",
+        "repo": "",
+        "source_branch": "develop",
+        "target_branch": "master",
+        "top_files": 60,
+        "top_commits": 25,
+        "output_format": "excel"
+      },
+      "pipeline_updater": {
+        "_info": "Actualización masiva de Release Pipelines",
+        "definition_id": 9999999,
+        "branch_config": "config-cadenaSuministro",
+        "task_name": "get file k8-manifest",
+        "old_pattern": "$(path_pipelineConfig)",
+        "new_pattern": "$(path_pipelineConfigYml)"
+      }
     }
   },
 

@@ -265,8 +265,8 @@ def _get_pipelines_clone_dir(org, project):
     env = os.getenv("DEVSECOPS_CLONE_DIR")
     if env:
         return os.path.join(env, f"pipelines-projects-{org}-{project}")
-    # Intentar leer config.json
-    config_path = Path(__file__).parent / "config.json"
+    # Intentar leer config.json desde raíz scm/
+    config_path = Path(__file__).parent.parent / "config.json"
     if config_path.exists():
         try:
             with open(config_path, "r", encoding="utf-8") as f:

@@ -57,8 +57,9 @@ __author__ = "Harold Adrian"
 
 API_VERSION = "7.1-preview.7"
 BASE_DIR = Path(__file__).parent.absolute()
-CONFIG_FILE = BASE_DIR / "config.json"
-OUTCOME_DIR = BASE_DIR / "outcome"
+SCM_ROOT = BASE_DIR.parent  # Raíz de scm/
+CONFIG_FILE = SCM_ROOT / "config.json"  # Ahora apunta a scm/config.json
+OUTCOME_DIR = SCM_ROOT / "outcome"
 
 DEFAULT_SEARCH_TERMS = [
     "axios@1.14.1",

@@ -51,10 +51,11 @@ console = Console() if RICH_AVAILABLE else None
 # RUTAS
 # ═══════════════════════════════════════════════════════════════════════════════
 BASE_DIR          = Path(__file__).parent.absolute()
+SCM_ROOT          = BASE_DIR.parent  # Raíz de scm/
 HOST_PYTHON       = sys.executable or "python"
 VENV_DIR          = BASE_DIR / ".venv"
 INSTALLED_MARKER  = VENV_DIR / ".installed_requirements"
-CONFIG_FILE       = BASE_DIR / "config.json"
+CONFIG_FILE       = SCM_ROOT / "config.json"  # Ahora apunta a scm/config.json
 LAST_PARAMS_FILE  = BASE_DIR / ".last_params.json"  # Cache de últimos parámetros
 REQUIREMENTS_FILE = "requirements.txt"
 
