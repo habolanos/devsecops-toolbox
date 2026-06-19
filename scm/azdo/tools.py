@@ -315,7 +315,7 @@ TOOLS: Dict = {
     },
     "23": {
         "name":        "Refresh Release",
-        "description": "Crea Nuevo Release desde uno existente con backup automático versionado. Renueva variables frescas, ideal para actualizar Credencial GIT.",
+        "description": "Crea Nuevo Release desde uno existente con backup automático versionado. Renueva variables de grupo, ideal para actualizar Credenciales Git.",
         "path":        "pipeline_cd_new_re_release.py",
         "args":        ["--org", "--project", "--source-release-id", "--release-comment", "--pat", "--backup-path"],
         "defaults":    {

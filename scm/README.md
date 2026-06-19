@@ -32,6 +32,44 @@ python terminal/tools.py  # Scripts universales
 python kpi_analyzer/analyze_kpis.py  # Análisis de KPIs DevSecOps
 ```
 
+### 🔍 Búsqueda Interactiva en Vivo (v1.6.12+)
+
+Desde la versión 1.6.12, puedes usar búsqueda interactiva en vivo en el menú de Azure DevOps:
+
+```bash
+cd scm/azdo
+python tools.py
+
+# En el menú principal:
+Seleccione una opción (o '/' para buscar): /
+
+# Se abre interfaz de búsqueda interactiva:
+🔍 BÚSQUEDA EN VIVO
+Escribe para filtrar: pipeline
+
+# Resultados en tiempo real:
+Coincidencias: 5/25
+┌─────────────────────────────────────────────────────────────┐
+│ [4]  🌪️  Pipeline Drift Analyzer                           │
+│ [5]  🚀 Release Deep Dive                                  │
+│ [22] 🚀 Pipeline Rollback                                  │
+│ [23] 🚀 Refresh Release                                    │
+│ [24] 🚀 Pipeline Restore Release                           │
+└─────────────────────────────────────────────────────────────┘
+
+# Controles:
+# ⬆️  ⬇️  Navegar resultados
+# ENTER Ejecutar herramienta seleccionada
+# ESC Cancelar búsqueda
+```
+
+**Características de Búsqueda**:
+- ✅ **Búsqueda en Vivo**: Se actualiza con cada tecla
+- ✅ **Fuzzy Matching**: "pra" encuentra "PR Pipeline Analyzer"
+- ✅ **Multi-campo**: Busca en ID, nombre, descripción y grupo
+- ✅ **Multiplataforma**: Windows, Linux, macOS
+- ✅ **Interfaz Visual**: Tabla formateada con colores y selección destacada
+
 ---
 
 ## ⚙️ Configuración
@@ -903,6 +941,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-06-19 | **1.6.12** | Interactive live search with fuzzy matching, real-time filtering, cross-platform support |
 | 2026-06-19 | **1.6.11** | Multiple Release IDs support, case-insensitive confirmation, Rich integration |
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
