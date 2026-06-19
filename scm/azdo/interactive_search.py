@@ -179,12 +179,13 @@ def print_search_interface(query: str, results: List[Tuple[str, Dict, float]],
                 header_style="bold cyan",
                 border_style="blue",
                 show_lines=False,
+                expand=True,
             )
             
             table.add_column("#", justify="center", style="bold white", width=4)
             table.add_column("Grupo", justify="left", width=20)
-            table.add_column("Herramienta", justify="left", style="white", min_width=26)
-            table.add_column("Descripción", justify="left", style="dim", min_width=40)
+            table.add_column("Herramienta", justify="left", style="white", width=26)
+            table.add_column("Descripción", justify="left", style="dim", ratio=1)
             
             for idx, (key, tool, score) in enumerate(results):
                 group_key = tool.get("group", "system")
@@ -207,7 +208,7 @@ def print_search_interface(query: str, results: List[Tuple[str, Dict, float]],
                     f"[{key_style}]{key}[/{key_style}]",
                     f"[{group_style}]{group_text}[/{group_style}]",
                     f"[{name_style}]{tool.get('name', '')}[/{name_style}]",
-                    f"[{desc_style}]{tool.get('description', '')[:40]}...[/{desc_style}]",
+                    f"[{desc_style}]{tool.get('description', '')}[/{desc_style}]",
                 )
             
             console.print(table)
