@@ -384,16 +384,12 @@ def main():
         
         backup = load_backup(args.backup_file, args.backup_path)
         
-        # FASE 2: Mostrar información y confirmar
+        # FASE 2: Mostrar información del backup
         print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}FASE 2: Validación del Backup{Colors.ENDC}")
+        print(f"{Colors.BOLD}FASE 2: Información del Backup{Colors.ENDC}")
         print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
         
         show_backup_info(backup)
-        
-        if not confirm_restore():
-            print(f"\n{Colors.YELLOW}✗ Restore cancelado por el usuario{Colors.ENDC}")
-            return 0
         
         # FASE 3: Crear Release de Restore
         print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")

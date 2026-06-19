@@ -401,21 +401,6 @@ def main():
     print(f"  Comentario: {args.release_comment}")
     print(f"  Carpeta backups: {args.backup_path}\n")
     
-    # Confirmación
-    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.YELLOW}⚠  CONFIRMACIÓN REQUERIDA{Colors.ENDC}")
-    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
-    print(f"Se creará un nuevo Release desde Release #{args.source_release_id}")
-    print(f"Se generará un backup automático versionado\n")
-    
-    confirm = input(f"{Colors.BOLD}¿Deseas continuar? (escribe 'SI' para confirmar): {Colors.ENDC}").strip()
-    
-    if confirm != 'SI':
-        print(f"\n{Colors.YELLOW}✗ Operación cancelada por el usuario{Colors.ENDC}")
-        return 0
-    
-    print(f"\n{Colors.GREEN}✓ Confirmación recibida. Iniciando...{Colors.ENDC}\n")
-    
     try:
         # FASE 1: Obtener Release origen
         print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
