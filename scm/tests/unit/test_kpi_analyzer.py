@@ -10,6 +10,7 @@ Author: Harold Adrian
 
 import pytest
 import json
+import csv
 from pathlib import Path
 import tempfile
 import shutil
@@ -426,7 +427,9 @@ class TestKPIReporter:
         
         filepath = reporter.export_csv(data, filename="empty.csv")
         
-        assert filepath.exists()
+        # Cuando no hay KPIs, retorna la ruta pero no crea el archivo
+        assert filepath.name == "empty.csv"
+        assert not filepath.exists()
     
     @pytest.mark.unit
     def test_export_html_simple(self, tmp_path):
