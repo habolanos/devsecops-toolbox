@@ -92,13 +92,15 @@ def parse_targets(targets_str: str) -> Dict[str, Optional[Set[str]]]:
 
 def get_args():
     config = load_config()
-    org_config = config.get("organization", {})
+    # Support both new consolidated structure (azdo.*) and legacy (organization.*)
+    azdo_config = config.get("azdo", {}) or config.get("organization", {})
     defaults_config = config.get("defaults", {})
     tool_config = config.get("tools", {}).get("scan_repos_vulnerabilities", {})
 
-    default_org = org_config.get("url", "").replace("https://dev.azure.com/", "")
-    default_project = org_config.get("project", "")
-    default_pat = org_config.get("pat", "") or os.getenv("AZDO_PAT", "")
+    org_url = azdo_config.get("organization_url") or azdo_config.get("url", "")
+    default_org = org_url.replace("https://dev.azure.com/", "").strip("/")
+    default_project = azdo_config.get("project", "")
+    default_pat = azdo_config.get("pat", "") or os.getenv("AZDO_PAT", "")
     default_branches = tool_config.get("branches", DEFAULT_BRANCHES)
     default_targets = tool_config.get("targets", DEFAULT_TARGETS)
 
@@ -136,6 +138,10 @@ Formato de targets:
                         help="Mostrar ejemplo de configuración para config.json")
 
     args = parser.parse_args()
+
+    # Normalize org: strip prefix if caller (tools.py) passes full URL
+    if args.org:
+        args.org = args.org.replace("https://dev.azure.com/", "").strip("/")
 
     if args.help_config:
         print_config_help()
@@ -207,6 +213,9 @@ def build_session(headers: Dict[str, str]) -> requests.Session:
 
 
 def get_repositories(session: requests.Session, org: str, project: str) -> List[Dict]:
+    # Normalize org: strip https prefix if present
+    org = org.replace("https://dev.azure.com/", "").strip("/")
+    
     url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories?api-version={API_VERSION}"
     response = session.get(url, timeout=60)
     response.raise_for_status()

@@ -89,13 +89,15 @@ def load_config() -> Dict:
 
 def get_args():
     config = load_config()
-    org_config = config.get("organization", {})
+    # Support both new consolidated structure (azdo.*) and legacy (organization.*)
+    azdo_config = config.get("azdo", {}) or config.get("organization", {})
     defaults_config = config.get("defaults", {})
     tool_config = config.get("tools", {}).get("scan_pipeline_logs", {})
 
-    default_org = org_config.get("url", "").replace("https://dev.azure.com/", "")
-    default_project = org_config.get("project", "")
-    default_pat = org_config.get("pat", "") or os.getenv("AZDO_PAT", "")
+    org_url = azdo_config.get("organization_url") or azdo_config.get("url", "")
+    default_org = org_url.replace("https://dev.azure.com/", "").strip("/")
+    default_project = azdo_config.get("project", "")
+    default_pat = azdo_config.get("pat", "") or os.getenv("AZDO_PAT", "")
     default_threads = tool_config.get("threads", defaults_config.get("threads", 10))
     default_top_runs = tool_config.get("top_runs", 50)
     default_search_terms = tool_config.get("search_terms", DEFAULT_SEARCH_TERMS)
@@ -133,6 +135,10 @@ Ejemplos:
                         help="Mostrar ejemplo de configuración para config.json")
 
     args = parser.parse_args()
+
+    # Normalize org: strip prefix if caller (tools.py) passes full URL
+    if args.org:
+        args.org = args.org.replace("https://dev.azure.com/", "").strip("/")
 
     if args.help_config:
         print_config_help()
@@ -200,6 +206,9 @@ def build_session(pat: str, max_workers: int) -> requests.Session:
 def get_build_definitions(session: requests.Session, org: str, project: str) -> List[Dict]:
     definitions = []
     continuation_token = None
+    
+    # Normalize org: strip https prefix if present
+    org = org.replace("https://dev.azure.com/", "").strip("/")
 
     while True:
         url = f"https://dev.azure.com/{org}/{project}/_apis/build/definitions?api-version={API_VERSION}&$top=100"
