@@ -38,6 +38,12 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+try:
+    from interactive_search import search_and_select
+    SEARCH_AVAILABLE = True
+except ImportError:
+    SEARCH_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1728,12 +1734,23 @@ def main():
             print_menu()
 
             if RICH_AVAILABLE and console:
-                console.print(f"[bold]Seleccione una opción:[/] ", end="")
+                console.print(f"[bold]Seleccione una opción (o '/' para buscar):[/] ", end="")
             else:
-                print(f"{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
+                print(f"{Colors.BOLD}Seleccione una opción (o '/' para buscar):{Colors.ENDC} ", end="")
 
             choice = input().strip()
 
+            # Opción de búsqueda
+            if choice == "/":
+                if SEARCH_AVAILABLE:
+                    choice = search_and_select(TOOLS, TOOL_GROUPS)
+                    if choice is None:
+                        continue
+                else:
+                    print(f"\n{Colors.YELLOW}⚠️  Búsqueda no disponible{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+            
             # Normalizar: "A"/"Q" en mayúsculas, claves como "1b" en minúsculas
             choice_norm = choice.upper() if choice.isalpha() else choice.lower()
 
