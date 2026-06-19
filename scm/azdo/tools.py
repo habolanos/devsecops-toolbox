@@ -528,9 +528,10 @@ def _print_config_status_fallback():
               f"se pedirá PAT/org/proyecto en cada ejecución.{Colors.ENDC}")
         print(f"{Colors.CYAN}   (copia config.json.template → config.json){Colors.ENDC}")
         return
-    pat   = config_get(cfg, "organization", "pat")
-    org   = config_get(cfg, "organization", "url")
-    proj  = config_get(cfg, "organization", "project")
+    # Leer desde la nueva estructura consolidada: azdo.*
+    pat   = config_get(cfg, "azdo", "pat")
+    org   = config_get(cfg, "azdo", "organization_url")
+    proj  = config_get(cfg, "azdo", "project")
     valid = pat and not pat.startswith("<")
     pat_display = (f"{Colors.GREEN}✅ Configurado{Colors.ENDC}"
                    if valid else f"{Colors.FAIL}❌ Sin configurar{Colors.ENDC}")
@@ -549,9 +550,10 @@ def _print_config_status():
             "[dim](copia config.json.template → config.json)[/dim]"
         )
         return
-    pat   = config_get(cfg, "organization", "pat")
-    org   = config_get(cfg, "organization", "url")
-    proj  = config_get(cfg, "organization", "project")
+    # Leer desde la nueva estructura consolidada: azdo.*
+    pat   = config_get(cfg, "azdo", "pat")
+    org   = config_get(cfg, "azdo", "organization_url")
+    proj  = config_get(cfg, "azdo", "project")
     valid = pat and not pat.startswith("<")
     pat_display = "[green]✅ Configurado[/green]" if valid else "[red]❌ Sin configurar[/red]"
     console.print(
@@ -660,9 +662,10 @@ def ask_common_params(cfg: Dict, tool_key: str = "common") -> Optional[Dict]:
     last_params = load_last_params(tool_key)
     
     # Prioridad: last_params > config.json > hardcoded defaults
-    def_pat  = last_params.get("pat") or config_get(cfg, "organization", "pat")
-    def_org  = last_params.get("org") or config_get(cfg, "organization", "url", default="https://dev.azure.com/Coppel-Retail")
-    def_proj = last_params.get("project") or config_get(cfg, "organization", "project", default="Compras.RMI")
+    # Leer desde la nueva estructura consolidada: azdo.*
+    def_pat  = last_params.get("pat") or config_get(cfg, "azdo", "pat")
+    def_org  = last_params.get("org") or config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+    def_proj = last_params.get("project") or config_get(cfg, "azdo", "project", default="Compras.RMI")
 
     print()
     if last_params:
