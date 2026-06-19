@@ -257,6 +257,42 @@ class TestKPIReporter:
         assert "Deployment Frequency" in content
 
 
+class TestBenchmarkConstants:
+    """Tests para constantes en benchmarks.py"""
+    
+    @pytest.mark.unit
+    def test_dora_benchmarks_has_deployment_frequency(self):
+        """Test: DORA_BENCHMARKS contiene deployment_frequency."""
+        from scm.kpi_analyzer.benchmarks import DORA_BENCHMARKS
+        
+        assert "deployment_frequency" in DORA_BENCHMARKS
+        assert "elite" in DORA_BENCHMARKS["deployment_frequency"]
+    
+    @pytest.mark.unit
+    def test_dora_benchmarks_has_change_failure_rate(self):
+        """Test: DORA_BENCHMARKS contiene change_failure_rate."""
+        from scm.kpi_analyzer.benchmarks import DORA_BENCHMARKS
+        
+        assert "change_failure_rate" in DORA_BENCHMARKS
+        assert "high" in DORA_BENCHMARKS["change_failure_rate"]
+    
+    @pytest.mark.unit
+    def test_dora_benchmarks_has_mttr(self):
+        """Test: DORA_BENCHMARKS contiene mttr."""
+        from scm.kpi_analyzer.benchmarks import DORA_BENCHMARKS
+        
+        assert "mttr" in DORA_BENCHMARKS
+        assert "elite" in DORA_BENCHMARKS["mttr"]
+    
+    @pytest.mark.unit
+    def test_benchmark_level_enum_values(self):
+        """Test: BenchmarkLevel tiene valores válidos."""
+        assert BenchmarkLevel.ELITE.value == "elite"
+        assert BenchmarkLevel.HIGH.value == "high"
+        assert BenchmarkLevel.MEDIUM.value == "medium"
+        assert BenchmarkLevel.LOW.value == "low"
+
+
 class TestBenchmarkHelperFunctions:
     """Tests para funciones helper de benchmarks"""
     
@@ -299,6 +335,91 @@ class TestBenchmarkHelperFunctions:
         """Test emoji para nivel LOW"""
         from scm.kpi_analyzer.benchmarks import get_benchmark_emoji
         assert get_benchmark_emoji(BenchmarkLevel.LOW) == "🔴"
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_deployment_frequency_elite(self):
+        """Test: get_benchmark_level para deployment_frequency ELITE."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        result = get_benchmark_level("ec_001", 1.5)
+        assert result == BenchmarkLevel.ELITE
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_deployment_frequency_high(self):
+        """Test: get_benchmark_level para deployment_frequency HIGH."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        result = get_benchmark_level("ec_001", 0.2)
+        assert result == BenchmarkLevel.HIGH
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_deployment_frequency_medium(self):
+        """Test: get_benchmark_level para deployment_frequency MEDIUM."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        result = get_benchmark_level("ec_001", 0.05)
+        assert result == BenchmarkLevel.MEDIUM
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_deployment_frequency_low(self):
+        """Test: get_benchmark_level para deployment_frequency LOW."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        result = get_benchmark_level("ec_001", 0.001)
+        assert result == BenchmarkLevel.LOW
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_mttr_elite(self):
+        """Test: get_benchmark_level para MTTR ELITE."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        # MTTR: lower is better, elite <= 60 minutes
+        result = get_benchmark_level("conf_001", 30.0)
+        assert result == BenchmarkLevel.ELITE
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_mttr_high(self):
+        """Test: get_benchmark_level para MTTR HIGH."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        # MTTR: lower is better, high <= 240 minutes
+        result = get_benchmark_level("conf_001", 120.0)
+        assert result == BenchmarkLevel.HIGH
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_mttr_medium(self):
+        """Test: get_benchmark_level para MTTR MEDIUM."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        # MTTR: lower is better, medium <= 1440 minutes
+        result = get_benchmark_level("conf_001", 600.0)
+        assert result == BenchmarkLevel.MEDIUM
+    
+    @pytest.mark.unit
+    def test_get_benchmark_color_high(self):
+        """Test: get_benchmark_color para HIGH."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        assert get_benchmark_color(BenchmarkLevel.HIGH) == "#27ae60"
+    
+    @pytest.mark.unit
+    def test_get_benchmark_color_medium(self):
+        """Test: get_benchmark_color para MEDIUM."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        assert get_benchmark_color(BenchmarkLevel.MEDIUM) == "#f39c12"
+    
+    @pytest.mark.unit
+    def test_get_benchmark_color_low(self):
+        """Test: get_benchmark_color para LOW."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        assert get_benchmark_color(BenchmarkLevel.LOW) == "#e74c3c"
+    
+    @pytest.mark.unit
+    def test_get_benchmark_emoji_returns_string(self):
+        """Test: get_benchmark_emoji retorna string."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_emoji
+        result = get_benchmark_emoji(BenchmarkLevel.ELITE)
+        assert isinstance(result, str)
+        assert len(result) > 0
     
     def test_get_benchmark_level_unknown_kpi(self):
         """Test benchmark level para KPI desconocido"""
@@ -823,6 +944,293 @@ class TestKPIAnalyzer:
         assert len(analyzer.json_cache) == 2
         assert result1["id"] == 1
         assert result2["id"] == 2
+    
+    @pytest.mark.unit
+    def test_apply_formula_ec_001_with_deployments(self):
+        """Test: Aplicar fórmula ec_001 con deployments."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        from datetime import datetime, timezone, timedelta
+        
+        analyzer = KPIAnalyzer()
+        now = datetime.now(timezone.utc)
+        recent_date = (now - timedelta(days=3)).isoformat()
+        
+        source_data = [
+            {
+                "field": "deployments",
+                "value": [
+                    {
+                        "status": "success",
+                        "environment": "prod",
+                        "timestamp": recent_date
+                    }
+                ],
+                "source": "test.json"
+            }
+        ]
+        
+        result = analyzer._apply_formula("count", source_data, "ec_001")
+        assert result is not None
+        assert isinstance(result, float)
+    
+    @pytest.mark.unit
+    def test_apply_formula_ec_002_with_failures(self):
+        """Test: Aplicar fórmula ec_002 con fallos."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [
+            {
+                "field": "deployments",
+                "value": [
+                    {"status": "success"},
+                    {"status": "failed"},
+                    {"status": "success"}
+                ],
+                "source": "test.json"
+            }
+        ]
+        
+        result = analyzer._apply_formula("failure_rate", source_data, "ec_002")
+        assert result is not None
+        assert 0 <= result <= 100
+    
+    @pytest.mark.unit
+    def test_apply_formula_unknown_kpi(self):
+        """Test: Aplicar fórmula con KPI desconocido."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [{"field": "test", "value": 42}]
+        
+        result = analyzer._apply_formula("unknown", source_data, "unknown_kpi")
+        # Para KPIs desconocidos, retorna el promedio de valores
+        assert result is not None
+        assert isinstance(result, float)
+    
+    @pytest.mark.unit
+    def test_extract_field_with_list_items(self):
+        """Test: Extraer campo de items en lista."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {
+            "items": [
+                {"status": "success", "id": 1},
+                {"status": "failed", "id": 2},
+                {"status": "success", "id": 3}
+            ]
+        }
+        
+        result = analyzer.extract_field(data, "items[].status")
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert "success" in result
+        assert "failed" in result
+    
+    @pytest.mark.unit
+    def test_load_json_with_cache_key(self, tmp_path):
+        """Test: load_json usa cache_key correctamente."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        test_file = tmp_path / "test.json"
+        test_data = {"key": "value"}
+        test_file.write_text(json.dumps(test_data))
+        
+        analyzer = KPIAnalyzer()
+        
+        # Primera carga
+        result1 = analyzer.load_json(test_file)
+        cache_key = str(test_file)
+        
+        # Verificar que está en caché
+        assert cache_key in analyzer.json_cache
+        assert analyzer.json_cache[cache_key] == test_data
+    
+    @pytest.mark.unit
+    def test_discover_json_files_excludes_config(self, tmp_path):
+        """Test: discover_json_files excluye archivos config."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        from unittest.mock import patch
+        
+        # Crear archivos de prueba
+        (tmp_path / "gcp_scan.json").write_text("{}")
+        (tmp_path / "config.json").write_text("{}")
+        (tmp_path / "package.json").write_text("{}")
+        
+        analyzer = KPIAnalyzer()
+        
+        with patch.object(analyzer, 'output_dir', tmp_path):
+            files = analyzer.discover_json_files()
+            
+            # No debe incluir config.json o package.json
+            file_names = [f.name for f in files]
+            assert "config.json" not in file_names
+            assert "package.json" not in file_names
+    
+    @pytest.mark.unit
+    def test_extract_field_returns_none_for_invalid_path(self):
+        """Test: extract_field retorna None para path inválido."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {"a": {"b": {"c": 1}}}
+        
+        result = analyzer.extract_field(data, "a.b.d.e.f")
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_apply_formula_conf_001_mttr(self):
+        """Test: Aplicar fórmula conf_001 (MTTR)."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [
+            {"field": "mttr", "value": 120},
+            {"field": "mttr", "value": 180},
+            {"field": "mttr", "value": 150}
+        ]
+        
+        result = analyzer._apply_formula("avg", source_data, "conf_001")
+        assert result is not None
+        assert isinstance(result, float)
+        assert result > 0
+    
+    @pytest.mark.unit
+    def test_apply_formula_conf_002_availability(self):
+        """Test: Aplicar fórmula conf_002 (Availability)."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [
+            {
+                "field": "uptime",
+                "value": [100, 99, 98, 100, 99]
+            }
+        ]
+        
+        result = analyzer._apply_formula("availability", source_data, "conf_002")
+        assert result is not None
+        assert isinstance(result, float)
+    
+    @pytest.mark.unit
+    def test_apply_formula_seg_001_mfa(self):
+        """Test: Aplicar fórmula seg_001 (MFA Coverage)."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [
+            {
+                "field": "users",
+                "value": [
+                    {"mfa_enabled": True},
+                    {"mfa_enabled": False},
+                    {"mfa_enabled": True}
+                ]
+            }
+        ]
+        
+        result = analyzer._apply_formula("mfa", source_data, "seg_001")
+        assert result is not None
+        assert isinstance(result, float)
+    
+    @pytest.mark.unit
+    def test_apply_formula_obs_001_monitoring(self):
+        """Test: Aplicar fórmula obs_001 (Monitoring Coverage)."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [
+            {
+                "field": "services",
+                "value": [
+                    {"status": "healthy"},
+                    {"status": "unhealthy"},
+                    {"status": "running"}
+                ]
+            }
+        ]
+        
+        result = analyzer._apply_formula("monitoring", source_data, "obs_001")
+        assert result is not None
+        assert isinstance(result, float)
+    
+    @pytest.mark.unit
+    def test_apply_formula_cump_001_compliance(self):
+        """Test: Aplicar fórmula cump_001 (Policy Adherence)."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [
+            {
+                "field": "resources",
+                "value": [
+                    {"compliant": True},
+                    {"compliant": False},
+                    {"compliant": True}
+                ]
+            }
+        ]
+        
+        result = analyzer._apply_formula("compliance", source_data, "cump_001")
+        assert result is not None
+        assert isinstance(result, float)
+    
+    @pytest.mark.unit
+    def test_apply_formula_efic_001_utilization(self):
+        """Test: Aplicar fórmula efic_001 (Resource Utilization)."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = [
+            {
+                "field": "resources",
+                "value": [
+                    {"used": 50, "allocated": 100},
+                    {"used": 75, "allocated": 100}
+                ]
+            }
+        ]
+        
+        result = analyzer._apply_formula("utilization", source_data, "efic_001")
+        assert result is not None
+        assert isinstance(result, float)
+    
+    @pytest.mark.unit
+    def test_calculate_kpi_with_valid_definition(self, tmp_path):
+        """Test: calculate_kpi con definición válida."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        
+        kpi_def = {
+            "id": "ec_001",
+            "name": "Deployment Frequency",
+            "sources": [],
+            "formula": "count"
+        }
+        
+        result = analyzer.calculate_kpi(kpi_def)
+        # Sin fuentes, debería retornar None
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_discover_json_files_returns_list(self, tmp_path):
+        """Test: discover_json_files retorna lista."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        from unittest.mock import patch
+        
+        # Crear archivos de prueba
+        (tmp_path / "gcp_scan.json").write_text("{}")
+        (tmp_path / "azdo_scan.json").write_text("{}")
+        
+        analyzer = KPIAnalyzer()
+        
+        with patch.object(analyzer, 'output_dir', tmp_path):
+            files = analyzer.discover_json_files()
+            
+            assert isinstance(files, list)
+            assert len(files) >= 0
 
 
 if __name__ == "__main__":

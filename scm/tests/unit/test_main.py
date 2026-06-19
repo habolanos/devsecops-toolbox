@@ -738,3 +738,38 @@ class TestColorsClass:
         from scm.main import Colors
         
         assert Colors.ENDC == '\033[0m'
+
+
+class TestMainConstants:
+    """Tests para constantes en main.py"""
+    
+    @pytest.mark.unit
+    def test_platforms_constant_exists(self):
+        """Test: PLATFORMS constante existe."""
+        from scm.main import PLATFORMS
+        
+        assert PLATFORMS is not None
+        assert isinstance(PLATFORMS, dict)
+        assert len(PLATFORMS) > 0
+    
+    @pytest.mark.unit
+    def test_status_indicators_constant_exists(self):
+        """Test: STATUS_INDICATORS constante existe."""
+        from scm.main import STATUS_INDICATORS
+        
+        assert STATUS_INDICATORS is not None
+        assert isinstance(STATUS_INDICATORS, dict)
+    
+    @pytest.mark.unit
+    def test_status_indicators_has_error(self):
+        """Test: STATUS_INDICATORS contiene error."""
+        from scm.main import STATUS_INDICATORS
+        
+        assert "error" in STATUS_INDICATORS
+    
+    @pytest.mark.unit
+    def test_status_indicators_has_ready(self):
+        """Test: STATUS_INDICATORS contiene ready."""
+        from scm.main import STATUS_INDICATORS
+        
+        assert "ready" in STATUS_INDICATORS

@@ -971,6 +971,77 @@ class TestConstants:
     @pytest.mark.unit
     def test_buckets_includes_nunca(self):
         assert "Nunca" in BUCKETS
+    
+    @pytest.mark.unit
+    def test_api_version_format(self):
+        """Test: API_VERSION tiene formato válido."""
+        assert API_VERSION is not None
+        assert isinstance(API_VERSION, str)
+        assert "." in API_VERSION
+    
+    @pytest.mark.unit
+    def test_default_org_url_format(self):
+        """Test: DEFAULT_ORG_URL tiene formato válido."""
+        from scm.azdo.cicd_pipeline_status import DEFAULT_ORG_URL
+        
+        assert DEFAULT_ORG_URL.startswith("https://")
+        assert "dev.azure.com" in DEFAULT_ORG_URL
+    
+    @pytest.mark.unit
+    def test_default_project_not_empty(self):
+        """Test: DEFAULT_PROJECT no está vacío."""
+        from scm.azdo.cicd_pipeline_status import DEFAULT_PROJECT
+        
+        assert DEFAULT_PROJECT
+        assert len(DEFAULT_PROJECT) > 0
+    
+    @pytest.mark.unit
+    def test_default_timezone_valid(self):
+        """Test: DEFAULT_TIMEZONE es válido."""
+        from scm.azdo.cicd_pipeline_status import DEFAULT_TIMEZONE
+        
+        assert DEFAULT_TIMEZONE
+        assert "/" in DEFAULT_TIMEZONE
+    
+    @pytest.mark.unit
+    def test_default_inactive_days_positive(self):
+        """Test: DEFAULT_INACTIVE_DAYS es positivo."""
+        from scm.azdo.cicd_pipeline_status import DEFAULT_INACTIVE_DAYS
+        
+        assert DEFAULT_INACTIVE_DAYS > 0
+        assert isinstance(DEFAULT_INACTIVE_DAYS, int)
+    
+    @pytest.mark.unit
+    def test_queue_status_label_has_enabled(self):
+        """Test: QUEUE_STATUS_LABEL contiene 'enabled'."""
+        from scm.azdo.cicd_pipeline_status import QUEUE_STATUS_LABEL
+        
+        assert "enabled" in QUEUE_STATUS_LABEL
+        assert QUEUE_STATUS_LABEL["enabled"] == "✅ Activo"
+    
+    @pytest.mark.unit
+    def test_queue_status_label_has_disabled(self):
+        """Test: QUEUE_STATUS_LABEL contiene 'disabled'."""
+        from scm.azdo.cicd_pipeline_status import QUEUE_STATUS_LABEL
+        
+        assert "disabled" in QUEUE_STATUS_LABEL
+        assert "Deshabilitado" in QUEUE_STATUS_LABEL["disabled"]
+    
+    @pytest.mark.unit
+    def test_queue_status_label_has_paused(self):
+        """Test: QUEUE_STATUS_LABEL contiene 'paused'."""
+        from scm.azdo.cicd_pipeline_status import QUEUE_STATUS_LABEL
+        
+        assert "paused" in QUEUE_STATUS_LABEL
+        assert "Pausado" in QUEUE_STATUS_LABEL["paused"]
+    
+    @pytest.mark.unit
+    def test_deprecado_constants_exist(self):
+        """Test: Constantes DEPRECADO existen."""
+        from scm.azdo.cicd_pipeline_status import DEPRECADO_SI, DEPRECADO_NO
+        
+        assert DEPRECADO_SI
+        assert DEPRECADO_NO
 
 
 class TestApiGet:
