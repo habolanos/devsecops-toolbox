@@ -126,5 +126,68 @@ class TestPrMasterCheckerImports:
         assert azdo_pr_master_checker is not None
 
 
+class TestAnalyzeKpisScript:
+    """Tests para funciones en analyze_kpis.py."""
+    
+    @pytest.mark.unit
+    def test_get_args_returns_parser(self):
+        """Test: get_args retorna argumentos válidos."""
+        from scm.kpi_analyzer.analyze_kpis import get_args
+        
+        # Simular argumentos vacíos
+        args = get_args([])
+        
+        assert args.platform == 'all'
+        assert args.output == 'all'
+        assert args.dashboard is False
+    
+    @pytest.mark.unit
+    def test_get_args_platform_gcp(self):
+        """Test: get_args con --platform gcp."""
+        from scm.kpi_analyzer.analyze_kpis import get_args
+        
+        args = get_args(['--platform', 'gcp'])
+        
+        assert args.platform == 'gcp'
+    
+    @pytest.mark.unit
+    def test_get_args_output_json(self):
+        """Test: get_args con --output json."""
+        from scm.kpi_analyzer.analyze_kpis import get_args
+        
+        args = get_args(['--output', 'json'])
+        
+        assert args.output == 'json'
+    
+    @pytest.mark.unit
+    def test_get_args_dashboard_flag(self):
+        """Test: get_args con --dashboard."""
+        from scm.kpi_analyzer.analyze_kpis import get_args
+        
+        args = get_args(['--dashboard'])
+        
+        assert args.dashboard is True
+    
+    @pytest.mark.unit
+    def test_get_args_maturity_flag(self):
+        """Test: get_args con --maturity."""
+        from scm.kpi_analyzer.analyze_kpis import get_args
+        
+        args = get_args(['--maturity'])
+        
+        assert args.maturity is True
+
+
+class TestDashboardGeneratorImports:
+    """Tests para verificar imports en dashboard_generator.py."""
+    
+    @pytest.mark.unit
+    def test_dashboard_generator_imports_successfully(self):
+        """Test: dashboard_generator.py se importa correctamente."""
+        from scm.kpi_analyzer import dashboard_generator
+        
+        assert dashboard_generator is not None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
