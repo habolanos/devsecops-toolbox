@@ -59,7 +59,10 @@ services:
       - ./outcome:/home/devsecops/outcome
       - ./workspace:/home/devsecops/workspace
       
-      # Scripts y herramientas personalizadas
+      # Configuración del toolbox (config.json)
+      - ./scm/config.json:/app/scm/config.json:ro
+      
+      # Scripts y herramientas personalizadas (opcional)
       - ./scripts:/home/devsecops/scripts:ro
     
     # Red
@@ -90,6 +93,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: habolanos/devsecops-toolbox:latest
+    container_name: devsecops-toolbox-dev
     
     stdin_open: true
     tty: true
@@ -149,6 +153,7 @@ services:
       - ~/.config/gcloud:/home/devsecops/.config/gcloud:ro
       - ~/.kube:/home/devsecops/.kube:ro
       - ./outcome:/home/devsecops/outcome
+      - ./scm/config.json:/app/scm/config.json:ro
     
     networks:
       - toolbox-network
@@ -158,6 +163,103 @@ services:
     
     profiles:
       - cmd
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Servicio para Ejecutar Tools.py (Azure DevOps, GCP, AWS)
+  # ═══════════════════════════════════════════════════════════════════════════
+  toolbox-azdo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: habolanos/devsecops-toolbox:latest
+    container_name: devsecops-toolbox-azdo
+    
+    stdin_open: true
+    tty: true
+    
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+    
+    volumes:
+      - ~/.azure:/home/devsecops/.azure:ro
+      - ./outcome:/home/devsecops/outcome
+      - ./scm/config.json:/app/scm/config.json:ro
+    
+    networks:
+      - toolbox-network
+    
+    working_dir: /app/scm/azdo
+    
+    command: ["python", "tools.py"]
+    
+    profiles:
+      - azdo
+
+  toolbox-gcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: habolanos/devsecops-toolbox:latest
+    container_name: devsecops-toolbox-gcp
+    
+    stdin_open: true
+    tty: true
+    
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+    
+    volumes:
+      - ~/.config/gcloud:/home/devsecops/.config/gcloud:ro
+      - ~/.kube:/home/devsecops/.kube:ro
+      - ./outcome:/home/devsecops/outcome
+      - ./scm/config.json:/app/scm/config.json:ro
+    
+    networks:
+      - toolbox-network
+    
+    working_dir: /app/scm/gcp
+    
+    command: ["python", "tools.py"]
+    
+    profiles:
+      - gcp
+
+  toolbox-aws:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: habolanos/devsecops-toolbox:latest
+    container_name: devsecops-toolbox-aws
+    
+    stdin_open: true
+    tty: true
+    
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    
+    volumes:
+      - ~/.aws:/home/devsecops/.aws:ro
+      - ./outcome:/home/devsecops/outcome
+      - ./scm/config.json:/app/scm/config.json:ro
+    
+    networks:
+      - toolbox-network
+    
+    working_dir: /app/scm/aws
+    
+    command: ["python", "tools.py"]
+    
+    profiles:
+      - aws
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # REDES

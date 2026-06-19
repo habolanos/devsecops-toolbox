@@ -10,7 +10,7 @@
 FROM python:3.11-slim
 
 # Build argument for version
-ARG VERSION=1.5.2
+ARG VERSION=1.6.10
 
 # Evitar prompts interactivos
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -96,14 +96,14 @@ RUN curl -fsSL "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELM
 # ═══════════════════════════════════════════════════════════════════════════════
-RUN curl -fsSL https://get.helm.sh/helm-v3.13.3-linux-amd64.tar.gz | tar -xz \
+RUN curl -fsSL https://get.helm.sh/helm-v3.14.4-linux-amd64.tar.gz | tar -xz \
     && mv linux-amd64/helm /usr/local/bin/helm \
     && rm -rf linux-amd64
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TERRAFORM
 # ═══════════════════════════════════════════════════════════════════════════════
-RUN curl -fsSL https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip -o terraform.zip \
+RUN curl -fsSL https://releases.hashicorp.com/terraform/1.8.3/terraform_1.8.3_linux_amd64.zip -o terraform.zip \
     && unzip -q terraform.zip \
     && mv terraform /usr/local/bin/ \
     && rm terraform.zip
@@ -117,6 +117,8 @@ WORKDIR /tmp/requirements
 COPY scm/aws/requirements.txt ./aws.txt
 COPY scm/azdo/requirements.txt ./azdo.txt
 COPY scm/gcp/requirements.txt ./gcp.txt
+COPY scm/terminal/requirements.txt ./terminal.txt
+COPY scm/kpi_analyzer/requirements.txt ./kpi.txt
 COPY scm/gcp/artifact-registry/requirements.txt ./gcp-artifact.txt
 COPY scm/gcp/certificate-manager/requirements.txt ./gcp-cert.txt
 COPY scm/gcp/cloud-armor/requirements.txt ./gcp-armor.txt
@@ -132,6 +134,8 @@ COPY scm/gcp/vpc-networks/requirements.txt ./gcp-vpc.txt
 # Combinar todos los requirements y eliminar duplicados
 RUN cat *.txt 2>/dev/null | grep -v "^#" | grep -v "^$" | sort -u > /tmp/all-requirements.txt \
     && pip install --no-cache-dir -r /tmp/all-requirements.txt \
+    # Instalar Rich explícitamente (usado en muchos scripts)
+    && pip install --no-cache-dir rich>=13.0.0 \
     && rm -rf /tmp/requirements /tmp/all-requirements.txt
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -142,6 +146,11 @@ WORKDIR /app
 # Copiar solo el código fuente necesario (sin tests, docs, etc.)
 COPY scm/ /app/scm/
 COPY VERSION /app/VERSION
+COPY README.md /app/README.md
+COPY README.version.md /app/README.version.md
+
+# Crear directorio para config.json
+RUN mkdir -p /app/scm && touch /app/scm/config.json.example
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # USUARIO NO-ROOT
