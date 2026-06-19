@@ -20,6 +20,13 @@ from typing import Dict, Optional, List
 import urllib.request
 import urllib.error
 
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
+console = Console()
+
 __version__ = "1.0.0"
 __author__ = "Harold Adrian"
 
