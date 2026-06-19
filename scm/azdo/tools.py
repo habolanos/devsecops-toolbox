@@ -309,14 +309,16 @@ TOOLS: Dict = {
     },
     "23": {
         "name":        "Pipeline Re-Release",
-        "description": "Crea un nuevo Release desde un Release existente con backup automático versionado. Permite re-ejecutar un release anterior con artefactos frescos.",
-        "path":        "pipeline-cd-new-re-release.sh",
-        "args":        ["--sourceReleaseId", "--releaseComment", "--pat", "--backupPath"],
+        "description": "Crea Nuevo Release desde uno existente con backup automático versionado. Permite re-ejecutar un release anterior con artefactos frescos.",
+        "path":        "pipeline_cd_new_re_release.py",
+        "args":        ["--org", "--project", "--source-release-id", "--release-comment", "--pat", "--backup-path"],
         "defaults":    {
-            "sourceReleaseId": 987,
-            "releaseComment": "Re-release automático desde tools.py",
+            "org": "Coppel-Retail",
+            "project": "Cadena_de_Suministros",
+            "source_release_id": 999999,
+            "release_comment": "Renovacion de Credenciales Git",
             "pat": "",
-            "backupPath": "./backups"
+            "backup_path": "./outcome/backups"
         },
         "group":       "release",
         "status":      "ready",
@@ -324,13 +326,15 @@ TOOLS: Dict = {
     "24": {
         "name":        "Pipeline Restore Release",
         "description": "Restaura un Release desde un backup versionado. Permite rollback completo con trazabilidad y confirmación interactiva.",
-        "path":        "pipeline-cd-restore-release.sh",
-        "args":        ["--backupFile", "--restoreComment", "--pat", "--backupPath"],
+        "path":        "pipeline_cd_restore_release.py",
+        "args":        ["--org", "--project", "--backup-file", "--restore-comment", "--pat", "--backup-path"],
         "defaults":    {
-            "backupFile": "",
-            "restoreComment": "Restore automático desde tools.py",
+            "org": "Coppel-Retail",
+            "project": "Cadena_de_Suministros",
+            "backup_file": "",
+            "restore_comment": "Restore automático desde tools.py",
             "pat": "",
-            "backupPath": "./backups"
+            "backup_path": "./outcome/backups"
         },
         "group":       "release",
         "status":      "ready",
