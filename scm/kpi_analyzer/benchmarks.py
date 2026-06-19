@@ -11,21 +11,20 @@ Author: Harold Adrian
 from typing import Dict, Any, Tuple
 from enum import Enum
 
+# Import MaturityLevel from maturity_model to avoid duplication
+# This ensures consistent enum type throughout the application
+try:
+    from scm.kpi_analyzer.maturity_model import MaturityLevel
+except ImportError:
+    # Fallback for direct execution
+    from maturity_model import MaturityLevel
+
 class BenchmarkLevel(Enum):
     """Niveles de benchmark de industria"""
     ELITE = "elite"
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
-
-class MaturityLevel(Enum):
-    """Niveles de madurez DevSecOps"""
-    CAOTICO = 0
-    INICIAL = 1
-    GESTIONADO = 2
-    DEFINIDO = 3
-    CUANTIFICADO = 4
-    OPTIMIZADO = 5
 
 # =============================================================================
 # DORA METRICS BENCHMARKS (2024)
@@ -251,6 +250,8 @@ def get_benchmark_level(kpi_id: str, value: float) -> BenchmarkLevel:
     
     # Determine level based on value and benchmark thresholds
     # Logic depends on whether higher is better or lower is better
+    # Higher is better: deployment_frequency, availability, error_budget, slo_compliance, mfa_coverage, secret_rotation, policy_adherence
+    # Lower is better: change_failure_rate, lead_time, mttr, certificate_expiry, iam_over_permissioning, vulnerability_remediation, pipeline_drift
     if kpi_id in ["ec_001", "conf_002", "conf_003", "obs_002", "seg_001", "seg_003", "cump_001"]:
         # Higher is better
         if value >= benchmark["elite"]["value"]:
@@ -262,7 +263,7 @@ def get_benchmark_level(kpi_id: str, value: float) -> BenchmarkLevel:
         else:
             return BenchmarkLevel.LOW
     else:
-        # Lower is better
+        # Lower is better (includes conf_001 MTTR, ec_002, ec_003, seg_002, seg_004, seg_005, cump_002)
         if value <= benchmark["elite"]["value"]:
             return BenchmarkLevel.ELITE
         elif value <= benchmark["high"]["value"]:
