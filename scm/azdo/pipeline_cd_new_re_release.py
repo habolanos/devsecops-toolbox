@@ -143,6 +143,13 @@ def interactive_mode() -> Dict:
 # FUNCIONES PRINCIPALES
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def normalize_org(org: str) -> str:
+    """Normaliza la organización: extrae el nombre si es una URL completa."""
+    if org.startswith("https://"):
+        return org.split('/')[-1]
+    return org
+
+
 def create_auth_header(pat: str) -> str:
     """Crea el header de autenticación Basic con PAT."""
     credentials = f":{pat}"
@@ -366,6 +373,9 @@ Ejemplos:
 def main():
     """Función principal."""
     args = get_args()
+    
+    # Normalizar organización (extraer nombre si es URL)
+    args.org = normalize_org(args.org)
     
     if args.interactive:
         params = interactive_mode()

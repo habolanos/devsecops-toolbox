@@ -1027,6 +1027,148 @@ def run_tool(tool_key: str):
                 input("\nPresione Enter para continuar...")
                 continue
     
+    # ── Caso especial: Pipeline Re-Release (tool 23) ────────────────────────────
+    if tool_key == "23":
+        tool_defaults = tool.get("defaults", {})
+        
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}  🚀 Pipeline Re-Release - Parámetros{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+        
+        # Solicitar parámetros específicos
+        cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+        if cfg_org.startswith("https://"):
+            cfg_org = cfg_org.split('/')[-1]
+        
+        org = prompt("Organización", default=cfg_org)
+        if not org.startswith("https://"):
+            org = f"https://dev.azure.com/{org}"
+        
+        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+        
+        print(f"{Colors.BOLD}Release ID origen (obligatorio):{Colors.ENDC} ", end="")
+        source_release_id = input().strip()
+        if not source_release_id or not source_release_id.isdigit():
+            print(f"{Colors.RED}❌ El Release ID es obligatorio y debe ser un número entero.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        release_comment = prompt("Comentario para el nuevo release", 
+                                default=tool_defaults.get("release_comment", "Renovacion de Credenciales Git"))
+        
+        pat = prompt("Personal Access Token (PAT)", 
+                    default=config_get(cfg, "azdo", "pat", default=""), 
+                    secret=True)
+        if not pat:
+            print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        backup_path = prompt("Carpeta de backups", 
+                            default=tool_defaults.get("backup_path", "./outcome/backups"))
+        
+        # Confirmación
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.YELLOW}⚠  CONFIRMACIÓN REQUERIDA{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"Se creará un nuevo Release desde Release #{source_release_id}")
+        print(f"Se generará un backup automático versionado\n")
+        
+        confirm = input(f"{Colors.BOLD}¿Deseas continuar? (escribe 'SI' para confirmar): {Colors.ENDC}").strip()
+        if confirm != 'SI':
+            print(f"\n{Colors.YELLOW}✗ Operación cancelada por el usuario{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Construir comando
+        cmd = [
+            str(venv_python), str(script_path),
+            "--org", org,
+            "--project", project,
+            "--source-release-id", source_release_id,
+            "--release-comment", release_comment,
+            "--pat", pat,
+            "--backup-path", backup_path
+        ]
+        
+        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+        try:
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+            if result.returncode == 0:
+                print(f"\n{Colors.GREEN}✅ Re-Release completado exitosamente.{Colors.ENDC}")
+            else:
+                print(f"\n{Colors.RED}✗ Re-Release falló (exit {result.returncode}){Colors.ENDC}")
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+        
+        input("\nPresione Enter para continuar...")
+        return
+    
+    # ── Caso especial: Pipeline Restore Release (tool 24) ────────────────────────
+    if tool_key == "24":
+        tool_defaults = tool.get("defaults", {})
+        
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}  🔄 Pipeline Restore Release - Parámetros{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+        
+        # Solicitar parámetros específicos
+        cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+        if cfg_org.startswith("https://"):
+            cfg_org = cfg_org.split('/')[-1]
+        
+        org = prompt("Organización", default=cfg_org)
+        if not org.startswith("https://"):
+            org = f"https://dev.azure.com/{org}"
+        
+        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+        
+        backup_file = prompt("Archivo de backup (ruta o nombre)", 
+                            default=tool_defaults.get("backup_file", ""),
+                            required=True)
+        if not backup_file:
+            print(f"{Colors.RED}❌ El archivo de backup es obligatorio.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        restore_comment = prompt("Comentario para el restore", 
+                                default=tool_defaults.get("restore_comment", "Restore automático desde tools.py"))
+        
+        pat = prompt("Personal Access Token (PAT)", 
+                    default=config_get(cfg, "azdo", "pat", default=""), 
+                    secret=True)
+        if not pat:
+            print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        backup_path = prompt("Carpeta de backups", 
+                            default=tool_defaults.get("backup_path", "./outcome/backups"))
+        
+        # Construir comando
+        cmd = [
+            str(venv_python), str(script_path),
+            "--org", org,
+            "--project", project,
+            "--backup-file", backup_file,
+            "--restore-comment", restore_comment,
+            "--pat", pat,
+            "--backup-path", backup_path
+        ]
+        
+        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+        try:
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+            if result.returncode == 0:
+                print(f"\n{Colors.GREEN}✅ Restore completado exitosamente.{Colors.ENDC}")
+            else:
+                print(f"\n{Colors.RED}✗ Restore falló (exit {result.returncode}){Colors.ENDC}")
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+        
+        input("\nPresione Enter para continuar...")
+        return
+    
     params = ask_common_params(cfg, tool_key=tool_key)
     if not params:
         input("\nPresione Enter para continuar...")
