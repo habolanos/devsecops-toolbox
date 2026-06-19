@@ -583,5 +583,247 @@ class TestKPIReporter:
         assert rows[0]["ID"] == "ec_001"
 
 
+class TestKPIAnalyzer:
+    """Tests para la clase KPIAnalyzer."""
+    
+    @pytest.mark.unit
+    def test_analyzer_init(self, tmp_path):
+        """Test: Inicializar KPIAnalyzer."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        assert analyzer.schema is not None
+        assert analyzer.output_dir is not None
+        assert isinstance(analyzer.json_cache, dict)
+    
+    @pytest.mark.unit
+    def test_discover_json_files_empty(self, tmp_path):
+        """Test: Descubrir archivos JSON en directorio vacío."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        from unittest.mock import patch
+        
+        analyzer = KPIAnalyzer()
+        
+        with patch.object(analyzer, 'output_dir', tmp_path):
+            files = analyzer.discover_json_files()
+            assert isinstance(files, list)
+            assert len(files) == 0
+    
+    @pytest.mark.unit
+    def test_discover_json_files_with_platform_filter(self, tmp_path):
+        """Test: Descubrir archivos JSON con filtro de plataforma."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        from unittest.mock import patch
+        
+        # Crear archivos de prueba
+        (tmp_path / "gcp_scan_results.json").write_text("{}")
+        (tmp_path / "azdo_scan_results.json").write_text("{}")
+        
+        analyzer = KPIAnalyzer()
+        
+        with patch.object(analyzer, 'output_dir', tmp_path):
+            files = analyzer.discover_json_files(platform="gcp")
+            assert len(files) > 0
+            assert any("gcp" in f.name for f in files)
+    
+    @pytest.mark.unit
+    def test_load_json_success(self, tmp_path):
+        """Test: Cargar archivo JSON exitosamente."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        # Crear archivo JSON de prueba
+        test_file = tmp_path / "test.json"
+        test_data = {"key": "value", "number": 42}
+        test_file.write_text(json.dumps(test_data))
+        
+        analyzer = KPIAnalyzer()
+        result = analyzer.load_json(test_file)
+        
+        assert result == test_data
+        assert str(test_file) in analyzer.json_cache
+    
+    @pytest.mark.unit
+    def test_load_json_cache(self, tmp_path):
+        """Test: Caché de archivos JSON."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        test_file = tmp_path / "test.json"
+        test_data = {"key": "value"}
+        test_file.write_text(json.dumps(test_data))
+        
+        analyzer = KPIAnalyzer()
+        
+        # Primera carga
+        result1 = analyzer.load_json(test_file)
+        
+        # Modificar archivo
+        test_file.write_text(json.dumps({"key": "modified"}))
+        
+        # Segunda carga debe venir del caché
+        result2 = analyzer.load_json(test_file)
+        
+        assert result1 == result2
+        assert result1["key"] == "value"
+    
+    @pytest.mark.unit
+    def test_load_json_invalid_file(self, tmp_path):
+        """Test: Cargar archivo JSON inválido."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        test_file = tmp_path / "invalid.json"
+        test_file.write_text("{ invalid json }")
+        
+        analyzer = KPIAnalyzer()
+        result = analyzer.load_json(test_file)
+        
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_extract_field_simple(self):
+        """Test: Extraer campo simple."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {"name": "test", "value": 42}
+        
+        result = analyzer.extract_field(data, "name")
+        assert result == "test"
+    
+    @pytest.mark.unit
+    def test_extract_field_nested(self):
+        """Test: Extraer campo anidado."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {"user": {"name": "John", "age": 30}}
+        
+        result = analyzer.extract_field(data, "user.name")
+        assert result == "John"
+    
+    @pytest.mark.unit
+    def test_extract_field_array(self):
+        """Test: Extraer campo de array."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {
+            "deployments": [
+                {"id": 1, "status": "success"},
+                {"id": 2, "status": "failed"}
+            ]
+        }
+        
+        result = analyzer.extract_field(data, "deployments[]")
+        assert isinstance(result, list)
+        assert len(result) == 2
+    
+    @pytest.mark.unit
+    def test_extract_field_array_nested(self):
+        """Test: Extraer campo anidado de array."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {
+            "deployments": [
+                {"id": 1, "status": "success"},
+                {"id": 2, "status": "failed"}
+            ]
+        }
+        
+        result = analyzer.extract_field(data, "deployments[].status")
+        assert isinstance(result, list)
+        assert "success" in result
+        assert "failed" in result
+    
+    @pytest.mark.unit
+    def test_extract_field_nonexistent(self):
+        """Test: Extraer campo que no existe."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {"name": "test"}
+        
+        result = analyzer.extract_field(data, "nonexistent")
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_extract_field_deep_nested(self):
+        """Test: Extraer campo profundamente anidado."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        data = {
+            "level1": {
+                "level2": {
+                    "level3": {
+                        "value": "deep"
+                    }
+                }
+            }
+        }
+        
+        result = analyzer.extract_field(data, "level1.level2.level3.value")
+        assert result == "deep"
+    
+    @pytest.mark.unit
+    def test_calculate_kpi_no_sources(self):
+        """Test: Calcular KPI sin fuentes."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        from unittest.mock import patch
+        
+        analyzer = KPIAnalyzer()
+        kpi_def = {
+            "id": "ec_001",
+            "sources": [],
+            "formula": "count"
+        }
+        
+        with patch.object(analyzer, 'discover_json_files', return_value=[]):
+            result = analyzer.calculate_kpi(kpi_def)
+            assert result is None
+    
+    @pytest.mark.unit
+    def test_apply_formula_ec_001_no_deployments(self):
+        """Test: Aplicar fórmula ec_001 sin deployments."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = []
+        
+        result = analyzer._apply_formula("count", source_data, "ec_001")
+        assert result == 0.0
+    
+    @pytest.mark.unit
+    def test_apply_formula_ec_002_no_deployments(self):
+        """Test: Aplicar fórmula ec_002 sin deployments."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        analyzer = KPIAnalyzer()
+        source_data = []
+        
+        result = analyzer._apply_formula("failure_rate", source_data, "ec_002")
+        assert result == 0.0
+    
+    @pytest.mark.unit
+    def test_json_cache_multiple_files(self, tmp_path):
+        """Test: Caché con múltiples archivos."""
+        from scm.kpi_analyzer.analyzer import KPIAnalyzer
+        
+        file1 = tmp_path / "file1.json"
+        file2 = tmp_path / "file2.json"
+        
+        file1.write_text(json.dumps({"id": 1}))
+        file2.write_text(json.dumps({"id": 2}))
+        
+        analyzer = KPIAnalyzer()
+        
+        result1 = analyzer.load_json(file1)
+        result2 = analyzer.load_json(file2)
+        
+        assert len(analyzer.json_cache) == 2
+        assert result1["id"] == 1
+        assert result2["id"] == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
