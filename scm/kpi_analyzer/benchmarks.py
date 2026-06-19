@@ -51,9 +51,9 @@ DORA_BENCHMARKS = {
     },
     "mttr": {
         "elite": {"value": 60.0, "unit": "minutos", "description": "< 1 hora"},
-        "high": {"value": 1440.0, "unit": "minutos", "description": "1-24 horas"},
-        "medium": {"value": 10080.0, "unit": "minutos", "description": "1-7 días"},
-        "low": {"value": 999999.0, "unit": "minutos", "description": "> 7 días"},
+        "high": {"value": 240.0, "unit": "minutos", "description": "1-4 horas"},
+        "medium": {"value": 1440.0, "unit": "minutos", "description": "1-24 horas"},
+        "low": {"value": 999999.0, "unit": "minutos", "description": "> 1 día"},
     },
 }
 
