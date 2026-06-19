@@ -51,7 +51,7 @@ cp config.json.template config.json
 nano config.json  # o tu editor preferido
 ```
 
-> **✅ Configuración Consolidada**: Desde v1.6.10, todos los scripts usan `scm/config.json` como única fuente de configuración. No más archivos de configuración duplicados por plataforma.
+> **✅ Configuración Consolidada**: Desde v1.6.11, todos los scripts usan `scm/config.json` como única fuente de configuración. No más archivos de configuración duplicados por plataforma.
 
 ### Estructura del config.json
 
@@ -903,6 +903,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-06-19 | **1.6.11** | Multiple Release IDs support, case-insensitive confirmation, Rich integration |
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
