@@ -36,17 +36,22 @@ python kpi_analyzer/analyze_kpis.py  # Análisis de KPIs DevSecOps
 
 ## ⚙️ Configuración
 
-El toolbox utiliza un archivo `config.json` para gestionar tokens y credenciales de todas las plataformas.
+El toolbox utiliza un archivo **centralizado** `scm/config.json` para gestionar tokens y credenciales de todas las plataformas.
 
 ### Configuración Inicial
 
 ```bash
-# 1. Copiar el template
+# 1. Navegar a scm/
+cd scm
+
+# 2. Copiar el template
 cp config.json.template config.json
 
-# 2. Editar con tus credenciales
+# 3. Editar con tus credenciales
 nano config.json  # o tu editor preferido
 ```
+
+> **✅ Configuración Consolidada**: Desde v1.6.10, todos los scripts usan `scm/config.json` como única fuente de configuración. No más archivos de configuración duplicados por plataforma.
 
 ### Estructura del config.json
 
@@ -55,8 +60,19 @@ nano config.json  # o tu editor preferido
   "azdo": {
     "enabled": true,
     "organization_url": "https://dev.azure.com/TU_ORGANIZACION",
+    "organization": "TU_ORGANIZACION",
     "project": "TU_PROYECTO",
-    "pat": "TU_PAT_TOKEN"
+    "pat": "TU_PAT_TOKEN",
+    "pat_permissions": {
+      "pipeline_updater": ["Release (Read & Write)"],
+      "pipeline_rollback": ["Release (Read & Write)"]
+    },
+    "tools": {
+      "pipeline_updater": {
+        "definition_id": 9999999,
+        "branch_config": "config-cadenaSuministro"
+      }
+    }
   },
   "gcp": {
     "enabled": true,
@@ -131,21 +147,25 @@ En el menú principal:
 
 | # | Herramienta | Descripción |
 |---|-------------|-------------|
-| 13+ | DevOps Tools | PRs, políticas, releases, drift, inventario, branches |
+| 22 | DevOps Tools | PRs, políticas, releases, drift, inventario, branches, pipeline management |
 
 **Grupos de herramientas:**
-- 📬 Pull Requests
-- 🔒 Políticas de Rama
-- 🚀 Release Pipelines
-- 🔍 Drift Analysis
-- 📋 Inventario (5 nuevas herramientas)
+- 📬 Pull Requests (2 herramientas)
+- 🔒 Políticas de Rama (2 herramientas)
+- 🚀 Releases & CD (4 herramientas)
+- 🌪️ Drift & Cambios (1 herramienta)
+- ✅ Validación (1 herramienta)
+- 🛡️ Seguridad (2 herramientas)
+- 📋 Inventario (7 herramientas)
+- 📊 Health Score (3 herramientas)
+- 🎯 Calidad Deploy (2 herramientas)
 
-**🆕 Nuevas herramientas (migradas desde Comercial):**
-- **CICD Inventory** (#9) - Inventario repos ↔ CI ↔ CD pipelines
-- **GKE Pipelines Inventory** (#10) - Pipelines CD con keyword GKE
-- **Pending Approvals** (#11) - Releases pendientes + estado Validador
-- **Branches Created** (#12) - Ramas creadas desde fecha específica
-- **Hotfix Branches Inventory** (#13) - Ramas hotfix con creador y fecha
+**🆕 Nuevas herramientas v1.6.10:**
+- **Pipeline Updater** (#21) - Actualización masiva de Release Pipelines con backup automático
+- **Pipeline Rollback** (#22) - Sistema completo de rollback con 3 métodos:
+  - Full Backup Restore (máxima seguridad)
+  - Hybrid Rollback (revisión del backup desde Azure DevOps)
+  - Manual Revision (rollback a revisión específica)
 
 ### 🟠 Amazon Web Services (AWS)
 
@@ -215,7 +235,7 @@ El launcher principal muestra un menú interactivo:
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                        🛡️  DevSecOps Toolbox  🛡️                             ║
-║                       v1.6.9 | by Harold Adrian                             ║
+║                       v1.6.10 | by Harold Adrian                            ║
 ║                  DevSecOps Toolbox - Launcher Principal                     ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
@@ -227,8 +247,8 @@ El launcher principal muestra un menú interactivo:
 │ 1  │ ✅     │ ☁️ Google Cloud Platform  │ 22 herramientas SRE: monitoreo,   │
 │    │        │                          │ IAM, networking, K8s, inventario  │
 ├────┼────────┼──────────────────────────┼────────────────────────────────────┤
-│ 2  │ ✅     │ 🔷 Azure DevOps           │ Herramientas para PRs, políticas  │
-│    │        │                          │ de rama, releases y drift         │
+│ 2  │ ✅     │ 🔷 Azure DevOps           │ 22 herramientas: PRs, políticas,  │
+│    │        │                          │ releases, pipeline management     │
 ├────┼────────┼──────────────────────────┼────────────────────────────────────┤
 │ 3  │ ✅     │ 🟠 Amazon Web Services    │ IAM, RDS, VPC, EKS, ECR, EC2,     │
 │    │        │                          │ Lambda, CloudWatch (13 tools)     │
@@ -261,7 +281,9 @@ scm/
 │   ├── vpc-networks/    # VPC Networks Checker
 │   └── ...              # +15 directorios de herramientas
 ├── azdo/                # Azure DevOps
-│   ├── tools.py         # Launcher AZDO (v1.0.0)
+│   ├── tools.py         # Launcher AZDO (v1.3.4)
+│   ├── update-pipeline-cd-branchconfig.py  # Pipeline Updater
+│   ├── rollback-pipeline.py                # Pipeline Rollback
 │   ├── azdo_pr_master_checker.py
 │   ├── azdo_branch_policy_checker.py
 │   └── ...
@@ -278,7 +300,7 @@ scm/
 │   ├── lambda/          # Lambda Functions Checker
 │   └── cloudwatch/      # CloudWatch Alarms Checker
 ├── terminal/            # Scripts universales
-│   ├── tools.py         # Launcher Terminal (v1.0.1)
+│   ├── tools.py         # Launcher Terminal (v1.0.2)
 │   └── ...              # Scripts shell agnósticos
 └── kpi_analyzer/        # KPI Analyzer (v1.0.0)
     ├── analyze_kpis.py  # Script principal CLI
@@ -881,6 +903,7 @@ La versión se mantiene consistente en:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
 

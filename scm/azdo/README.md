@@ -1,6 +1,6 @@
 # Azure DevOps Tools — SCM Toolbox
 
-Colección de herramientas Python para auditoría y análisis de pipelines, políticas de ramas y pull requests en **Azure DevOps**. Todas las herramientas usan la API REST de AzDO v7.2 con autenticación por PAT y ofrecen salida enriquecida en consola (Rich) y exportación a JSON / CSV / Excel.
+**22 herramientas Python** para auditoría, análisis y gestión de pipelines, políticas de ramas y pull requests en **Azure DevOps**. Incluye **Pipeline Updater** y **Pipeline Rollback** con 3 métodos de restauración. Todas las herramientas usan la API REST de AzDO v7.2 con autenticación por PAT y ofrecen salida enriquecida en consola (Rich) y exportación a JSON / CSV / Excel.
 
 ---
 
@@ -8,7 +8,7 @@ Colección de herramientas Python para auditoría y análisis de pipelines, pol�
 
 ```
 devsecops-toolbox/scm/azdo/
-├── tools.py                       # Launcher interactivo unificado (punto de entrada)
+├── tools.py                       # Launcher interactivo unificado v1.3.4 (22 herramientas)
 ├── azdo_pr_master_checker.py      # Herramienta 1 — PRs hacia master + validación CD
 ├── azdo_pr_pipeline_analyzer.py   # Herramienta 1b — Análisis PRs multi-rama + CD + releases
 ├── azdo_branch_policy_checker.py  # Herramienta 2 — Auditoría de políticas de ramas
@@ -18,9 +18,11 @@ devsecops-toolbox/scm/azdo/
 ├── azdo_task_validator.py         # Herramienta 6 — Validación DevSecOps de releases
 ├── azdo_scan_pipeline_logs.py     # Herramienta 7 — Scanner de logs de pipelines CI
 ├── azdo_scan_repos_vulnerabilities.py # Herramienta 8 — Scanner de dependencias vulnerables
-├── azdo_repo_properties_branch_diff.py # Herramienta 19 — Diff de configuración entre ramas de repositorio de propiedades
-├── azdo_repo_branch_diff.py           # Herramienta 20 — Informe ejecutivo de impacto de cambios entre ramas (cualquier repo)
-├── config.json.template           # Plantilla de configuración (copiala como config.json)
+├── cicd_inventory.py              # Herramienta 9 — Inventario completo repos ↔ CI ↔ CD
+├── azdo_repo_properties_branch_diff.py # Herramienta 19 — Diff de configuración entre ramas
+├── azdo_repo_branch_diff.py           # Herramienta 20 — Informe ejecutivo de impacto de cambios
+├── update-pipeline-cd-branchconfig.py  # Herramienta 21 — Pipeline Updater v1.0.6
+├── rollback-pipeline.py                # Herramienta 22 — Pipeline Rollback v1.2.0
 ├── requirements.txt               # Dependencias Python compartidas
 └── outcome/                       # Carpeta autogenerada con los reportes exportados
 ```
@@ -62,34 +64,50 @@ pip install -r requirements.txt
 
 ## Configuración
 
-### 1. Crear `config.json`
+> **✅ Configuración Consolidada (v1.6.10)**: Todos los scripts ahora usan `scm/config.json` como única fuente de configuración.
+
+### 1. Crear `config.json` en la raíz de scm/
 
 ```bash
+# Navegar a la raíz de scm/
+cd ..
+
+# Copiar template
 cp config.json.template config.json
 ```
 
-Edita `config.json` con tus valores reales. **Este archivo está en `.gitignore` y nunca se sube al repositorio.**
+Edita `scm/config.json` con tus valores reales. **Este archivo está en `.gitignore` y nunca se sube al repositorio.**
 
-### 2. Estructura de `config.json`
+### 2. Estructura de `scm/config.json`
 
 ```json
 {
-  "organization": {
-    "url":     "https://dev.azure.com/<TU_ORGANIZACION>",
+  "azdo": {
+    "enabled": true,
+    "organization_url": "https://dev.azure.com/<TU_ORGANIZACION>",
+    "organization": "<TU_ORGANIZACION>",
     "project": "<TU_PROYECTO>",
-    "pat":     "<TU_PAT_TOKEN>"
-  },
-  "defaults": {
-    "timezone":      "America/Mazatlan",
-    "threads":       8,
-    "output_format": null,
-    "debug":         false
-  },
-  "tools": {
-    "pr_master_checker":   { "target_branch": "master", "pr_status": "all", "stage_name": "validador" },
-    "branch_policy_checker": { ... },
-    "release_cd_health":   { "top_releases": 15, "sort": "score", "diagram": false },
-    "pipeline_drift":      { "min_severity": null, "sort": "severity" }
+    "pat": "<TU_PAT_TOKEN>",
+    
+    "pat_permissions": {
+      "pipeline_updater": ["Release (Read & Write)"],
+      "pipeline_rollback": ["Release (Read & Write)"]
+    },
+    
+    "defaults": {
+      "timezone": "America/Mazatlan",
+      "threads": 8,
+      "output_format": "csv",
+      "debug": false
+    },
+    
+    "tools": {
+      "pr_master_checker": { "target_branch": "master", "pr_status": "all" },
+      "pipeline_updater": {
+        "definition_id": 9999999,
+        "branch_config": "config-cadenaSuministro"
+      }
+    }
   }
 }
 ```
