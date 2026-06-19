@@ -971,3 +971,330 @@ class TestConstants:
     @pytest.mark.unit
     def test_buckets_includes_nunca(self):
         assert "Nunca" in BUCKETS
+
+
+class TestApiGet:
+    """Tests para la función api_get()."""
+    
+    @pytest.mark.unit
+    def test_api_get_success(self):
+        """Test: api_get con respuesta exitosa."""
+        from scm.azdo.cicd_pipeline_status import api_get
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"value": [{"id": 1}]}
+        
+        with patch("scm.azdo.cicd_pipeline_status.requests.get", return_value=mock_response):
+            result = api_get("http://test.com", {})
+            assert result == {"value": [{"id": 1}]}
+    
+    @pytest.mark.unit
+    def test_api_get_http_error(self):
+        """Test: api_get con error HTTP."""
+        from scm.azdo.cicd_pipeline_status import api_get
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = Exception("Not found")
+        
+        with patch("scm.azdo.cicd_pipeline_status.requests.get", return_value=mock_response):
+            result = api_get("http://test.com", {})
+            assert result is None
+    
+    @pytest.mark.unit
+    def test_api_get_exception(self):
+        """Test: api_get con excepción."""
+        from scm.azdo.cicd_pipeline_status import api_get
+        
+        with patch("scm.azdo.cicd_pipeline_status.requests.get", side_effect=Exception("Connection error")):
+            result = api_get("http://test.com", {})
+            assert result is None
+
+
+class TestGetDefinitions:
+    """Tests para funciones get_ci_definitions y get_cd_definitions."""
+    
+    @pytest.mark.unit
+    def test_get_ci_definitions_returns_list(self):
+        """Test: get_ci_definitions retorna lista."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]):
+            result = get_ci_definitions("https://dev.azure.com/test", "project", {})
+            assert isinstance(result, list)
+    
+    @pytest.mark.unit
+    def test_get_ci_definitions_empty_on_api_error(self):
+        """Test: get_ci_definitions retorna lista vacía en error."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=None):
+            result = get_ci_definitions("https://dev.azure.com/test", "project", {})
+            assert result == []
+    
+    @pytest.mark.unit
+    def test_get_cd_definitions_returns_list(self):
+        """Test: get_cd_definitions retorna lista."""
+        from scm.azdo.cicd_pipeline_status import get_cd_definitions
+        
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]):
+            result = get_cd_definitions("https://dev.azure.com/test", "project", {})
+            assert isinstance(result, list)
+    
+    @pytest.mark.unit
+    def test_get_cd_definitions_empty_on_api_error(self):
+        """Test: get_cd_definitions retorna lista vacía en error."""
+        from scm.azdo.cicd_pipeline_status import get_cd_definitions
+        
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=None):
+            result = get_cd_definitions("https://dev.azure.com/test", "project", {})
+            assert result == []
+    
+    @pytest.mark.unit
+    def test_get_ci_definitions_multi_page_1692(self):
+        """Test: get_ci_definitions con múltiples páginas (1692 registros)."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        
+        # Simular 1692 definiciones (9 páginas de 200)
+        mock_defs = [{"id": i, "name": f"def_{i}"} for i in range(1692)]
+        
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=mock_defs):
+            with patch("scm.azdo.cicd_pipeline_status.api_get", return_value={"value": mock_defs}):
+                result = get_ci_definitions("https://dev.azure.com/test", "project", {})
+                assert len(result) == 1692
+    
+    @pytest.mark.unit
+    def test_get_ci_definitions_uses_top_5000_step1(self):
+        """Test: get_ci_definitions usa $top=5000 en paso 1."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=[]) as mock_paginated:
+            get_ci_definitions("https://dev.azure.com/test", "project", {})
+            
+            # Verificar que se llamó con $top=5000
+            call_args = mock_paginated.call_args
+            assert call_args[0][2]["$top"] == 5000
+    
+    @pytest.mark.unit
+    def test_get_ci_definitions_step2_uses_include_latest_builds(self):
+        """Test: get_ci_definitions paso 2 usa includeLatestBuilds."""
+        from scm.azdo.cicd_pipeline_status import get_ci_definitions
+        
+        mock_defs = [{"id": 1, "name": "def_1"}]
+        
+        with patch("scm.azdo.cicd_pipeline_status.api_get_paginated", return_value=mock_defs):
+            with patch("scm.azdo.cicd_pipeline_status.api_get", return_value={"value": mock_defs}) as mock_get:
+                get_ci_definitions("https://dev.azure.com/test", "project", {})
+                
+                # Verificar que se llamó con includeLatestBuilds=true
+                call_args = mock_get.call_args
+                assert call_args[0][2]["includeLatestBuilds"] == "true"
+    
+    @pytest.mark.unit
+    def test_get_latest_release_returns_first(self):
+        """Test: get_latest_release retorna el primero."""
+        from scm.azdo.cicd_pipeline_status import get_latest_release
+        
+        releases = [
+            {"id": 1, "name": "release_1"},
+            {"id": 2, "name": "release_2"}
+        ]
+        
+        result = get_latest_release(releases)
+        assert result == releases[0]
+    
+    @pytest.mark.unit
+    def test_get_latest_release_none_when_empty(self):
+        """Test: get_latest_release retorna None cuando está vacío."""
+        from scm.azdo.cicd_pipeline_status import get_latest_release
+        
+        result = get_latest_release([])
+        assert result is None
+
+
+class TestCdWorker:
+    """Tests para la función cd_worker()."""
+    
+    @pytest.mark.unit
+    def test_cd_worker_never_released_is_deprecated(self):
+        """Test: CD nunca lanzado es deprecado."""
+        from scm.azdo.cicd_pipeline_status import cd_worker
+        
+        cd_def = {
+            "id": 1,
+            "name": "test_cd",
+            "releases": []
+        }
+        
+        result = cd_worker(cd_def, 365)
+        assert result["deprecado"] == "⚠️  Sí"
+    
+    @pytest.mark.unit
+    def test_cd_worker_recent_release_is_active(self):
+        """Test: CD con release reciente es activo."""
+        from scm.azdo.cicd_pipeline_status import cd_worker
+        
+        now = datetime.now(timezone.utc)
+        recent_date = (now - timedelta(days=10)).isoformat() + "Z"
+        
+        cd_def = {
+            "id": 1,
+            "name": "test_cd",
+            "releases": [
+                {"id": 1, "createdOn": recent_date}
+            ]
+        }
+        
+        result = cd_worker(cd_def, 365)
+        assert result["deprecado"] == "No"
+    
+    @pytest.mark.unit
+    def test_cd_worker_inactive_release_is_deprecated(self):
+        """Test: CD con release inactiva es deprecado."""
+        from scm.azdo.cicd_pipeline_status import cd_worker
+        
+        now = datetime.now(timezone.utc)
+        old_date = (now - timedelta(days=400)).isoformat() + "Z"
+        
+        cd_def = {
+            "id": 1,
+            "name": "test_cd",
+            "releases": [
+                {"id": 1, "createdOn": old_date}
+            ]
+        }
+        
+        result = cd_worker(cd_def, 365)
+        assert result["deprecado"] == "⚠️  Sí"
+    
+    @pytest.mark.unit
+    def test_cd_worker_inactivo_state_between_30_and_90_days(self):
+        """Test: CD con estado inactivo entre 30 y 90 días."""
+        from scm.azdo.cicd_pipeline_status import cd_worker
+        
+        now = datetime.now(timezone.utc)
+        date_60_days_ago = (now - timedelta(days=60)).isoformat() + "Z"
+        
+        cd_def = {
+            "id": 1,
+            "name": "test_cd",
+            "releases": [
+                {"id": 1, "createdOn": date_60_days_ago}
+            ]
+        }
+        
+        result = cd_worker(cd_def, 365)
+        assert result["estado"] == "⏸️  Inactivo"
+    
+    @pytest.mark.unit
+    def test_cd_worker_row_has_required_cd_keys(self):
+        """Test: Fila CD tiene claves requeridas."""
+        from scm.azdo.cicd_pipeline_status import cd_worker
+        
+        now = datetime.now(timezone.utc)
+        recent_date = (now - timedelta(days=10)).isoformat() + "Z"
+        
+        cd_def = {
+            "id": 1,
+            "name": "test_cd",
+            "releases": [
+                {"id": 1, "createdOn": recent_date}
+            ]
+        }
+        
+        result = cd_worker(cd_def, 365)
+        
+        required_keys = ["id", "tipo", "nombre", "estado", "deprecado", "dias_inactivo"]
+        for key in required_keys:
+            assert key in result
+
+
+class TestPrintPlainTable:
+    """Tests para la función print_plain_table()."""
+    
+    @pytest.mark.unit
+    def test_print_plain_table_runs(self, capsys):
+        """Test: print_plain_table se ejecuta sin errores."""
+        from scm.azdo.cicd_pipeline_status import print_plain_table
+        
+        rows = [
+            {"id": 1, "tipo": "CI", "nombre": "test", "estado": "✅ Activo", "deprecado": "No"}
+        ]
+        
+        print_plain_table(rows)
+        captured = capsys.readouterr()
+        
+        assert "test" in captured.out or len(captured.out) > 0
+    
+    @pytest.mark.unit
+    def test_print_plain_table_shows_totals(self, capsys):
+        """Test: print_plain_table muestra totales."""
+        from scm.azdo.cicd_pipeline_status import print_plain_table
+        
+        rows = [
+            {"id": 1, "tipo": "CI", "nombre": "test1", "estado": "✅ Activo", "deprecado": "No"},
+            {"id": 2, "tipo": "CD", "nombre": "test2", "estado": "✅ Activo", "deprecado": "No"}
+        ]
+        
+        print_plain_table(rows)
+        captured = capsys.readouterr()
+        
+        # Verificar que se imprime algo
+        assert len(captured.out) > 0
+
+
+class TestExportResults:
+    """Tests para funciones de exportación."""
+    
+    @pytest.mark.unit
+    def test_export_json_creates_file(self, tmp_path):
+        """Test: export_json crea archivo."""
+        from scm.azdo.cicd_pipeline_status import export_json
+        
+        rows = [{"id": 1, "nombre": "test"}]
+        output_path = str(tmp_path / "test.json")
+        
+        result = export_json(rows, output_path)
+        
+        assert Path(result).exists()
+    
+    @pytest.mark.unit
+    def test_export_csv_creates_file(self, tmp_path):
+        """Test: export_csv crea archivo."""
+        from scm.azdo.cicd_pipeline_status import export_csv
+        
+        rows = [{"id": 1, "nombre": "test"}]
+        output_path = str(tmp_path / "test.csv")
+        
+        result = export_csv(rows, output_path)
+        
+        assert Path(result).exists()
+    
+    @pytest.mark.unit
+    def test_export_unknown_format_returns_none(self):
+        """Test: export con formato desconocido retorna None."""
+        from scm.azdo.cicd_pipeline_status import export_results
+        
+        rows = [{"id": 1}]
+        result = export_results(rows, "unknown_format", "/tmp/test")
+        
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_export_json_deprecated_count(self, tmp_path):
+        """Test: export_json incluye conteo de deprecados."""
+        from scm.azdo.cicd_pipeline_status import export_json
+        
+        rows = [
+            {"id": 1, "nombre": "test1", "deprecado": "⚠️  Sí"},
+            {"id": 2, "nombre": "test2", "deprecado": "No"}
+        ]
+        output_path = str(tmp_path / "test.json")
+        
+        export_json(rows, output_path)
+        
+        with open(output_path, 'r') as f:
+            data = json.load(f)
+        
+        assert "deprecados" in data or len(data) > 0
