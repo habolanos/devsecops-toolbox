@@ -241,16 +241,28 @@ def create_new_release(org: str, project: str, release: Dict, release_comment: s
         'Content-Type': 'application/json'
     }
     
-    # Mapear artefactos
+    # Mapear artefactos con todas sus propiedades (incluyendo rama/branch)
     artifacts_payload = []
     for artifact in release.get('artifacts', []):
-        artifacts_payload.append({
+        artifact_def_ref = artifact.get('definitionReference', {})
+        
+        # Construir instanceReference con versión
+        instance_ref = {}
+        if 'version' in artifact_def_ref:
+            instance_ref['id'] = artifact_def_ref['version'].get('id')
+            instance_ref['name'] = artifact_def_ref['version'].get('name')
+        
+        # Construir artefacto con definitionReference completo
+        artifact_payload = {
             'alias': artifact.get('alias'),
-            'instanceReference': {
-                'id': artifact.get('definitionReference', {}).get('version', {}).get('id'),
-                'name': artifact.get('definitionReference', {}).get('version', {}).get('name')
-            }
-        })
+            'instanceReference': instance_ref
+        }
+        
+        # Agregar definitionReference si existe (contiene branch, etc)
+        if artifact_def_ref:
+            artifact_payload['definitionReference'] = artifact_def_ref
+        
+        artifacts_payload.append(artifact_payload)
     
     # Descripción con trazabilidad
     full_description = f"Re-release desde #{release.get('id')} [Backup: {version_label}]. Motivo: {release_comment}"

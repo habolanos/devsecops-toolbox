@@ -226,16 +226,28 @@ def create_restore_release(org: str, project: str, backup: Dict, restore_comment
     meta = backup.get('metadata', {})
     snapshot = backup.get('releaseSnapshot', {})
     
-    # Mapear artefactos
+    # Mapear artefactos con todas sus propiedades (incluyendo rama/branch)
     artifacts_payload = []
     for artifact in snapshot.get('artifacts', []):
-        artifacts_payload.append({
+        artifact_def_ref = artifact.get('definitionReference', {})
+        
+        # Construir instanceReference con versión
+        instance_ref = {}
+        if 'version' in artifact_def_ref:
+            instance_ref['id'] = artifact_def_ref['version'].get('id')
+            instance_ref['name'] = artifact_def_ref['version'].get('name')
+        
+        # Construir artefacto con definitionReference completo
+        artifact_payload = {
             'alias': artifact.get('alias'),
-            'instanceReference': {
-                'id': artifact.get('definitionReference', {}).get('version', {}).get('id'),
-                'name': artifact.get('definitionReference', {}).get('version', {}).get('name')
-            }
-        })
+            'instanceReference': instance_ref
+        }
+        
+        # Agregar definitionReference si existe (contiene branch, etc)
+        if artifact_def_ref:
+            artifact_payload['definitionReference'] = artifact_def_ref
+        
+        artifacts_payload.append(artifact_payload)
     
     # Descripción con trazabilidad
     full_description = f"🔄 RESTORE desde backup [{meta.get('versionLabel')}] - Release #{meta.get('sourceReleaseId')}. Motivo: {restore_comment}"
