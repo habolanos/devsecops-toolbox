@@ -256,5 +256,85 @@ class TestKPIReporter:
         assert "Deployment Frequency" in content
 
 
+class TestBenchmarkHelperFunctions:
+    """Tests para funciones helper de benchmarks"""
+    
+    def test_get_benchmark_color_elite(self):
+        """Test color para nivel ELITE"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        assert get_benchmark_color(BenchmarkLevel.ELITE) == "#2ecc71"
+    
+    def test_get_benchmark_color_high(self):
+        """Test color para nivel HIGH"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        assert get_benchmark_color(BenchmarkLevel.HIGH) == "#27ae60"
+    
+    def test_get_benchmark_color_medium(self):
+        """Test color para nivel MEDIUM"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        assert get_benchmark_color(BenchmarkLevel.MEDIUM) == "#f39c12"
+    
+    def test_get_benchmark_color_low(self):
+        """Test color para nivel LOW"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        assert get_benchmark_color(BenchmarkLevel.LOW) == "#e74c3c"
+    
+    def test_get_benchmark_emoji_elite(self):
+        """Test emoji para nivel ELITE"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_emoji
+        assert get_benchmark_emoji(BenchmarkLevel.ELITE) == "💚"
+    
+    def test_get_benchmark_emoji_high(self):
+        """Test emoji para nivel HIGH"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_emoji
+        assert get_benchmark_emoji(BenchmarkLevel.HIGH) == "🟢"
+    
+    def test_get_benchmark_emoji_medium(self):
+        """Test emoji para nivel MEDIUM"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_emoji
+        assert get_benchmark_emoji(BenchmarkLevel.MEDIUM) == "🟡"
+    
+    def test_get_benchmark_emoji_low(self):
+        """Test emoji para nivel LOW"""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_emoji
+        assert get_benchmark_emoji(BenchmarkLevel.LOW) == "🔴"
+    
+    def test_get_benchmark_level_unknown_kpi(self):
+        """Test benchmark level para KPI desconocido"""
+        assert get_benchmark_level("unknown_kpi", 50.0) == BenchmarkLevel.MEDIUM
+    
+    def test_get_benchmark_level_ec_002_elite(self):
+        """Test change_failure_rate elite level"""
+        assert get_benchmark_level("ec_002", 3.0) == BenchmarkLevel.ELITE
+    
+    def test_get_benchmark_level_ec_002_high(self):
+        """Test change_failure_rate high level"""
+        assert get_benchmark_level("ec_002", 10.0) == BenchmarkLevel.HIGH
+    
+    def test_get_benchmark_level_ec_002_medium(self):
+        """Test change_failure_rate medium level"""
+        assert get_benchmark_level("ec_002", 20.0) == BenchmarkLevel.MEDIUM
+    
+    def test_get_benchmark_level_ec_002_low(self):
+        """Test change_failure_rate low level"""
+        assert get_benchmark_level("ec_002", 40.0) == BenchmarkLevel.LOW
+    
+    def test_get_benchmark_level_conf_002_elite(self):
+        """Test availability elite level"""
+        assert get_benchmark_level("conf_002", 99.95) == BenchmarkLevel.ELITE
+    
+    def test_get_benchmark_level_conf_002_high(self):
+        """Test availability high level"""
+        assert get_benchmark_level("conf_002", 99.7) == BenchmarkLevel.HIGH
+    
+    def test_get_benchmark_level_seg_001_elite(self):
+        """Test mfa_coverage elite level"""
+        assert get_benchmark_level("seg_001", 100.0) == BenchmarkLevel.ELITE
+    
+    def test_get_benchmark_level_seg_002_elite(self):
+        """Test certificate_expiry_risk elite level"""
+        assert get_benchmark_level("seg_002", 0.0) == BenchmarkLevel.ELITE
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
