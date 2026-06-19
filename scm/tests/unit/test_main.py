@@ -545,3 +545,196 @@ class TestEdgeCases:
             result = is_platform_configured("2")
         
         assert result is False
+
+
+class TestUIFunctions:
+    """Tests para funciones de interfaz de usuario."""
+    
+    @pytest.mark.unit
+    def test_clear_screen_windows(self):
+        """Test: clear_screen en Windows."""
+        from scm.main import clear_screen
+        
+        with patch("scm.main.platform.system", return_value="Windows"):
+            with patch("os.system") as mock_system:
+                clear_screen()
+                mock_system.assert_called_once_with('cls')
+    
+    @pytest.mark.unit
+    def test_clear_screen_unix(self):
+        """Test: clear_screen en Unix/Linux."""
+        from scm.main import clear_screen
+        
+        with patch("scm.main.platform.system", return_value="Linux"):
+            with patch("os.system") as mock_system:
+                clear_screen()
+                mock_system.assert_called_once_with('clear')
+    
+    @pytest.mark.unit
+    def test_print_header_fallback(self, capsys):
+        """Test: print_header con fallback (sin Rich)."""
+        from scm.main import print_header_fallback
+        
+        print_header_fallback()
+        captured = capsys.readouterr()
+        
+        assert "DEVSECOPS TOOLBOX" in captured.out
+        assert "=" in captured.out
+    
+    @pytest.mark.unit
+    def test_print_menu_fallback(self, capsys):
+        """Test: print_menu con fallback (sin Rich)."""
+        from scm.main import print_menu_fallback
+        
+        print_menu_fallback()
+        captured = capsys.readouterr()
+        
+        assert "Seleccione" in captured.out
+        assert "GCP" in captured.out or "Azure" in captured.out
+    
+    @pytest.mark.unit
+    def test_show_info_fallback(self, capsys):
+        """Test: show_info con fallback (sin Rich)."""
+        from scm.main import show_info
+        
+        with patch("builtins.input"):
+            with patch("scm.main.RICH_AVAILABLE", False):
+                show_info()
+        
+        captured = capsys.readouterr()
+        assert "DevSecOps Toolbox" in captured.out or "Toolbox" in captured.out
+    
+    @pytest.mark.unit
+    def test_show_config_details_fallback_no_config(self, capsys):
+        """Test: show_config_details sin config (fallback)."""
+        from scm.main import show_config_details
+        
+        with patch("scm.main.load_config", return_value=None):
+            with patch("builtins.input"):
+                with patch("scm.main.RICH_AVAILABLE", False):
+                    show_config_details()
+        
+        captured = capsys.readouterr()
+        assert "config.json" in captured.out.lower() or "No se encontró" in captured.out
+
+
+class TestPlatformsConstant:
+    """Tests para la constante PLATFORMS."""
+    
+    @pytest.mark.unit
+    def test_platforms_has_required_keys(self):
+        """Test: PLATFORMS contiene todas las claves requeridas."""
+        from scm.main import PLATFORMS
+        
+        required_platforms = ["1", "2", "3", "4", "5", "Q"]
+        for key in required_platforms:
+            assert key in PLATFORMS
+    
+    @pytest.mark.unit
+    def test_platform_structure(self):
+        """Test: Cada plataforma tiene estructura correcta."""
+        from scm.main import PLATFORMS
+        
+        required_fields = ["name", "short", "emoji", "color", "description", "status"]
+        
+        for key, platform in PLATFORMS.items():
+            for field in required_fields:
+                assert field in platform, f"Platform {key} missing field {field}"
+    
+    @pytest.mark.unit
+    def test_exit_platform_has_no_path(self):
+        """Test: Plataforma de salida no tiene path."""
+        from scm.main import PLATFORMS
+        
+        assert PLATFORMS["Q"]["path"] is None
+    
+    @pytest.mark.unit
+    def test_other_platforms_have_path(self):
+        """Test: Otras plataformas tienen path."""
+        from scm.main import PLATFORMS
+        
+        for key in ["1", "2", "3", "4", "5"]:
+            assert PLATFORMS[key]["path"] is not None
+            assert PLATFORMS[key]["path"].endswith(".py")
+
+
+class TestStatusIndicators:
+    """Tests para STATUS_INDICATORS."""
+    
+    @pytest.mark.unit
+    def test_status_indicators_structure(self):
+        """Test: STATUS_INDICATORS tiene estructura correcta."""
+        from scm.main import STATUS_INDICATORS
+        
+        required_statuses = ["ready", "coming_soon", "error", "exit"]
+        
+        for status in required_statuses:
+            assert status in STATUS_INDICATORS
+            indicator = STATUS_INDICATORS[status]
+            assert len(indicator) == 3  # emoji, color, text
+            assert isinstance(indicator[0], str)  # emoji
+            assert isinstance(indicator[1], str)  # color
+            assert isinstance(indicator[2], str)  # text
+
+
+class TestMetadata:
+    """Tests para metadata del módulo."""
+    
+    @pytest.mark.unit
+    def test_version_format(self):
+        """Test: Versión tiene formato correcto."""
+        from scm.main import __version__
+        
+        # Formato: X.Y.Z
+        parts = __version__.split(".")
+        assert len(parts) == 3
+        for part in parts:
+            assert part.isdigit()
+    
+    @pytest.mark.unit
+    def test_author_not_empty(self):
+        """Test: Author no está vacío."""
+        from scm.main import __author__
+        
+        assert __author__
+        assert len(__author__) > 0
+    
+    @pytest.mark.unit
+    def test_description_not_empty(self):
+        """Test: Description no está vacía."""
+        from scm.main import __description__
+        
+        assert __description__
+        assert len(__description__) > 0
+
+
+class TestColorsClass:
+    """Tests para la clase Colors."""
+    
+    @pytest.mark.unit
+    def test_colors_has_required_attributes(self):
+        """Test: Colors tiene todos los atributos requeridos."""
+        from scm.main import Colors
+        
+        required_colors = ["HEADER", "BLUE", "CYAN", "GREEN", "WARNING", "FAIL", "ENDC", "BOLD"]
+        
+        for color in required_colors:
+            assert hasattr(Colors, color)
+            assert isinstance(getattr(Colors, color), str)
+    
+    @pytest.mark.unit
+    def test_colors_are_ansi_codes(self):
+        """Test: Colors contienen códigos ANSI válidos."""
+        from scm.main import Colors
+        
+        # Los códigos ANSI comienzan con \033[
+        for attr in ["HEADER", "BLUE", "CYAN", "GREEN", "WARNING", "FAIL", "BOLD"]:
+            color_code = getattr(Colors, attr)
+            assert color_code.startswith('\033[')
+    
+    @pytest.mark.unit
+    def test_endc_resets_color(self):
+        """Test: ENDC resetea el color."""
+        from scm.main import Colors
+        
+        assert Colors.ENDC == '\033[0m'
