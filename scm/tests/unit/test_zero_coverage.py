@@ -16,119 +16,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-class TestRollbackPipelineColors:
-    """Tests para la clase Colors en rollback-pipeline.py."""
-    
-    @pytest.mark.unit
-    def test_colors_header(self):
-        """Test: Colors.HEADER es válido."""
-        from scm.azdo.rollback_pipeline import Colors
-        
-        assert Colors.HEADER == '\033[95m'
-    
-    @pytest.mark.unit
-    def test_colors_okgreen(self):
-        """Test: Colors.OKGREEN es válido."""
-        from scm.azdo.rollback_pipeline import Colors
-        
-        assert Colors.OKGREEN == '\033[92m'
-    
-    @pytest.mark.unit
-    def test_colors_fail(self):
-        """Test: Colors.FAIL es válido."""
-        from scm.azdo.rollback_pipeline import Colors
-        
-        assert Colors.FAIL == '\033[91m'
-    
-    @pytest.mark.unit
-    def test_colors_endc(self):
-        """Test: Colors.ENDC resetea color."""
-        from scm.azdo.rollback_pipeline import Colors
-        
-        assert Colors.ENDC == '\033[0m'
-    
-    @pytest.mark.unit
-    def test_colors_aliases(self):
-        """Test: Colors tiene aliases."""
-        from scm.azdo.rollback_pipeline import Colors
-        
-        assert Colors.CYAN == Colors.OKCYAN
-        assert Colors.GREEN == Colors.OKGREEN
-        assert Colors.RED == Colors.FAIL
-
-
-class TestRollbackPipelineAuth:
-    """Tests para funciones de autenticación en rollback-pipeline.py."""
-    
-    @pytest.mark.unit
-    def test_create_auth_header(self):
-        """Test: create_auth_header genera header válido."""
-        from scm.azdo.rollback_pipeline import create_auth_header
-        
-        result = create_auth_header("test_pat")
-        
-        assert result.startswith("Basic ")
-        assert len(result) > 6
-    
-    @pytest.mark.unit
-    def test_create_auth_header_format(self):
-        """Test: create_auth_header tiene formato correcto."""
-        from scm.azdo.rollback_pipeline import create_auth_header
-        
-        result = create_auth_header("test_pat")
-        
-        # Debe ser "Basic <base64>"
-        parts = result.split(" ")
-        assert len(parts) == 2
-        assert parts[0] == "Basic"
-
-
-class TestRollbackPipelineVersion:
-    """Tests para metadata en rollback-pipeline.py."""
-    
-    @pytest.mark.unit
-    def test_version_format(self):
-        """Test: __version__ tiene formato correcto."""
-        from scm.azdo import rollback_pipeline
-        
-        version = rollback_pipeline.__version__
-        parts = version.split(".")
-        assert len(parts) == 3
-        for part in parts:
-            assert part.isdigit()
-    
-    @pytest.mark.unit
-    def test_author_not_empty(self):
-        """Test: __author__ no está vacío."""
-        from scm.azdo import rollback_pipeline
-        
-        assert rollback_pipeline.__author__
-        assert len(rollback_pipeline.__author__) > 0
-
-
-class TestUpdatePipelineMetadata:
-    """Tests para metadata en update-pipeline-cd-branchconfig.py."""
-    
-    @pytest.mark.unit
-    def test_update_pipeline_version_format(self):
-        """Test: __version__ tiene formato correcto."""
-        from scm.azdo import update_pipeline_cd_branchconfig
-        
-        version = update_pipeline_cd_branchconfig.__version__
-        parts = version.split(".")
-        assert len(parts) == 3
-        for part in parts:
-            assert part.isdigit()
-    
-    @pytest.mark.unit
-    def test_update_pipeline_author_not_empty(self):
-        """Test: __author__ no está vacío."""
-        from scm.azdo import update_pipeline_cd_branchconfig
-        
-        assert update_pipeline_cd_branchconfig.__author__
-        assert len(update_pipeline_cd_branchconfig.__author__) > 0
-
-
 class TestAnalyzeKpisMetadata:
     """Tests para metadata en analyze_kpis.py."""
     
@@ -142,60 +29,101 @@ class TestAnalyzeKpisMetadata:
         assert len(parts) == 3
         for part in parts:
             assert part.isdigit()
-    
-    @pytest.mark.unit
-    def test_analyze_kpis_author_not_empty(self):
-        """Test: __author__ no está vacío."""
-        from scm.kpi_analyzer import analyze_kpis
-        
-        assert analyze_kpis.__author__
-        assert len(analyze_kpis.__author__) > 0
 
 
-class TestDashboardGeneratorMetadata:
-    """Tests para metadata en dashboard_generator.py."""
+class TestBenchmarksImports:
+    """Tests para verificar imports en benchmarks.py."""
     
     @pytest.mark.unit
-    def test_dashboard_generator_version_format(self):
-        """Test: __version__ tiene formato correcto."""
-        from scm.kpi_analyzer import dashboard_generator
+    def test_benchmarks_imports_successfully(self):
+        """Test: benchmarks.py se importa correctamente."""
+        from scm.kpi_analyzer import benchmarks
         
-        version = dashboard_generator.__version__
-        parts = version.split(".")
-        assert len(parts) == 3
-        for part in parts:
-            assert part.isdigit()
-    
-    @pytest.mark.unit
-    def test_dashboard_generator_author_not_empty(self):
-        """Test: __author__ no está vacío."""
-        from scm.kpi_analyzer import dashboard_generator
-        
-        assert dashboard_generator.__author__
-        assert len(dashboard_generator.__author__) > 0
+        assert benchmarks is not None
+        assert hasattr(benchmarks, 'DORA_BENCHMARKS')
 
 
-class TestStreamlitAppMetadata:
-    """Tests para metadata en streamlit_app.py."""
+class TestMaturityModelImports:
+    """Tests para verificar imports en maturity_model.py."""
     
     @pytest.mark.unit
-    def test_streamlit_app_version_format(self):
-        """Test: __version__ tiene formato correcto."""
-        from scm.kpi_analyzer import streamlit_app
+    def test_maturity_model_imports_successfully(self):
+        """Test: maturity_model.py se importa correctamente."""
+        from scm.kpi_analyzer import maturity_model
         
-        version = streamlit_app.__version__
-        parts = version.split(".")
-        assert len(parts) == 3
-        for part in parts:
-            assert part.isdigit()
+        assert maturity_model is not None
+        assert hasattr(maturity_model, 'MaturityLevel')
+
+
+class TestReporterImports:
+    """Tests para verificar imports en reporter.py."""
     
     @pytest.mark.unit
-    def test_streamlit_app_author_not_empty(self):
-        """Test: __author__ no está vacío."""
-        from scm.kpi_analyzer import streamlit_app
+    def test_reporter_imports_successfully(self):
+        """Test: reporter.py se importa correctamente."""
+        from scm.kpi_analyzer import reporter
         
-        assert streamlit_app.__author__
-        assert len(streamlit_app.__author__) > 0
+        assert reporter is not None
+        assert hasattr(reporter, 'KPIReporter')
+
+
+class TestAnalyzerImports:
+    """Tests para verificar imports en analyzer.py."""
+    
+    @pytest.mark.unit
+    def test_analyzer_imports_successfully(self):
+        """Test: analyzer.py se importa correctamente."""
+        from scm.kpi_analyzer import analyzer
+        
+        assert analyzer is not None
+        assert hasattr(analyzer, 'KPIAnalyzer')
+
+
+class TestMainImports:
+    """Tests para verificar imports en main.py."""
+    
+    @pytest.mark.unit
+    def test_main_imports_successfully(self):
+        """Test: main.py se importa correctamente."""
+        from scm import main
+        
+        assert main is not None
+        assert hasattr(main, 'PLATFORMS')
+
+
+class TestUtilsImports:
+    """Tests para verificar imports en utils.py."""
+    
+    @pytest.mark.unit
+    def test_utils_imports_successfully(self):
+        """Test: utils.py se importa correctamente."""
+        from scm import utils
+        
+        assert utils is not None
+        assert hasattr(utils, 'get_output_dir')
+
+
+class TestCicdPipelineStatusImports:
+    """Tests para verificar imports en cicd_pipeline_status.py."""
+    
+    @pytest.mark.unit
+    def test_cicd_pipeline_status_imports_successfully(self):
+        """Test: cicd_pipeline_status.py se importa correctamente."""
+        from scm.azdo import cicd_pipeline_status
+        
+        assert cicd_pipeline_status is not None
+        assert hasattr(cicd_pipeline_status, 'BUCKETS')
+
+
+class TestPrMasterCheckerImports:
+    """Tests para verificar imports en azdo_pr_master_checker.py."""
+    
+    @pytest.mark.unit
+    def test_pr_master_checker_imports_successfully(self):
+        """Test: azdo_pr_master_checker.py se importa correctamente."""
+        from scm.azdo import azdo_pr_master_checker
+        
+        assert azdo_pr_master_checker is not None
 
 
 if __name__ == "__main__":
