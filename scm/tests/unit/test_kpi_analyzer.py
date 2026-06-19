@@ -336,5 +336,249 @@ class TestBenchmarkHelperFunctions:
         assert get_benchmark_level("seg_002", 0.0) == BenchmarkLevel.ELITE
 
 
+class TestKPIReporter:
+    """Tests para la clase KPIReporter."""
+    
+    @pytest.mark.unit
+    def test_reporter_init(self, tmp_path):
+        """Test: Inicializar KPIReporter."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        assert reporter.output_dir == tmp_path
+        assert tmp_path.exists()
+    
+    @pytest.mark.unit
+    def test_export_json_with_custom_filename(self, tmp_path):
+        """Test: Exportar JSON con nombre personalizado."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {
+            "kpis": [
+                {"id": "ec_001", "name": "Deployment Frequency", "value": 5.0}
+            ]
+        }
+        
+        filepath = reporter.export_json(data, filename="test_report.json")
+        
+        assert filepath.exists()
+        assert filepath.name == "test_report.json"
+        
+        with open(filepath, 'r') as f:
+            loaded = json.load(f)
+        assert loaded["kpis"][0]["id"] == "ec_001"
+    
+    @pytest.mark.unit
+    def test_export_json_auto_filename(self, tmp_path):
+        """Test: Exportar JSON con nombre automático."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {"kpis": []}
+        
+        filepath = reporter.export_json(data)
+        
+        assert filepath.exists()
+        assert "kpi_report_" in filepath.name
+        assert filepath.name.endswith(".json")
+    
+    @pytest.mark.unit
+    def test_export_csv_with_kpis(self, tmp_path):
+        """Test: Exportar CSV con KPIs."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {
+            "kpis": [
+                {
+                    "id": "ec_001",
+                    "name": "Deployment Frequency",
+                    "value": 5.0,
+                    "unit": "deployments/day",
+                    "benchmarks": {"elite": 10, "high": 5, "medium": 2, "low": 1},
+                    "frameworks": ["DORA"],
+                    "maturity_level_required": "CUANTIFICADO"
+                }
+            ]
+        }
+        
+        filepath = reporter.export_csv(data, filename="test_report.csv")
+        
+        assert filepath.exists()
+        assert filepath.name == "test_report.csv"
+        
+        with open(filepath, 'r') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        
+        assert len(rows) == 1
+        assert rows[0]["ID"] == "ec_001"
+        assert rows[0]["Name"] == "Deployment Frequency"
+    
+    @pytest.mark.unit
+    def test_export_csv_empty_kpis(self, tmp_path):
+        """Test: Exportar CSV sin KPIs."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {"kpis": []}
+        
+        filepath = reporter.export_csv(data, filename="empty.csv")
+        
+        assert filepath.exists()
+    
+    @pytest.mark.unit
+    def test_export_html_simple(self, tmp_path):
+        """Test: Exportar HTML simple."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {
+            "metadata": {
+                "generated_at": "2024-01-01T00:00:00",
+                "platform": "all",
+                "analyzer_version": "1.0.0"
+            },
+            "dimensions": {
+                "deployment": {
+                    "kpis": [
+                        {
+                            "name": "Deployment Frequency",
+                            "value": 5.0,
+                            "unit": "deployments/day",
+                            "benchmarks": {"elite": 10, "high": 5, "medium": 2, "low": 1}
+                        }
+                    ]
+                }
+            }
+        }
+        
+        filepath = reporter.export_html_simple(data, filename="test_report.html")
+        
+        assert filepath.exists()
+        assert filepath.name == "test_report.html"
+        
+        with open(filepath, 'r') as f:
+            content = f.read()
+        
+        assert "KPI Report" in content
+        assert "Deployment Frequency" in content
+        assert "5.00" in content
+    
+    @pytest.mark.unit
+    def test_generate_simple_html_with_dimensions(self, tmp_path):
+        """Test: Generar HTML con múltiples dimensiones."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {
+            "metadata": {
+                "generated_at": "2024-01-01",
+                "platform": "azdo",
+                "analyzer_version": "1.0.0"
+            },
+            "dimensions": {
+                "deployment": {
+                    "kpis": [
+                        {
+                            "name": "Deployment Frequency",
+                            "value": 5.0,
+                            "unit": "deployments/day",
+                            "benchmarks": {"elite": 10, "high": 5, "medium": 2, "low": 1}
+                        }
+                    ]
+                },
+                "reliability": {
+                    "kpis": [
+                        {
+                            "name": "Change Failure Rate",
+                            "value": 10.0,
+                            "unit": "%",
+                            "benchmarks": {"elite": 5, "high": 10, "medium": 20, "low": 30}
+                        }
+                    ]
+                }
+            }
+        }
+        
+        html = reporter._generate_simple_html(data)
+        
+        assert "KPI Report" in html
+        assert "Deployment" in html
+        assert "Reliability" in html
+        assert "Deployment Frequency" in html
+        assert "Change Failure Rate" in html
+    
+    @pytest.mark.unit
+    def test_save_to_cache(self, tmp_path):
+        """Test: Guardar reporte en caché."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {
+            "kpis": [
+                {"id": "ec_001", "name": "Deployment Frequency", "value": 5.0}
+            ]
+        }
+        
+        filepath = reporter.save_to_cache(data)
+        
+        assert filepath.exists()
+        assert ".cache" in str(filepath)
+        assert "kpi_history_" in filepath.name
+        
+        with open(filepath, 'r') as f:
+            loaded = json.load(f)
+        assert loaded["kpis"][0]["id"] == "ec_001"
+    
+    @pytest.mark.unit
+    def test_export_json_with_special_characters(self, tmp_path):
+        """Test: Exportar JSON con caracteres especiales."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {
+            "kpis": [
+                {"id": "ec_001", "name": "Frecuencia de Despliegue Ñ", "value": 5.0}
+            ]
+        }
+        
+        filepath = reporter.export_json(data, filename="unicode_test.json")
+        
+        assert filepath.exists()
+        
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        assert "Ñ" in content
+    
+    @pytest.mark.unit
+    def test_export_csv_with_missing_fields(self, tmp_path):
+        """Test: Exportar CSV con campos faltantes."""
+        from scm.kpi_analyzer.reporter import KPIReporter
+        
+        reporter = KPIReporter(output_dir=tmp_path)
+        data = {
+            "kpis": [
+                {
+                    "id": "ec_001",
+                    "name": "Deployment Frequency",
+                }
+            ]
+        }
+        
+        filepath = reporter.export_csv(data, filename="incomplete.csv")
+        
+        assert filepath.exists()
+        
+        with open(filepath, 'r') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        
+        assert len(rows) == 1
+        assert rows[0]["ID"] == "ec_001"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
