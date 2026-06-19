@@ -773,3 +773,25 @@ class TestMainConstants:
         from scm.main import STATUS_INDICATORS
         
         assert "ready" in STATUS_INDICATORS
+    
+    @pytest.mark.unit
+    def test_platforms_has_items(self):
+        """Test: PLATFORMS tiene al menos un item."""
+        from scm.main import PLATFORMS
+        
+        # Verificar que hay al menos un platform
+        assert len(PLATFORMS) > 0
+        
+        # Verificar que cada platform tiene estructura
+        for key, value in PLATFORMS.items():
+            assert isinstance(value, dict)
+            assert "name" in value or "description" in value
+    
+    @pytest.mark.unit
+    def test_status_indicators_values_are_tuples(self):
+        """Test: STATUS_INDICATORS valores son tuplas."""
+        from scm.main import STATUS_INDICATORS
+        
+        for key, value in STATUS_INDICATORS.items():
+            assert isinstance(value, tuple)
+            assert len(value) >= 2
