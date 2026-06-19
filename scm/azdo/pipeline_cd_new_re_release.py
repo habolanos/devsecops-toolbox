@@ -521,14 +521,32 @@ def main():
     if cancelled > 0:
         print(f"{Colors.YELLOW}⏸  Cancelados: {cancelled}/{total_releases}{Colors.ENDC}")
     
-    print(f"\n{Colors.BOLD}Detalles:{Colors.ENDC}")
-    for result in results:
-        if result['status'] == 'success':
+    # Detalles de exitosos
+    successful_results = [r for r in results if r['status'] == 'success']
+    if successful_results:
+        print(f"\n{Colors.BOLD}{Colors.GREEN}Releases Exitosos:{Colors.ENDC}")
+        for result in successful_results:
             print(f"  {Colors.GREEN}✓{Colors.ENDC} Release #{result['source_id']} → #{result['new_id']} ({result['new_name']})")
-        elif result['status'] == 'error':
-            print(f"  {Colors.RED}✗{Colors.ENDC} Release #{result['source_id']} - Error: {result['error']}")
-        else:
-            print(f"  {Colors.YELLOW}⏸{Colors.ENDC} Release #{result['source_id']} - Cancelado")
+    
+    # Detalles de errores
+    error_results = [r for r in results if r['status'] == 'error']
+    if error_results:
+        print(f"\n{Colors.BOLD}{Colors.RED}Releases con Error:{Colors.ENDC}")
+        for result in error_results:
+            print(f"  {Colors.RED}✗{Colors.ENDC} Release #{result['source_id']}")
+            # Mostrar error con indentación
+            error_msg = result['error']
+            if len(error_msg) > 60:
+                print(f"     {Colors.DIM}Error: {error_msg[:60]}...{Colors.ENDC}")
+            else:
+                print(f"     {Colors.DIM}Error: {error_msg}{Colors.ENDC}")
+    
+    # Detalles de cancelados
+    cancelled_results = [r for r in results if r['status'] == 'cancelled']
+    if cancelled_results:
+        print(f"\n{Colors.BOLD}{Colors.YELLOW}Releases Cancelados:{Colors.ENDC}")
+        for result in cancelled_results:
+            print(f"  {Colors.YELLOW}⏸{Colors.ENDC} Release #{result['source_id']} - {result['error']}")
     
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
     
