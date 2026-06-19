@@ -13,7 +13,12 @@ import glob
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-import yaml
+
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
 
 try:
     from utils import get_output_dir
@@ -44,8 +49,12 @@ class KPIAnalyzer:
         if schema_path is None:
             schema_path = Path(__file__).parent / "kpi_schema.yaml"
         
-        with open(schema_path, 'r', encoding='utf-8') as f:
-            self.schema = yaml.safe_load(f)
+        if YAML_AVAILABLE:
+            with open(schema_path, 'r', encoding='utf-8') as f:
+                self.schema = yaml.safe_load(f)
+        else:
+            # Fallback: use empty schema if yaml is not available
+            self.schema = {}
         
         self.output_dir = get_output_dir("outcome")
         self.json_cache = {}
