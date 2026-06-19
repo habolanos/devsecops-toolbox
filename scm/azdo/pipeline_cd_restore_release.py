@@ -226,24 +226,26 @@ def create_restore_release(org: str, project: str, backup: Dict, restore_comment
     meta = backup.get('metadata', {})
     snapshot = backup.get('releaseSnapshot', {})
     
-    # Mapear artefactos: usar instanceReference para reutilizar versión específica
-    # No incluir definitionReference completo para evitar validación de alias
+    # Mapear artefactos con todas sus propiedades (incluyendo rama/branch)
     artifacts_payload = []
     for artifact in snapshot.get('artifacts', []):
         artifact_def_ref = artifact.get('definitionReference', {})
         
-        # Construir instanceReference con versión del artefacto
+        # Construir instanceReference con versión
         instance_ref = {}
         if 'version' in artifact_def_ref:
             instance_ref['id'] = artifact_def_ref['version'].get('id')
             instance_ref['name'] = artifact_def_ref['version'].get('name')
         
-        # Construir artefacto con solo alias e instanceReference
-        # Esto permite reutilizar la versión específica sin validar el alias
+        # Construir artefacto con definitionReference completo
         artifact_payload = {
             'alias': artifact.get('alias'),
             'instanceReference': instance_ref
         }
+        
+        # Agregar definitionReference si existe (contiene branch, etc)
+        if artifact_def_ref:
+            artifact_payload['definitionReference'] = artifact_def_ref
         
         artifacts_payload.append(artifact_payload)
     
