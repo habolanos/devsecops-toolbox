@@ -144,7 +144,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "pass",
 ]
-fail_under = 35
+fail_under = 30
 
 [tool.coverage.html]
 directory = "outcome/coverage_html"

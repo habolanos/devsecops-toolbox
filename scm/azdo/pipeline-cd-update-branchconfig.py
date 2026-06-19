@@ -7,7 +7,7 @@ Actualiza la variable branchConfig y el script de tareas en un Release Pipeline
 de Azure DevOps usando la API REST.
 
 Uso:
-    python update-pipeline-cd-branchconfig.py --org <org> --project <project> --definition-id <id> --pat <token>
+    python pipeline-cd-update-branchconfig.py --org <org> --project <project> --definition-id <id> --pat <token>
 """
 
 import argparse
@@ -539,17 +539,17 @@ def get_args():
         epilog="""
 Ejemplos:
   # Usando valores por defecto (Coppel-Retail/Cadena_de_Suministros)
-  python update-pipeline-cd-branchconfig.py --pat YOUR_PAT_HERE
+  python pipeline-cd-update-branchconfig.py --pat YOUR_PAT_HERE
 
   # Especificando organización y proyecto diferentes
-  python update-pipeline-cd-branchconfig.py \\
+  python pipeline-cd-update-branchconfig.py \\
     --org MyOrg --project MyProject --definition-id 456 \\
     --pat TOKEN --branch-config config-production \\
     --task-name "deploy manifest" \\
     --old-pattern "$(oldVar)" --new-pattern "$(newVar)"
   
   # Múltiples pipelines
-  python update-pipeline-cd-branchconfig.py \\
+  python pipeline-cd-update-branchconfig.py \\
     --definition-id "123,456,789" --pat TOKEN
         """
     )

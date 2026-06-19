@@ -294,7 +294,7 @@ TOOLS: Dict = {
     "21": {
         "name":        "Pipeline Updater",
         "description": "Actualiza variable branchConfig y scripts de tareas en Release Pipelines vía API REST. Modo interactivo con config.json.",
-        "path":        "update-pipeline-cd-branchconfig.py",
+        "path":        "pipeline-cd-update-branchconfig.py",
         "args":        ["--interactive"],
         "group":       "release",
         "status":      "ready",
@@ -302,8 +302,36 @@ TOOLS: Dict = {
     "22": {
         "name":        "Pipeline Rollback",
         "description": "Revierte cambios en Release Pipelines con 3 métodos: (1) Full Backup Restore (máxima seguridad), (2) Hybrid Rollback (revisión del backup desde Azure DevOps), (3) Manual Revision (rollback a revisión específica). Incluye listado de backups/revisiones, validación y dry-run.",
-        "path":        "rollback-pipeline.py",
+        "path":        "pipeline-cd-rollback-pipeline.py",
         "args":        ["--list-backups", "--list-revisions", "--backup-file", "--hybrid", "--pipeline-id", "--to-revision", "--pat", "--dry-run"],
+        "group":       "release",
+        "status":      "ready",
+    },
+    "23": {
+        "name":        "Pipeline Re-Release",
+        "description": "Crea un nuevo Release desde un Release existente con backup automático versionado. Permite re-ejecutar un release anterior con artefactos frescos.",
+        "path":        "pipeline-cd-new-re-release.sh",
+        "args":        ["--sourceReleaseId", "--releaseComment", "--pat", "--backupPath"],
+        "defaults":    {
+            "sourceReleaseId": 987,
+            "releaseComment": "Re-release automático desde tools.py",
+            "pat": "",
+            "backupPath": "./backups"
+        },
+        "group":       "release",
+        "status":      "ready",
+    },
+    "24": {
+        "name":        "Pipeline Restore Release",
+        "description": "Restaura un Release desde un backup versionado. Permite rollback completo con trazabilidad y confirmación interactiva.",
+        "path":        "pipeline-cd-restore-release.sh",
+        "args":        ["--backupFile", "--restoreComment", "--pat", "--backupPath"],
+        "defaults":    {
+            "backupFile": "",
+            "restoreComment": "Restore automático desde tools.py",
+            "pat": "",
+            "backupPath": "./backups"
+        },
         "group":       "release",
         "status":      "ready",
     },
