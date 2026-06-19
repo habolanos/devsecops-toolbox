@@ -433,6 +433,43 @@ class TestBenchmarkHelperFunctions:
         """Test change_failure_rate high level"""
         assert get_benchmark_level("ec_002", 10.0) == BenchmarkLevel.HIGH
     
+    @pytest.mark.unit
+    def test_get_benchmark_level_conf_002_availability(self):
+        """Test: get_benchmark_level para conf_002 (Availability)."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        # Availability: higher is better
+        result = get_benchmark_level("conf_002", 99.5)
+        assert result in [BenchmarkLevel.ELITE, BenchmarkLevel.HIGH]
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_seg_001_mfa(self):
+        """Test: get_benchmark_level para seg_001 (MFA Coverage)."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        # MFA: higher is better
+        result = get_benchmark_level("seg_001", 85.0)
+        assert result in [BenchmarkLevel.HIGH, BenchmarkLevel.MEDIUM]
+    
+    @pytest.mark.unit
+    def test_get_benchmark_level_cump_001_compliance(self):
+        """Test: get_benchmark_level para cump_001 (Policy Adherence)."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_level
+        
+        # Policy Adherence: higher is better
+        result = get_benchmark_level("cump_001", 75.0)
+        assert result in [BenchmarkLevel.HIGH, BenchmarkLevel.MEDIUM]
+    
+    @pytest.mark.unit
+    def test_get_benchmark_color_returns_hex(self):
+        """Test: get_benchmark_color retorna código hex válido."""
+        from scm.kpi_analyzer.benchmarks import get_benchmark_color
+        
+        result = get_benchmark_color(BenchmarkLevel.ELITE)
+        assert isinstance(result, str)
+        assert result.startswith("#")
+        assert len(result) == 7  # #RRGGBB
+    
     def test_get_benchmark_level_ec_002_medium(self):
         """Test change_failure_rate medium level"""
         assert get_benchmark_level("ec_002", 20.0) == BenchmarkLevel.MEDIUM
