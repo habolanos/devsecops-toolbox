@@ -363,8 +363,8 @@ Ejemplos:
                         help='Organización de Azure DevOps (default: Coppel-Retail)')
     parser.add_argument('--project', default='Cadena_de_Suministros',
                         help='Proyecto (default: Cadena_de_Suministros)')
-    parser.add_argument('--source-release-id', type=int, default=999999,
-                        help='ID del Release origen (default: 999999)')
+    parser.add_argument('--source-release-id', type=str, default='999999',
+                        help='ID(s) del Release origen (separados por coma, máx 50). Ej: 244,245,246 (default: 999999)')
     parser.add_argument('--release-comment', default='Renovacion de Credenciales Git',
                         help='Comentario para el nuevo release')
     parser.add_argument('--pat', required=False,
