@@ -402,6 +402,9 @@ def main():
             print(f"{Colors.RED}✗ Error: --pat es requerido cuando no se usa --interactive{Colors.ENDC}")
             sys.exit(1)
     
+    # Parsear múltiples Release IDs (separados por coma)
+    source_release_ids = [rid.strip() for rid in str(args.source_release_id).split(',')]
+    
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
     print(f"{Colors.BOLD}  Azure DevOps Pipeline Re-Release v{__version__}{Colors.ENDC}")
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
@@ -409,73 +412,127 @@ def main():
     print(f"{Colors.CYAN}Configuración:{Colors.ENDC}")
     print(f"  Organización: {args.org}")
     print(f"  Proyecto: {args.project}")
-    print(f"  Release origen: #{args.source_release_id}")
+    print(f"  Release(s) origen: {', '.join([f'#{rid}' for rid in source_release_ids])}")
     print(f"  Comentario: {args.release_comment}")
     print(f"  Carpeta backups: {args.backup_path}\n")
     
-    try:
-        # FASE 1: Obtener Release origen
-        print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}FASE 1: Obtener Release Origen{Colors.ENDC}")
-        print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-        
-        source_release = get_release(args.org, args.project, args.source_release_id, args.pat)
-        
-        # FASE 2: Crear backup
-        print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}FASE 2: Crear Backup Versionado{Colors.ENDC}")
-        print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-        
-        backup_file, version_label = create_backup(source_release, args.backup_path)
-        print(f"{Colors.GREEN}✓ Backup guardado: {backup_file}{Colors.ENDC}")
-        print(f"{Colors.YELLOW}  Versión: {version_label}{Colors.ENDC}")
-        
-        # FASE 3: Crear nuevo Release
-        print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}FASE 3: Crear Nuevo Release{Colors.ENDC}")
-        print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-        
-        new_release = create_new_release(
-            args.org, args.project, source_release, 
-            args.release_comment, args.pat, version_label
-        )
-        
-        # Resumen final
+    # Procesar cada Release ID
+    results = []
+    total_releases = len(source_release_ids)
+    
+    for idx, release_id in enumerate(source_release_ids, 1):
         print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}  ✅ RE-RELEASE EXITOSO{Colors.ENDC}")
-        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
-        print(f"{Colors.GREEN}Release origen:     #{source_release.get('id')}{Colors.ENDC}")
-        print(f"{Colors.GREEN}Nuevo Release:      #{new_release.get('id')}{Colors.ENDC}")
-        print(f"{Colors.GREEN}Nombre:             {new_release.get('name')}{Colors.ENDC}")
-        print(f"{Colors.YELLOW}Backup:             {version_label}{Colors.ENDC}")
-        print(f"{Colors.CYAN}Comentario:         {args.release_comment}{Colors.ENDC}")
-        
-        if '_links' in new_release and 'self' in new_release['_links']:
-            url = new_release['_links']['self'].get('href', '')
-            print(f"{Colors.CYAN}URL:                {url}{Colors.ENDC}")
-        
+        print(f"{Colors.CYAN}Procesando Release {idx}/{total_releases}: #{release_id}{Colors.ENDC}")
         print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
         
-        # Exportar reporte
-        stats = {
-            'source_release_id': source_release.get('id'),
-            'source_release_name': source_release.get('name'),
-            'version_label': version_label,
-        }
-        
-        report_path = export_report(stats, args, backup_file, new_release)
-        print(f"{Colors.CYAN}📄 Reporte exportado: {report_path}{Colors.ENDC}\n")
-        
-        return 0
-        
-    except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}>>> Proceso interrumpido por el usuario{Colors.ENDC}")
-        return 130
-    except Exception as e:
-        print(f"\n{Colors.RED}>>> ERROR INESPERADO: {e}{Colors.ENDC}")
-        import traceback
-        traceback.print_exc()
-        return 1
+        try:
+            # FASE 1: Obtener Release origen
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 1: Obtener Release Origen{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            
+            source_release = get_release(args.org, args.project, int(release_id), args.pat)
+            
+            # FASE 2: Crear backup
+            print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 2: Crear Backup Versionado{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            
+            backup_file, version_label = create_backup(source_release, args.backup_path)
+            print(f"{Colors.GREEN}✓ Backup guardado: {backup_file}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}  Versión: {version_label}{Colors.ENDC}")
+            
+            # FASE 3: Crear nuevo Release
+            print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 3: Crear Nuevo Release{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            
+            new_release = create_new_release(
+                args.org, args.project, source_release, 
+                args.release_comment, args.pat, version_label
+            )
+            
+            # Resumen individual
+            result = {
+                'status': 'success',
+                'source_id': source_release.get('id'),
+                'new_id': new_release.get('id'),
+                'new_name': new_release.get('name'),
+                'backup': version_label
+            }
+            results.append(result)
+            
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.GREEN}✅ RE-RELEASE EXITOSO (Release {idx}/{total_releases}){Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.GREEN}Release origen:     #{source_release.get('id')}{Colors.ENDC}")
+            print(f"{Colors.GREEN}Nuevo Release:      #{new_release.get('id')}{Colors.ENDC}")
+            print(f"{Colors.GREEN}Nombre:             {new_release.get('name')}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Backup:             {version_label}{Colors.ENDC}")
+            print(f"{Colors.CYAN}Comentario:         {args.release_comment}{Colors.ENDC}")
+            
+            if '_links' in new_release and 'self' in new_release['_links']:
+                url = new_release['_links']['self'].get('href', '')
+                print(f"{Colors.CYAN}URL:                {url}{Colors.ENDC}")
+            
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            
+            # Exportar reporte
+            stats = {
+                'source_release_id': source_release.get('id'),
+                'source_release_name': source_release.get('name'),
+                'version_label': version_label,
+            }
+            
+            report_path = export_report(stats, args, backup_file, new_release)
+            print(f"{Colors.CYAN}📄 Reporte exportado: {report_path}{Colors.ENDC}\n")
+            
+        except KeyboardInterrupt:
+            print(f"\n{Colors.YELLOW}>>> Proceso interrumpido por el usuario (Release {idx}/{total_releases}){Colors.ENDC}")
+            result = {
+                'status': 'cancelled',
+                'source_id': release_id,
+                'error': 'Interrumpido por el usuario'
+            }
+            results.append(result)
+        except Exception as e:
+            print(f"\n{Colors.RED}>>> ERROR en Release #{release_id}: {e}{Colors.ENDC}")
+            import traceback
+            traceback.print_exc()
+            result = {
+                'status': 'error',
+                'source_id': release_id,
+                'error': str(e)
+            }
+            results.append(result)
+    
+    # Resumen final de todos los releases
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  RESUMEN FINAL{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    
+    successful = sum(1 for r in results if r['status'] == 'success')
+    failed = sum(1 for r in results if r['status'] == 'error')
+    cancelled = sum(1 for r in results if r['status'] == 'cancelled')
+    
+    print(f"{Colors.GREEN}✅ Exitosos: {successful}/{total_releases}{Colors.ENDC}")
+    if failed > 0:
+        print(f"{Colors.RED}❌ Errores: {failed}/{total_releases}{Colors.ENDC}")
+    if cancelled > 0:
+        print(f"{Colors.YELLOW}⏸  Cancelados: {cancelled}/{total_releases}{Colors.ENDC}")
+    
+    print(f"\n{Colors.BOLD}Detalles:{Colors.ENDC}")
+    for result in results:
+        if result['status'] == 'success':
+            print(f"  {Colors.GREEN}✓{Colors.ENDC} Release #{result['source_id']} → #{result['new_id']} ({result['new_name']})")
+        elif result['status'] == 'error':
+            print(f"  {Colors.RED}✗{Colors.ENDC} Release #{result['source_id']} - Error: {result['error']}")
+        else:
+            print(f"  {Colors.YELLOW}⏸{Colors.ENDC} Release #{result['source_id']} - Cancelado")
+    
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    
+    return 0 if failed == 0 and cancelled == 0 else 1
 
 
 if __name__ == "__main__":

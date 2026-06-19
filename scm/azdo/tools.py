@@ -308,8 +308,8 @@ TOOLS: Dict = {
         "status":      "ready",
     },
     "23": {
-        "name":        "Pipeline Re-Release",
-        "description": "Crea Nuevo Release desde uno existente con backup automático versionado. Permite re-ejecutar un release anterior con artefactos frescos.",
+        "name":        "Refresh Release",
+        "description": "Crea Nuevo Release desde uno existente con backup automático versionado. Renueva variables frescas, ideal para actualizar Credencial GIT.",
         "path":        "pipeline_cd_new_re_release.py",
         "args":        ["--org", "--project", "--source-release-id", "--release-comment", "--pat", "--backup-path"],
         "defaults":    {
@@ -1046,10 +1046,25 @@ def run_tool(tool_key: str):
         
         project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
         
-        print(f"{Colors.BOLD}Release ID origen (obligatorio):{Colors.ENDC} ", end="")
-        source_release_id = input().strip()
-        if not source_release_id or not source_release_id.isdigit():
-            print(f"{Colors.RED}❌ El Release ID es obligatorio y debe ser un número entero.{Colors.ENDC}")
+        print(f"{Colors.BOLD}Release IDs origen (obligatorio, máx 50, separados por coma):{Colors.ENDC} ", end="")
+        source_release_ids_input = input().strip()
+        if not source_release_ids_input:
+            print(f"{Colors.RED}❌ El Release ID es obligatorio.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Parsear y validar Release IDs
+        source_release_ids = []
+        for rid in source_release_ids_input.split(','):
+            rid = rid.strip()
+            if not rid or not rid.isdigit():
+                print(f"{Colors.RED}❌ Release ID inválido: '{rid}'. Debe ser un número entero.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
+            source_release_ids.append(rid)
+        
+        if len(source_release_ids) > 50:
+            print(f"{Colors.RED}❌ Máximo 50 Release IDs permitidos. Se proporcionaron {len(source_release_ids)}.{Colors.ENDC}")
             input("\nPresione Enter para continuar...")
             return
         
@@ -1071,21 +1086,23 @@ def run_tool(tool_key: str):
         print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
         print(f"{Colors.YELLOW}⚠  CONFIRMACIÓN REQUERIDA{Colors.ENDC}")
         print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
-        print(f"Se creará un nuevo Release desde Release #{source_release_id}")
-        print(f"Se generará un backup automático versionado\n")
+        print(f"Se crearán {len(source_release_ids)} nuevo(s) Release(s) desde:")
+        for rid in source_release_ids:
+            print(f"  • Release #{rid}")
+        print(f"Se generarán backup(s) automático(s) versionado(s)\n")
         
-        confirm = input(f"{Colors.BOLD}¿Deseas continuar? (escribe 'SI' para confirmar): {Colors.ENDC}").strip()
+        confirm = input(f"{Colors.BOLD}¿Deseas continuar? (escribe 'SI' para confirmar): {Colors.ENDC}").strip().upper()
         if confirm != 'SI':
             print(f"\n{Colors.YELLOW}✗ Operación cancelada por el usuario{Colors.ENDC}")
             input("\nPresione Enter para continuar...")
             return
         
-        # Construir comando
+        # Construir comando con múltiples Release IDs
         cmd = [
             str(venv_python), str(script_path),
             "--org", org,
             "--project", project,
-            "--source-release-id", source_release_id,
+            "--source-release-id", ",".join(source_release_ids),
             "--release-comment", release_comment,
             "--pat", pat,
             "--backup-path", backup_path
