@@ -345,6 +345,15 @@ TOOLS: Dict = {
         "group":       "release",
         "status":      "ready",
     },
+    "25": {
+        "name":        "Release Explorer",
+        "description": "Explorador interactivo de Release Pipelines con búsqueda, filtros, detalles y comparación (diff) lado a lado",
+        "path":        "azdo_release_explorer_rich.py",
+        "args":        ["--org", "--project", "--pat", "--search", "--definition-id", "--release-id", 
+                        "--stage-filter", "--status-filter", "--active-only", "--top", "--diff", "--interactive", "--json"],
+        "group":       "release",
+        "status":      "ready",
+    },
     "A": {
         "name":        "Ejecutar Todos",
         "description": "Ejecuta todas las herramientas con la misma configuración (sin Deep Dive)",
@@ -1186,6 +1195,101 @@ def run_tool(tool_key: str):
                 print(f"\n{Colors.GREEN}✅ Restore completado exitosamente.{Colors.ENDC}")
             else:
                 print(f"\n{Colors.RED}✗ Restore falló (exit {result.returncode}){Colors.ENDC}")
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+        
+        input("\nPresione Enter para continuar...")
+        return
+    
+    # ── Caso especial: Release Explorer (tool 25) ────────────────────────────────
+    if tool_key == "25":
+        params = ask_common_params(cfg, tool_key=tool_key)
+        if not params:
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Menú de opciones para Release Explorer
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}  🔍 Release Explorer - Seleccione una opción{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+        print(f"{Colors.CYAN}[1]{Colors.ENDC} Modo Interactivo (búsqueda y selección guiada)")
+        print(f"{Colors.CYAN}[2]{Colors.ENDC} Buscar pipelines por nombre")
+        print(f"{Colors.CYAN}[3]{Colors.ENDC} Listar releases de un pipeline")
+        print(f"{Colors.CYAN}[4]{Colors.ENDC} Ver detalles de un release")
+        print(f"{Colors.CYAN}[5]{Colors.ENDC} Comparar dos releases (Diff)")
+        print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+        print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
+        
+        option = input().strip()
+        
+        if option == "0":
+            return
+        
+        cmd = [str(venv_python), str(script_path), "--pat", params["pat"], "--org", params["org"], "--project", params["project"]]
+        
+        if option == "1":
+            # Modo interactivo
+            cmd.append("--interactive")
+        elif option == "2":
+            # Buscar pipelines
+            print(f"{Colors.BOLD}Texto de búsqueda (inicio del nombre):{Colors.ENDC} ", end="")
+            search = input().strip()
+            if search:
+                cmd += ["--search", search]
+            else:
+                print(f"{Colors.YELLOW}⚠  Búsqueda vacía, abriendo modo interactivo...{Colors.ENDC}")
+                cmd.append("--interactive")
+        elif option == "3":
+            # Listar releases de un pipeline
+            print(f"{Colors.BOLD}Pipeline Definition ID:{Colors.ENDC} ", end="")
+            def_id = input().strip()
+            if not def_id or not def_id.isdigit():
+                print(f"{Colors.RED}❌ Definition ID inválido.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
+            cmd += ["--definition-id", def_id]
+            
+            # Filtros opcionales
+            print(f"{Colors.BOLD}Filtrar por stage (Enter para todos):{Colors.ENDC} ", end="")
+            stage = input().strip()
+            if stage:
+                cmd += ["--stage-filter", stage]
+            
+            print(f"{Colors.BOLD}¿Solo stages activos? (s/n) [n]:{Colors.ENDC} ", end="")
+            if input().strip().lower() == "s":
+                cmd.append("--active-only")
+        elif option == "4":
+            # Ver detalles de un release
+            print(f"{Colors.BOLD}Release ID:{Colors.ENDC} ", end="")
+            rel_id = input().strip()
+            if not rel_id or not rel_id.isdigit():
+                print(f"{Colors.RED}❌ Release ID inválido.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
+            cmd += ["--release-id", rel_id]
+        elif option == "5":
+            # Comparar dos releases
+            print(f"{Colors.BOLD}Release ID 1:{Colors.ENDC} ", end="")
+            rel1 = input().strip()
+            print(f"{Colors.BOLD}Release ID 2:{Colors.ENDC} ", end="")
+            rel2 = input().strip()
+            if not rel1 or not rel1.isdigit() or not rel2 or not rel2.isdigit():
+                print(f"{Colors.RED}❌ Release IDs inválidos.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
+            cmd += ["--diff", rel1, rel2]
+        else:
+            print(f"{Colors.RED}❌ Opción no válida.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+        try:
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+            if result.returncode == 0:
+                print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+            else:
+                print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
         except Exception as e:
             print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
         
