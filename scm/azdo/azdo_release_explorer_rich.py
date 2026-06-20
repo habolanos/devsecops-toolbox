@@ -83,6 +83,14 @@ class DevOpsClient:
 # ------------------------------------------------------------------
 # Utilidades
 # ------------------------------------------------------------------
+def normalize_org(org: str) -> str:
+    """Extrae el nombre de la organización de una URL completa o retorna el nombre si ya está normalizado."""
+    if org.startswith("https://"):
+        # Extraer nombre de URL: https://dev.azure.com/OrgName → OrgName
+        return org.split('/')[-1]
+    return org
+
+
 def fmt_date(iso_str: Optional[str]) -> str:
     if not iso_str:
         return "N/A"
@@ -577,7 +585,10 @@ def main():
     if not args.org or not args.project or not args.pat:
         parser.error("Debe especificar --org, --project y --pat (o variables AZDO_ORG, AZDO_PROJECT, AZDO_PAT)")
 
-    client = DevOpsClient(args.org, args.project, args.pat)
+    # Normalizar organización (extraer nombre de URL si es necesario)
+    org_normalized = normalize_org(args.org)
+    
+    client = DevOpsClient(org_normalized, args.project, args.pat)
 
     force_interactive = args.interactive
     has_args = any([args.search, args.definition_id, args.release_id, args.stage_filter, args.status_filter, args.active_only, args.diff])
