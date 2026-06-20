@@ -397,7 +397,8 @@ def get_matching_pipelines(client: DevOpsClient, search_text: str) -> List[Dict]
     with console.status("[bold green]Consultando pipelines en Azure DevOps...[/bold green]", spinner="dots"):
         defs = client.list_definitions(top=100)
     pattern = search_text.lower()
-    return [d for d in defs if d.get("name", "").lower().startswith(pattern)]
+    # Buscar por coincidencia parcial (contiene) en lugar de solo inicio
+    return [d for d in defs if pattern in d.get("name", "").lower()]
 
 
 def get_releases_rows(client: DevOpsClient,
@@ -457,12 +458,12 @@ def prompt_select(options: List[Any], formatter, prompt_text: str) -> Any:
 
 def interactive_mode(client: DevOpsClient, args):
     # Paso 1: Buscar pipelines
-    search = args.search if args.search else Prompt.ask("Ingrese texto para buscar pipelines (inicio del nombre)")
+    search = args.search if args.search else Prompt.ask("Ingrese texto para buscar pipelines (búsqueda parcial)")
     with console.status("[bold cyan]Filtrando resultados...[/bold cyan]", spinner="arc"):
         pipelines = get_matching_pipelines(client, search)
 
     if not pipelines:
-        console.print(f"[bold red]❌ No se encontraron pipelines que inicien con '{search}'[/bold red]")
+        console.print(f"[bold red]❌ No se encontraron pipelines que contengan '{search}'[/bold red]")
         return
 
     print_pipelines(pipelines)
