@@ -395,7 +395,7 @@ def print_diff(release_a: Dict, release_b: Dict):
 # ------------------------------------------------------------------
 def get_matching_pipelines(client: DevOpsClient, search_text: str) -> List[Dict]:
     with console.status("[bold green]Consultando pipelines en Azure DevOps...[/bold green]", spinner="dots"):
-        defs = client.list_definitions(top=100)
+        defs = client.list_definitions(top=500)
     
     console.print(f"[dim]Total de pipelines encontrados: {len(defs)}[/dim]")
     
