@@ -396,9 +396,19 @@ def print_diff(release_a: Dict, release_b: Dict):
 def get_matching_pipelines(client: DevOpsClient, search_text: str) -> List[Dict]:
     with console.status("[bold green]Consultando pipelines en Azure DevOps...[/bold green]", spinner="dots"):
         defs = client.list_definitions(top=100)
+    
+    console.print(f"[dim]Total de pipelines encontrados: {len(defs)}[/dim]")
+    
     pattern = search_text.lower()
     # Buscar por coincidencia parcial (contiene) en lugar de solo inicio
-    return [d for d in defs if pattern in d.get("name", "").lower()]
+    matches = [d for d in defs if pattern in d.get("name", "").lower()]
+    
+    if not matches and defs:
+        console.print(f"[dim]Pipelines disponibles (primeros 10):[/dim]")
+        for d in defs[:10]:
+            console.print(f"  • {d.get('name', 'N/A')}")
+    
+    return matches
 
 
 def get_releases_rows(client: DevOpsClient,
