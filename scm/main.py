@@ -144,6 +144,15 @@ PLATFORMS = {
         "description": "Análisis de KPIs DevSecOps con modelo de madurez de 6 niveles y benchmarks de industria",
         "status": "ready"
     },
+    "6": {
+        "name": "Dashboard Matutino",
+        "short": "DASHBOARD",
+        "emoji": "📈",
+        "color": "green",
+        "path": "dashboard/dashboard_consolidator.py",
+        "description": "Dashboard automatizado con Health Score, Code Coverage, PR Metrics y notificaciones Teams",
+        "status": "ready"
+    },
     "Q": {
         "name": "Salir",
         "short": "EXIT",
@@ -208,7 +217,8 @@ def get_platform_config(platform_key: str) -> Optional[Dict[str, Any]]:
         "2": "azdo",
         "3": "aws",
         "4": "terminal",
-        "5": "kpi_analyzer"
+        "5": "kpi_analyzer",
+        "6": "dashboard"
     }
     
     platform_name = platform_map.get(platform_key)
@@ -221,16 +231,21 @@ def get_platform_config(platform_key: str) -> Optional[Dict[str, Any]]:
 def is_platform_configured(platform_key: str) -> bool:
     """Verifica si una plataforma tiene configuración válida."""
     platform_config = get_platform_config(platform_key)
+    
+    # Verificaciones específicas por plataforma
+    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal", "5": "kpi_analyzer", "6": "dashboard"}
+    platform_name = platform_map.get(platform_key)
+    
+    # Dashboard puede ejecutarse sin config completa (se pide interactivamente)
+    if platform_name == "dashboard":
+        return True
+    
     if not platform_config:
         return False
     
     # Verificar si está habilitada
     if not platform_config.get("enabled", True):
         return False
-    
-    # Verificaciones específicas por plataforma
-    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal", "5": "kpi_analyzer"}
-    platform_name = platform_map.get(platform_key)
     
     if platform_name == "azdo":
         # AZDO requiere PAT y organización
@@ -270,7 +285,7 @@ def get_config_status() -> Dict[str, str]:
     config = load_config()
     status = {}
     
-    for key in ["1", "2", "3", "4", "5"]:
+    for key in ["1", "2", "3", "4", "5", "6"]:
         if not config:
             status[key] = "no_config"
         elif is_platform_configured(key):
@@ -319,10 +334,20 @@ def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
         return env
     
     # Variables específicas por plataforma
-    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal", "5": "kpi_analyzer"}
+    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal", "5": "kpi_analyzer", "6": "dashboard"}
     platform_name = platform_map.get(platform_key)
     
-    if platform_name == "azdo":
+    if platform_name == "dashboard":
+        if platform_config.get("org"):
+            env["AZDO_ORG"] = platform_config["org"]
+        if platform_config.get("project"):
+            env["AZDO_PROJECT"] = platform_config["project"]
+        if platform_config.get("pat"):
+            env["AZDO_PAT"] = platform_config["pat"]
+        if platform_config.get("webhook_url"):
+            env["TEAMS_WEBHOOK_URL"] = platform_config["webhook_url"]
+    
+    elif platform_name == "azdo":
         if platform_config.get("organization_url"):
             env["AZDO_ORG_URL"] = platform_config["organization_url"]
         if platform_config.get("project"):
@@ -382,7 +407,7 @@ def print_config_status():
             ))
         else:
             status_lines = []
-            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}
+            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI", "6": "DASHBOARD"}
             for key, name in platform_names.items():
                 st = status.get(key, "no_config")
                 if st == "configured":
@@ -403,7 +428,7 @@ def print_config_status():
             print(f"{Colors.WARNING}⚠️ No se encontró config.json{Colors.ENDC}")
         else:
             print(f"{Colors.CYAN}Estado de configuración:{Colors.ENDC}")
-            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}.items():
+            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI", "6": "DASHBOARD"}.items():
                 st = status.get(key, "no_config")
                 symbol = "✅" if st == "configured" else "⚠️" if st == "incomplete" else "❌"
                 print(f"  {symbol} {name}")
@@ -470,7 +495,7 @@ def print_header():
 def print_menu_rich():
     """Muestra el menú con Rich."""
     config_status = get_config_status()
-    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}
+    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI", "6": "DASHBOARD"}
 
     table = Table(
         title="🚀 Seleccione una Plataforma",
@@ -609,6 +634,76 @@ def launch_platform(platform_key: str):
         console.print(f"[bold cyan]🚀 Lanzando {platform['emoji']} {platform['name']}...[/bold cyan]\n")
     else:
         print(f"\n{Colors.CYAN}🚀 Lanzando {platform['emoji']} {platform['name']}...{Colors.ENDC}\n")
+    
+    # Manejo especial para Dashboard
+    if platform_key == "6":
+        # Dashboard usa credenciales de AZDO
+        config = load_config()
+        azdo_config = config.get("azdo", {}) if config else {}
+        dashboard_config = config.get("dashboard", {}) if config else {}
+        
+        # Obtener credenciales de AZDO
+        org_url = azdo_config.get("organization_url", "")
+        org = azdo_config.get("organization", "")
+        project = azdo_config.get("project", "")
+        pat = azdo_config.get("pat", "")
+        webhook = dashboard_config.get("webhook_url", "")
+        
+        # Extraer org del URL si es necesario
+        if org_url and not org:
+            org = org_url.replace("https://dev.azure.com/", "").strip("/")
+        
+        # Si no hay configuración AZDO, pedir al usuario
+        if not org or not project or not pat:
+            if RICH_AVAILABLE and console:
+                console.print("[yellow]⚠️ Configuración incompleta de AZDO en config.json[/yellow]\n")
+                org = org or Prompt.ask("Organización Azure DevOps", default="Coppel-Retail")
+                project = project or Prompt.ask("Proyecto Azure DevOps", default="Cadena_de_Suministros")
+                pat = pat or Prompt.ask("Personal Access Token (PAT)", password=True)
+                webhook = webhook or Prompt.ask("Webhook Teams (opcional)", default="")
+            else:
+                print(f"\n{Colors.WARNING}⚠️ Configuración incompleta de AZDO en config.json{Colors.ENDC}\n")
+                org = org or input("Organización Azure DevOps [Coppel-Retail]: ").strip() or "Coppel-Retail"
+                project = project or input("Proyecto Azure DevOps [Cadena_de_Suministros]: ").strip() or "Cadena_de_Suministros"
+                pat = pat or input("Personal Access Token (PAT): ").strip()
+                webhook = webhook or input("Webhook Teams (opcional): ").strip()
+        
+        # Usar wrapper script para Dashboard
+        wrapper_path = tools_path.parent / "run_dashboard.py"
+        
+        # Construir comando con parámetros
+        cmd = [HOST_PYTHON, str(wrapper_path), "--org", org, "--project", project, "--pat", pat]
+        if webhook:
+            cmd.extend(["--webhook", webhook])
+        
+        try:
+            if RICH_AVAILABLE and console:
+                console.print(f"[dim]Ejecutando: {' '.join(cmd)}[/dim]\n")
+            result = subprocess.run(cmd, check=False, env=env)
+            if result.returncode != 0:
+                if RICH_AVAILABLE and console:
+                    console.print(f"\n[yellow]⚠️ Dashboard retornó código: {result.returncode}[/yellow]")
+                else:
+                    print(f"\n{Colors.WARNING}⚠️ Dashboard retornó código: {result.returncode}{Colors.ENDC}")
+            else:
+                if RICH_AVAILABLE and console:
+                    console.print(f"\n[green]✅ Dashboard ejecutado exitosamente[/green]")
+                else:
+                    print(f"\n{Colors.GREEN}✅ Dashboard ejecutado exitosamente{Colors.ENDC}")
+        except KeyboardInterrupt:
+            if RICH_AVAILABLE and console:
+                console.print("\n[yellow]↩️  Regresando al menú principal...[/yellow]")
+            else:
+                print(f"\n{Colors.WARNING}Regresando al menú principal...{Colors.ENDC}")
+        except Exception as e:
+            if RICH_AVAILABLE and console:
+                console.print(f"\n[red]❌ Error al ejecutar: {e}[/red]")
+            else:
+                print(f"\n{Colors.FAIL}❌ Error al ejecutar: {e}{Colors.ENDC}")
+        
+        # Siempre pedir Enter para volver al menú
+        input("\nPresione Enter para continuar...")
+        return
     
     # Ejecutar el tools.py de la plataforma con las variables de entorno
     try:

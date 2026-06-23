@@ -125,6 +125,136 @@
     }
   },
 
+  "dashboard": {
+    "_info": "Configuración del Dashboard Matutino DevSecOps. Usa credenciales de AZDO (org, project, pat)",
+    "enabled": true,
+    "_credentials_info": "Se usan automáticamente desde la sección 'azdo' (organization, project, pat). Solo agregar webhook_url si se desean notificaciones a Teams.",
+    "webhook_url": "<TU_TEAMS_WEBHOOK_URL>",
+    
+    "schedule": {
+      "_info": "Configuración de ejecución automática",
+      "enabled": true,
+      "cron": "0 7 * * *",
+      "_cron_info": "Expresión cron: 0 7 * * * = 7:00 AM diariamente",
+      "timezone": "America/Mexico_City"
+    },
+    
+    "metrics": {
+      "_info": "Métricas a incluir en el dashboard",
+      "health_score": {
+        "enabled": true,
+        "_info": "DORA Metrics: Deployment Frequency, Lead Time, MTTR, Change Failure Rate, System Uptime",
+        "weights": {
+          "_info": "Pesos para cálculo de Health Score (suma debe ser 1.0)",
+          "deployment_frequency": 0.20,
+          "lead_time": 0.20,
+          "mttr": 0.25,
+          "change_failure_rate": 0.20,
+          "system_uptime": 0.15
+        }
+      },
+      "code_coverage": {
+        "enabled": true,
+        "_info": "ISO 29119: Overall Coverage, Line, Branch, Function, Test Execution Rate",
+        "thresholds": {
+          "_info": "Umbrales de clasificación para cobertura de código",
+          "critical": 60,
+          "acceptable": 75,
+          "good": 85,
+          "excellent": 95
+        }
+      },
+      "pr_metrics": {
+        "enabled": true,
+        "_info": "Pull Request Effectiveness: Review Time, Approval Rate, Coverage, Rejection Rate"
+      },
+      "branch_compliance": {
+        "enabled": true,
+        "_info": "Branch Protection: Protected Branches, Compliance Percentage"
+      },
+      "pipeline_status": {
+        "enabled": true,
+        "_info": "Pipeline Health: Success Rate, Failed Pipelines, Average Duration"
+      }
+    },
+    
+    "alerts": {
+      "_info": "Umbrales de alertas críticas y advertencias",
+      "critical": {
+        "health_score": 40,
+        "code_coverage": 60,
+        "deployment_failure_rate": 15,
+        "mttr_hours": 4,
+        "system_uptime": 99,
+        "review_time_minutes": 120,
+        "approval_rate": 70
+      },
+      "warning": {
+        "health_score": 60,
+        "code_coverage": 75,
+        "system_uptime": 99.5,
+        "review_time_minutes": 60,
+        "approval_rate": 80
+      }
+    },
+    
+    "notifications": {
+      "_info": "Configuración de notificaciones",
+      "teams": {
+        "enabled": true,
+        "webhook_url": "<TU_TEAMS_WEBHOOK_URL>",
+        "_webhook_info": "Obtener en Teams: Equipo → Connectors → Incoming Webhook",
+        "group_name": "Equipo Comercial/CDS",
+        "mention_on_critical": true,
+        "retry_attempts": 3,
+        "timeout_seconds": 30
+      },
+      "email": {
+        "enabled": false,
+        "recipients": []
+      },
+      "slack": {
+        "enabled": false,
+        "webhook_url": ""
+      }
+    },
+    
+    "output": {
+      "_info": "Configuración de salida",
+      "directory": "outcome/dashboard",
+      "history_directory": "outcome/dashboard/history",
+      "retention_days": 90,
+      "formats": ["json", "html"]
+    },
+    
+    "tools": {
+      "_info": "Configuración de herramientas del dashboard",
+      "consolidator": {
+        "enabled": true,
+        "tool_id": 26,
+        "name": "Dashboard Consolidator",
+        "timeout_seconds": 300,
+        "parallel_execution": true,
+        "max_workers": 8
+      },
+      "generator": {
+        "enabled": true,
+        "tool_id": 27,
+        "name": "Dashboard Generator",
+        "timeout_seconds": 60,
+        "output_format": "html"
+      },
+      "scheduler": {
+        "enabled": true,
+        "tool_id": 29,
+        "name": "Dashboard Scheduler",
+        "run_consolidator": true,
+        "run_generator": true,
+        "send_notifications": true
+      }
+    }
+  },
+
   "global": {
     "_info": "Configuración global aplicable a todas las plataformas",
     "debug": false,

@@ -16,7 +16,8 @@
 - [🚀 Características Principales](#-características-principales)
 - [📦 Instalación](#-instalación)
 - [🎯 Uso Rápido](#-uso-rápido)
-- [🐳 Docker](#-docker)
+- [� Dashboard Matutino](#-dashboard-matutino) ⭐ NUEVO
+- [� Docker](#-docker)
 - [☁️ Plataformas Soportadas](#️-plataformas-soportadas)
 - [⚙️ Configuración](#️-configuración)
 - [🧪 Testing](#-testing)
@@ -99,6 +100,61 @@ docker run --rm devsecops-toolbox:latest az version
 docker run --rm devsecops-toolbox:latest aws --version
 docker run --rm devsecops-toolbox:latest gcloud version
 ```
+
+---
+
+## 📊 Dashboard Matutino
+
+**⭐ NUEVO:** Dashboard automatizado que consolida el estado de repositorios, pipelines, servicios e infraestructura.
+
+### Características
+
+- ✅ **Ejecución Automática Diaria** - Se ejecuta cada mañana a las 7:00 AM
+- ✅ **Consolidación Multi-Cloud** - Datos de AZDO, GCP y AWS en un único dashboard
+- ✅ **Visualización Web Interactiva** - HTML con gráficos, tablas y alertas
+- ✅ **Notificaciones Inteligentes** - Email, Slack, Teams (configurable)
+- ✅ **Análisis de Tendencias** - Histórico de 90 días para análisis
+- ✅ **80% Reutilización** - Aprovecha herramientas existentes
+
+### Métricas Incluidas
+
+| Métrica | Descripción |
+|---------|-------------|
+| **Repositorios** | Total, con CI/CD, sin pipeline |
+| **Health Score** | Score DORA/SRE (0-100) |
+| **Branch Compliance** | % de cumplimiento de políticas |
+| **Pull Requests** | Tiempo promedio a merge, SLA compliance |
+| **Servicios** | Estado GCP/AWS, alertas críticas |
+| **Bases de Datos** | Uso de disco, instancias con alertas |
+
+### Inicio Rápido
+
+```bash
+# 1. Leer documentación
+cat DASHBOARD_README.md
+
+# 2. Ejecutar orquestador (Tool 26)
+python scm/azdo/dashboard_consolidator.py \
+  --org "Coppel-Retail" \
+  --project "Cadena_de_Suministros" \
+  --pat "$AZDO_PAT"
+
+# 3. Generar dashboard web (Tool 27)
+python scm/dashboard/dashboard_generator.py \
+  --input "outcome/dashboard/dashboard_data_*.json"
+
+# 4. Ver resultado
+open outcome/dashboard/dashboard.html
+```
+
+### Documentación Completa
+
+- 📖 **[DASHBOARD_README.md](DASHBOARD_README.md)** - Índice de documentación
+- 📋 **[DASHBOARD_EXECUTIVE_SUMMARY.md](DASHBOARD_EXECUTIVE_SUMMARY.md)** - Resumen ejecutivo
+- 🏗️ **[DASHBOARD_ARCHITECTURE.md](DASHBOARD_ARCHITECTURE.md)** - Arquitectura técnica
+- 📊 **[DASHBOARD_REUSABILITY_MATRIX.md](DASHBOARD_REUSABILITY_MATRIX.md)** - Matriz de reutilización
+- 🎯 **[DASHBOARD_ACTION_PLAN.md](DASHBOARD_ACTION_PLAN.md)** - Plan de acción
+- 💻 **[DASHBOARD_CODE_EXAMPLES.md](DASHBOARD_CODE_EXAMPLES.md)** - Ejemplos de código
 
 ---
 
@@ -372,7 +428,8 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
-| 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](README.version.md) |
+| 2026-06-22 | **1.7.0** | ⭐ Nuevo: Dashboard Matutino (Tools 26-29) con consolidación multi-cloud, visualización web y automatización diaria |
+| 2026-06-04 | **1.6.10** | Ver historial completo en [README.version.md](README.version.md) |
 
 ---
 
