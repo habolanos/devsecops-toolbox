@@ -8,6 +8,7 @@ import sys
 import subprocess
 import argparse
 import json
+import os
 from pathlib import Path
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -79,7 +80,7 @@ def execute_azdo_tools(org, project, pat):
         console.print("[bold cyan]Paso 1:[/bold cyan] [white]Ejecutando todas las herramientas AZDO con JSON...[/white]")
         console.print()
     else:
-        print(f"\n� Paso 1: Ejecutando todas las herramientas AZDO con JSON...")
+        print(f"\n🚀 Paso 1: Ejecutando todas las herramientas AZDO con JSON...")
     
     # Ejecutar opción B: Ejecutar Todo + JSON
     cmd = [
@@ -97,8 +98,22 @@ def execute_azdo_tools(org, project, pat):
         else:
             print(f"Ejecutando: {' '.join(cmd[:3])} ... (esto puede tardar varios minutos)\n")
         
+        # Preparar variables de entorno
+        env = os.environ.copy()
+        
+        # Pasar OUTPUT_DIR como variable de entorno para que azdo/tools.py lo use
+        # Convertir a ruta absoluta si es relativa
+        output_path = Path(OUTPUT_DIR)
+        if not output_path.is_absolute():
+            output_path = Path(__file__).parent.parent / OUTPUT_DIR
+        
+        env["DEVSECOPS_OUTPUT_DIR"] = str(output_path)
+        
+        if RICH_AVAILABLE and console:
+            console.print(f"[dim]Directorio de salida: {env['DEVSECOPS_OUTPUT_DIR']}[/dim]")
+        
         # Ejecutar sin capturar salida para que el usuario vea el progreso
-        result = subprocess.run(cmd, timeout=3600)  # 1 hora de timeout
+        result = subprocess.run(cmd, timeout=3600, env=env)  # 1 hora de timeout
         
         if result.returncode == 0:
             if RICH_AVAILABLE and console:
