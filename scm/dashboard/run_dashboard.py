@@ -136,10 +136,13 @@ def execute_azdo_tools(org, project, pat):
                 print(f"▶ Ejecutando {tool_name}...")
             
             # Construir comando
+            # Convertir org a URL si es necesario
+            org_url = org if org.startswith("https://") else f"https://dev.azure.com/{org}"
+            
             cmd = [
                 sys.executable,
                 str(script_path),
-                "--org", org,
+                "--org", org_url,
                 "--project", project,
                 "--pat", pat,
                 "--output", "json"
