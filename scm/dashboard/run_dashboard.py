@@ -65,7 +65,16 @@ def get_output_dir():
 OUTPUT_DIR = get_output_dir()
 
 def execute_azdo_tools(org, project, pat):
-    """Ejecuta opción B (Ejecutar Todo + JSON) de azdo/tools.py"""
+    """Ejecuta herramientas AZDO necesarias para el Dashboard
+    
+    Herramientas ejecutadas:
+    - [1] PR Master Checker (PR Metrics)
+    - [2] Branch Policy Checker (Branch Compliance)
+    - [3] Release CD Health (Health Score)
+    - [4] Pipeline Drift (Pipeline Status)
+    - [16] Pipeline Health Score (Health Score DORA)
+    - [18] Pipeline Status (Pipeline Status)
+    """
     azdo_tools_path = Path(__file__).parent.parent / "azdo" / "tools.py"
     
     if not azdo_tools_path.exists():
@@ -77,19 +86,23 @@ def execute_azdo_tools(org, project, pat):
     
     if RICH_AVAILABLE and console:
         console.print()
-        console.print("[bold cyan]Paso 1:[/bold cyan] [white]Ejecutando todas las herramientas AZDO con JSON...[/white]")
+        console.print("[bold cyan]Paso 1:[/bold cyan] [white]Ejecutando herramientas AZDO para Dashboard...[/white]")
         console.print()
     else:
-        print(f"\n🚀 Paso 1: Ejecutando todas las herramientas AZDO con JSON...")
+        print(f"\n🚀 Paso 1: Ejecutando herramientas AZDO para Dashboard...")
     
-    # Ejecutar opción B: Ejecutar Todo + JSON
+    # Herramientas necesarias para el Dashboard
+    dashboard_tools = ["1", "2", "3", "4", "16", "18"]
+    
+    # Ejecutar herramientas en secuencia (similar a opción B)
     cmd = [
         sys.executable,
         str(azdo_tools_path),
-        "--option", "B",
+        "--tools", ",".join(dashboard_tools),
         "--org", org,
         "--project", project,
-        "--pat", pat
+        "--pat", pat,
+        "--output", "json"
     ]
     
     try:
