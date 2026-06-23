@@ -7,6 +7,7 @@ Ejecuta todas las herramientas AZDO necesarias y consolida datos
 import sys
 import subprocess
 import argparse
+import json
 from pathlib import Path
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -26,6 +27,41 @@ console = Console() if RICH_AVAILABLE else None
 
 # Número de workers paralelos (ajusta según tu máquina)
 MAX_WORKERS = 4
+
+# Cargar configuración
+def load_config():
+    """Carga config.json si existe"""
+    config_path = Path(__file__).parent.parent / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            if RICH_AVAILABLE and console:
+                console.print(f"[yellow]⚠️ Error cargando config.json: {e}[/yellow]")
+            else:
+                print(f"⚠️ Error cargando config.json: {e}")
+    return {}
+
+# Obtener directorio de salida desde config
+def get_output_dir():
+    """Obtiene directorio de salida desde config.json o usa default"""
+    config = load_config()
+    
+    # Intentar obtener de dashboard.output.directory
+    dashboard_output = config.get("dashboard", {}).get("output", {}).get("directory")
+    if dashboard_output:
+        return dashboard_output
+    
+    # Intentar obtener de global.output_dir
+    global_output = config.get("global", {}).get("output_dir")
+    if global_output:
+        return f"{global_output}/dashboard"
+    
+    # Default
+    return "outcome/dashboard"
+
+OUTPUT_DIR = get_output_dir()
 
 def execute_azdo_tools(org, project, pat):
     """Ejecuta opción B (Ejecutar Todo + JSON) de azdo/tools.py"""
@@ -138,9 +174,9 @@ def main():
             print(f"⚠️ Algunas herramientas fallaron, continuando...")
     
     if RICH_AVAILABLE and console:
-        console.print("[green]✅ Reportes generados en outcome/[/green]")
+        console.print(f"[green]✅ Reportes generados en {OUTPUT_DIR}[/green]")
     else:
-        print(f"\n✅ Reportes generados en outcome/")
+        print(f"\n✅ Reportes generados en {OUTPUT_DIR}")
     
     # Importar y ejecutar consolidator
     try:
@@ -165,7 +201,7 @@ def main():
                 org=args.org,
                 project=args.project,
                 pat=args.pat,
-                output_dir='outcome/dashboard'
+                output_dir=OUTPUT_DIR
             )
             
             dashboard_data = consolidator.run()
@@ -203,16 +239,16 @@ def main():
             from dashboard_generator import DashboardGenerator
             
             generator = DashboardGenerator(
-                input_file='outcome/dashboard/dashboard_data.json',
-                output_file='outcome/dashboard/dashboard.html'
+                input_file=f'{OUTPUT_DIR}/dashboard_data.json',
+                output_file=f'{OUTPUT_DIR}/dashboard.html'
             )
             generator.generate()
             progress.stop()
         
         if RICH_AVAILABLE and console:
-            console.print("[green]✅ Dashboard HTML generado: outcome/dashboard/dashboard.html[/green]")
+            console.print(f"[green]✅ Dashboard HTML generado: {OUTPUT_DIR}/dashboard.html[/green]")
         else:
-            print(f"✅ Dashboard HTML generado: outcome/dashboard/dashboard.html")
+            print(f"✅ Dashboard HTML generado: {OUTPUT_DIR}/dashboard.html")
         
         # Paso 4: Notificar a Teams si hay webhook
         if args.webhook and args.webhook != "<TU_TEAMS_WEBHOOK_URL>":
@@ -253,18 +289,18 @@ def main():
             console.print(Panel(final_text, border_style="green", expand=False))
             
             summary_table = Table(title="📁 Archivos Generados", show_header=False, box=None)
-            summary_table.add_row("Datos:", "[cyan]outcome/dashboard/dashboard_data.json[/cyan]")
-            summary_table.add_row("HTML:", "[cyan]outcome/dashboard/dashboard.html[/cyan]")
-            summary_table.add_row("Histórico:", "[cyan]outcome/dashboard/history/[/cyan]")
+            summary_table.add_row("Datos:", f"[cyan]{OUTPUT_DIR}/dashboard_data.json[/cyan]")
+            summary_table.add_row("HTML:", f"[cyan]{OUTPUT_DIR}/dashboard.html[/cyan]")
+            summary_table.add_row("Histórico:", f"[cyan]{OUTPUT_DIR}/history/[/cyan]")
             console.print(summary_table)
         else:
             print("\n" + "=" * 60)
             print("✅ Dashboard ejecutado exitosamente")
             print("=" * 60)
             print("Archivos generados:")
-            print("  - outcome/dashboard/dashboard_data.json")
-            print("  - outcome/dashboard/dashboard.html")
-            print("  - outcome/dashboard/history/")
+            print(f"  - {OUTPUT_DIR}/dashboard_data.json")
+            print(f"  - {OUTPUT_DIR}/dashboard.html")
+            print(f"  - {OUTPUT_DIR}/history/")
         
         return 0
         
