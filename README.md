@@ -11,29 +11,37 @@
 
 ---
 
-## 📝 Historial de Cambios (v1.6.11)
+## 📝 Historial de Cambios (v1.6.12)
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| **1.6.11** | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
+| **1.6.12** | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
+| 1.6.11 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
 | 1.6.10 | 2026-06-20 | Dashboard Matutino inicial |
 | 1.6.9 | 2026-06-15 | KPI Analyzer mejorado |
 
-### v1.6.11 - Dashboard Matutino Mejorado
+### v1.6.12 - Dashboard Independiente y Configurable
 
 **Nuevas Características:**
-- ✅ Ejecución paralela de herramientas AZDO (ThreadPoolExecutor con 4 workers)
-- ✅ Interfaz Rich con spinners animados, barras de progreso y tablas coloreadas
-- ✅ Wrapper `run_dashboard.py` para orquestar consolidación de datos
-- ✅ Sin límite de tiempo para ejecución de herramientas
-- ✅ Consolidación de configuración en `config.json` (sin `config_dashboard.json`)
-- ✅ Reutilización de credenciales AZDO
-- ✅ Integración con DashboardConsolidator, DashboardGenerator y TeamsNotifier
+- ✅ Dashboard ejecuta scripts AZDO directamente (no lanza a opción 2)
+- ✅ Lee directorio de salida desde `config.json` (dashboard.output.directory)
+- ✅ Pasa `DEVSECOPS_OUTPUT_DIR` como variable de entorno a scripts AZDO
+- ✅ Ejecuta solo herramientas necesarias para Dashboard:
+  - `azdo_pr_master_checker.py` (PR Metrics)
+  - `azdo_branch_policy_checker.py` (Branch Compliance)
+  - `azdo_release_cd_health.py` (Health Score)
+  - `azdo_pipeline_drift.py` (Pipeline Status)
+  - `cicd_inventory_health_score.py` (Health Score DORA)
+  - `cicd_pipeline_status.py` (Pipeline Status)
+- ✅ Timeout de 600 segundos por herramienta
+- ✅ Progreso visible de cada herramienta ejecutada
+- ✅ Manejo robusto de errores
 
-**Mejoras de Rendimiento:**
-- 🚀 ~75% más rápido con paralelización (de 16 min a 4 min)
-- ⚡ Ejecución simultánea de 4 herramientas
-- 📊 Progreso en tiempo real con ETA
+**Mejoras:**
+- 🚀 Más rápido: solo 6 herramientas vs 15+ (opción B)
+- 🎯 Específico para Dashboard
+- 📁 Respeta configuración en `config.json`
+- � Independiente de `azdo/tools.py`
 
 **Compatibilidad:**
 - ✅ Compatible con Rich library (interfaz moderna)

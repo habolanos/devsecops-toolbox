@@ -66,7 +66,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.6.1"
+__version__ = "1.6.12"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
