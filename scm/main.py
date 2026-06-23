@@ -149,7 +149,7 @@ PLATFORMS = {
         "short": "DASHBOARD",
         "emoji": "📈",
         "color": "green",
-        "path": "dashboard/dashboard_consolidator.py",
+        "path": "dashboard/run_dashboard.py",
         "description": "Dashboard automatizado con Health Score, Code Coverage, PR Metrics y notificaciones Teams",
         "status": "ready"
     },
@@ -668,11 +668,8 @@ def launch_platform(platform_key: str):
                 pat = pat or input("Personal Access Token (PAT): ").strip()
                 webhook = webhook or input("Webhook Teams (opcional): ").strip()
         
-        # Usar wrapper script para Dashboard
-        wrapper_path = tools_path.parent / "run_dashboard.py"
-        
         # Construir comando con parámetros
-        cmd = [HOST_PYTHON, str(wrapper_path), "--org", org, "--project", project, "--pat", pat]
+        cmd = [HOST_PYTHON, str(tools_path), "--org", org, "--project", project, "--pat", pat]
         if webhook:
             cmd.extend(["--webhook", webhook])
         
