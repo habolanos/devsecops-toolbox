@@ -12,6 +12,23 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
@@ -23,8 +40,14 @@ logger = logging.getLogger(__name__)
 class HistoryManager:
     """Gestiona histórico de métricas (90 días)"""
     
-    def __init__(self, history_dir="outcome/dashboard/history"):
-        self.history_dir = Path(history_dir)
+    def __init__(self, history_dir=None):
+        if history_dir is None:
+            # Usar directorio centralizado
+            output_dir = get_output_dir("outcome/dashboard")
+            self.history_dir = output_dir / "history"
+        else:
+            self.history_dir = Path(history_dir)
+        
         self.history_dir.mkdir(parents=True, exist_ok=True)
         self.retention_days = 90
     
@@ -66,15 +89,22 @@ class HistoryManager:
 class DashboardConsolidator:
     """Orquesta la ejecución de herramientas y consolida datos"""
     
-    def __init__(self, org, project, pat, output_dir="outcome/dashboard"):
+    def __init__(self, org, project, pat, output_dir=None):
         self.org = org
         self.project = project
         self.pat = pat
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        if output_dir is None:
+            # Usar directorio centralizado
+            self.output_dir = get_output_dir("outcome/dashboard")
+        else:
+            self.output_dir = Path(output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+        
         self.history_manager = HistoryManager()
         
         logger.info(f"Consolidator inicializado para {org}/{project}")
+        logger.info(f"Directorio de salida: {self.output_dir}")
     
     def run(self):
         """Ejecuta el flujo completo"""
