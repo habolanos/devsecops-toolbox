@@ -149,7 +149,8 @@ def execute_azdo_tools(org, project, pat):
             ]
             
             try:
-                result = subprocess.run(cmd, cwd=azdo_dir, timeout=600, env=env)
+                # Ejecutar desde scm/ para que rutas relativas funcionen correctamente
+                result = subprocess.run(cmd, cwd=Path(__file__).parent.parent, timeout=600, env=env)
                 
                 if result.returncode == 0:
                     if RICH_AVAILABLE and console:

@@ -105,25 +105,50 @@ class DashboardConsolidator:
             raise
     
     def _run_all_tools(self):
-        """Ejecuta todas las herramientas en paralelo"""
+        """Lee datos de los JSON generados por las herramientas AZDO"""
         results = {}
         
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {
-                'health_score': executor.submit(self._get_health_score),
-                'code_coverage': executor.submit(self._get_code_coverage),
-                'pr_metrics': executor.submit(self._get_pr_metrics),
-                'branch_compliance': executor.submit(self._get_branch_compliance),
-                'pipeline_status': executor.submit(self._get_pipeline_status),
-            }
-            
-            for tool_name, future in futures.items():
-                try:
-                    results[tool_name] = future.result(timeout=300)
-                    logger.info(f"✅ {tool_name} completado")
-                except Exception as e:
-                    logger.error(f"❌ Error en {tool_name}: {str(e)}")
-                    results[tool_name] = {'error': str(e)}
+        # Buscar archivos JSON generados por las herramientas
+        json_files = {
+            'pr_metrics': 'pr_master_*.json',
+            'branch_compliance': 'branch_policies_*.json',
+            'health_score': 'pipeline_health_score_*.json',
+            'pipeline_status': 'pipeline_status_*.json',
+            'code_coverage': 'code_coverage_*.json',
+        }
+        
+        for metric_name, pattern in json_files.items():
+            try:
+                # Buscar el archivo más reciente
+                import glob
+                files = sorted(glob.glob(str(self.output_dir.parent / pattern)), reverse=True)
+                
+                if files:
+                    with open(files[0], 'r') as f:
+                        data = json.load(f)
+                        # Extraer datos del JSON
+                        if isinstance(data, dict) and 'data' in data:
+                            results[metric_name] = data['data']
+                        else:
+                            results[metric_name] = data
+                        logger.info(f"✅ {metric_name} cargado desde {files[0]}")
+                else:
+                    logger.warning(f"⚠️  No se encontró {pattern}, usando datos por defecto")
+                    # Usar método stub como fallback
+                    method = getattr(self, f'_get_{metric_name}', None)
+                    if method:
+                        results[metric_name] = method()
+                    else:
+                        results[metric_name] = {}
+                        
+            except Exception as e:
+                logger.error(f"❌ Error cargando {metric_name}: {str(e)}")
+                # Usar método stub como fallback
+                method = getattr(self, f'_get_{metric_name}', None)
+                if method:
+                    results[metric_name] = method()
+                else:
+                    results[metric_name] = {'error': str(e)}
         
         return results
     
