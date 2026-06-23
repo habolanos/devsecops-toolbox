@@ -40,7 +40,15 @@ AZDO_TOOLS = [
 ]
 
 def execute_azdo_tools(org, project, pat):
-    """Simula ejecución de herramientas AZDO (sin bloqueos)"""
+    """Ejecuta herramientas AZDO reales desde azdo/tools.py"""
+    azdo_tools_path = Path(__file__).parent.parent / "azdo" / "tools.py"
+    
+    if not azdo_tools_path.exists():
+        if RICH_AVAILABLE and console:
+            console.print(f"[red]❌ No se encontró: {azdo_tools_path}[/red]")
+        else:
+            print(f"❌ No se encontró: {azdo_tools_path}")
+        return False
     
     # Mostrar herramientas a ejecutar
     if RICH_AVAILABLE and console:
@@ -60,7 +68,7 @@ def execute_azdo_tools(org, project, pat):
     results = []
     
     if RICH_AVAILABLE and console:
-        # Usar Progress con barra de progreso y spinner - SIMULADO
+        # Usar Progress con barra de progreso
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -72,15 +80,36 @@ def execute_azdo_tools(org, project, pat):
         ) as progress:
             task = progress.add_task("[cyan]Ejecutando herramientas...", total=len(AZDO_TOOLS))
             
-            # Simular ejecución de herramientas
+            # Ejecutar herramientas reales
             for tool_id, tool_name in AZDO_TOOLS:
                 progress.update(task, description=f"[cyan]Ejecutando [{tool_id}] {tool_name}...")
                 
-                # Simular trabajo (sin bloqueos)
-                time.sleep(0.5)
+                cmd = [
+                    sys.executable,
+                    str(azdo_tools_path),
+                    "--tool", tool_id,
+                    "--org", org,
+                    "--project", project,
+                    "--pat", pat,
+                    "--output", "json"
+                ]
                 
-                results.append((tool_name, "✅", "Completado (simulado)"))
-                success_count += 1
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                    if result.returncode == 0:
+                        results.append((tool_name, "✅", "Completado"))
+                        success_count += 1
+                    else:
+                        error_msg = result.stderr[:50] if result.stderr else f"Código {result.returncode}"
+                        results.append((tool_name, "⚠️", error_msg))
+                        error_count += 1
+                except subprocess.TimeoutExpired:
+                    results.append((tool_name, "⏱️", "Tiempo excedido (600s)"))
+                    error_count += 1
+                except Exception as e:
+                    results.append((tool_name, "❌", str(e)[:50]))
+                    error_count += 1
+                
                 progress.advance(task)
         
         # Mostrar resultados en tabla
@@ -91,13 +120,19 @@ def execute_azdo_tools(org, project, pat):
         result_table.add_column("Mensaje", style="dim")
         
         for tool_name, status, msg in results:
-            result_table.add_row(status, f"[green]{tool_name}[/green]", f"[green]{msg}[/green]")
+            if status == "✅":
+                result_table.add_row(status, f"[green]{tool_name}[/green]", f"[green]{msg}[/green]")
+            elif status == "⚠️":
+                result_table.add_row(status, f"[yellow]{tool_name}[/yellow]", f"[yellow]{msg}[/yellow]")
+            else:
+                result_table.add_row(status, f"[red]{tool_name}[/red]", f"[red]{msg}[/red]")
         
         console.print(result_table)
         
         # Panel de resumen
         summary_text = Text()
         summary_text.append(f"✅ Exitosas: {success_count}  ", style="bold green")
+        summary_text.append(f"⚠️ Errores: {error_count}  ", style="bold yellow" if error_count > 0 else "bold green")
         summary_text.append(f"📁 Reportes en: outcome/", style="bold cyan")
         
         console.print(Panel(summary_text, title="📈 Resumen", border_style="cyan"))
@@ -107,13 +142,32 @@ def execute_azdo_tools(org, project, pat):
         
         for tool_id, tool_name in AZDO_TOOLS:
             print(f"\n🔵 [{tool_id}] {tool_name}")
-            time.sleep(0.5)
-            print(f"   ✅ Completado (simulado)")
-            success_count += 1
+            
+            cmd = [
+                sys.executable,
+                str(azdo_tools_path),
+                "--tool", tool_id,
+                "--org", org,
+                "--project", project,
+                "--pat", pat,
+                "--output", "json"
+            ]
+            
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                if result.returncode == 0:
+                    print(f"   ✅ Completado")
+                    success_count += 1
+                else:
+                    print(f"   ⚠️ Error: {result.returncode}")
+                    error_count += 1
+            except Exception as e:
+                print(f"   ❌ Error: {str(e)}")
+                error_count += 1
         
         print(f"\n📊 Resumen: {success_count} exitosas, {error_count} errores")
     
-    return True
+    return error_count == 0
 
 def main():
     """Función principal"""
