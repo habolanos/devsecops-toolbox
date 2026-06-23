@@ -27,20 +27,8 @@ console = Console() if RICH_AVAILABLE else None
 # Número de workers paralelos (ajusta según tu máquina)
 MAX_WORKERS = 4
 
-# Herramientas AZDO que generan reportes JSON para el dashboard
-AZDO_TOOLS = [
-    ("1", "PR Master Checker"),
-    ("2", "Branch Policy Checker"),
-    ("3", "Release CD Health"),
-    ("4", "Pipeline Drift"),
-    ("7", "Release Explorer"),
-    ("8", "Pipeline Inventory CI"),
-    ("9", "Pipeline Inventory CD"),
-    ("10", "Pipeline Health Score"),
-]
-
 def execute_azdo_tools(org, project, pat):
-    """Ejecuta herramientas AZDO reales desde azdo/tools.py"""
+    """Ejecuta opción B (Ejecutar Todo + JSON) de azdo/tools.py"""
     azdo_tools_path = Path(__file__).parent.parent / "azdo" / "tools.py"
     
     if not azdo_tools_path.exists():
@@ -50,124 +38,58 @@ def execute_azdo_tools(org, project, pat):
             print(f"❌ No se encontró: {azdo_tools_path}")
         return False
     
-    # Mostrar herramientas a ejecutar
     if RICH_AVAILABLE and console:
-        table = Table(title="📋 Herramientas a Ejecutar", show_header=True, header_style="bold cyan")
-        table.add_column("ID", style="cyan", width=5)
-        table.add_column("Herramienta", style="white")
-        for tool_id, tool_name in AZDO_TOOLS:
-            table.add_row(tool_id, tool_name)
-        console.print(table)
-    else:
-        print(f"\n📋 Herramientas a ejecutar:")
-        for tool_id, tool_name in AZDO_TOOLS:
-            print(f"   [{tool_id}] {tool_name}")
-    
-    success_count = 0
-    error_count = 0
-    results = []
-    
-    if RICH_AVAILABLE and console:
-        # Usar Progress con barra de progreso
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            console=console,
-            transient=False
-        ) as progress:
-            task = progress.add_task("[cyan]Ejecutando herramientas...", total=len(AZDO_TOOLS))
-            
-            # Ejecutar herramientas reales
-            for tool_id, tool_name in AZDO_TOOLS:
-                progress.update(task, description=f"[cyan]Ejecutando [{tool_id}] {tool_name}...")
-                
-                cmd = [
-                    sys.executable,
-                    str(azdo_tools_path),
-                    "--tool", tool_id,
-                    "--org", org,
-                    "--project", project,
-                    "--pat", pat,
-                    "--output", "json"
-                ]
-                
-                try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-                    if result.returncode == 0:
-                        results.append((tool_name, "✅", "Completado"))
-                        success_count += 1
-                    else:
-                        error_msg = result.stderr[:50] if result.stderr else f"Código {result.returncode}"
-                        results.append((tool_name, "⚠️", error_msg))
-                        error_count += 1
-                except subprocess.TimeoutExpired:
-                    results.append((tool_name, "⏱️", "Tiempo excedido (600s)"))
-                    error_count += 1
-                except Exception as e:
-                    results.append((tool_name, "❌", str(e)[:50]))
-                    error_count += 1
-                
-                progress.advance(task)
-        
-        # Mostrar resultados en tabla
         console.print()
-        result_table = Table(title="📊 Resultados de Ejecución", show_header=True, header_style="bold cyan")
-        result_table.add_column("Estado", width=5)
-        result_table.add_column("Herramienta", style="white")
-        result_table.add_column("Mensaje", style="dim")
-        
-        for tool_name, status, msg in results:
-            if status == "✅":
-                result_table.add_row(status, f"[green]{tool_name}[/green]", f"[green]{msg}[/green]")
-            elif status == "⚠️":
-                result_table.add_row(status, f"[yellow]{tool_name}[/yellow]", f"[yellow]{msg}[/yellow]")
-            else:
-                result_table.add_row(status, f"[red]{tool_name}[/red]", f"[red]{msg}[/red]")
-        
-        console.print(result_table)
-        
-        # Panel de resumen
-        summary_text = Text()
-        summary_text.append(f"✅ Exitosas: {success_count}  ", style="bold green")
-        summary_text.append(f"⚠️ Errores: {error_count}  ", style="bold yellow" if error_count > 0 else "bold green")
-        summary_text.append(f"📁 Reportes en: outcome/", style="bold cyan")
-        
-        console.print(Panel(summary_text, title="📈 Resumen", border_style="cyan"))
+        console.print("[bold cyan]Paso 1:[/bold cyan] [white]Ejecutando todas las herramientas AZDO con JSON...[/white]")
+        console.print()
     else:
-        # Fallback sin Rich
-        print(f"\n🚀 Ejecutando {len(AZDO_TOOLS)} herramientas...")
-        
-        for tool_id, tool_name in AZDO_TOOLS:
-            print(f"\n🔵 [{tool_id}] {tool_name}")
-            
-            cmd = [
-                sys.executable,
-                str(azdo_tools_path),
-                "--tool", tool_id,
-                "--org", org,
-                "--project", project,
-                "--pat", pat,
-                "--output", "json"
-            ]
-            
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-                if result.returncode == 0:
-                    print(f"   ✅ Completado")
-                    success_count += 1
-                else:
-                    print(f"   ⚠️ Error: {result.returncode}")
-                    error_count += 1
-            except Exception as e:
-                print(f"   ❌ Error: {str(e)}")
-                error_count += 1
-        
-        print(f"\n📊 Resumen: {success_count} exitosas, {error_count} errores")
+        print(f"\n� Paso 1: Ejecutando todas las herramientas AZDO con JSON...")
     
-    return error_count == 0
+    # Ejecutar opción B: Ejecutar Todo + JSON
+    cmd = [
+        sys.executable,
+        str(azdo_tools_path),
+        "--option", "B",
+        "--org", org,
+        "--project", project,
+        "--pat", pat
+    ]
+    
+    try:
+        if RICH_AVAILABLE and console:
+            console.print(f"[dim]Ejecutando: {' '.join(cmd[:3])} ... (esto puede tardar varios minutos)[/dim]\n")
+        else:
+            print(f"Ejecutando: {' '.join(cmd[:3])} ... (esto puede tardar varios minutos)\n")
+        
+        # Ejecutar sin capturar salida para que el usuario vea el progreso
+        result = subprocess.run(cmd, timeout=3600)  # 1 hora de timeout
+        
+        if result.returncode == 0:
+            if RICH_AVAILABLE and console:
+                console.print()
+                console.print("[green]✅ Todas las herramientas ejecutadas exitosamente[/green]")
+            else:
+                print(f"\n✅ Todas las herramientas ejecutadas exitosamente")
+            return True
+        else:
+            if RICH_AVAILABLE and console:
+                console.print(f"\n[yellow]⚠️ Algunas herramientas retornaron código: {result.returncode}[/yellow]")
+            else:
+                print(f"\n⚠️ Algunas herramientas retornaron código: {result.returncode}")
+            return True  # Continuar aunque haya errores
+            
+    except subprocess.TimeoutExpired:
+        if RICH_AVAILABLE and console:
+            console.print(f"\n[red]❌ Tiempo excedido (3600s)[/red]")
+        else:
+            print(f"\n❌ Tiempo excedido (3600s)")
+        return False
+    except Exception as e:
+        if RICH_AVAILABLE and console:
+            console.print(f"\n[red]❌ Error: {str(e)}[/red]")
+        else:
+            print(f"\n❌ Error: {str(e)}")
+        return False
 
 def main():
     """Función principal"""
