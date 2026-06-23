@@ -68,20 +68,20 @@ def execute_azdo_tools(org, project, pat):
     """Ejecuta herramientas AZDO necesarias para el Dashboard
     
     Herramientas ejecutadas:
-    - [1] PR Master Checker (PR Metrics)
-    - [2] Branch Policy Checker (Branch Compliance)
-    - [3] Release CD Health (Health Score)
-    - [4] Pipeline Drift (Pipeline Status)
-    - [16] Pipeline Health Score (Health Score DORA)
-    - [18] Pipeline Status (Pipeline Status)
+    - azdo_pr_master_checker.py (PR Metrics)
+    - azdo_branch_policy_checker.py (Branch Compliance)
+    - azdo_release_cd_health.py (Health Score)
+    - azdo_pipeline_drift.py (Pipeline Status)
+    - cicd_inventory_health_score.py (Health Score DORA)
+    - cicd_pipeline_status.py (Pipeline Status)
     """
-    azdo_tools_path = Path(__file__).parent.parent / "azdo" / "tools.py"
+    azdo_dir = Path(__file__).parent.parent / "azdo"
     
-    if not azdo_tools_path.exists():
+    if not azdo_dir.exists():
         if RICH_AVAILABLE and console:
-            console.print(f"[red]❌ No se encontró: {azdo_tools_path}[/red]")
+            console.print(f"[red]❌ No se encontró directorio: {azdo_dir}[/red]")
         else:
-            print(f"❌ No se encontró: {azdo_tools_path}")
+            print(f"❌ No se encontró directorio: {azdo_dir}")
         return False
     
     if RICH_AVAILABLE and console:
@@ -91,63 +91,98 @@ def execute_azdo_tools(org, project, pat):
     else:
         print(f"\n🚀 Paso 1: Ejecutando herramientas AZDO para Dashboard...")
     
-    # Herramientas necesarias para el Dashboard
-    dashboard_tools = ["1", "2", "3", "4", "16", "18"]
-    
-    # Ejecutar herramientas en secuencia (similar a opción B)
-    cmd = [
-        sys.executable,
-        str(azdo_tools_path),
-        "--tools", ",".join(dashboard_tools),
-        "--org", org,
-        "--project", project,
-        "--pat", pat,
-        "--output", "json"
+    # Herramientas necesarias para el Dashboard con sus scripts
+    dashboard_tools = [
+        ("azdo_pr_master_checker.py", "PR Master Checker"),
+        ("azdo_branch_policy_checker.py", "Branch Policy Checker"),
+        ("azdo_release_cd_health.py", "Release CD Health"),
+        ("azdo_pipeline_drift.py", "Pipeline Drift"),
+        ("cicd_inventory_health_score.py", "Pipeline Health Score"),
+        ("cicd_pipeline_status.py", "Pipeline Status"),
     ]
     
+    success_count = 0
+    error_count = 0
+    
+    # Preparar variables de entorno
+    env = os.environ.copy()
+    
+    # Pasar OUTPUT_DIR como variable de entorno
+    output_path = Path(OUTPUT_DIR)
+    if not output_path.is_absolute():
+        output_path = Path(__file__).parent.parent / OUTPUT_DIR
+    
+    env["DEVSECOPS_OUTPUT_DIR"] = str(output_path)
+    
+    if RICH_AVAILABLE and console:
+        console.print(f"[dim]Directorio de salida: {env['DEVSECOPS_OUTPUT_DIR']}[/dim]\n")
+    
     try:
-        if RICH_AVAILABLE and console:
-            console.print(f"[dim]Ejecutando: {' '.join(cmd[:3])} ... (esto puede tardar varios minutos)[/dim]\n")
-        else:
-            print(f"Ejecutando: {' '.join(cmd[:3])} ... (esto puede tardar varios minutos)\n")
-        
-        # Preparar variables de entorno
-        env = os.environ.copy()
-        
-        # Pasar OUTPUT_DIR como variable de entorno para que azdo/tools.py lo use
-        # Convertir a ruta absoluta si es relativa
-        output_path = Path(OUTPUT_DIR)
-        if not output_path.is_absolute():
-            output_path = Path(__file__).parent.parent / OUTPUT_DIR
-        
-        env["DEVSECOPS_OUTPUT_DIR"] = str(output_path)
-        
-        if RICH_AVAILABLE and console:
-            console.print(f"[dim]Directorio de salida: {env['DEVSECOPS_OUTPUT_DIR']}[/dim]")
-        
-        # Ejecutar sin capturar salida para que el usuario vea el progreso
-        result = subprocess.run(cmd, timeout=3600, env=env)  # 1 hora de timeout
-        
-        if result.returncode == 0:
-            if RICH_AVAILABLE and console:
-                console.print()
-                console.print("[green]✅ Todas las herramientas ejecutadas exitosamente[/green]")
-            else:
-                print(f"\n✅ Todas las herramientas ejecutadas exitosamente")
-            return True
-        else:
-            if RICH_AVAILABLE and console:
-                console.print(f"\n[yellow]⚠️ Algunas herramientas retornaron código: {result.returncode}[/yellow]")
-            else:
-                print(f"\n⚠️ Algunas herramientas retornaron código: {result.returncode}")
-            return True  # Continuar aunque haya errores
+        # Ejecutar cada herramienta
+        for script_name, tool_name in dashboard_tools:
+            script_path = azdo_dir / script_name
             
-    except subprocess.TimeoutExpired:
+            if not script_path.exists():
+                if RICH_AVAILABLE and console:
+                    console.print(f"[yellow]⚠️  {tool_name}: No encontrado[/yellow]")
+                else:
+                    print(f"⚠️  {tool_name}: No encontrado")
+                error_count += 1
+                continue
+            
+            if RICH_AVAILABLE and console:
+                console.print(f"[cyan]▶ Ejecutando {tool_name}...[/cyan]")
+            else:
+                print(f"▶ Ejecutando {tool_name}...")
+            
+            # Construir comando
+            cmd = [
+                sys.executable,
+                str(script_path),
+                "--org", org,
+                "--project", project,
+                "--pat", pat,
+                "--output", "json"
+            ]
+            
+            try:
+                result = subprocess.run(cmd, cwd=azdo_dir, timeout=600, env=env)
+                
+                if result.returncode == 0:
+                    if RICH_AVAILABLE and console:
+                        console.print(f"[green]✅ {tool_name} completado[/green]")
+                    else:
+                        print(f"✅ {tool_name} completado")
+                    success_count += 1
+                else:
+                    if RICH_AVAILABLE and console:
+                        console.print(f"[yellow]⚠️  {tool_name} retornó código {result.returncode}[/yellow]")
+                    else:
+                        print(f"⚠️  {tool_name} retornó código {result.returncode}")
+                    error_count += 1
+                    
+            except subprocess.TimeoutExpired:
+                if RICH_AVAILABLE and console:
+                    console.print(f"[yellow]⏱️  {tool_name}: Tiempo excedido (600s)[/yellow]")
+                else:
+                    print(f"⏱️  {tool_name}: Tiempo excedido (600s)")
+                error_count += 1
+            except Exception as e:
+                if RICH_AVAILABLE and console:
+                    console.print(f"[red]❌ {tool_name}: {str(e)}[/red]")
+                else:
+                    print(f"❌ {tool_name}: {str(e)}")
+                error_count += 1
+        
+        # Resumen
         if RICH_AVAILABLE and console:
-            console.print(f"\n[red]❌ Tiempo excedido (3600s)[/red]")
+            console.print()
+            console.print(f"[green]✅ Exitosas: {success_count}[/green]  [yellow]⚠️ Errores: {error_count}[/yellow]")
         else:
-            print(f"\n❌ Tiempo excedido (3600s)")
-        return False
+            print(f"\n✅ Exitosas: {success_count}  ⚠️ Errores: {error_count}")
+        
+        return error_count == 0
+        
     except Exception as e:
         if RICH_AVAILABLE and console:
             console.print(f"\n[red]❌ Error: {str(e)}[/red]")
