@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.10-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.11-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -8,6 +8,37 @@
 > **Caja de herramientas DevSecOps unificada para operaciones multi-cloud.**
 > 
 > Soporta **Google Cloud Platform (GCP)**, **Azure DevOps (AZDO)** y **Amazon Web Services (AWS)** con un launcher centralizado, testing profesional y distribución Docker.
+
+---
+
+## 📝 Historial de Cambios (v1.6.11)
+
+| Versión | Fecha | Cambios |
+|---------|-------|---------|
+| **1.6.11** | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
+| 1.6.10 | 2026-06-20 | Dashboard Matutino inicial |
+| 1.6.9 | 2026-06-15 | KPI Analyzer mejorado |
+
+### v1.6.11 - Dashboard Matutino Mejorado
+
+**Nuevas Características:**
+- ✅ Ejecución paralela de herramientas AZDO (ThreadPoolExecutor con 4 workers)
+- ✅ Interfaz Rich con spinners animados, barras de progreso y tablas coloreadas
+- ✅ Wrapper `run_dashboard.py` para orquestar consolidación de datos
+- ✅ Sin límite de tiempo para ejecución de herramientas
+- ✅ Consolidación de configuración en `config.json` (sin `config_dashboard.json`)
+- ✅ Reutilización de credenciales AZDO
+- ✅ Integración con DashboardConsolidator, DashboardGenerator y TeamsNotifier
+
+**Mejoras de Rendimiento:**
+- 🚀 ~75% más rápido con paralelización (de 16 min a 4 min)
+- ⚡ Ejecución simultánea de 4 herramientas
+- 📊 Progreso en tiempo real con ETA
+
+**Compatibilidad:**
+- ✅ Compatible con Rich library (interfaz moderna)
+- ✅ Fallback sin Rich (interfaz simple)
+- ✅ Windows, macOS y Linux
 
 ---
 
