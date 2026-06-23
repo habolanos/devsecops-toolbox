@@ -10,6 +10,23 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -20,11 +37,24 @@ logger = logging.getLogger(__name__)
 class DashboardGenerator:
     """Genera dashboard HTML a partir de datos consolidados"""
     
-    def __init__(self, input_file="outcome/dashboard/dashboard_data.json", 
-                 output_file="outcome/dashboard/dashboard.html"):
-        self.input_file = Path(input_file)
-        self.output_file = Path(output_file)
+    def __init__(self, input_file=None, output_file=None):
+        if input_file is None:
+            # Usar directorio centralizado
+            output_dir = get_output_dir("outcome/dashboard")
+            self.input_file = output_dir / "dashboard_data.json"
+        else:
+            self.input_file = Path(input_file)
+        
+        if output_file is None:
+            # Usar directorio centralizado
+            output_dir = get_output_dir("outcome/dashboard")
+            self.output_file = output_dir / "dashboard.html"
+        else:
+            self.output_file = Path(output_file)
+        
         self.output_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Input: {self.input_file}")
+        logger.info(f"Output: {self.output_file}")
     
     def generate(self):
         """Genera el dashboard HTML"""

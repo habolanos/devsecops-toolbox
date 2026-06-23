@@ -13,6 +13,23 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+try:
+    from utils import get_output_dir
+except ImportError:
+    import os as _os
+    from pathlib import Path as _Path
+    def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+# -------------------------------------------------------------------
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -107,7 +124,7 @@ class TeamsNotifier:
                     "targets": [
                         {
                             "os": "default",
-                            "uri": "file:///outcome/dashboard/dashboard.html"
+                            "uri": f"file:///{get_output_dir('outcome/dashboard')}/dashboard.html"
                         }
                     ]
                 }
@@ -181,7 +198,8 @@ class DashboardScheduler:
             # 3. Enviar notificación
             if self.notifier:
                 logger.info("Enviando notificación a Teams...")
-                with open('outcome/dashboard/dashboard_data.json', 'r') as f:
+                dashboard_data_file = get_output_dir('outcome/dashboard') / 'dashboard_data.json'
+                with open(dashboard_data_file, 'r') as f:
                     dashboard_data = json.load(f)
                 self.notifier.send_notification(dashboard_data)
             
