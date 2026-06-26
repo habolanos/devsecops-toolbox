@@ -1537,7 +1537,7 @@ def run_tool(tool_key: str):
 
     log_command(cmd)
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, cwd=BASE_DIR)
         rc = result.returncode
         if rc not in (0, 1, 2):
             log_command(cmd, "ERROR")
@@ -1651,7 +1651,7 @@ def run_all_tools():
 
         log_command(cmd)
         try:
-            result = subprocess.run(cmd)
+            result = subprocess.run(cmd, cwd=BASE_DIR)
             rc = result.returncode
             if rc in (0, 1, 2):
                 label = {0: "OK", 1: "HIGH", 2: "CRITICAL"}.get(rc, "OK")
@@ -1757,7 +1757,7 @@ def run_all_json():
 
         log_command(cmd)
         try:
-            result = subprocess.run(cmd)
+            result = subprocess.run(cmd, cwd=BASE_DIR)
             rc = result.returncode
             if rc in (0, 1, 2):
                 label = {0: "OK", 1: "HIGH", 2: "CRITICAL"}.get(rc, "OK")
