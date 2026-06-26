@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.11-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.13-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -11,14 +11,40 @@
 
 ---
 
-## 📝 Historial de Cambios (v1.6.12)
+## 📝 Historial de Cambios (v1.6.13)
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| **1.6.12** | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
+| **1.6.13** | 2026-06-25 | 🆙 Nuevo grupo "updatecd" para herramientas de actualización/rollback de Release Pipelines |
+| 1.6.12 | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
 | 1.6.11 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
 | 1.6.10 | 2026-06-20 | Dashboard Matutino inicial |
 | 1.6.9 | 2026-06-15 | KPI Analyzer mejorado |
+
+### v1.6.13 - Nuevo Grupo "updatecd" para Herramientas de Actualización
+
+**Cambios Principales:**
+- ✅ Nuevo grupo `"updatecd"` (🆙 Update Release & CD) en TOOL_GROUPS
+- ✅ Reasignación de 4 herramientas de "release" a "updatecd":
+  - Tool 21: Pipeline CD Update BranchConfig
+  - Tool 22: Pipeline CD Rollback Pipeline
+  - Tool 23: Pipeline Release Rollback
+  - Tool 24: Pipeline Release Restore
+- ✅ Mejor organización visual en menús
+- ✅ Separación clara de herramientas de análisis vs actualización
+
+**Beneficios:**
+- 🎯 Agrupa operaciones destructivas (rollback/restore)
+- 📊 Diferencia análisis de actualización
+- 🔍 Facilita búsqueda de herramientas
+- 🎨 Mejor visualización en UI
+
+**Compatibilidad:**
+- ✅ No afecta opciones A y B (Ejecutar Todos)
+- ✅ No afecta argumentos de línea de comandos
+- ✅ No afecta salidas (JSON, CSV, Excel)
+
+---
 
 ### v1.6.12 - Dashboard Independiente y Configurable
 
