@@ -15,17 +15,18 @@
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| **1.6.13** | 2026-06-25 | 🆙 Nuevo grupo "updatecd" para herramientas de actualización/rollback de Release Pipelines |
+| **1.6.13** | 2026-06-25 | 🆙 Nuevo grupo "updatepipe" para herramientas de actualización/rollback de Release Pipelines |
 | 1.6.12 | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
 | 1.6.11 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
 | 1.6.10 | 2026-06-20 | Dashboard Matutino inicial |
 | 1.6.9 | 2026-06-15 | KPI Analyzer mejorado |
 
-### v1.6.13 - Nuevo Grupo "updatecd" para Herramientas de Actualización
+### v1.6.13 - Nuevo Grupo "updatepipe" para Herramientas de Actualización
 
 **Cambios Principales:**
-- ✅ Nuevo grupo `"updatecd"` (🆙 Update Release & CD) en TOOL_GROUPS
-- ✅ Reasignación de 4 herramientas de "release" a "updatecd":
+- ✅ Nuevo grupo `"updatepipe"` (🆙 Update Pipeline) en TOOL_GROUPS
+- ✅ Agregado a GROUP_ORDER para ordenamiento correcto
+- ✅ Reasignación de 4 herramientas de "release" a "updatepipe":
   - Tool 21: Pipeline CD Update BranchConfig
   - Tool 22: Pipeline CD Rollback Pipeline
   - Tool 23: Pipeline Release Rollback

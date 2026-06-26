@@ -89,7 +89,7 @@ TOOL_GROUPS = {
     "pr":         {"name": "Pull Requests",      "emoji": "📬", "color": "cyan"},
     "policy":     {"name": "Políticas de Rama",  "emoji": "🔒", "color": "yellow"},
     "release":    {"name": "Releases & CD",      "emoji": "🚀", "color": "green"},
-    "updatecd":   {"name": "Update Release & CD","emoji": "🆙", "color": "cyan"},
+    "updatepipe": {"name": "Update Pipeline",    "emoji": "🆙", "color": "cyan"},
     "drift":      {"name": "Drift & Cambios",    "emoji": "🌪️", "color": "magenta"},
     "validation": {"name": "Validación",         "emoji": "✅", "color": "blue"},
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
@@ -99,7 +99,7 @@ TOOL_GROUPS = {
     "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
 
-GROUP_ORDER = ["pr", "policy", "release", "drift", "validation", "security", "inventory", "health", "quality", "system"]
+GROUP_ORDER = ["pr", "policy", "release", "updatepipe", "drift", "validation", "security", "inventory", "health", "quality", "system"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HERRAMIENTAS DISPONIBLES
@@ -303,7 +303,7 @@ TOOLS: Dict = {
         "description": "Actualiza variable branchConfig y scripts de tareas en Release Pipelines vía API REST. Modo interactivo con config.json.",
         "path":        "pipeline-cd-update-branchconfig.py",
         "args":        ["--interactive"],
-        "group":       "updatecd",
+        "group":       "updatepipe",
         "status":      "ready",
     },
     "22": {
@@ -311,7 +311,7 @@ TOOLS: Dict = {
         "description": "Revierte cambios en Release Pipelines con 3 métodos: (1) Full Backup Restore (máxima seguridad), (2) Hybrid Rollback (revisión del backup desde Azure DevOps), (3) Manual Revision (rollback a revisión específica). Incluye listado de backups/revisiones, validación y dry-run.",
         "path":        "pipeline-cd-rollback-pipeline.py",
         "args":        ["--list-backups", "--list-revisions", "--backup-file", "--hybrid", "--pipeline-id", "--to-revision", "--pat", "--dry-run"],
-        "group":       "updatecd",
+        "group":       "updatepipe",
         "status":      "ready",
     },
     "23": {
@@ -327,7 +327,7 @@ TOOLS: Dict = {
             "pat": "",
             "backup_path": "./outcome/backups"
         },
-        "group":       "updatecd",
+        "group":       "updatepipe",
         "status":      "ready",
     },
     "24": {
@@ -343,7 +343,7 @@ TOOLS: Dict = {
             "pat": "",
             "backup_path": "./outcome/backups"
         },
-        "group":       "updatecd",
+        "group":       "updatepipe",
         "status":      "ready",
     },
     "25": {

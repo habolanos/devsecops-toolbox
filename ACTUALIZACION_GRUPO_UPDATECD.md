@@ -1,14 +1,17 @@
-# 🆙 Actualización: Nuevo Grupo "updatecd" en AZDO Tools
+# 🆙 Actualización: Nuevo Grupo "updatepipe" en AZDO Tools
 
 **Fecha:** 25 de Junio de 2026  
 **Archivo:** `scm/azdo/tools.py`  
-**Versión:** 1.6.13 (patch)
+**Versión:** 1.6.13 (patch)  
+**Revisión:** 2 (Renombrado de "updatecd" a "updatepipe")
 
 ---
 
 ## 📋 Resumen de Cambios
 
-Se agregó un nuevo grupo de herramientas `"updatecd"` para organizar mejor las herramientas de actualización y rollback de Release Pipelines en Azure DevOps.
+Se agregó un nuevo grupo de herramientas `"updatepipe"` para organizar mejor las herramientas de actualización y rollback de Release Pipelines en Azure DevOps.
+
+**Cambio de Nombre:** `"updatecd"` → `"updatepipe"` (más descriptivo y específico)
 
 ---
 
@@ -18,34 +21,43 @@ Se agregó un nuevo grupo de herramientas `"updatecd"` para organizar mejor las 
 
 ```python
 # Línea 92 - Agregado:
-"updatecd":   {"name": "Update Release & CD","emoji": "🆙", "color": "cyan"},
+"updatepipe": {"name": "Update Pipeline",    "emoji": "🆙", "color": "cyan"},
 ```
 
 **Características:**
-- **Nombre:** Update Release & CD
+- **Nombre:** Update Pipeline
 - **Emoji:** 🆙 (Up arrow - actualización)
 - **Color:** Cyan (para diferenciación visual)
 
+### 1b. Orden de Grupos Actualizado
+
+```python
+# Línea 102 - Actualizado:
+GROUP_ORDER = ["pr", "policy", "release", "updatepipe", "drift", "validation", "security", "inventory", "health", "quality", "system"]
+```
+
+**Cambio:** Se agregó `"updatepipe"` después de `"release"` para mantener agrupación lógica
+
 ### 2. Herramientas Asignadas al Grupo
 
-Se reasignaron 4 herramientas del grupo `"release"` al nuevo grupo `"updatecd"`:
+Se reasignaron 4 herramientas del grupo `"release"` al nuevo grupo `"updatepipe"`:
 
 ```
 Tool 21: Pipeline CD Update BranchConfig
 ├─ Antes: group = "release"
-└─ Ahora: group = "updatecd"
+└─ Ahora: group = "updatepipe"
 
 Tool 22: Pipeline CD Rollback Pipeline
 ├─ Antes: group = "release"
-└─ Ahora: group = "updatecd"
+└─ Ahora: group = "updatepipe"
 
 Tool 23: Pipeline Release Rollback
 ├─ Antes: group = "release"
-└─ Ahora: group = "updatecd"
+└─ Ahora: group = "updatepipe"
 
 Tool 24: Pipeline Release Restore
 ├─ Antes: group = "release"
-└─ Ahora: group = "updatecd"
+└─ Ahora: group = "updatepipe"
 ```
 
 ### 3. Ubicaciones de Cambios
@@ -53,11 +65,12 @@ Tool 24: Pipeline Release Restore
 ```
 Archivo: scm/azdo/tools.py
 
-Línea 92:  Agregar grupo "updatecd" en TOOL_GROUPS
-Línea 306: Tool 21 - cambiar group de "release" a "updatecd"
-Línea 314: Tool 22 - cambiar group de "release" a "updatecd"
-Línea 330: Tool 23 - cambiar group de "release" a "updatecd"
-Línea 346: Tool 24 - cambiar group de "release" a "updatecd"
+Línea 92:  Agregar grupo "updatepipe" en TOOL_GROUPS
+Línea 102: Actualizar GROUP_ORDER con "updatepipe"
+Línea 306: Tool 21 - cambiar group de "release" a "updatepipe"
+Línea 314: Tool 22 - cambiar group de "release" a "updatepipe"
+Línea 330: Tool 23 - cambiar group de "release" a "updatepipe"
+Línea 346: Tool 24 - cambiar group de "release" a "updatepipe"
 ```
 
 ---
@@ -88,7 +101,7 @@ TOOL_GROUPS = {
     "pr":         {"name": "Pull Requests",      "emoji": "📬", "color": "cyan"},
     "policy":     {"name": "Políticas de Rama",  "emoji": "🔒", "color": "yellow"},
     "release":    {"name": "Releases & CD",      "emoji": "🚀", "color": "green"},
-    "updatecd":   {"name": "Update Release & CD","emoji": "🆙", "color": "cyan"},  ✨ NUEVO
+    "updatepipe": {"name": "Update Pipeline",    "emoji": "🆙", "color": "cyan"},  ✨ NUEVO
     "drift":      {"name": "Drift & Cambios",    "emoji": "🌪️", "color": "magenta"},
     "validation": {"name": "Validación",         "emoji": "✅", "color": "blue"},
     "security":   {"name": "Seguridad",          "emoji": "🛡️", "color": "red"},
@@ -97,6 +110,8 @@ TOOL_GROUPS = {
     "quality":    {"name": "Calidad Deploy",     "emoji": "🎯", "color": "pink"},
     "system":     {"name": "Sistema",            "emoji": "⚙️", "color": "white"},
 }
+
+GROUP_ORDER = ["pr", "policy", "release", "updatepipe", "drift", "validation", "security", "inventory", "health", "quality", "system"]
 ```
 
 ---
@@ -122,7 +137,7 @@ Tool 5:   Release Deep Dive
 Tool 25:  Release Explorer
 ```
 
-### Grupo: Update Release & CD (🆙) ✨ NUEVO
+### Grupo: Update Pipeline (🆙) ✨ NUEVO
 ```
 Tool 21:  Pipeline CD Update BranchConfig
 Tool 22:  Pipeline CD Rollback Pipeline
@@ -200,7 +215,7 @@ Releases & CD (🚀)
 ├─ Tool 5:  Release Deep Dive (análisis)
 └─ Tool 25: Release Explorer (exploración)
 
-Update Release & CD (🆙)
+Update Pipeline (🆙)
 ├─ Tool 21: Pipeline CD Update (actualización)
 ├─ Tool 22: Pipeline CD Rollback (rollback)
 ├─ Tool 23: Pipeline Release Rollback (rollback)
@@ -228,7 +243,7 @@ Cuando se ejecuta `python scm/main.py` → Opción 2 (AZDO), ahora se verá:
   ├─ Tool 5:  Release Deep Dive
   └─ Tool 25: Release Explorer
 
-🆙 Update Release & CD (NUEVO)
+🆙 Update Pipeline (NUEVO)
   ├─ Tool 21: Pipeline CD Update BranchConfig
   ├─ Tool 22: Pipeline CD Rollback Pipeline
   ├─ Tool 23: Pipeline Release Rollback
@@ -294,7 +309,7 @@ python scm/main.py
 # Seleccionar: 2 (AZDO)
 
 # Resultado esperado:
-# - Nuevo grupo "🆙 Update Release & CD" visible
+# - Nuevo grupo "🆙 Update Pipeline" visible
 # - Herramientas 21-24 bajo nuevo grupo
 # - Herramientas 3, 5, 25 bajo "🚀 Releases & CD"
 
@@ -304,21 +319,22 @@ python scm/azdo/tools.py
 
 # Resultado esperado:
 # - Herramienta ejecuta correctamente
-# - Grupo mostrado como "🆙 Update Release & CD"
+# - Grupo mostrado como "🆙 Update Pipeline"
 ```
 
 ### Verificación de Código
 
 ```bash
 # Verificar que el grupo está definido
-grep -n "updatecd" scm/azdo/tools.py
+grep -n "updatepipe" scm/azdo/tools.py
 
 # Resultado esperado:
-# 92:    "updatecd":   {"name": "Update Release & CD","emoji": "🆙", "color": "cyan"},
-# 306:        "group":       "updatecd",
-# 314:        "group":       "updatecd",
-# 330:        "group":       "updatecd",
-# 346:        "group":       "updatecd",
+# 92:    "updatepipe": {"name": "Update Pipeline",    "emoji": "🆙", "color": "cyan"},
+# 102: GROUP_ORDER = ["pr", "policy", "release", "updatepipe", "drift", ...]
+# 306:        "group":       "updatepipe",
+# 314:        "group":       "updatepipe",
+# 330:        "group":       "updatepipe",
+# 346:        "group":       "updatepipe",
 ```
 
 ---
@@ -327,9 +343,9 @@ grep -n "updatecd" scm/azdo/tools.py
 
 ```
 Cambios Realizados:
-├─ Nuevo grupo: 1
+├─ Nuevo grupo: 1 ("updatepipe")
 ├─ Herramientas reasignadas: 4
-├─ Líneas modificadas: 5
+├─ Líneas modificadas: 6 (92, 102, 306, 314, 330, 346)
 └─ Archivos modificados: 1 (tools.py)
 
 Grupos Totales: 11
@@ -340,13 +356,17 @@ Herramientas por Grupo:
 ├─ pr:         2 herramientas
 ├─ policy:     2 herramientas
 ├─ release:    3 herramientas
-├─ updatecd:   4 herramientas (NUEVO)
+├─ updatepipe: 4 herramientas (NUEVO)
 ├─ drift:      1 herramienta
 ├─ validation: 1 herramienta
 ├─ security:   2 herramientas
 ├─ inventory:  8 herramientas
 ├─ health:     2 herramientas
 └─ quality:    0 herramientas (reservado)
+
+Evolución del Nombre:
+├─ Versión 1: "updatecd" (Update Release & CD)
+└─ Versión 2: "updatepipe" (Update Pipeline) ← ACTUAL
 ```
 
 ---
@@ -358,7 +378,7 @@ Herramientas por Grupo:
 ```
 1. Commit de cambios
    git add scm/azdo/tools.py
-   git commit -m "feat: Agregar grupo 'updatecd' para herramientas de actualización/rollback"
+   git commit -m "refactor: Renombrar grupo 'updatecd' a 'updatepipe' y agregar a GROUP_ORDER"
 
 2. Actualizar documentación
    - README.md (versión 1.6.13)
