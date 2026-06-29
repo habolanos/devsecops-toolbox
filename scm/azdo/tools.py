@@ -387,12 +387,12 @@ STATUS_INDICATORS = {
 }
 
 # Construir opciones de sistema dinámicamente
-# Esto debe ocurrir después de definir TOOLS y antes de usarlas
+# Esto debe ocurrir después de definir TOOLS y todas las funciones necesarias
 def _init_system_options():
     """Inicializa las opciones de sistema (A, B, Q) dinámicamente."""
     build_system_options()
 
-_init_system_options()
+# NOTA: _init_system_options() se llama al final del archivo después de definir todas las funciones
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIG.JSON
@@ -1947,6 +1947,13 @@ def main():
         except Exception as e:
             print(f"\n{Colors.FAIL}Error inesperado: {e}{Colors.ENDC}")
             input("\nPresione Enter para continuar...")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INICIALIZACIÓN
+# ═══════════════════════════════════════════════════════════════════════════════
+# Inicializar opciones de sistema después de que todas las funciones estén definidas
+_init_system_options()
 
 
 if __name__ == "__main__":
