@@ -61,6 +61,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -444,10 +450,7 @@ def export_results(
     script_dir: str,
     tz_name: str,
 ) -> Optional[str]:
-    outcome_dir = str(get_output_dir("outcome"))
-    os.makedirs(outcome_dir, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-
+    """Exporta resultados usando ExportManager centralizado."""
     # Aplanar para exportar
     flat = []
     for row in rows:
@@ -462,47 +465,69 @@ def export_results(
             "develop_count":    len(row["develop_policies"]),
         })
 
-    if output_format == "json":
-        filepath = os.path.join(outcome_dir, f"branch_policies_{ts}.json")
-        payload = {
-            "metadata": {
-                "tool":         "azdo_branch_policy_checker",
-                "version":      __version__,
-                "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
-            },
-            "total":   len(rows),
-            "summary": {
-                "ok":      sum(1 for r in rows if r["status"] == STATUS_OK),
-                "warning": sum(1 for r in rows if r["status"] == STATUS_WARNING),
-                "alert":   sum(1 for r in rows if r["status"] == STATUS_ALERT),
-            },
-            "data": flat,
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return filepath
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        outcome_dir = str(get_output_dir("outcome"))
+        os.makedirs(outcome_dir, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-    elif output_format == "csv":
-        if not flat:
-            return None
-        filepath = os.path.join(outcome_dir, f"branch_policies_{ts}.csv")
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(flat[0].keys()))
-            writer.writeheader()
-            writer.writerows(flat)
-        return filepath
-
-    elif output_format == "excel":
-        try:
-            import pandas as pd
-            filepath = os.path.join(outcome_dir, f"branch_policies_{ts}.xlsx")
-            df = pd.DataFrame(flat)
-            df.to_excel(filepath, index=False, engine="openpyxl")
+        if output_format == "json":
+            filepath = os.path.join(outcome_dir, f"branch_policies_{ts}.json")
+            payload = {
+                "metadata": {
+                    "tool":         "azdo_branch_policy_checker",
+                    "version":      __version__,
+                    "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
+                },
+                "total":   len(rows),
+                "summary": {
+                    "ok":      sum(1 for r in rows if r["status"] == STATUS_OK),
+                    "warning": sum(1 for r in rows if r["status"] == STATUS_WARNING),
+                    "alert":   sum(1 for r in rows if r["status"] == STATUS_ALERT),
+                },
+                "data": flat,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
             return filepath
-        except ImportError:
-            print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
-            return None
-
+        elif output_format == "csv":
+            if not flat:
+                return None
+            filepath = os.path.join(outcome_dir, f"branch_policies_{ts}.csv")
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=list(flat[0].keys()))
+                writer.writeheader()
+                writer.writerows(flat)
+            return filepath
+        elif output_format == "excel":
+            try:
+                import pandas as pd
+                filepath = os.path.join(outcome_dir, f"branch_policies_{ts}.xlsx")
+                df = pd.DataFrame(flat)
+                df.to_excel(filepath, index=False, engine="openpyxl")
+                return filepath
+            except ImportError:
+                print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
+                return None
+        return None
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_branch_policy_checker", __version__)
+    
+    summary = {
+        "total": len(rows),
+        "ok": sum(1 for r in rows if r["status"] == STATUS_OK),
+        "warning": sum(1 for r in rows if r["status"] == STATUS_WARNING),
+        "alert": sum(1 for r in rows if r["status"] == STATUS_ALERT),
+    }
+    
+    if output_format == "json":
+        return manager.export_json(flat, summary=summary, timezone=tz_name)
+    elif output_format == "csv":
+        return manager.export_csv(flat)
+    elif output_format == "excel":
+        return manager.export_excel(flat, sheet_name="Branch Policies", summary=summary)
+    
     return None
 
 
