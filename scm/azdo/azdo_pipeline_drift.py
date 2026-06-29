@@ -61,6 +61,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -700,83 +706,54 @@ def _flatten(r: Dict) -> Dict:
 def export_results(
     results: List[Dict], fmt: str, script_dir: str, tz_name: str
 ) -> Optional[str]:
-    outcome_dir = str(get_output_dir("outcome"))
-    os.makedirs(outcome_dir, exist_ok=True)
-    ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    """Exporta resultados usando ExportManager centralizado."""
     flat = [_flatten(r) for r in results]
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        outcome_dir = str(get_output_dir("outcome"))
+        os.makedirs(outcome_dir, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-    if fmt == "json":
-        filepath = os.path.join(outcome_dir, f"pipeline_drift_{ts}.json")
-        payload  = {
-            "metadata": {
-                "tool":         "azdo_pipeline_drift",
-                "version":      __version__,
-                "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
-            },
-            "total": len(results),
-            "summary": flat,
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, default=_dt_default, ensure_ascii=False)
-        return filepath
-
-    elif fmt == "csv":
-        if not flat:
-            return None
-        filepath = os.path.join(outcome_dir, f"pipeline_drift_{ts}.csv")
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=list(flat[0].keys()))
-            w.writeheader()
-            w.writerows(flat)
-        return filepath
-
-    elif fmt == "excel":
-        try:
-            import pandas as pd
-            from openpyxl import load_workbook
-            from openpyxl.styles import PatternFill, Font, Alignment
-            from openpyxl.utils import get_column_letter
-
-            filepath = os.path.join(outcome_dir, f"pipeline_drift_{ts}.xlsx")
-            df = pd.DataFrame(flat)
-            df.to_excel(filepath, index=False, engine="openpyxl", sheet_name="Drift Report")
-
-            wb = load_workbook(filepath)
-            ws = wb["Drift Report"]
-
-            sev_fills = {
-                SEV_CRITICAL: PatternFill("solid", fgColor="FF4444"),
-                SEV_HIGH:     PatternFill("solid", fgColor="FF8C42"),
-                SEV_MEDIUM:   PatternFill("solid", fgColor="FFD166"),
-                SEV_LOW:      PatternFill("solid", fgColor="87CEEB"),
-                SEV_NONE:     PatternFill("solid", fgColor="90EE90"),
+        if fmt == "json":
+            filepath = os.path.join(outcome_dir, f"pipeline_drift_{ts}.json")
+            payload = {
+                "metadata": {
+                    "tool":         "azdo_pipeline_drift",
+                    "version":      __version__,
+                    "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
+                },
+                "total": len(results),
+                "summary": flat,
             }
-
-            headers = [cell.value for cell in ws[1]]
-            sev_col    = (headers.index("severity")  + 1) if "severity"  in headers else None
-            drift_col  = (headers.index("has_drift") + 1) if "has_drift" in headers else None
-
-            for row_idx in range(2, len(flat) + 2):
-                if sev_col:
-                    cell = ws.cell(row=row_idx, column=sev_col)
-                    fill = sev_fills.get(str(cell.value))
-                    if fill:
-                        cell.fill = fill
-                        cell.font = Font(bold=True)
-                if drift_col:
-                    cell = ws.cell(row=row_idx, column=drift_col)
-                    cell.alignment = Alignment(horizontal="center")
-
-            for col_idx in range(1, len(headers) + 1):
-                ws.column_dimensions[get_column_letter(col_idx)].width = 22
-
-            wb.save(filepath)
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, default=_dt_default, ensure_ascii=False)
             return filepath
-
-        except ImportError:
-            print("ERROR: pip install pandas openpyxl")
-            return None
-
+        elif fmt == "csv":
+            if not flat:
+                return None
+            filepath = os.path.join(outcome_dir, f"pipeline_drift_{ts}.csv")
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=list(flat[0].keys()))
+                w.writeheader()
+                w.writerows(flat)
+            return filepath
+        return None
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_pipeline_drift", __version__)
+    
+    summary = {
+        "total": len(results),
+    }
+    
+    if fmt == "json":
+        return manager.export_json(flat, summary=summary, timezone=tz_name)
+    elif fmt == "csv":
+        return manager.export_csv(flat)
+    elif fmt == "excel":
+        return manager.export_excel(flat, sheet_name="Drift Report", summary=summary)
+    
     return None
 
 
