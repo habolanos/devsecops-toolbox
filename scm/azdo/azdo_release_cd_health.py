@@ -54,6 +54,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -746,10 +752,7 @@ def generate_pipeline_image(row: Dict, tz_name: str) -> Optional[bytes]:
 def export_results(
     rows: List[Dict], fmt: str, script_dir: str, tz_name: str
 ) -> Optional[str]:
-    outcome_dir = str(get_output_dir("outcome"))
-    os.makedirs(outcome_dir, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-
+    """Exporta resultados usando ExportManager centralizado."""
     flat = [{
         "id":                            r["id"],
         "pipeline_name":                 r["name"],
@@ -769,103 +772,53 @@ def export_results(
         "rating":                        r["rating_label"],
     } for r in rows]
 
-    if fmt == "json":
-        filepath = os.path.join(outcome_dir, f"release_cd_health_{ts}.json")
-        payload = {
-            "metadata": {
-                "tool":         "azdo_release_cd_health",
-                "version":      __version__,
-                "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
-            },
-            "total":     len(rows),
-            "avg_score": round(sum(r["score"] for r in rows) / len(rows)) if rows else 0,
-            "data":      flat,
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return filepath
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        outcome_dir = str(get_output_dir("outcome"))
+        os.makedirs(outcome_dir, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-    elif fmt == "csv":
-        if not flat:
-            return None
-        filepath = os.path.join(outcome_dir, f"release_cd_health_{ts}.csv")
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=list(flat[0].keys()))
-            w.writeheader()
-            w.writerows(flat)
-        return filepath
-
-    elif fmt == "excel":
-        try:
-            import pandas as pd
-            from openpyxl import load_workbook
-            from openpyxl.styles import Font, Alignment, PatternFill
-            from openpyxl.drawing.image import Image as XLImage
-            from openpyxl.utils import get_column_letter
-            import tempfile
-
-            filepath = os.path.join(outcome_dir, f"release_cd_health_{ts}.xlsx")
-            df = pd.DataFrame(flat)
-            df.to_excel(filepath, index=False, engine="openpyxl",
-                        sheet_name="Health Report")
-
-            # ── Hoja de diagramas matplotlib ─────────────────────────────
-            if MATPLOTLIB_AVAILABLE:
-                wb      = load_workbook(filepath)
-                ws_diag = wb.create_sheet("Pipeline Diagrams")
-
-                # Instrucciones en celda A1
-                ws_diag["B1"] = "Release Pipeline CD — Diagramas de Stages"
-                ws_diag["B1"].font = Font(bold=True, size=13, color="1F4E79")
-                ws_diag["B2"] = (
-                    "Verde = PROD desplegado  |  Rojo = PROD sin deploy  |  "
-                    "Azul = stage normal  |  Score: Recencia(70) + Estabilidad(30)"
-                )
-                ws_diag["B2"].font = Font(italic=True, size=9, color="555555")
-                ws_diag.column_dimensions["A"].width = 2
-                ws_diag.column_dimensions["B"].width = 6
-
-                row_pos = 4  # fila Excel donde empieza el primer diagrama
-                tmp_files: List[str] = []
-
-                for r in rows:
-                    img_bytes = generate_pipeline_image(r, tz_name)
-                    if not img_bytes:
-                        continue
-
-                    # Nombre del pipeline sobre la imagen
-                    name_cell = ws_diag.cell(row=row_pos, column=2, value=r["name"])
-                    name_cell.font      = Font(bold=True, size=10, color="1F4E79")
-                    name_cell.alignment = Alignment(vertical="center")
-
-                    # Guardar imagen en archivo temporal e insertar
-                    with tempfile.NamedTemporaryFile(
-                        suffix=".png", delete=False
-                    ) as tmp:
-                        tmp.write(img_bytes)
-                        tmp_path = tmp.name
-                    tmp_files.append(tmp_path)
-
-                    xl_img        = XLImage(tmp_path)
-                    xl_img.anchor = f"B{row_pos + 1}"
-                    ws_diag.add_image(xl_img)
-
-                    row_pos += 16  # espacio entre diagramas
-
-                wb.save(filepath)
-
-                # Limpiar temporales
-                for tmp_path in tmp_files:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-
+        if fmt == "json":
+            filepath = os.path.join(outcome_dir, f"release_cd_health_{ts}.json")
+            payload = {
+                "metadata": {
+                    "tool":         "azdo_release_cd_health",
+                    "version":      __version__,
+                    "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
+                },
+                "total":     len(rows),
+                "avg_score": round(sum(r["score"] for r in rows) / len(rows)) if rows else 0,
+                "data":      flat,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
             return filepath
-        except ImportError:
-            print("ERROR: pip install pandas openpyxl matplotlib")
-            return None
-
+        elif fmt == "csv":
+            if not flat:
+                return None
+            filepath = os.path.join(outcome_dir, f"release_cd_health_{ts}.csv")
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=list(flat[0].keys()))
+                w.writeheader()
+                w.writerows(flat)
+            return filepath
+        return None
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_release_cd_health", __version__)
+    
+    summary = {
+        "total": len(rows),
+        "avg_score": round(sum(r["score"] for r in rows) / len(rows)) if rows else 0,
+    }
+    
+    if fmt == "json":
+        return manager.export_json(flat, summary=summary, timezone=tz_name)
+    elif fmt == "csv":
+        return manager.export_csv(flat)
+    elif fmt == "excel":
+        return manager.export_excel(flat, sheet_name="Release CD Health", summary=summary)
+    
     return None
 
 
