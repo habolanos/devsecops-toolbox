@@ -78,6 +78,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -741,21 +747,48 @@ def export_results(
     safe_tgt = report.target_branch.replace("/", "_")
     base     = f"branch_diff_{report.repo_name}_{safe_src}_vs_{safe_tgt}_{ts}"
 
-    if fmt == "json":
-        fp = out_dir / f"{base}.json"
-        with open(fp, "w", encoding="utf-8") as fh:
-            json.dump(report.to_dict(), fh, indent=2, ensure_ascii=False)
-
-    elif fmt == "csv":
-        fp = out_dir / f"{base}.csv"
-        fields = ["path", "filename", "ext", "change_type", "risk", "category"]
-        with open(fp, "w", newline="", encoding="utf-8") as fh:
-            w = csv.DictWriter(fh, fieldnames=fields)
-            w.writeheader()
-            for f in report.files:
-                w.writerow(f.to_dict())
-
-    elif fmt == "excel":
+    # Preparar datos para exportación
+    file_data = [f.to_dict() for f in report.files]
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if fmt == "json":
+            fp = out_dir / f"{base}.json"
+            with open(fp, "w", encoding="utf-8") as fh:
+                json.dump(report.to_dict(), fh, indent=2, ensure_ascii=False)
+        elif fmt == "csv":
+            fp = out_dir / f"{base}.csv"
+            fields = ["path", "filename", "ext", "change_type", "risk", "category"]
+            with open(fp, "w", newline="", encoding="utf-8") as fh:
+                w = csv.DictWriter(fh, fieldnames=fields)
+                w.writeheader()
+                for f in report.files:
+                    w.writerow(f.to_dict())
+        else:
+            fp = None
+    else:
+        # Usar ExportManager
+        manager = ExportManager("azdo_repo_branch_diff", __version__)
+        
+        summary = {
+            "repo": report.repo_name,
+            "source_branch": report.source_branch,
+            "target_branch": report.target_branch,
+            "ahead_count": report.ahead_count,
+            "behind_count": report.behind_count,
+            "impact_score": report.impact_score,
+            "max_risk": report.max_risk,
+        }
+        
+        if fmt == "json":
+            fp = manager.export_json(file_data, summary=summary, timezone=tz_name)
+        elif fmt == "csv":
+            fp = manager.export_csv(file_data)
+        else:
+            fp = None
+    
+    # Excel export (mantener lógica original)
+    if fmt == "excel":
         try:
             import openpyxl
             from openpyxl.styles import Font, PatternFill, Alignment
