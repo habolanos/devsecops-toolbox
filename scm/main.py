@@ -621,11 +621,20 @@ def launch_platform(platform_key: str):
     # Preparar variables de entorno con configuración
     env = prepare_env_for_platform(platform_key)
 
-    # Asegurar que scm/ está en PYTHONPATH para imports compartidos (utils.py)
+    # Asegurar que scm/ está en PYTHONPATH para imports compartidos (utils.py, search_module.py)
+    # Esto es crítico para que los subdirectorios (gcp/, azdo/, aws/) puedan importar módulos de scm/
     scm_path = str(BASE_DIR)
     existing_pp = env.get("PYTHONPATH", "")
-    if scm_path not in existing_pp.split(os.pathsep):
-        env["PYTHONPATH"] = scm_path + (os.pathsep + existing_pp if existing_pp else "")
+    
+    # Construir PYTHONPATH con scm/ primero para asegurar que se encuentren los módulos compartidos
+    pythonpath_parts = [scm_path]
+    if existing_pp:
+        # Agregar paths existentes que no sean scm_path
+        for path in existing_pp.split(os.pathsep):
+            if path and path != scm_path:
+                pythonpath_parts.append(path)
+    
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
 
     # Mostrar mensaje de transición con spinner
     if RICH_AVAILABLE and console:
