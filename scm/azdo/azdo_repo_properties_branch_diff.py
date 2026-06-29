@@ -82,6 +82,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -891,37 +897,62 @@ def export_results(
 
     summary = {s: sum(1 for r in results if r.severity == s)
                for s in (SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_LOW, SEV_NONE)}
-    metadata = {
-        "tool":          "azdo_repo_properties_branch_diff",
-        "version":       __version__,
-        "organization":  org,
-        "project":       project,
-        "repository":    repo_name,
-        "component":     component,
-        "source_branch": source_branch,
-        "target_branch": target_branch,
-        "generated_at":  datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %Z"),
-        "total_files":   len(results),
-        "summary":       summary,
-    }
+    
+    file_data = [r.to_dict() for r in results]
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        metadata = {
+            "tool":          "azdo_repo_properties_branch_diff",
+            "version":       __version__,
+            "organization":  org,
+            "project":       project,
+            "repository":    repo_name,
+            "component":     component,
+            "source_branch": source_branch,
+            "target_branch": target_branch,
+            "generated_at":  datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "total_files":   len(results),
+            "summary":       summary,
+        }
 
-    if fmt == "json":
-        filepath = Path(output_dir) / f"{base}.json"
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump({"metadata": metadata, "diffs": [r.to_dict() for r in results]},
-                      f, indent=2, ensure_ascii=False)
-
-    elif fmt == "csv":
-        filepath = Path(output_dir) / f"{base}.csv"
-        fields   = ["path", "filename", "change_type", "severity",
-                    "lines_added", "lines_removed", "diff"]
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=fields)
-            w.writeheader()
-            for r in results:
-                w.writerow(r.to_dict())
-
-    elif fmt == "excel":
+        if fmt == "json":
+            filepath = Path(output_dir) / f"{base}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"metadata": metadata, "diffs": file_data},
+                          f, indent=2, ensure_ascii=False)
+        elif fmt == "csv":
+            filepath = Path(output_dir) / f"{base}.csv"
+            fields   = ["path", "filename", "change_type", "severity",
+                        "lines_added", "lines_removed", "diff"]
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fields)
+                w.writeheader()
+                for r in results:
+                    w.writerow(r.to_dict())
+        else:
+            filepath = None
+    else:
+        # Usar ExportManager
+        manager = ExportManager("azdo_repo_properties_branch_diff", __version__)
+        
+        export_summary = {
+            "component": component,
+            "source_branch": source_branch,
+            "target_branch": target_branch,
+            "total_files": len(results),
+            **summary
+        }
+        
+        if fmt == "json":
+            filepath = manager.export_json(file_data, summary=export_summary, timezone=tz_name)
+        elif fmt == "csv":
+            filepath = manager.export_csv(file_data)
+        else:
+            filepath = None
+    
+    # Excel export (mantener lógica original)
+    if fmt == "excel":
         try:
             import openpyxl
             from openpyxl.styles import Font, PatternFill, Alignment
