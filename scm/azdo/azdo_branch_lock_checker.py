@@ -61,6 +61,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -331,49 +337,66 @@ def export_results(
     output_format: str,
     tz_name: str,
 ) -> Optional[str]:
-    outcome_dir = str(get_output_dir("outcome"))
-    os.makedirs(outcome_dir, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-
+    """Exporta resultados usando ExportManager centralizado."""
     export_fields = ["proyecto", "repository", "branch", "bloqueada", "creador", "locked_by", "url_repo"]
+    flat = [{f: r.get(f, "") for f in export_fields} for r in rows]
 
-    if output_format == "json":
-        filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.json")
-        payload  = {
-            "metadata": {
-                "tool":         "azdo_branch_lock_checker",
-                "version":      __version__,
-                "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
-            },
-            "total_locked_branches": len(rows),
-            "repos_with_locks":      len({r["repository"] for r in rows}),
-            "data": [{f: r.get(f, "") for f in export_fields} for r in rows],
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return filepath
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        outcome_dir = str(get_output_dir("outcome"))
+        os.makedirs(outcome_dir, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-    elif output_format == "csv":
-        if not rows:
-            return None
-        filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.csv")
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=export_fields, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(rows)
-        return filepath
-
-    elif output_format == "excel":
-        try:
-            import pandas as pd
-            filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.xlsx")
-            flat = [{f: r.get(f, "") for f in export_fields} for r in rows]
-            pd.DataFrame(flat).to_excel(filepath, index=False, engine="openpyxl")
+        if output_format == "json":
+            filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.json")
+            payload = {
+                "metadata": {
+                    "tool":         "azdo_branch_lock_checker",
+                    "version":      __version__,
+                    "generated_at": datetime.now(ZoneInfo(tz_name)).isoformat(),
+                },
+                "total_locked_branches": len(rows),
+                "repos_with_locks":      len({r["repository"] for r in rows}),
+                "data": flat,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
             return filepath
-        except ImportError:
-            print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
-            return None
-
+        elif output_format == "csv":
+            if not rows:
+                return None
+            filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.csv")
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=export_fields, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(rows)
+            return filepath
+        elif output_format == "excel":
+            try:
+                import pandas as pd
+                filepath = os.path.join(outcome_dir, f"branch_locks_{ts}.xlsx")
+                pd.DataFrame(flat).to_excel(filepath, index=False, engine="openpyxl")
+                return filepath
+            except ImportError:
+                print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
+                return None
+        return None
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_branch_lock_checker", __version__)
+    
+    summary = {
+        "total_locked_branches": len(rows),
+        "repos_with_locks": len({r["repository"] for r in rows}),
+    }
+    
+    if output_format == "json":
+        return manager.export_json(flat, summary=summary, timezone=tz_name)
+    elif output_format == "csv":
+        return manager.export_csv(flat)
+    elif output_format == "excel":
+        return manager.export_excel(flat, sheet_name="Branch Locks", summary=summary)
+    
     return None
 
 
