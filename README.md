@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.11-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.12-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -11,16 +11,47 @@
 
 ---
 
-## 📝 Historial de Cambios (v1.6.11)
+## 📝 Historial de Cambios (v1.6.12)
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| **1.6.11** | 2026-06-29 | 📋 Análisis exhaustivo de refactorización: hardcode en menús (113 líneas), búsqueda interactiva (17% cobertura), propuestas de solución con documentación completa |
+| **1.6.12** | 2026-06-29 | ✨ Dinamización de menús: Eliminar hardcode en opciones A, B, Q. Generación dinámica con _system_options, get_auto_tools(), build_system_options(). Reducción 50% de código (113→56 líneas). Implementado en todas las plataformas |
+| 1.6.11 | 2026-06-29 | 📋 Análisis exhaustivo de refactorización: hardcode en menús (113 líneas), búsqueda interactiva (17% cobertura), propuestas de solución con documentación completa |
 | 1.6.13 | 2026-06-25 | 🆙 Nuevo grupo "updatepipe" para herramientas de actualización/rollback de Release Pipelines |
 | 1.6.12 | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
 | 1.6.11 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
 | 1.6.10 | 2026-06-20 | Dashboard Matutino inicial |
 | 1.6.9 | 2026-06-15 | KPI Analyzer mejorado |
+
+### v1.6.12 - Dinamización de Menús - Eliminar Hardcode
+
+**Cambios Principales:**
+- ✅ Estructura `_system_options`: Diccionario de configuración para opciones de sistema
+- ✅ Función `get_auto_tools()`: Genera lista de herramientas dinámicamente
+- ✅ Función `build_system_options()`: Construye opciones finales desde configuración
+- ✅ Inicialización automática: `_init_system_options()` al cargar módulo
+- ✅ Implementado en todas las plataformas: AZDO, GCP, AWS, Terminal, KPI
+
+**Reducción de Código:**
+- Líneas de hardcode: 113 → 56 (50% ↓)
+- Mapeos duplicados: 6 → 1 (83% ↓)
+- Puntos de cambio: Centralizados
+- Mantenibilidad: Mejorada significativamente
+
+**Plataformas Actualizadas:**
+- 🔷 AZDO: Opciones A, B, Q dinámicas
+- ☁️ GCP: Opciones A, Q dinámicas
+- 🟠 AWS: Opciones A, Q dinámicas
+- 🐧 Terminal: Opción Q dinámica
+- 📊 KPI: Opción Q dinámica
+
+**Beneficios:**
+- 🎯 Código más mantenible
+- 📊 Escalabilidad mejorada
+- 🔄 Consistencia entre plataformas
+- ✅ Totalmente retrocompatible
+
+---
 
 ### v1.6.11 - Análisis Exhaustivo de Refactorización de Menús y Búsqueda Interactiva
 
