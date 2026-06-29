@@ -167,14 +167,37 @@ SCRIPTS = {
         "args": ["deployment", "namespace", "flags"],
         "status": "ready"
     },
-    "Q": {
-        "name": "Volver al menú principal",
-        "description": "Regresar al launcher principal",
-        "path": None,
-        "args": [],
-        "status": "exit"
+    "_system_options": {
+        "Q": {
+            "name": "Volver al menú principal",
+            "description": "Regresar al launcher principal",
+            "type": "exit"
+        }
     }
 }
+
+def build_system_options():
+    """
+    Construye las opciones de sistema (Q) dinámicamente.
+    Reemplaza el hardcode actual con generación dinámica.
+    """
+    system_opts = SCRIPTS.get("_system_options", {})
+    
+    for key, opt_config in system_opts.items():
+        # Opciones simples (como "Q")
+        SCRIPTS[key] = {
+            "name": opt_config["name"],
+            "description": opt_config["description"],
+            "path": None,
+            "args": [],
+            "status": opt_config.get("type", "exit")
+        }
+
+def _init_system_options():
+    """Inicializa las opciones de sistema (Q) dinámicamente."""
+    build_system_options()
+
+_init_system_options()
 
 STATUS_EMOJI = {
     "ready": "🟢",

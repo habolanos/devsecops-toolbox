@@ -279,19 +279,19 @@ TOOLS = {
         "status": "ready"
     },
     # ══════════ SYSTEM (A, Q) ══════════
-    "A": {
-        "name": "Ejecutar Todos (Checkers)",
-        "description": "Ejecuta todos los checkers con profile y región por defecto",
-        "auto_tools": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "17", "18"],
-        "excluded_reason": "Excluye: EKS Pod/Node Monitor (requieren kubectl y selección de cluster), Inventory (pipeline propio)",
-        "group": "system",
-        "status": "ready"
-    },
-    "Q": {
-        "name": "Salir",
-        "description": "Salir del menú",
-        "group": "system",
-        "status": "exit"
+    "_system_options": {
+        "A": {
+            "name": "Ejecutar Todos (Checkers)",
+            "description": "Ejecuta todos los checkers con profile y región por defecto",
+            "type": "auto_run",
+            "exclude": ["15", "16", "19"],
+            "reason": "Excluye: EKS Pod Monitor, EKS Node Monitor, Inventory (pipeline propio)"
+        },
+        "Q": {
+            "name": "Salir",
+            "description": "Salir del menú",
+            "type": "exit"
+        }
     }
 }
 
@@ -305,6 +305,13 @@ STATUS_INDICATORS = {
     "running": ("🔵", "blue", "Ejecutando"),
     "exit": ("🚪", "white", "Salir"),
 }
+
+# Construir opciones de sistema dinámicamente
+def _init_system_options():
+    """Inicializa las opciones de sistema (A, Q) dinámicamente."""
+    build_system_options()
+
+_init_system_options()
 
 def clear_screen():
     """Limpia la pantalla de la consola."""
@@ -370,6 +377,74 @@ def _menu_sort_key(key: str) -> tuple:
     if key.isdigit():
         return (0, int(key))
     return (1, key)
+
+
+def get_auto_tools(exclude_list: List[str] = None) -> List[str]:
+    """
+    Genera lista de herramientas para auto_run dinámicamente.
+    
+    Itera por GROUP_ORDER, obtiene herramientas de cada grupo,
+    excluye las especificadas, y retorna lista ordenada.
+    
+    Args:
+        exclude_list: Lista de IDs a excluir (ej: ["15", "16"])
+    
+    Returns:
+        Lista de IDs de herramientas válidas, ordenadas por grupo
+    """
+    exclude_list = exclude_list or []
+    auto_tools = []
+    
+    # Iterar por grupos en orden
+    for group_key in GROUP_ORDER:
+        # Obtener herramientas de este grupo
+        group_tools = [
+            key for key, tool in TOOLS.items()
+            if (tool.get("group") == group_key and 
+                key not in ("Q", "A", "_system_options") and
+                key not in exclude_list)
+        ]
+        
+        # Ordenar numéricamente dentro del grupo
+        group_tools.sort(key=_menu_sort_key)
+        auto_tools.extend(group_tools)
+    
+    return auto_tools
+
+
+def build_system_options():
+    """
+    Construye las opciones de sistema (A, Q) dinámicamente.
+    Reemplaza el hardcode actual con generación dinámica.
+    
+    Lee la configuración de _system_options y genera auto_tools
+    para cada opción de tipo auto_run.
+    """
+    system_opts = TOOLS.get("_system_options", {})
+    
+    for key, opt_config in system_opts.items():
+        if opt_config.get("type") in ("auto_run", "auto_run_json"):
+            # Generar auto_tools dinámicamente
+            exclude = opt_config.get("exclude", [])
+            auto_tools = get_auto_tools(exclude)
+            
+            # Crear opción final
+            TOOLS[key] = {
+                "name": opt_config["name"],
+                "description": opt_config["description"],
+                "auto_tools": auto_tools,
+                "group": "system",
+                "status": "ready"
+            }
+        else:
+            # Opciones simples (como "Q")
+            TOOLS[key] = {
+                "name": opt_config["name"],
+                "description": opt_config["description"],
+                "group": "system",
+                "status": opt_config.get("type", "exit")
+            }
+
 
 def get_menu_order(include_exit: bool = True) -> List[str]:
     """Retorna las claves del menú ordenadas por grupo y numéricamente dentro de cada grupo."""

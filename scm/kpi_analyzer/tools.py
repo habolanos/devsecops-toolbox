@@ -145,14 +145,38 @@ TOOLS = {
         "args": [],
         "description": "Ejecutar suite de tests del KPI Analyzer"
     },
-    "Q": {
-        "name": "Volver al Menú Principal",
-        "emoji": "🔙",
-        "script": None,
-        "args": None,
-        "description": "Regresar al launcher principal"
+    "_system_options": {
+        "Q": {
+            "name": "Volver al Menú Principal",
+            "emoji": "🔙",
+            "description": "Regresar al launcher principal",
+            "type": "exit"
+        }
     }
 }
+
+def build_system_options():
+    """
+    Construye las opciones de sistema (Q) dinámicamente.
+    Reemplaza el hardcode actual con generación dinámica.
+    """
+    system_opts = TOOLS.get("_system_options", {})
+    
+    for key, opt_config in system_opts.items():
+        # Opciones simples (como "Q")
+        TOOLS[key] = {
+            "name": opt_config["name"],
+            "emoji": opt_config.get("emoji", "🔙"),
+            "script": None,
+            "args": None,
+            "description": opt_config["description"]
+        }
+
+def _init_system_options():
+    """Inicializa las opciones de sistema (Q) dinámicamente."""
+    build_system_options()
+
+_init_system_options()
 
 def clear_screen():
     """Limpia la pantalla de la consola."""
