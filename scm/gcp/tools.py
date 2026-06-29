@@ -500,6 +500,11 @@ def build_system_options():
                 "group": "system",
                 "status": opt_config.get("type", "exit")
             }
+    
+    # Eliminar la clave _system_options después de procesarla
+    # para evitar que se intente procesar como una herramienta
+    if "_system_options" in TOOLS:
+        del TOOLS["_system_options"]
 
 
 def get_menu_order(include_exit: bool = True) -> List[str]:
