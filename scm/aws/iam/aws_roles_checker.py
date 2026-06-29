@@ -203,6 +203,7 @@ def categorize_role(role_details: Dict) -> str:
 
 
 def export_results(results: List[Dict], output_format: str):
+    """Exporta resultados usando ExportManager centralizado con fallback."""
     OUTCOME_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     

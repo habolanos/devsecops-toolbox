@@ -840,6 +840,7 @@ def resolve_lb_for_host(host: str, svc_map: Dict) -> Tuple[str, str]:
 
 
 def export_results(connections: List[Dict], filepath: str, export_format: str, metadata: Dict):
+    """Exporta resultados usando ExportManager centralizado con fallback."""
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     if export_format == 'csv':
         import csv

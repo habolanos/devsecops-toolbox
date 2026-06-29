@@ -269,6 +269,7 @@ def display_table_plain(web_acls: List[Dict]):
 
 
 def export_results(web_acls: List[Dict], output_format: str):
+    """Exporta resultados usando ExportManager centralizado con fallback."""
     OUTCOME_DIR.mkdir(exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 

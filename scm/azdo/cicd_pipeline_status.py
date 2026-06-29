@@ -906,6 +906,7 @@ EXPORT_FIELDS = ["tipo", "id", "nombre", "path", "grupo", "estado", "deprecado",
 
 
 def export_results(rows: List[Dict], output_format: str, tz_name: str) -> Optional[str]:
+    """Exporta resultados usando ExportManager centralizado con fallback."""
     outcome_dir = str(get_output_dir("outcome"))
     os.makedirs(outcome_dir, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

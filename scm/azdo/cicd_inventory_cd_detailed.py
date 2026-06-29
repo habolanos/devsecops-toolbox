@@ -296,6 +296,7 @@ def get_cd_definitions(headers, org, project):
 # ==========================================================
 
 def export_results(rows, output_dir, script_name=SCRIPT_NAME):
+    """Exporta resultados usando ExportManager centralizado con fallback."""
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     df = pd.DataFrame(rows)
     excel_path = output_dir / f"{script_name}_{ts}.xlsx"

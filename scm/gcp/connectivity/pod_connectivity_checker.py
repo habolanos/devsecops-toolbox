@@ -1541,6 +1541,7 @@ def export_results(
     export_format: str,
     tz_name: str = "America/Mazatlan",
 ) -> None:
+    """Exporta resultados usando ExportManager centralizado con fallback."""
     """
     Exporta los resultados del ConnectivityChecker a JSON o CSV.
     El JSON incluye metadata, summary y la lista completa de resultados.
