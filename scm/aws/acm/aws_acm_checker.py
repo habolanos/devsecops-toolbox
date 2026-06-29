@@ -51,6 +51,12 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
 __version__ = "1.0.0"
 __author__ = "Harold Adrian"
 
