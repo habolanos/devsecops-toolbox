@@ -73,6 +73,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -662,47 +668,67 @@ def print_summary(console: "Console", rows: List[Dict], stage_name: str, elapsed
 
 
 def export_results(rows: List[Dict], output_format: str, script_dir: str, stage_name: str, tz_name: str) -> Optional[str]:
-    outcome_dir = str(get_output_dir("outcome"))
-    os.makedirs(outcome_dir, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-
-    if output_format == "json":
-        filepath = os.path.join(outcome_dir, f"pr_master_{ts}.json")
-        payload = {
-            "metadata": {
-                "tool": "azdo_pr_master_checker",
-                "version": __version__,
-                "stage_searched": stage_name,
-                "generated_at": datetime.now(_safe_tz(tz_name)).isoformat(),
-            },
-            "total": len(rows),
-            "data": rows,
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return filepath
-
-    elif output_format == "csv":
-        if not rows:
-            return None
-        filepath = os.path.join(outcome_dir, f"pr_master_{ts}.csv")
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(rows)
-        return filepath
-
-    elif output_format == "excel":
-        try:
-            import pandas as pd
-            filepath = os.path.join(outcome_dir, f"pr_master_{ts}.xlsx")
-            df = pd.DataFrame(rows)
-            df.to_excel(filepath, index=False, engine="openpyxl")
+    """Exporta resultados usando ExportManager centralizado."""
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual si ExportManager no está disponible
+        outcome_dir = str(get_output_dir("outcome"))
+        os.makedirs(outcome_dir, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        
+        if output_format == "json":
+            filepath = os.path.join(outcome_dir, f"pr_master_{ts}.json")
+            payload = {
+                "metadata": {
+                    "tool": "azdo_pr_master_checker",
+                    "version": __version__,
+                    "stage_searched": stage_name,
+                    "generated_at": datetime.now(_safe_tz(tz_name)).isoformat(),
+                },
+                "total": len(rows),
+                "data": rows,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
             return filepath
-        except ImportError:
-            print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
-            return None
-
+        elif output_format == "csv":
+            if not rows:
+                return None
+            filepath = os.path.join(outcome_dir, f"pr_master_{ts}.csv")
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+                writer.writeheader()
+                writer.writerows(rows)
+            return filepath
+        elif output_format == "excel":
+            try:
+                import pandas as pd
+                filepath = os.path.join(outcome_dir, f"pr_master_{ts}.xlsx")
+                df = pd.DataFrame(rows)
+                df.to_excel(filepath, index=False, engine="openpyxl")
+                return filepath
+            except ImportError:
+                print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
+                return None
+        return None
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_pr_master_checker", __version__)
+    
+    metadata = {
+        "stage_searched": stage_name,
+    }
+    
+    summary = {
+        "total": len(rows),
+    }
+    
+    if output_format == "json":
+        return manager.export_json(rows, metadata, summary, timezone=tz_name)
+    elif output_format == "csv":
+        return manager.export_csv(rows)
+    elif output_format == "excel":
+        return manager.export_excel(rows, sheet_name="PRs", metadata=metadata, summary=summary)
+    
     return None
 
 
