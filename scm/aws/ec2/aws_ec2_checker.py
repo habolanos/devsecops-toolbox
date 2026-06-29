@@ -48,6 +48,13 @@ try:
     from rich.panel import Panel
     from rich.progress import Progress, SpinnerColumn, TextColumn
     RICH_AVAILABLE = True
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+
 except ImportError:
     RICH_AVAILABLE = False
 

@@ -47,6 +47,13 @@ try:
     from rich.progress import Progress, SpinnerColumn, TextColumn
     from rich.markdown import Markdown
     RICH_AVAILABLE = True
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+
     # Confirmar que Rich se importó correctamente
     import sys
     print(f"✓ Rich importado desde: {Console.__module__}", file=sys.stderr)

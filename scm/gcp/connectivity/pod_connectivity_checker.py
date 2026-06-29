@@ -1,3 +1,10 @@
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+
 #!/usr/bin/env python3
 """
 Cloud SQL Connectivity Checker
