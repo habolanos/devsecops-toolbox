@@ -74,6 +74,12 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
 __version__ = "1.0.0"
 __author__  = "Harold Adrian"
 
@@ -544,12 +550,9 @@ def render_fallback(d: Dict, tz_name: str) -> None:
 # EXPORT
 # ═══════════════════════════════════════════════════════════════════════════════
 def export_results(d: Dict, fmt: str, tz_name: str) -> None:
-    ts          = datetime.now().strftime("%Y%m%d_%H%M%S")
-    def_id      = d["definition"].get("id", "unknown")
-    outcome_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outcome")
-    os.makedirs(outcome_dir, exist_ok=True)
-    base = os.path.join(outcome_dir, f"release_deep_dive_{def_id}_{ts}")
-
+    """Exporta resultados usando ExportManager centralizado."""
+    def_id = d["definition"].get("id", "unknown")
+    
     rows: List[Dict] = []
     for pr in d.get("prs", []):
         rows.append({
@@ -590,28 +593,57 @@ def export_results(d: Dict, fmt: str, tz_name: str) -> None:
             "detail":  c["detail"],
         })
 
-    try:
-        if fmt == "json":
-            import json
-            path = base + ".json"
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(rows, f, ensure_ascii=False, indent=2)
-            print(f"✅ Exportado: {path}")
-        elif fmt == "csv":
-            import csv
-            path = base + ".csv"
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["section", "id", "name", "author", "date", "detail"])
-                writer.writeheader()
-                writer.writerows(rows)
-            print(f"✅ Exportado: {path}")
-        elif fmt == "excel":
-            import pandas as pd  # type: ignore
-            path = base + ".xlsx"
-            pd.DataFrame(rows).to_excel(path, index=False, engine="openpyxl", sheet_name="Deep Dive")
-            print(f"✅ Exportado: {path}")
-    except Exception as e:
-        print(f"⚠️  Error al exportar: {e}")
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        outcome_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outcome")
+        os.makedirs(outcome_dir, exist_ok=True)
+        base = os.path.join(outcome_dir, f"release_deep_dive_{def_id}_{ts}")
+
+        try:
+            if fmt == "json":
+                import json
+                path = base + ".json"
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(rows, f, ensure_ascii=False, indent=2)
+                print(f"✅ Exportado: {path}")
+            elif fmt == "csv":
+                import csv
+                path = base + ".csv"
+                with open(path, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=["section", "id", "name", "author", "date", "detail"])
+                    writer.writeheader()
+                    writer.writerows(rows)
+                print(f"✅ Exportado: {path}")
+            elif fmt == "excel":
+                import pandas as pd  # type: ignore
+                path = base + ".xlsx"
+                pd.DataFrame(rows).to_excel(path, index=False, engine="openpyxl", sheet_name="Deep Dive")
+                print(f"✅ Exportado: {path}")
+        except Exception as e:
+            print(f"⚠️  Error al exportar: {e}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_release_deep_dive", __version__)
+    
+    summary = {
+        "definition_id": def_id,
+        "total_items": len(rows),
+    }
+    
+    if fmt == "json":
+        filepath = manager.export_json(rows, summary=summary, timezone=tz_name)
+        if filepath:
+            print(f"✅ Exportado: {filepath}")
+    elif fmt == "csv":
+        filepath = manager.export_csv(rows)
+        if filepath:
+            print(f"✅ Exportado: {filepath}")
+    elif fmt == "excel":
+        filepath = manager.export_excel(rows, sheet_name="Deep Dive", summary=summary)
+        if filepath:
+            print(f"✅ Exportado: {filepath}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
