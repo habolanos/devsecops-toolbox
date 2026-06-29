@@ -61,6 +61,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import yaml
     YAML_AVAILABLE = True
 except ImportError:
@@ -862,21 +868,50 @@ def show_help():
 
 def export_results(results: Dict, output_format: str, filename: str = "validation_results"):
     """Exporta resultados a archivo."""
-    OUTCOME_DIR.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        OUTCOME_DIR.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        if output_format == "json":
+            output_path = OUTCOME_DIR / f"{filename}_{timestamp}.json"
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(results, f, indent=2, ensure_ascii=False)
+        else:
+            output_path = OUTCOME_DIR / f"{filename}_{timestamp}.csv"
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("step,status,message\n")
+                for step, data in results.get("steps", {}).items():
+                    f.write(f"{step},{data.get('status', 'unknown')},{data.get('message', '')}\n")
+        
+        log_info(f"Resultados exportados a: {output_path}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_task_validator", __version__)
+    
+    # Convertir resultados a formato tabular
+    data = []
+    for step, step_data in results.get("steps", {}).items():
+        data.append({
+            "step": step,
+            "status": step_data.get("status", "unknown"),
+            "message": step_data.get("message", ""),
+        })
+    
+    summary = {
+        "overall_status": results.get("overall_status", "unknown"),
+        "total_steps": len(data),
+    }
     
     if output_format == "json":
-        output_path = OUTCOME_DIR / f"{filename}_{timestamp}.json"
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
-    else:
-        output_path = OUTCOME_DIR / f"{filename}_{timestamp}.csv"
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write("step,status,message\n")
-            for step, data in results.get("steps", {}).items():
-                f.write(f"{step},{data.get('status', 'unknown')},{data.get('message', '')}\n")
-    
-    log_info(f"Resultados exportados a: {output_path}")
+        filepath = manager.export_json(data, summary=summary)
+        if filepath:
+            log_info(f"Resultados exportados a: {filepath}")
+    elif output_format == "csv":
+        filepath = manager.export_csv(data)
+        if filepath:
+            log_info(f"Resultados exportados a: {filepath}")
 
 
 def main():
