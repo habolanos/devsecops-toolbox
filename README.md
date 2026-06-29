@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.13-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.11-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -11,15 +11,40 @@
 
 ---
 
-## 📝 Historial de Cambios (v1.6.13)
+## 📝 Historial de Cambios (v1.6.11)
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| **1.6.13** | 2026-06-25 | 🆙 Nuevo grupo "updatepipe" para herramientas de actualización/rollback de Release Pipelines |
+| **1.6.11** | 2026-06-29 | 📋 Análisis exhaustivo de refactorización: hardcode en menús (113 líneas), búsqueda interactiva (17% cobertura), propuestas de solución con documentación completa |
+| 1.6.13 | 2026-06-25 | 🆙 Nuevo grupo "updatepipe" para herramientas de actualización/rollback de Release Pipelines |
 | 1.6.12 | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
 | 1.6.11 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
 | 1.6.10 | 2026-06-20 | Dashboard Matutino inicial |
 | 1.6.9 | 2026-06-15 | KPI Analyzer mejorado |
+
+### v1.6.11 - Análisis Exhaustivo de Refactorización de Menús y Búsqueda Interactiva
+
+**Cambios Principales:**
+- ✅ Análisis exhaustivo de hardcode en menús: 113 líneas identificadas en 6 archivos
+- ✅ Propuesta de solución: generación dinámica con `_system_options` y funciones reutilizables
+- ✅ Reducción estimada: 50% de código (113 → 56 líneas)
+- ✅ Análisis de búsqueda interactiva: módulo `interactive_search.py` en AZDO (328 líneas)
+- ✅ Problema: solo en AZDO (17% cobertura)
+- ✅ Propuesta: módulo centralizado `scm/search_module.py` para 100% cobertura
+- ✅ Documentación completa en `docs/refactor_arquitectura/`
+
+**Documentos Generados:**
+- 📄 `ANALISIS_DINAMIZACION_MENUS.md` (630 líneas)
+- 📄 `ANALISIS_COMPLETO_HARDCODE_MENUS.md` (571 líneas)
+- 📄 `ANALISIS_BUSQUEDA_INTERACTIVA.md` (479 líneas)
+
+**Beneficios:**
+- 🎯 Identifica problemas de mantenibilidad
+- 📊 Propone soluciones concretas y medibles
+- 📋 Proporciona checklists de implementación
+- 🔄 Facilita refactorización futura
+
+---
 
 ### v1.6.13 - Nuevo Grupo "updatepipe" para Herramientas de Actualización
 
