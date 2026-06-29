@@ -51,6 +51,12 @@ if RICH_AVAILABLE:
     from rich.prompt import Prompt
     from rich.box import ROUNDED, DOUBLE_EDGE
 
+try:
+    from search_module import search_and_select_tools
+    SEARCH_AVAILABLE = True
+except ImportError:
+    SEARCH_AVAILABLE = False
+
 # Metadata
 __version__ = "1.0.0"
 __author__ = "Harold Adrian"
@@ -424,10 +430,24 @@ def main():
             
             # Tip
             if RICH_AVAILABLE and console:
-                console.print("[dim]💡 Tip: Seleccione una opción o 'Q' para salir[/dim]\n")
+                console.print("[dim]💡 Tip: Seleccione una opción, '/' para buscar o 'Q' para salir[/dim]\n")
                 choice = Prompt.ask("[bold cyan]Seleccione una opción[/]", default="Q").strip().upper()
             else:
-                choice = input(f"{Colors.BOLD}Seleccione una opción: {Colors.ENDC}").strip().upper()
+                choice = input(f"{Colors.BOLD}Seleccione una opción (o '/' para buscar): {Colors.ENDC}").strip().upper()
+            
+            # Opción de búsqueda
+            if choice == "/":
+                if SEARCH_AVAILABLE:
+                    choice = search_and_select_tools(TOOLS)
+                    if choice is None:
+                        continue
+                else:
+                    if RICH_AVAILABLE and console:
+                        console.print("[yellow]⚠️  Búsqueda no disponible[/yellow]")
+                    else:
+                        print(f"\n{Colors.YELLOW}⚠️  Búsqueda no disponible{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
             
             if choice in TOOLS:
                 run_tool(choice)

@@ -50,6 +50,12 @@ if RICH_AVAILABLE:
     from rich.box import ROUNDED, DOUBLE_EDGE
     from rich.align import Align
 
+try:
+    from search_module import search_and_select_scripts
+    SEARCH_AVAILABLE = True
+except ImportError:
+    SEARCH_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -412,10 +418,21 @@ def main():
             print_menu_fallback()
         
         try:
-            choice = input(f"{Colors.BOLD}Seleccione una opción: {Colors.ENDC}").strip().upper()
+            choice = input(f"{Colors.BOLD}Seleccione una opción (o '/' para buscar): {Colors.ENDC}").strip().upper()
         except (EOFError, KeyboardInterrupt):
             print(f"\n{Colors.GREEN}Saliendo...{Colors.ENDC}")
             break
+        
+        # Opción de búsqueda
+        if choice == "/":
+            if SEARCH_AVAILABLE:
+                choice = search_and_select_scripts(SCRIPTS)
+                if choice is None:
+                    continue
+            else:
+                print(f"\n{Colors.YELLOW}⚠️  Búsqueda no disponible{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
         
         if choice == "Q":
             print(f"\n{Colors.GREEN}Volviendo al menú principal...{Colors.ENDC}")

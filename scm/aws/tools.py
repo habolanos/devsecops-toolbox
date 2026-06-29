@@ -41,6 +41,12 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+try:
+    from search_module import search_and_select_tools
+    SEARCH_AVAILABLE = True
+except ImportError:
+    SEARCH_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1004,7 +1010,18 @@ def main():
                 print(f"Profile: {DEFAULT_PROFILE} | Region: {DEFAULT_REGION}\n")
             print_menu()
 
-            choice = input(f"\n{Colors.BOLD}Seleccione una opción: {Colors.ENDC}").strip().upper()
+            choice = input(f"\n{Colors.BOLD}Seleccione una opción (o '/' para buscar): {Colors.ENDC}").strip().upper()
+
+            # Opción de búsqueda
+            if choice == "/":
+                if SEARCH_AVAILABLE:
+                    choice = search_and_select_tools(TOOLS, TOOL_GROUPS)
+                    if choice is None:
+                        continue
+                else:
+                    print(f"\n{Colors.YELLOW}⚠️  Búsqueda no disponible{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
 
             if choice == "A":
                 run_all_checkers()

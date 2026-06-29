@@ -39,7 +39,7 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
-    from interactive_search import search_and_select
+    from search_module import search_and_select_tools
     SEARCH_AVAILABLE = True
 except ImportError:
     SEARCH_AVAILABLE = False
@@ -1924,7 +1924,7 @@ def main():
             # Opción de búsqueda
             if choice == "/":
                 if SEARCH_AVAILABLE:
-                    choice = search_and_select(TOOLS, TOOL_GROUPS)
+                    choice = search_and_select_tools(TOOLS, TOOL_GROUPS)
                     if choice is None:
                         continue
                 else:
