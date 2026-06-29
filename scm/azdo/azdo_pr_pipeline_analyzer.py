@@ -60,6 +60,12 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
@@ -888,95 +894,86 @@ def export_results(
     project: str
 ):
     """Exporta resultados a archivo."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_name = f"pr_pipeline_analysis_{timestamp}"
-    
     # Preparar datos
-    data = {
-        "metadata": {
-            "org": org,
-            "project": project,
-            "timestamp": timestamp,
-            "total_time_seconds": round(total_time, 2),
-            "step_times": {name: round(t, 2) for name, t in step_times}
-        },
-        "pull_requests": [
-            {
-                "pr_id": pr.get("pullRequestId"),
-                "title": pr.get("title"),
-                "repository": pr.get("repository", {}).get("name"),
-                "source_branch": pr.get("sourceRefName", "").replace("refs/heads/", ""),
-                "target_branch": pr.get("targetRefName", "").replace("refs/heads/", ""),
-                "status": pr.get("status"),
-                "created_by": pr.get("createdBy", {}).get("displayName"),
-                "creation_date": pr.get("creationDate"),
-                "closed_date": pr.get("closedDate")
-            }
-            for pr in prs
-        ],
-        "repositories": {
-            repo_name: {
-                "cd_pipeline": repo_cds.get(repo_name, {}).get("name") if repo_cds.get(repo_name) else None,
-                "latest_release": repo_releases.get(repo_name, {}).get("name") if repo_releases.get(repo_name) else None,
-                "release_status": repo_releases.get(repo_name, {}).get("status") if repo_releases.get(repo_name) else None
-            }
-            for repo_name in sorted(repo_cds.keys())
+    pr_data = [
+        {
+            "pr_id": pr.get("pullRequestId"),
+            "title": pr.get("title"),
+            "repository": pr.get("repository", {}).get("name"),
+            "source_branch": pr.get("sourceRefName", "").replace("refs/heads/", ""),
+            "target_branch": pr.get("targetRefName", "").replace("refs/heads/", ""),
+            "status": pr.get("status"),
+            "created_by": pr.get("createdBy", {}).get("displayName"),
+            "creation_date": pr.get("creationDate"),
+            "closed_date": pr.get("closedDate")
         }
+        for pr in prs
+    ]
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = f"pr_pipeline_analysis_{timestamp}"
+        
+        data = {
+            "metadata": {
+                "org": org,
+                "project": project,
+                "timestamp": timestamp,
+                "total_time_seconds": round(total_time, 2),
+                "step_times": {name: round(t, 2) for name, t in step_times}
+            },
+            "pull_requests": pr_data,
+            "repositories": {
+                repo_name: {
+                    "cd_pipeline": repo_cds.get(repo_name, {}).get("name") if repo_cds.get(repo_name) else None,
+                    "latest_release": repo_releases.get(repo_name, {}).get("name") if repo_releases.get(repo_name) else None,
+                    "release_status": repo_releases.get(repo_name, {}).get("status") if repo_releases.get(repo_name) else None
+                }
+                for repo_name in sorted(repo_cds.keys())
+            }
+        }
+        
+        if output_format == "json":
+            filename = f"outcome/{base_name}.json"
+            os.makedirs("outcome", exist_ok=True)
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            print(f"\n📁 Exportado a: {filename}")
+        elif output_format == "csv":
+            filename = f"outcome/{base_name}_prs.csv"
+            os.makedirs("outcome", exist_ok=True)
+            with open(filename, "w", newline="", encoding="utf-8") as f:
+                if data["pull_requests"]:
+                    writer = csv.DictWriter(f, fieldnames=data["pull_requests"][0].keys())
+                    writer.writeheader()
+                    writer.writerows(data["pull_requests"])
+            print(f"\n📁 Exportado a: {filename}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_pr_pipeline_analyzer", __version__)
+    
+    summary = {
+        "org": org,
+        "project": project,
+        "total_prs": len(prs),
+        "total_repos": len(repo_cds),
+        "total_time_seconds": round(total_time, 2),
     }
     
     if output_format == "json":
-        filename = f"outcome/{base_name}.json"
-        os.makedirs("outcome", exist_ok=True)
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"\n📁 Exportado a: {filename}")
-    
+        filepath = manager.export_json(pr_data, summary=summary)
+        if filepath:
+            print(f"\n📁 Exportado a: {filepath}")
     elif output_format == "csv":
-        filename = f"outcome/{base_name}_prs.csv"
-        os.makedirs("outcome", exist_ok=True)
-        with open(filename, "w", newline="", encoding="utf-8") as f:
-            if data["pull_requests"]:
-                writer = csv.DictWriter(f, fieldnames=data["pull_requests"][0].keys())
-                writer.writeheader()
-                writer.writerows(data["pull_requests"])
-        print(f"\n📁 Exportado a: {filename}")
-    
+        filepath = manager.export_csv(pr_data)
+        if filepath:
+            print(f"\n📁 Exportado a: {filepath}")
     elif output_format == "excel":
-        try:
-            import pandas as pd
-            filename = f"outcome/{base_name}.xlsx"
-            os.makedirs("outcome", exist_ok=True)
-            
-            with pd.ExcelWriter(filename, engine="openpyxl") as writer:
-                # PRs
-                df_prs = pd.DataFrame(data["pull_requests"])
-                df_prs.to_excel(writer, sheet_name="Pull Requests", index=False)
-                
-                # Repos with CD/Releases
-                repos_data = []
-                for repo_name, info in data["repositories"].items():
-                    repos_data.append({
-                        "Repository": repo_name,
-                        "CD Pipeline": info["cd_pipeline"] or "—",
-                        "Latest Release": info["latest_release"] or "—",
-                        "Release Status": info["release_status"] or "—"
-                    })
-                df_repos = pd.DataFrame(repos_data)
-                df_repos.to_excel(writer, sheet_name="Repositories", index=False)
-                
-                # Metadata
-                meta_data = {
-                    "Property": list(data["metadata"].keys()),
-                    "Value": [str(v) for v in data["metadata"].values()]
-                }
-                df_meta = pd.DataFrame(meta_data)
-                df_meta.to_excel(writer, sheet_name="Metadata", index=False)
-            
-            print(f"\n📁 Exportado a: {filename}")
-        except ImportError:
-            print("[WARN] pandas y openpyxl requeridos para Excel. Instala: pip install pandas openpyxl")
-            print("[INFO] Exportando como CSV en su lugar...")
-            export_results(prs, repo_cds, repo_releases, step_times, total_time, "csv", org, project)
+        filepath = manager.export_excel(pr_data, sheet_name="Pull Requests", summary=summary)
+        if filepath:
+            print(f"\n📁 Exportado a: {filepath}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
