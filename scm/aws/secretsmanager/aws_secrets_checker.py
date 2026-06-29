@@ -295,7 +295,9 @@ def display_results_plain(secrets: List[Dict], ssm_params: List[Dict]):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def export_results(secrets: List[Dict], ssm_params: List[Dict], output_format: str):
+
     """Exporta resultados usando ExportManager centralizado con fallback."""
+
     OUTCOME_DIR.mkdir(exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     all_results = secrets + ssm_params

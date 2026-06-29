@@ -727,7 +727,9 @@ def _add_charts_sheet(excel_path, df, deadline_date):
 
 
 def export_results(rows, output_dir, script_name=SCRIPT_NAME, deadline_date=None):
+
     """Exporta resultados usando ExportManager centralizado con fallback."""
+
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     df = pd.DataFrame(rows)
     excel_path = output_dir / f"{script_name}_{ts}.xlsx"
