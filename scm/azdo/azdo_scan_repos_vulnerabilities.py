@@ -50,6 +50,12 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
 __version__ = "1.2.0"
 __author__ = "Harold Adrian"
 
@@ -321,19 +327,38 @@ def print_row(row: Dict) -> None:
 
 def export_results(rows: List[Dict], output_format: str) -> None:
     """Exporta resultados a archivo."""
-    OUTCOME_DIR.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        OUTCOME_DIR.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"scan_repos_vulnerabilities_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": timestamp, "total_matches": len(rows), "results": rows}, f, indent=2)
+        elif output_format == "csv":
+            filepath = OUTCOME_DIR / f"scan_repos_vulnerabilities_{timestamp}.csv"
+            df = pd.DataFrame(rows)
+            df.to_csv(filepath, index=False, encoding="utf-8")
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("azdo_scan_repos_vulnerabilities", __version__)
+    
+    summary = {
+        "total_matches": len(rows),
+    }
     
     if output_format == "json":
-        filepath = OUTCOME_DIR / f"scan_repos_vulnerabilities_{timestamp}.json"
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump({"generated_at": timestamp, "total_matches": len(rows), "results": rows}, f, indent=2)
+        filepath = manager.export_json(rows, summary=summary)
+        if filepath:
+            print(f"\n✅ Resultados exportados a: {filepath}")
     elif output_format == "csv":
-        filepath = OUTCOME_DIR / f"scan_repos_vulnerabilities_{timestamp}.csv"
-        df = pd.DataFrame(rows)
-        df.to_csv(filepath, index=False, encoding="utf-8")
-    
-    print(f"\n✅ Resultados exportados a: {filepath}")
+        filepath = manager.export_csv(rows)
+        if filepath:
+            print(f"\n✅ Resultados exportados a: {filepath}")
 
 
 def collect_rows(args) -> Tuple[List[Dict], pd.DataFrame]:
