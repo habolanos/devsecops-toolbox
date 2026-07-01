@@ -35,6 +35,13 @@ console = Console() if RICH_AVAILABLE else None
 # DETECCIÓN DE PLATAFORMA Y CAPTURA DE TECLAS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
 def get_char_windows() -> Optional[str]:
     """Captura una tecla en Windows usando msvcrt."""
     try:
@@ -325,3 +332,53 @@ def search_and_select(tools: Dict, tool_groups: Dict) -> Optional[str]:
     Retorna el ID de la herramienta seleccionada o None.
     """
     return interactive_search(tools, tool_groups)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXPORT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def export_results(data, output_format: str = "json", output_dir: str = "outcome"):
+    """Exporta resultados usando ExportManager centralizado con fallback."""
+    
+    from pathlib import Path
+    import json
+    import csv
+    from datetime import datetime
+    
+    output_path = Path(output_dir)
+    output_path.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = output_path / f"interactive_search_{ts}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": data}, f, indent=2, default=str)
+        elif output_format == "csv":
+            filepath = output_path / f"interactive_search_{ts}.csv"
+            if isinstance(data, list) and data and isinstance(data[0], dict):
+                with open(filepath, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=data[0].keys())
+                    writer.writeheader()
+                    writer.writerows(data)
+        else:
+            return None
+        
+        print(f"✅ Resultados exportados a: {filepath}")
+        return str(filepath)
+    
+    # Usar ExportManager
+    manager = ExportManager("interactive_search", "1.0.0")
+    
+    summary = {"total_items": len(data) if isinstance(data, list) else 1}
+    
+    if output_format == "json":
+        return manager.export_json(data if isinstance(data, list) else [data], summary=summary)
+    elif output_format == "csv":
+        return manager.export_csv(data if isinstance(data, list) else [data])
+    elif output_format == "excel":
+        return manager.export_excel(data if isinstance(data, list) else [data], sheet_name="Results", summary=summary)
+    
+    return None
