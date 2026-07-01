@@ -185,11 +185,17 @@ def _init_system_options():
 _init_system_options()
 
 def clear_screen():
-    """Limpia la pantalla de la consola."""
-    if platform.system() == "Windows":
-        os.system('cls')
+    """Limpia la pantalla (usa base_launcher si está disponible)."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import clear_screen as _clear_screen
+        _clear_screen()
     else:
-        os.system('clear')
+        import os, platform
+        if platform.system() == 'Windows':
+            os.system('cls')
+        else:
+            os.system('clear')
+
 
 def print_header_rich():
     """Imprime el encabezado con Rich."""

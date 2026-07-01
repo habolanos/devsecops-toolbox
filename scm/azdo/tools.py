@@ -44,6 +44,17 @@ try:
 except ImportError:
     SEARCH_AVAILABLE = False
 
+
+try:
+    from base_launcher import (
+        clear_screen, print_header, print_menu,
+        get_menu_order, get_auto_tools, build_system_options,
+        log_command, run_tool, Colors
+    )
+    BASE_LAUNCHER_AVAILABLE = True
+except ImportError:
+    BASE_LAUNCHER_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -534,7 +545,16 @@ def install_requirements(python_exec: str, force: bool = False) -> bool:
 # UI HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 def clear_screen():
-    os.system("cls" if platform.system() == "Windows" else "clear")
+    """Limpia la pantalla (usa base_launcher si está disponible)."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import clear_screen as _clear_screen
+        _clear_screen()
+    else:
+        import os, platform
+        if platform.system() == 'Windows':
+            os.system('cls')
+        else:
+            os.system('clear')
 
 
 def prompt(label: str, default: str = "", secret: bool = False) -> str:
@@ -553,22 +573,20 @@ def prompt(label: str, default: str = "", secret: bool = False) -> str:
 
 
 def print_header():
-    clear_screen()
-    if RICH_AVAILABLE and console:
-        console.print(Panel(
-            Align.center(Text.assemble(
-                Text("🔷  Azure DevOps Tools  🔷\n", style="bold cyan"),
-                Text(f"v{__version__}  |  by {__author__}\n", style="bold green"),
-                Text(__description__, style="dim white"),
-            )),
-            box=DOUBLE_EDGE,
-            border_style="cyan",
-            padding=(1, 4),
-            expand=False,
-        ))
+    """Imprime el encabezado del menú."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import print_header as _print_header
+        _print_header(
+            title="Azure DevOps Tools",
+            subtitle=f"v{__version__} | by {__author__}",
+            description=__description__,
+            emoji="🔷",
+            border_color="cyan",
+            platform_name="AZURE DEVOPS TOOLS"
+        )
         _print_config_status()
-        console.print()
     else:
+        clear_screen()
         print(f"{Colors.HEADER}{'='*60}")
         print(f"{'AZURE DEVOPS TOOLS':^60}")
         print(f"v{__version__} | by {__author__}".center(60))
@@ -636,195 +654,150 @@ def _menu_sort_key(k: str):
 
 
 def get_auto_tools(exclude_list: List[str] = None) -> List[str]:
-    """
-    Genera lista de herramientas para auto_run dinámicamente.
-    
-    Itera por GROUP_ORDER, obtiene herramientas de cada grupo,
-    excluye las especificadas, y retorna lista ordenada.
-    
-    Args:
-        exclude_list: Lista de IDs a excluir (ej: ["1b", "5", "6"])
-    
-    Returns:
-        Lista de IDs de herramientas válidas, ordenadas por grupo
-    """
-    exclude_list = exclude_list or []
-    auto_tools = []
-    
-    # Iterar por grupos en orden
-    for group_key in GROUP_ORDER:
-        # Obtener herramientas de este grupo
-        group_tools = [
-            key for key, tool in TOOLS.items()
-            if (tool.get("group") == group_key and 
-                key not in ("Q", "A", "B", "_system_options") and
-                key not in exclude_list)
-        ]
-        
-        # Ordenar numéricamente dentro del grupo
-        group_tools.sort(key=_menu_sort_key)
-        auto_tools.extend(group_tools)
-    
-    return auto_tools
+    """Genera lista de herramientas para auto_run dinámicamente."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import get_auto_tools as _get_auto_tools
+        return _get_auto_tools(
+            tools=TOOLS,
+            group_order=GROUP_ORDER,
+            exclude_list=exclude_list
+        )
+    else:
+        exclude_list = exclude_list or []
+        auto_tools = []
+        for group_key in GROUP_ORDER:
+            group_tools = [
+                key for key, tool in TOOLS.items()
+                if (tool.get("group") == group_key and 
+                    key not in ("Q", "A", "B", "_system_options") and
+                    key not in exclude_list)
+            ]
+            group_tools.sort(key=_menu_sort_key)
+            auto_tools.extend(group_tools)
+        return auto_tools
 
 
 def build_system_options():
-    """
-    Construye las opciones de sistema (A, B, Q) dinámicamente.
-    Reemplaza el hardcode actual con generación dinámica.
-    
-    Lee la configuración de _system_options y genera auto_tools
-    para cada opción de tipo auto_run.
-    """
-    system_opts = TOOLS.get("_system_options", {})
-    
-    for key, opt_config in system_opts.items():
-        if opt_config.get("type") in ("auto_run", "auto_run_json"):
-            # Generar auto_tools dinámicamente
-            exclude = opt_config.get("exclude", [])
-            auto_tools = get_auto_tools(exclude)
-            
-            # Crear opción final
-            TOOLS[key] = {
-                "name": opt_config["name"],
-                "description": opt_config["description"],
-                "auto_tools": auto_tools,
-                "group": "system",
-                "status": "ready"
-            }
-        else:
-            # Opciones simples (como "Q")
-            TOOLS[key] = {
-                "name": opt_config["name"],
-                "description": opt_config["description"],
-                "group": "system",
-                "status": opt_config.get("type", "exit")
-            }
-    
-    # Eliminar la clave _system_options después de procesarla
-    # para evitar que se intente procesar como una herramienta
-    if "_system_options" in TOOLS:
-        del TOOLS["_system_options"]
+    """Construye las opciones de sistema dinámicamente."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import build_system_options as _build_system_options
+        _build_system_options(TOOLS, GROUP_ORDER)
+    else:
+        system_opts = TOOLS.get("_system_options", {})
+        for key, opt_config in system_opts.items():
+            if opt_config.get("type") in ("auto_run", "auto_run_json"):
+                exclude = opt_config.get("exclude", [])
+                auto_tools = get_auto_tools(exclude)
+                TOOLS[key] = {
+                    "name": opt_config["name"],
+                    "description": opt_config["description"],
+                    "auto_tools": auto_tools,
+                    "group": "system",
+                    "status": "ready"
+                }
+            else:
+                TOOLS[key] = {
+                    "name": opt_config["name"],
+                    "description": opt_config["description"],
+                    "group": "system",
+                    "status": opt_config.get("type", "exit")
+                }
+        if "_system_options" in TOOLS:
+            del TOOLS["_system_options"]
 
 
 def get_menu_order() -> List[str]:
-    ordered: List[str] = []
-    for group_key in GROUP_ORDER:
-        keys = [k for k, t in TOOLS.items()
-                if t.get("group") == group_key and k not in ("Q", "A", "B")]
-        keys.sort(key=_menu_sort_key)
-        ordered.extend(keys)
-    if "B" in TOOLS:
-        ordered.append("B")
-    if "A" in TOOLS:
-        ordered.append("A")
-    if "Q" in TOOLS:
-        ordered.append("Q")
-    return ordered
+    """Retorna las claves del menú ordenadas."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import get_menu_order as _get_menu_order
+        return _get_menu_order(
+            tools=TOOLS,
+            group_order=GROUP_ORDER,
+            system_keys=["B", "A", "Q"]
+        )
+    else:
+        ordered: List[str] = []
+        for group_key in GROUP_ORDER:
+            keys = [k for k, t in TOOLS.items()
+                    if t.get("group") == group_key and k not in ("Q", "A", "B")]
+            keys.sort(key=_menu_sort_key)
+            ordered.extend(keys)
+        if "B" in TOOLS:
+            ordered.append("B")
+        if "A" in TOOLS:
+            ordered.append("A")
+        if "Q" in TOOLS:
+            ordered.append("Q")
+        return ordered
 
 
 def print_menu():
-    if RICH_AVAILABLE and console:
-        t = Table(
-            title="🛠️  Menú Principal",
-            title_style="bold white",
-            box=ROUNDED,
-            header_style="bold cyan",
-            border_style="blue",
-            show_lines=False,
-            expand=False,
+    """Muestra el menú principal."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import print_menu as _print_menu
+        _print_menu(
+            tools=TOOLS,
+            group_order=GROUP_ORDER,
+            tool_groups=TOOL_GROUPS,
+            status_indicators=STATUS_INDICATORS
         )
-        t.add_column("#",            justify="center", style="bold white", width=4)
-        t.add_column("Grupo",        justify="left",   width=20)
-        t.add_column("Herramienta",  justify="left",   style="white", min_width=26)
-        t.add_column("Descripción",  justify="left",   style="dim",   min_width=46)
-
-        for key in get_menu_order():
-            tool       = TOOLS[key]
-            group_key  = tool.get("group", "system")
-            group_info = TOOL_GROUPS.get(group_key, TOOL_GROUPS["system"])
-            group_text = f"{group_info['emoji']} {group_info['name']}"
-
-            if key == "Q":
-                ks, ns = "bold yellow", "yellow"
-            elif key == "B":
-                ks, ns = "bold yellow", "yellow"
-            elif key == "A":
-                ks, ns = "bold magenta", "magenta"
-            else:
-                ks, ns = "bold cyan", "white"
-
-            t.add_row(
-                f"[{ks}]{key}[/{ks}]",
-                f"[{group_info['color']}]{group_text}[/{group_info['color']}]",
-                f"[{ns}]{tool['name']}[/{ns}]",
-                tool.get("description", ""),
-            )
-
-        console.print(t)
-        console.print()
     else:
-        print(f"{Colors.BOLD}Menú Principal:{Colors.ENDC}\n")
-        for key in get_menu_order():
-            tool       = TOOLS[key]
-            group_info = TOOL_GROUPS.get(tool.get("group", "system"), {})
-            emoji      = group_info.get("emoji", "🔧")
-            if key == "Q":
-                print(f"  {Colors.WARNING}[{key}]{Colors.ENDC} {tool['name']}")
-            elif key == "A":
-                print(f"  {Colors.HEADER}[{key}]{Colors.ENDC} {emoji} {tool['name']} — {tool['description']}")
-            else:
-                print(f"  {Colors.BLUE}[{key}]{Colors.ENDC} {emoji} [{group_info.get('name','')}] "
-                      f"{tool['name']} — {tool['description']}")
-        print()
+        if RICH_AVAILABLE and console:
+            t = Table(
+                title="🛠️  Menú Principal",
+                title_style="bold white",
+                box=ROUNDED,
+                header_style="bold cyan",
+                border_style="blue",
+                show_lines=False,
+                expand=False,
+            )
+            t.add_column("#",            justify="center", style="bold white", width=4)
+            t.add_column("Grupo",        justify="left",   width=20)
+            t.add_column("Herramienta",  justify="left",   style="white", min_width=26)
+            t.add_column("Descripción",  justify="left",   style="dim",   min_width=46)
+
+            for key in get_menu_order():
+                tool       = TOOLS[key]
+                group_key  = tool.get("group", "system")
+                group_info = TOOL_GROUPS.get(group_key, TOOL_GROUPS["system"])
+                group_text = f"{group_info['emoji']} {group_info['name']}"
+
+                if key == "Q":
+                    ks, ns = "bold yellow", "yellow"
+                elif key == "B":
+                    ks, ns = "bold yellow", "yellow"
+                elif key == "A":
+                    ks, ns = "bold magenta", "magenta"
+                else:
+                    ks, ns = "bold cyan", "white"
+
+                t.add_row(
+                    f"[{ks}]{key}[/{ks}]",
+                    f"[{group_info['color']}]{group_text}[/{group_info['color']}]",
+                    f"[{ns}]{tool['name']}[/{ns}]",
+                    tool.get("description", ""),
+                )
+
+            console.print(t)
+            console.print()
+        else:
+            print(f"{Colors.BOLD}Menú Principal:{Colors.ENDC}
+")
+            for key in get_menu_order():
+                tool       = TOOLS[key]
+                group_info = TOOL_GROUPS.get(tool.get("group", "system"), {})
+                emoji      = group_info.get("emoji", "🔧")
+                if key == "Q":
+                    print(f"  {Colors.WARNING}[{key}]{Colors.ENDC} {tool['name']}")
+                elif key == "A":
+                    print(f"  {Colors.HEADER}[{key}]{Colors.ENDC} {emoji} {tool['name']} — {tool['description']}")
+                else:
+                    print(f"  {Colors.BLUE}[{key}]{Colors.ENDC} {emoji} [{group_info.get('name','')}] "
+                          f"{tool['name']} — {tool['description']}")
+            print()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PROMPT DE PARÁMETROS COMUNES (PAT / ORG / PROYECTO)
-# ═══════════════════════════════════════════════════════════════════════════════
-def ask_common_params(cfg: Dict, tool_key: str = "common") -> Optional[Dict]:
-    """
-    Solicita PAT, org URL y proyecto. Usa últimos parámetros o config.json como defaults.
-    Retorna dict con los valores o None si el usuario cancela.
-    """
-    # Cargar últimos parámetros usados
-    last_params = load_last_params(tool_key)
-    
-    # Prioridad: last_params > config.json > hardcoded defaults
-    # Leer desde la nueva estructura consolidada: azdo.*
-    def_pat  = last_params.get("pat") or config_get(cfg, "azdo", "pat")
-    def_org  = last_params.get("org") or config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
-    def_proj = last_params.get("project") or config_get(cfg, "azdo", "project", default="Compras.RMI")
-
-    print()
-    if last_params:
-        print(f"{Colors.CYAN}💾 Usando últimos parámetros guardados (presione Enter para mantener){Colors.ENDC}")
-    
-    pat = prompt("PAT (Personal Access Token)", default=def_pat, secret=True)
-    if not pat or pat.startswith("<"):
-        print(f"{Colors.FAIL}Se requiere un PAT válido.{Colors.ENDC}")
-        return None
-
-    org  = prompt("Organización URL", default=def_org)
-    proj = prompt("Proyecto",         default=def_proj)
-    
-    # Asegurar que org tenga el prefijo completo si no lo tiene
-    if not org.startswith("https://"):
-        org = f"https://dev.azure.com/{org}"
-    
-    params = {"pat": pat, "org": org, "project": proj}
-    
-    # Guardar parámetros para próxima ejecución
-    save_last_params(tool_key, params)
-    
-    return params
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# EJECUCIÓN DE HERRAMIENTA
-# ═══════════════════════════════════════════════════════════════════════════════
-
-_PLATFORM = "AZDO"
 
 def log_command(cmd: List[str], status: str = "EXEC") -> None:
     """Registra el comando en el log global si DEVSECOPS_LOG_COMMANDS=1."""

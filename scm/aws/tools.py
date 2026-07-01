@@ -47,6 +47,17 @@ try:
 except ImportError:
     SEARCH_AVAILABLE = False
 
+
+try:
+    from base_launcher import (
+        clear_screen, print_header, print_menu,
+        get_menu_order, get_auto_tools, build_system_options,
+        log_command, run_tool, Colors
+    )
+    BASE_LAUNCHER_AVAILABLE = True
+except ImportError:
+    BASE_LAUNCHER_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -321,11 +332,17 @@ def _init_system_options():
 # NOTA: _init_system_options() se llama al final del archivo después de definir todas las funciones
 
 def clear_screen():
-    """Limpia la pantalla de la consola."""
-    if platform.system() == "Windows":
-        os.system('cls')
+    """Limpia la pantalla (usa base_launcher si está disponible)."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import clear_screen as _clear_screen
+        _clear_screen()
     else:
-        os.system('clear')
+        import os, platform
+        if platform.system() == 'Windows':
+            os.system('cls')
+        else:
+            os.system('clear')
+
 
 def print_header_rich():
     """Imprime el encabezado del menú con Rich (versión moderna)."""
@@ -387,75 +404,56 @@ def _menu_sort_key(key: str) -> tuple:
 
 
 def get_auto_tools(exclude_list: List[str] = None) -> List[str]:
-    """
-    Genera lista de herramientas para auto_run dinámicamente.
-    
-    Itera por GROUP_ORDER, obtiene herramientas de cada grupo,
-    excluye las especificadas, y retorna lista ordenada.
-    
-    Args:
-        exclude_list: Lista de IDs a excluir (ej: ["15", "16"])
-    
-    Returns:
-        Lista de IDs de herramientas válidas, ordenadas por grupo
-    """
-    exclude_list = exclude_list or []
-    auto_tools = []
-    
-    # Iterar por grupos en orden
-    for group_key in GROUP_ORDER:
-        # Obtener herramientas de este grupo
-        group_tools = [
-            key for key, tool in TOOLS.items()
-            if (tool.get("group") == group_key and 
-                key not in ("Q", "A", "_system_options") and
-                key not in exclude_list)
-        ]
-        
-        # Ordenar numéricamente dentro del grupo
-        group_tools.sort(key=_menu_sort_key)
-        auto_tools.extend(group_tools)
-    
-    return auto_tools
+    """Genera lista de herramientas para auto_run dinámicamente."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import get_auto_tools as _get_auto_tools
+        return _get_auto_tools(
+            tools=TOOLS,
+            group_order=GROUP_ORDER,
+            exclude_list=exclude_list
+        )
+    else:
+        exclude_list = exclude_list or []
+        auto_tools = []
+        for group_key in GROUP_ORDER:
+            group_tools = [
+                key for key, tool in TOOLS.items()
+                if (tool.get("group") == group_key and 
+                    key not in ("Q", "A", "_system_options") and
+                    key not in exclude_list)
+            ]
+            group_tools.sort(key=_menu_sort_key)
+            auto_tools.extend(group_tools)
+        return auto_tools
 
 
 def build_system_options():
-    """
-    Construye las opciones de sistema (A, Q) dinámicamente.
-    Reemplaza el hardcode actual con generación dinámica.
-    
-    Lee la configuración de _system_options y genera auto_tools
-    para cada opción de tipo auto_run.
-    """
-    system_opts = TOOLS.get("_system_options", {})
-    
-    for key, opt_config in system_opts.items():
-        if opt_config.get("type") in ("auto_run", "auto_run_json"):
-            # Generar auto_tools dinámicamente
-            exclude = opt_config.get("exclude", [])
-            auto_tools = get_auto_tools(exclude)
-            
-            # Crear opción final
-            TOOLS[key] = {
-                "name": opt_config["name"],
-                "description": opt_config["description"],
-                "auto_tools": auto_tools,
-                "group": "system",
-                "status": "ready"
-            }
-        else:
-            # Opciones simples (como "Q")
-            TOOLS[key] = {
-                "name": opt_config["name"],
-                "description": opt_config["description"],
-                "group": "system",
-                "status": opt_config.get("type", "exit")
-            }
-    
-    # Eliminar la clave _system_options después de procesarla
-    # para evitar que se intente procesar como una herramienta
-    if "_system_options" in TOOLS:
-        del TOOLS["_system_options"]
+    """Construye las opciones de sistema dinámicamente."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import build_system_options as _build_system_options
+        _build_system_options(TOOLS, GROUP_ORDER)
+    else:
+        system_opts = TOOLS.get("_system_options", {})
+        for key, opt_config in system_opts.items():
+            if opt_config.get("type") in ("auto_run", "auto_run_json"):
+                exclude = opt_config.get("exclude", [])
+                auto_tools = get_auto_tools(exclude)
+                TOOLS[key] = {
+                    "name": opt_config["name"],
+                    "description": opt_config["description"],
+                    "auto_tools": auto_tools,
+                    "group": "system",
+                    "status": "ready"
+                }
+            else:
+                TOOLS[key] = {
+                    "name": opt_config["name"],
+                    "description": opt_config["description"],
+                    "group": "system",
+                    "status": opt_config.get("type", "exit")
+                }
+        if "_system_options" in TOOLS:
+            del TOOLS["_system_options"]
 
 
 def get_menu_order(include_exit: bool = True) -> List[str]:
