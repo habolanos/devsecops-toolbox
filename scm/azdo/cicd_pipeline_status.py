@@ -65,15 +65,14 @@ try:
     from rich.text import Text
     from rich import box
     RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 try:
     from export_manager import ExportManager
     EXPORT_MANAGER_AVAILABLE = True
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
-
-
-except ImportError:
-    RICH_AVAILABLE = False
 
 try:
     import requests
@@ -912,47 +911,69 @@ def export_results(rows: List[Dict], output_format: str, tz_name: str) -> Option
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     flat = [{f: r.get(f, "") for f in EXPORT_FIELDS} for r in rows]
 
-    if output_format == "json":
-        filepath = os.path.join(outcome_dir, f"pipeline_status_{ts}.json")
-        ci_rows  = [r for r in rows if r["tipo"] == "CI"]
-        cd_rows  = [r for r in rows if r["tipo"] == "CD"]
-        payload  = {
-            "metadata": {
-                "tool": "cicd_pipeline_status", "version": __version__,
-                "generated_at": datetime.now(_safe_tz(tz_name)).isoformat(),
-            },
-            "summary": {
-                "total": len(rows),
-                "ci":    len(ci_rows),
-                "cd":    len(cd_rows),
-                "deprecated": sum(1 for r in rows if r["deprecado"] == DEPRECADO_SI),
-            },
-            "data": flat,
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        return filepath
-
-    elif output_format == "csv":
-        filepath = os.path.join(outcome_dir, f"pipeline_status_{ts}.csv")
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=EXPORT_FIELDS)
-            writer.writeheader()
-            writer.writerows(flat)
-        return filepath
-
-    elif output_format == "excel":
-        try:
-            import pandas as pd
-            filepath = os.path.join(outcome_dir, f"pipeline_status_{ts}.xlsx")
-            pd.DataFrame(flat).to_excel(filepath, index=False,
-                                        sheet_name="Datos", engine="openpyxl")
-            _add_excel_charts(filepath, rows)
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = os.path.join(outcome_dir, f"pipeline_status_{ts}.json")
+            ci_rows  = [r for r in rows if r["tipo"] == "CI"]
+            cd_rows  = [r for r in rows if r["tipo"] == "CD"]
+            payload  = {
+                "metadata": {
+                    "tool": "cicd_pipeline_status", "version": __version__,
+                    "generated_at": datetime.now(_safe_tz(tz_name)).isoformat(),
+                },
+                "summary": {
+                    "total": len(rows),
+                    "ci":    len(ci_rows),
+                    "cd":    len(cd_rows),
+                    "deprecated": sum(1 for r in rows if r["deprecado"] == DEPRECADO_SI),
+                },
+                "data": flat,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
             return filepath
-        except ImportError:
-            print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
-            return None
 
+        elif output_format == "csv":
+            filepath = os.path.join(outcome_dir, f"pipeline_status_{ts}.csv")
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=EXPORT_FIELDS)
+                writer.writeheader()
+                writer.writerows(flat)
+            return filepath
+
+        elif output_format == "excel":
+            try:
+                import pandas as pd
+                filepath = os.path.join(outcome_dir, f"pipeline_status_{ts}.xlsx")
+                pd.DataFrame(flat).to_excel(filepath, index=False,
+                                            sheet_name="Datos", engine="openpyxl")
+                _add_excel_charts(filepath, rows)
+                return filepath
+            except ImportError:
+                print("ERROR: Instala pandas y openpyxl para exportar a Excel.")
+                return None
+        return None
+    
+    # Usar ExportManager
+    manager = ExportManager("cicd_pipeline_status", __version__)
+    
+    ci_rows  = [r for r in rows if r.get("tipo") == "CI"]
+    cd_rows  = [r for r in rows if r.get("tipo") == "CD"]
+    summary = {
+        "total": len(rows),
+        "ci":    len(ci_rows),
+        "cd":    len(cd_rows),
+        "deprecated": sum(1 for r in rows if r.get("deprecado") == DEPRECADO_SI),
+    }
+    
+    if output_format == "json":
+        return manager.export_json(flat, summary=summary, timezone=tz_name)
+    elif output_format == "csv":
+        return manager.export_csv(flat)
+    elif output_format == "excel":
+        return manager.export_excel(flat, sheet_name="Pipeline Status", summary=summary)
+    
     return None
 
 

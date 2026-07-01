@@ -299,14 +299,40 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
 
     """Exporta resultados usando ExportManager centralizado con fallback."""
 
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    df = pd.DataFrame(rows)
-    excel_path = output_dir / f"{script_name}_{ts}.xlsx"
-    df.to_excel(excel_path, index=False, engine="openpyxl")
-    print(f"📊 Excel: {excel_path.resolve()}")
-    csv_path = output_dir / f"{script_name}_{ts}.csv"
-    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"📄 CSV:  {csv_path.resolve()}")
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual con pandas
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        df = pd.DataFrame(rows)
+        excel_path = output_dir / f"{script_name}_{ts}.xlsx"
+        df.to_excel(excel_path, index=False, engine="openpyxl")
+        print(f"📊 Excel: {excel_path.resolve()}")
+        csv_path = output_dir / f"{script_name}_{ts}.csv"
+        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        print(f"📄 CSV:  {csv_path.resolve()}")
+        return excel_path, csv_path
+    
+    # Usar ExportManager
+    manager = ExportManager(script_name, "1.0.0")
+    
+    summary = {
+        "total_pipelines": len(rows),
+    }
+    
+    # Exportar a JSON
+    json_path = manager.export_json(rows, summary=summary)
+    if json_path:
+        print(f"📋 JSON: {json_path}")
+    
+    # Exportar a CSV
+    csv_path = manager.export_csv(rows)
+    if csv_path:
+        print(f"📄 CSV:  {csv_path}")
+    
+    # Exportar a Excel
+    excel_path = manager.export_excel(rows, sheet_name="CD Pipelines", summary=summary)
+    if excel_path:
+        print(f"📊 Excel: {excel_path}")
+    
     return excel_path, csv_path
 
 
