@@ -165,22 +165,37 @@ def export_results(results: List[Dict], output_format: str):
     OUTCOME_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    if output_format == "json":
-        filepath = OUTCOME_DIR / f"aws_acm_certificates_{timestamp}.json"
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump({"generated_at": datetime.now().isoformat(), "certificates": results}, f, indent=2)
-    elif output_format == "csv":
-        import pandas as pd
-        filepath = OUTCOME_DIR / f"aws_acm_certificates_{timestamp}.csv"
-        rows = [{
-            "domain": c.get("domain_name", ""), "status": c.get("status", ""),
-            "type": c.get("type", ""), "days_remaining": c.get("days_remaining", ""),
-            "expiration_status": c.get("expiration_status", ""), "in_use": len(c.get("in_use_by", []))
-        } for c in results if "error" not in c]
-        pd.DataFrame(rows).to_csv(filepath, index=False)
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"aws_acm_checker_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": results}, f, indent=2)
+        elif output_format == "csv":
+            try:
+                import pandas as pd
+                filepath = OUTCOME_DIR / f"aws_acm_checker_{timestamp}.csv"
+                pd.DataFrame(results).to_csv(filepath, index=False)
+            except ImportError:
+                print("ERROR: Instala pandas para exportar a CSV")
+                return
+        else:
+            return
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
     
-    print(f"\n✅ Resultados exportados a: {filepath}")
-
+    # Usar ExportManager
+    manager = ExportManager("aws_acm_checker", "1.0.0")
+    
+    summary = {"total_items": len(results)}
+    
+    if output_format == "json":
+        manager.export_json(results, summary=summary)
+    elif output_format == "csv":
+        manager.export_csv(results)
+    elif output_format == "excel":
+        manager.export_excel(results, sheet_name="Results", summary=summary)
 
 def display_results_rich(results: List[Dict]):
     table = Table(title="[bold]ACM Certificates Analysis[/bold]", show_header=True, header_style="bold white on blue")

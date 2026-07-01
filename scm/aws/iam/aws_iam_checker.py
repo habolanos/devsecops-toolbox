@@ -208,31 +208,37 @@ def export_results(results: List[Dict], output_format: str):
     OUTCOME_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    if output_format == "json":
-        filepath = OUTCOME_DIR / f"aws_iam_users_{timestamp}.json"
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump({
-                "generated_at": datetime.now().isoformat(),
-                "total_users": len(results),
-                "users": results
-            }, f, indent=2, default=str)
-    elif output_format == "csv":
-        import pandas as pd
-        filepath = OUTCOME_DIR / f"aws_iam_users_{timestamp}.csv"
-        rows = []
-        for user in results:
-            rows.append({
-                "username": user["username"],
-                "mfa_enabled": user["mfa_enabled"],
-                "access_keys_count": len(user["access_keys"]),
-                "policies_count": len(user["attached_policies"]) + len(user["inline_policies"]),
-                "groups": ", ".join(user["groups"]),
-                "risks": ", ".join(user.get("security_risks", []))
-            })
-        pd.DataFrame(rows).to_csv(filepath, index=False)
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"aws_iam_checker_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": results}, f, indent=2)
+        elif output_format == "csv":
+            try:
+                import pandas as pd
+                filepath = OUTCOME_DIR / f"aws_iam_checker_{timestamp}.csv"
+                pd.DataFrame(results).to_csv(filepath, index=False)
+            except ImportError:
+                print("ERROR: Instala pandas para exportar a CSV")
+                return
+        else:
+            return
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
     
-    print(f"\n✅ Resultados exportados a: {filepath}")
-
+    # Usar ExportManager
+    manager = ExportManager("aws_iam_checker", "1.0.0")
+    
+    summary = {"total_items": len(results)}
+    
+    if output_format == "json":
+        manager.export_json(results, summary=summary)
+    elif output_format == "csv":
+        manager.export_csv(results)
+    elif output_format == "excel":
+        manager.export_excel(results, sheet_name="Results", summary=summary)
 
 def display_results_rich(results: List[Dict]):
     table = Table(title="[bold]IAM Users Analysis[/bold]", show_header=True, header_style="bold white on blue")

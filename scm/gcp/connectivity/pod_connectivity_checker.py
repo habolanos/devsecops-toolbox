@@ -1542,10 +1542,6 @@ def export_results(
     tz_name: str = "America/Mazatlan",
 ) -> None:
     """Exporta resultados usando ExportManager centralizado con fallback."""
-    """
-    Exporta los resultados del ConnectivityChecker a JSON o CSV.
-    El JSON incluye metadata, summary y la lista completa de resultados.
-    """
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     tz = ZoneInfo(tz_name)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -1575,41 +1571,64 @@ def export_results(
     info     = sum(1 for r in rows if r["status"] == "INFO")
     skipped  = sum(1 for r in rows if r["status"] == "SKIP")
 
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if export_format == "json":
+            export_data = {
+                "metadata": {
+                    "tool":         "pod_connectivity_checker",
+                    "version":      __version__,
+                    "sql_instance": checker.sql_instance,
+                    "project":      checker.project_id,
+                    "deployment":   checker.deployment,
+                    "namespace":    checker.namespace,
+                    "gke_cluster":  checker.gke_cluster,
+                    "gke_location": checker.gke_location,
+                    "ksa_name":     checker.ksa_name,
+                    "gsa_email":    checker.gsa_email,
+                    "timestamp":    ts,
+                },
+                "summary": {
+                    "total":    len(rows),
+                    "pass":     passed,
+                    "fail":     failed,
+                    "warn":     warnings,
+                    "info":     info,
+                    "skip":     skipped,
+                    "critical_ok": failed == 0,
+                },
+                "results": rows,
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False)
+        else:  # csv
+            import csv
+            fieldnames = ["name", "status", "message", "details", "remediation"]
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("pod_connectivity_checker", __version__)
+    
+    summary = {
+        "total":    len(rows),
+        "pass":     passed,
+        "fail":     failed,
+        "warn":     warnings,
+        "info":     info,
+        "skip":     skipped,
+        "critical_ok": failed == 0,
+    }
+    
     if export_format == "json":
-        export_data = {
-            "metadata": {
-                "tool":         "pod_connectivity_checker",
-                "version":      __version__,
-                "sql_instance": checker.sql_instance,
-                "project":      checker.project_id,
-                "deployment":   checker.deployment,
-                "namespace":    checker.namespace,
-                "gke_cluster":  checker.gke_cluster,
-                "gke_location": checker.gke_location,
-                "ksa_name":     checker.ksa_name,
-                "gsa_email":    checker.gsa_email,
-                "timestamp":    ts,
-            },
-            "summary": {
-                "total":    len(rows),
-                "pass":     passed,
-                "fail":     failed,
-                "warn":     warnings,
-                "info":     info,
-                "skip":     skipped,
-                "critical_ok": failed == 0,
-            },
-            "results": rows,
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(export_data, f, indent=2, ensure_ascii=False)
-    else:  # csv
-        import csv
-        fieldnames = ["name", "status", "message", "details", "remediation"]
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
+        manager.export_json(rows, summary=summary, timezone=tz_name)
+    elif export_format == "csv":
+        manager.export_csv(rows)
+    elif export_format == "excel":
+        manager.export_excel(rows, sheet_name="Connectivity Results", summary=summary)
 
 
 def print_execution_time(start_time, tz_name="America/Mazatlan"):

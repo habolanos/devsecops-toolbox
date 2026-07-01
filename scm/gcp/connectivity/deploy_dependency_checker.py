@@ -844,65 +844,92 @@ def export_results(connections: List[Dict], filepath: str, export_format: str, m
     """Exporta resultados usando ExportManager centralizado con fallback."""
 
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if export_format == 'csv':
+            import csv
+            fieldnames = [
+                'project', 'deployment', 'namespace', 'configmap', 'key', 'db_type',
+                'host', 'port', 'tcp_status', 'message', 'elapsed', 'raw_value',
+                'lb_name', 'lb_status',
+                'db_probe_status', 'db_probe_message',
+                'source_type', 'secret_project', 'secret_name', 'secret_version', 'sm_key',
+                'timestamp',
+            ]
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                for row in connections:
+                    payload = {**metadata, **row, 'tcp_status': row.get('status', '')}
+                    writer.writerow(payload)
+        else:
+            total = len(connections)
+            summary = {
+                'total':           total,
+                'tcp_ok':          sum(1 for c in connections if c.get('status') == 'OK'),
+                'tcp_timeout':     sum(1 for c in connections if c.get('status') == 'TIMEOUT'),
+                'tcp_error':       sum(1 for c in connections if c.get('status') in ('ERROR', 'UNREACHABLE')),
+                'lb_ok':           sum(1 for c in connections if c.get('lb_status') == 'OK'),
+                'lb_pending':      sum(1 for c in connections if c.get('lb_status') == 'PENDING'),
+                'db_probe_alive':  sum(1 for c in connections if c.get('db_probe_status') == 'ALIVE'),
+                'db_probe_failed': sum(1 for c in connections if c.get('db_probe_status') == 'FAILED'),
+                'skipped':         sum(1 for c in connections if c.get('status') == 'SKIPPED'),
+            }
+            export_data = {
+                'metadata':    metadata,
+                'summary':     summary,
+                'connections': [
+                    {
+                        'configmap':        c.get('configmap', ''),
+                        'key':              c.get('key', ''),
+                        'host':             c.get('host', ''),
+                        'port':             c.get('port'),
+                        'db_type':          c.get('db_type', 'unknown'),
+                        'raw_value':        c.get('raw_value', ''),
+                        'tcp_status':       c.get('status', ''),
+                        'tcp_message':      c.get('message', ''),
+                        'elapsed_s':        c.get('elapsed', 0.0),
+                        'lb_name':          c.get('lb_name') or None,
+                        'lb_status':        c.get('lb_status') or None,
+                        'db_probe_status':  c.get('db_probe_status') or None,
+                        'db_probe_message': c.get('db_probe_message') or None,
+                        'source_type':      c.get('source_type', 'configmap'),
+                        'secret_project':   c.get('secret_project') or None,
+                        'secret_name':      c.get('secret_name') or None,
+                        'secret_version':   c.get('secret_version') or None,
+                        'sm_key':           c.get('sm_key') or None,
+                        'timestamp':        c.get('timestamp', ''),
+                    }
+                    for c in connections
+                ],
+            }
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False)
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("deploy_dependency_checker", __version__)
+    
+    total = len(connections)
+    summary = {
+        'total':           total,
+        'tcp_ok':          sum(1 for c in connections if c.get('status') == 'OK'),
+        'tcp_timeout':     sum(1 for c in connections if c.get('status') == 'TIMEOUT'),
+        'tcp_error':       sum(1 for c in connections if c.get('status') in ('ERROR', 'UNREACHABLE')),
+        'lb_ok':           sum(1 for c in connections if c.get('lb_status') == 'OK'),
+        'lb_pending':      sum(1 for c in connections if c.get('lb_status') == 'PENDING'),
+        'db_probe_alive':  sum(1 for c in connections if c.get('db_probe_status') == 'ALIVE'),
+        'db_probe_failed': sum(1 for c in connections if c.get('db_probe_status') == 'FAILED'),
+        'skipped':         sum(1 for c in connections if c.get('status') == 'SKIPPED'),
+    }
+    
     if export_format == 'csv':
-        import csv
-        fieldnames = [
-            'project', 'deployment', 'namespace', 'configmap', 'key', 'db_type',
-            'host', 'port', 'tcp_status', 'message', 'elapsed', 'raw_value',
-            'lb_name', 'lb_status',
-            'db_probe_status', 'db_probe_message',
-            'source_type', 'secret_project', 'secret_name', 'secret_version', 'sm_key',
-            'timestamp',
-        ]
-        with open(filepath, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-            writer.writeheader()
-            for row in connections:
-                payload = {**metadata, **row, 'tcp_status': row.get('status', '')}
-                writer.writerow(payload)
-    else:
-        total = len(connections)
-        summary = {
-            'total':           total,
-            'tcp_ok':          sum(1 for c in connections if c.get('status') == 'OK'),
-            'tcp_timeout':     sum(1 for c in connections if c.get('status') == 'TIMEOUT'),
-            'tcp_error':       sum(1 for c in connections if c.get('status') in ('ERROR', 'UNREACHABLE')),
-            'lb_ok':           sum(1 for c in connections if c.get('lb_status') == 'OK'),
-            'lb_pending':      sum(1 for c in connections if c.get('lb_status') == 'PENDING'),
-            'db_probe_alive':  sum(1 for c in connections if c.get('db_probe_status') == 'ALIVE'),
-            'db_probe_failed': sum(1 for c in connections if c.get('db_probe_status') == 'FAILED'),
-            'skipped':         sum(1 for c in connections if c.get('status') == 'SKIPPED'),
-        }
-        export_data = {
-            'metadata':    metadata,
-            'summary':     summary,
-            'connections': [
-                {
-                    'configmap':        c.get('configmap', ''),
-                    'key':              c.get('key', ''),
-                    'host':             c.get('host', ''),
-                    'port':             c.get('port'),
-                    'db_type':          c.get('db_type', 'unknown'),
-                    'raw_value':        c.get('raw_value', ''),
-                    'tcp_status':       c.get('status', ''),
-                    'tcp_message':      c.get('message', ''),
-                    'elapsed_s':        c.get('elapsed', 0.0),
-                    'lb_name':          c.get('lb_name') or None,
-                    'lb_status':        c.get('lb_status') or None,
-                    'db_probe_status':  c.get('db_probe_status') or None,
-                    'db_probe_message': c.get('db_probe_message') or None,
-                    'source_type':      c.get('source_type', 'configmap'),
-                    'secret_project':   c.get('secret_project') or None,
-                    'secret_name':      c.get('secret_name') or None,
-                    'secret_version':   c.get('secret_version') or None,
-                    'sm_key':           c.get('sm_key') or None,
-                    'timestamp':        c.get('timestamp', ''),
-                }
-                for c in connections
-            ],
-        }
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(export_data, f, indent=2, ensure_ascii=False)
+        manager.export_csv(connections)
+    elif export_format == 'json':
+        manager.export_json(connections, summary=summary)
+    elif export_format == 'excel':
+        manager.export_excel(connections, sheet_name="Connections", summary=summary)
 
 
 def get_connection_type(raw_value: str) -> str:

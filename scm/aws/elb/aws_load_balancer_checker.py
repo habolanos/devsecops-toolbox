@@ -197,22 +197,37 @@ def export_results(results: List[Dict], output_format: str):
     OUTCOME_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    if output_format == "json":
-        filepath = OUTCOME_DIR / f"aws_load_balancers_{timestamp}.json"
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump({"generated_at": datetime.now().isoformat(), "load_balancers": results}, f, indent=2)
-    elif output_format == "csv":
-        import pandas as pd
-        filepath = OUTCOME_DIR / f"aws_load_balancers_{timestamp}.csv"
-        rows = [{
-            "name": lb["name"], "type": lb["type"], "scheme": lb["scheme"], "state": lb["state"],
-            "listeners": len(lb["listeners"]), "target_groups": len(lb["target_groups"]),
-            "findings": len(lb["findings"])
-        } for lb in results]
-        pd.DataFrame(rows).to_csv(filepath, index=False)
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"aws_load_balancer_checker_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": results}, f, indent=2)
+        elif output_format == "csv":
+            try:
+                import pandas as pd
+                filepath = OUTCOME_DIR / f"aws_load_balancer_checker_{timestamp}.csv"
+                pd.DataFrame(results).to_csv(filepath, index=False)
+            except ImportError:
+                print("ERROR: Instala pandas para exportar a CSV")
+                return
+        else:
+            return
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
     
-    print(f"\n✅ Resultados exportados a: {filepath}")
-
+    # Usar ExportManager
+    manager = ExportManager("aws_load_balancer_checker", "1.0.0")
+    
+    summary = {"total_items": len(results)}
+    
+    if output_format == "json":
+        manager.export_json(results, summary=summary)
+    elif output_format == "csv":
+        manager.export_csv(results)
+    elif output_format == "excel":
+        manager.export_excel(results, sheet_name="Results", summary=summary)
 
 def display_results_rich(results: List[Dict]):
     table = Table(title="[bold]Load Balancers Analysis[/bold]", show_header=True, header_style="bold white on blue")

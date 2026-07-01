@@ -236,31 +236,44 @@ def display_table_plain(volumes: List[Dict]):
               f"{'; '.join(v['findings']) or 'OK'}")
 
 
-def export_results(volumes: List[Dict], output_format: str):
+def export_results(results: List[Dict], output_format: str):
 
     """Exporta resultados usando ExportManager centralizado con fallback."""
 
     OUTCOME_DIR.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"aws_ebs_checker_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": results}, f, indent=2)
+        elif output_format == "csv":
+            try:
+                import pandas as pd
+                filepath = OUTCOME_DIR / f"aws_ebs_checker_{timestamp}.csv"
+                pd.DataFrame(results).to_csv(filepath, index=False)
+            except ImportError:
+                print("ERROR: Instala pandas para exportar a CSV")
+                return
+        else:
+            return
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("aws_ebs_checker", "1.0.0")
+    
+    summary = {"total_items": len(results)}
+    
     if output_format == "json":
-        fp = OUTCOME_DIR / f"aws_ebs_volumes_{ts}.json"
-        with open(fp, "w", encoding="utf-8") as f:
-            json.dump({"generated_at": datetime.now().isoformat(), "volumes": volumes}, f, indent=2, default=str)
-        print(f"\n✅ JSON exportado: {fp}")
+        manager.export_json(results, summary=summary)
     elif output_format == "csv":
-        fp = OUTCOME_DIR / f"aws_ebs_volumes_{ts}.csv"
-        fields = ["volume_id", "name", "state", "volume_type", "size_gb", "iops", "encrypted",
-                  "availability_zone", "attached", "instance_id", "device", "age_days",
-                  "latest_snapshot_id", "latest_snapshot_age_days", "findings"]
-        rows = [{**v, "findings": "; ".join(v.get("findings", [])),
-                 "tags": str(v.get("tags", {}))} for v in volumes]
-        with open(fp, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"\n✅ CSV exportado: {fp}")
-
+        manager.export_csv(results)
+    elif output_format == "excel":
+        manager.export_excel(results, sheet_name="Results", summary=summary)
 
 def main():
     start_time = time.time()

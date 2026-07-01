@@ -294,41 +294,44 @@ def display_results_plain(secrets: List[Dict], ssm_params: List[Dict]):
 # EXPORT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def export_results(secrets: List[Dict], ssm_params: List[Dict], output_format: str):
+def export_results(results: List[Dict], output_format: str):
 
     """Exporta resultados usando ExportManager centralizado con fallback."""
 
     OUTCOME_DIR.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    all_results = secrets + ssm_params
-
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"aws_secrets_checker_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": results}, f, indent=2)
+        elif output_format == "csv":
+            try:
+                import pandas as pd
+                filepath = OUTCOME_DIR / f"aws_secrets_checker_{timestamp}.csv"
+                pd.DataFrame(results).to_csv(filepath, index=False)
+            except ImportError:
+                print("ERROR: Instala pandas para exportar a CSV")
+                return
+        else:
+            return
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("aws_secrets_checker", "1.0.0")
+    
+    summary = {"total_items": len(results)}
+    
     if output_format == "json":
-        fp = OUTCOME_DIR / f"aws_secrets_{ts}.json"
-        with open(fp, "w", encoding="utf-8") as f:
-            json.dump({
-                "generated_at": datetime.now().isoformat(),
-                "secrets_manager": secrets,
-                "ssm_parameters": ssm_params,
-            }, f, indent=2, default=str)
-        print(f"\n✅ JSON exportado: {fp}")
-
+        manager.export_json(results, summary=summary)
     elif output_format == "csv":
-        fp = OUTCOME_DIR / f"aws_secrets_{ts}.csv"
-        fields = ["source", "name", "type", "status", "rotation_enabled", "days_since_change",
-                  "days_since_access", "last_changed", "last_accessed", "kms_key_id", "findings"]
-        with open(fp, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-            writer.writeheader()
-            for row in all_results:
-                row_copy = dict(row)
-                row_copy["findings"] = "; ".join(row_copy.get("findings", []))
-                writer.writerow(row_copy)
-        print(f"\n✅ CSV exportado: {fp}")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────────────────────────────────────
+        manager.export_csv(results)
+    elif output_format == "excel":
+        manager.export_excel(results, sheet_name="Results", summary=summary)
 
 def main():
     start_time = time.time()

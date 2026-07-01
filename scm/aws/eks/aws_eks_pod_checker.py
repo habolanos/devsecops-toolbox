@@ -323,34 +323,44 @@ def display_table_plain(pods: List[Dict]):
         print(f"{pod['namespace']:<25} {pod['name']:<40} {pod['cpu_raw']:>8} {pod['memory_raw']:>10}")
 
 
-def export_results(pods: List[Dict], specs: Dict[str, Dict], output_format: str):
+def export_results(results: List[Dict], output_format: str):
 
     """Exporta resultados usando ExportManager centralizado con fallback."""
 
     OUTCOME_DIR.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    enriched = []
-    for pod in pods:
-        key = f"{pod['namespace']}/{pod['name']}"
-        spec = specs.get(key, {})
-        enriched.append({**pod, **spec})
-
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"aws_eks_pod_checker_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": results}, f, indent=2)
+        elif output_format == "csv":
+            try:
+                import pandas as pd
+                filepath = OUTCOME_DIR / f"aws_eks_pod_checker_{timestamp}.csv"
+                pd.DataFrame(results).to_csv(filepath, index=False)
+            except ImportError:
+                print("ERROR: Instala pandas para exportar a CSV")
+                return
+        else:
+            return
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("aws_eks_pod_checker", "1.0.0")
+    
+    summary = {"total_items": len(results)}
+    
     if output_format == "json":
-        fp = OUTCOME_DIR / f"aws_eks_pods_{ts}.json"
-        with open(fp, "w", encoding="utf-8") as f:
-            json.dump({"generated_at": datetime.now().isoformat(), "pods": enriched}, f, indent=2)
-        print(f"\n✅ JSON exportado: {fp}")
+        manager.export_json(results, summary=summary)
     elif output_format == "csv":
-        fp = OUTCOME_DIR / f"aws_eks_pods_{ts}.csv"
-        fields = ["namespace", "name", "cpu_raw", "memory_raw", "cpu_millicores", "memory_mib",
-                  "cpu_request_m", "mem_request_mib", "node", "status"]
-        with open(fp, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(enriched)
-        print(f"\n✅ CSV exportado: {fp}")
-
+        manager.export_csv(results)
+    elif output_format == "excel":
+        manager.export_excel(results, sheet_name="Results", summary=summary)
 
 def main():
     start_time = time.time()

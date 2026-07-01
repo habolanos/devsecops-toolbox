@@ -295,36 +295,44 @@ def display_table_plain(nodes: List[Dict], metrics: Dict[str, Dict]):
               f"{'; '.join(node['findings']) or 'OK'}")
 
 
-def export_results(nodes: List[Dict], metrics: Dict[str, Dict], output_format: str):
+def export_results(results: List[Dict], output_format: str):
 
     """Exporta resultados usando ExportManager centralizado con fallback."""
 
     OUTCOME_DIR.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    enriched = []
-    for node in nodes:
-        m = metrics.get(node["name"], {})
-        row = {**node, **m}
-        row["taints"] = "; ".join(row.get("taints", []))
-        row["findings"] = "; ".join(row.get("findings", []))
-        enriched.append(row)
-
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if not EXPORT_MANAGER_AVAILABLE:
+        # Fallback a exportación manual
+        if output_format == "json":
+            filepath = OUTCOME_DIR / f"aws_eks_node_checker_{timestamp}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": results}, f, indent=2)
+        elif output_format == "csv":
+            try:
+                import pandas as pd
+                filepath = OUTCOME_DIR / f"aws_eks_node_checker_{timestamp}.csv"
+                pd.DataFrame(results).to_csv(filepath, index=False)
+            except ImportError:
+                print("ERROR: Instala pandas para exportar a CSV")
+                return
+        else:
+            return
+        
+        print(f"\n✅ Resultados exportados a: {filepath}")
+        return
+    
+    # Usar ExportManager
+    manager = ExportManager("aws_eks_node_checker", "1.0.0")
+    
+    summary = {"total_items": len(results)}
+    
     if output_format == "json":
-        fp = OUTCOME_DIR / f"aws_eks_nodes_{ts}.json"
-        with open(fp, "w", encoding="utf-8") as f:
-            json.dump({"generated_at": datetime.now().isoformat(), "nodes": enriched}, f, indent=2)
-        print(f"\n✅ JSON exportado: {fp}")
+        manager.export_json(results, summary=summary)
     elif output_format == "csv":
-        fp = OUTCOME_DIR / f"aws_eks_nodes_{ts}.csv"
-        fields = ["name", "status", "instance_type", "zone", "node_group", "cpu_raw", "memory_raw",
-                  "cpu_pct", "memory_pct", "kubelet_version", "age_days", "taints", "findings"]
-        with open(fp, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(enriched)
-        print(f"\n✅ CSV exportado: {fp}")
-
+        manager.export_csv(results)
+    elif output_format == "excel":
+        manager.export_excel(results, sheet_name="Results", summary=summary)
 
 def main():
     start_time = time.time()
