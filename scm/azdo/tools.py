@@ -782,8 +782,7 @@ def print_menu():
             console.print(t)
             console.print()
         else:
-            print(f"{Colors.BOLD}Menú Principal:{Colors.ENDC}
-")
+            print(f"{Colors.BOLD}Menú Principal:{Colors.ENDC}\n")
             for key in get_menu_order():
                 tool       = TOOLS[key]
                 group_info = TOOL_GROUPS.get(tool.get("group", "system"), {})

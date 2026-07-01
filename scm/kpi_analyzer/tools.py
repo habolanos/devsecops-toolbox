@@ -57,9 +57,22 @@ try:
 except ImportError:
     SEARCH_AVAILABLE = False
 
+try:
+    from base_launcher import (
+        clear_screen, print_header, print_menu,
+        get_menu_order, get_auto_tools, build_system_options,
+        log_command, run_tool, Colors
+    )
+    BASE_LAUNCHER_AVAILABLE = True
+except ImportError:
+    BASE_LAUNCHER_AVAILABLE = False
+
 # Metadata
 __version__ = "1.0.0"
 __author__ = "Harold Adrian"
+
+# Grupos de herramientas
+GROUP_ORDER = ["analysis", "export", "system"]
 
 # Paths
 BASE_DIR = Path(__file__).parent.absolute()
@@ -298,6 +311,10 @@ def print_menu():
         print_menu_rich()
     else:
         print_menu_fallback()
+
+def get_menu_order():
+    """Retorna las claves del menú ordenadas."""
+    return sorted([k for k in TOOLS.keys() if k != "Q"]) + (["Q"] if "Q" in TOOLS else [])
 
 def get_platform_choice():
     """Solicita al usuario que seleccione una plataforma."""
