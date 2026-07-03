@@ -45,15 +45,14 @@ try:
     from rich.console import Console
     from rich.table import Table
     RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 try:
     from export_manager import ExportManager
     EXPORT_MANAGER_AVAILABLE = True
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
-
-
-except ImportError:
-    RICH_AVAILABLE = False
 
 try:
     from utils import get_output_dir, resolve_output_path
