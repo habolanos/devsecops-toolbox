@@ -572,6 +572,39 @@ def prompt(label: str, default: str = "", secret: bool = False) -> str:
     return value
 
 
+def ask_common_params(cfg: dict, tool_key: str = "") -> dict:
+    """Solicita parámetros comunes (org, project, pat) al usuario."""
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  Parámetros Comunes{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    
+    # Organización
+    cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+    if cfg_org.startswith("https://"):
+        cfg_org = cfg_org.split('/')[-1]
+    
+    org = prompt("Organización", default=cfg_org)
+    if not org.startswith("https://"):
+        org = f"https://dev.azure.com/{org}"
+    
+    # Proyecto
+    project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+    
+    # PAT
+    pat = prompt("Personal Access Token (PAT)", 
+                default=config_get(cfg, "azdo", "pat", default=""), 
+                secret=True)
+    if not pat:
+        print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
+        return None
+    
+    return {
+        "org": org,
+        "project": project,
+        "pat": pat
+    }
+
+
 def print_header():
     """Imprime el encabezado del menú."""
     if BASE_LAUNCHER_AVAILABLE:
