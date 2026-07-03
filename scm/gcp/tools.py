@@ -79,6 +79,7 @@ TOOL_GROUPS = {
     "artifacts": {"name": "Artifacts", "emoji": "📦", "color": "red"},
     "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
     "reports": {"name": "Reports", "emoji": "📈", "color": "bright_white"},
+    "cloudrun": {"name": "Cloud Run", "emoji": "🚀", "color": "bright_cyan"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
 
