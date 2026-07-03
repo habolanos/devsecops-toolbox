@@ -75,6 +75,7 @@ INSTALLED_MARKER  = VENV_DIR / ".installed_requirements"
 CONFIG_FILE       = SCM_ROOT / "config.json"  # Ahora apunta a scm/config.json
 LAST_PARAMS_FILE  = BASE_DIR / ".last_params.json"  # Cache de últimos parámetros
 REQUIREMENTS_FILE = "requirements.txt"
+_PLATFORM         = platform.system()  # Windows, Linux, Darwin, etc.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COLORES FALLBACK
