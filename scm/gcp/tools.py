@@ -342,6 +342,70 @@ TOOLS = {
         "group": "reports",
         "status": "ready"
     },
+    # ══════════ CLOUD RUN (19-25) ══════════
+    "19": {
+        "name": "Cloud Run Health Analyzer",
+        "description": "Análisis profundo de salud y rendimiento de servicios Cloud Run",
+        "path": "cloud-run/gcp_cloudrun_health_analyzer.py",
+        "args": ["--project", "--region", "--service", "--output", "--debug", "--timezone"],
+        "requirements": None,
+        "group": "cloudrun",
+        "status": "ready"
+    },
+    "20": {
+        "name": "Cloud Run Security Auditor",
+        "description": "Auditoría completa de seguridad en Cloud Run",
+        "path": "cloud-run/gcp_cloudrun_security_auditor.py",
+        "args": ["--project", "--region", "--service", "--severity", "--output", "--debug", "--timezone"],
+        "requirements": None,
+        "group": "cloudrun",
+        "status": "ready"
+    },
+    "23": {
+        "name": "Cloud Run Cost Analyzer",
+        "description": "Análisis de costos y optimización de recursos",
+        "path": "cloud-run/gcp_cloudrun_cost_analyzer.py",
+        "args": ["--project", "--region", "--compare", "--period", "--output", "--debug", "--timezone"],
+        "requirements": None,
+        "group": "cloudrun",
+        "status": "ready"
+    },
+    "24": {
+        "name": "Cloud Run Deployment Validator",
+        "description": "Validación de configuración pre-deploy",
+        "path": "cloud-run/gcp_cloudrun_deployment_validator.py",
+        "args": ["--project", "--config", "--strict", "--output", "--debug"],
+        "requirements": None,
+        "group": "cloudrun",
+        "status": "ready"
+    },
+    "25": {
+        "name": "Cloud Run Traffic Analyzer",
+        "description": "Análisis de tráfico y distribución entre servicios",
+        "path": "cloud-run/gcp_cloudrun_traffic_analyzer.py",
+        "args": ["--project", "--region", "--service", "--period", "--output", "--debug"],
+        "requirements": None,
+        "group": "cloudrun",
+        "status": "ready"
+    },
+    "26": {
+        "name": "Cloud Run Dependency Mapper",
+        "description": "Mapeo de dependencias y conectividad",
+        "path": "cloud-run/gcp_cloudrun_dependency_mapper.py",
+        "args": ["--project", "--region", "--service", "--depth", "--output", "--debug"],
+        "requirements": None,
+        "group": "cloudrun",
+        "status": "ready"
+    },
+    "27": {
+        "name": "Cloud Run Executive Dashboard",
+        "description": "Dashboard ejecutivo consolidado de Cloud Run",
+        "path": "cloud-run/gcp_cloudrun_executive_dashboard.py",
+        "args": ["--project", "--region", "--period", "--format", "--output", "--debug"],
+        "requirements": None,
+        "group": "cloudrun",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {
