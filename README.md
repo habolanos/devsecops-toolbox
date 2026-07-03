@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.12-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.13-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -11,17 +11,18 @@
 
 ---
 
-## 📝 Historial de Cambios (v1.6.12)
+## 📝 Historial de Cambios (v1.6.13)
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| **1.6.12** | 2026-06-29 | ✨ Dinamización de menús: Eliminar hardcode en opciones A, B, Q. Generación dinámica con _system_options, get_auto_tools(), build_system_options(). Reducción 50% de código (113→56 líneas). Implementado en todas las plataformas |
+| **1.6.13** | 2026-07-03 | 🚀 Cloud Run Tools Suite (7 herramientas): Health Analyzer, Security Auditor, Cost Analyzer, Deployment Validator, Traffic Analyzer, Dependency Mapper, Executive Dashboard. IDs 28-34. Validación de _system_options completada. Grupo "cloudrun" agregado a TOOL_GROUPS. Tests unitarios creados. |
+| 1.6.12 | 2026-06-29 | ✨ Dinamización de menús: Eliminar hardcode en opciones A, B, Q. Generación dinámica con _system_options, get_auto_tools(), build_system_options(). Reducción 50% de código (113→56 líneas). Implementado en todas las plataformas |
 | 1.6.11 | 2026-06-29 | 📋 Análisis exhaustivo de refactorización: hardcode en menús (113 líneas), búsqueda interactiva (17% cobertura), propuestas de solución con documentación completa |
-| 1.6.13 | 2026-06-25 | 🆙 Nuevo grupo "updatepipe" para herramientas de actualización/rollback de Release Pipelines |
-| 1.6.12 | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
-| 1.6.11 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
-| 1.6.10 | 2026-06-20 | Dashboard Matutino inicial |
-| 1.6.9 | 2026-06-15 | KPI Analyzer mejorado |
+| 1.6.10 | 2026-06-25 | 🆙 Nuevo grupo "updatepipe" para herramientas de actualización/rollback de Release Pipelines |
+| 1.6.9 | 2026-06-22 | 🔧 Dashboard ejecuta scripts AZDO directamente, lee config.json, pasa DEVSECOPS_OUTPUT_DIR |
+| 1.6.8 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
+| 1.6.7 | 2026-06-20 | Dashboard Matutino inicial |
+| 1.6.6 | 2026-06-15 | KPI Analyzer mejorado |
 
 ### v1.6.12 - Dinamización de Menús - Eliminar Hardcode
 
@@ -77,29 +78,67 @@
 
 ---
 
-### v1.6.13 - Nuevo Grupo "updatepipe" para Herramientas de Actualización
+### v1.6.13 - Cloud Run Tools Suite & Validación de _system_options
 
 **Cambios Principales:**
-- ✅ Nuevo grupo `"updatepipe"` (🆙 Update Pipeline) en TOOL_GROUPS
-- ✅ Agregado a GROUP_ORDER para ordenamiento correcto
-- ✅ Reasignación de 4 herramientas de "release" a "updatepipe":
-  - Tool 21: Pipeline CD Update BranchConfig
-  - Tool 22: Pipeline CD Rollback Pipeline
-  - Tool 23: Pipeline Release Rollback
-  - Tool 24: Pipeline Release Restore
-- ✅ Mejor organización visual en menús
-- ✅ Separación clara de herramientas de análisis vs actualización
+- ✅ Implementación de 7 nuevas herramientas Cloud Run (IDs 28-34):
+  - Tool 28: Cloud Run Health Analyzer - Análisis profundo de salud y rendimiento
+  - Tool 29: Cloud Run Security Auditor - Auditoría completa de seguridad
+  - Tool 30: Cloud Run Cost Analyzer - Análisis de costos y optimización
+  - Tool 31: Cloud Run Deployment Validator - Validación de configuración pre-deploy
+  - Tool 32: Cloud Run Traffic Analyzer - Análisis de tráfico y distribución
+  - Tool 33: Cloud Run Dependency Mapper - Mapeo de dependencias y conectividad
+  - Tool 34: Cloud Run Executive Dashboard - Dashboard ejecutivo consolidado
+- ✅ Creación de módulos base:
+  - `cloudrun_base.py`: Utilidades compartidas (gcloud execution, export, console printing)
+  - `cloudrun_metrics.py`: Cálculos de métricas (health score, cost, SLA)
+  - `cloudrun_alerts.py`: Gestión de alertas (severidad, tipos, seguridad, costos)
+- ✅ Validación completa de `_system_options`:
+  - Confirmado: Implementación dinámica correcta en todos los launchers
+  - Documento de validación creado: `docs/VALIDACION_SYSTEM_OPTIONS.md`
+  - Flujo de procesamiento documentado y verificado
+- ✅ Corrección de duplicados de IDs:
+  - Renumeración de Cloud Run tools: 19-27 → 28-34
+  - Documento de corrección: `docs/CORRECCION_DUPLICADOS_TOOLS.md`
+- ✅ Agregación del grupo "cloudrun" a TOOL_GROUPS:
+  - Emoji: 🚀 Cloud Run
+  - Color: bright_cyan
+  - Las herramientas ahora aparecen correctamente en el menú
+- ✅ Tests unitarios creados:
+  - `tests/test_cloudrun_base.py`: 100+ tests para módulos base
+  - Cobertura de validación de conexión, métricas y alertas
+
+**Archivos Modificados:**
+- `scm/gcp/tools.py`: Agregadas 7 herramientas, grupo "cloudrun" a TOOL_GROUPS
+- `scm/gcp/cloud-run/cloudrun_base.py`: Módulo base creado
+- `scm/gcp/cloud-run/cloudrun_metrics.py`: Módulo de métricas creado
+- `scm/gcp/cloud-run/cloudrun_alerts.py`: Módulo de alertas creado
+- `scm/gcp/cloud-run/gcp_cloudrun_health_analyzer.py`: Tool 28
+- `scm/gcp/cloud-run/gcp_cloudrun_security_auditor.py`: Tool 29
+- `scm/gcp/cloud-run/gcp_cloudrun_cost_analyzer.py`: Tool 30
+- `scm/gcp/cloud-run/gcp_cloudrun_deployment_validator.py`: Tool 31
+- `scm/gcp/cloud-run/gcp_cloudrun_traffic_analyzer.py`: Tool 32
+- `scm/gcp/cloud-run/gcp_cloudrun_dependency_mapper.py`: Tool 33
+- `scm/gcp/cloud-run/gcp_cloudrun_executive_dashboard.py`: Tool 34
+- `tests/test_cloudrun_base.py`: Tests unitarios creados
+
+**Documentación Generada:**
+- � `docs/feature_cloudrun/IMPLEMENTACION_COMPLETADA.md` - Resumen de implementación
+- 📄 `docs/VALIDACION_SYSTEM_OPTIONS.md` - Validación de _system_options
+- 📄 `docs/CORRECCION_DUPLICADOS_TOOLS.md` - Documentación de corrección de duplicados
+- 📄 `docs/SOLUCION_HERRAMIENTAS_NO_VISIBLES.md` - Solución de visibilidad en menú
 
 **Beneficios:**
-- 🎯 Agrupa operaciones destructivas (rollback/restore)
-- 📊 Diferencia análisis de actualización
-- 🔍 Facilita búsqueda de herramientas
-- 🎨 Mejor visualización en UI
+- 🎯 Suite completa de herramientas para Cloud Run
+- 📊 Análisis profundo de salud, seguridad, costos y tráfico
+- 🔄 Validación confirmada de sistema dinámico de opciones
+- ✅ Menú actualizado con nuevas herramientas visibles
+- 📈 Documentación exhaustiva de cambios y validaciones
 
 **Compatibilidad:**
-- ✅ No afecta opciones A y B (Ejecutar Todos)
-- ✅ No afecta argumentos de línea de comandos
-- ✅ No afecta salidas (JSON, CSV, Excel)
+- ✅ Totalmente retrocompatible
+- ✅ No afecta herramientas existentes
+- ✅ Integración transparente con arquitectura existente
 
 ---
 
