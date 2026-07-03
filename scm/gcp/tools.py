@@ -342,8 +342,8 @@ TOOLS = {
         "group": "reports",
         "status": "ready"
     },
-    # ══════════ CLOUD RUN (19-25) ══════════
-    "19": {
+    # ══════════ CLOUD RUN (28-34) ══════════
+    "28": {
         "name": "Cloud Run Health Analyzer",
         "description": "Análisis profundo de salud y rendimiento de servicios Cloud Run",
         "path": "cloud-run/gcp_cloudrun_health_analyzer.py",
@@ -352,7 +352,7 @@ TOOLS = {
         "group": "cloudrun",
         "status": "ready"
     },
-    "20": {
+    "29": {
         "name": "Cloud Run Security Auditor",
         "description": "Auditoría completa de seguridad en Cloud Run",
         "path": "cloud-run/gcp_cloudrun_security_auditor.py",
@@ -361,7 +361,7 @@ TOOLS = {
         "group": "cloudrun",
         "status": "ready"
     },
-    "23": {
+    "30": {
         "name": "Cloud Run Cost Analyzer",
         "description": "Análisis de costos y optimización de recursos",
         "path": "cloud-run/gcp_cloudrun_cost_analyzer.py",
@@ -370,7 +370,7 @@ TOOLS = {
         "group": "cloudrun",
         "status": "ready"
     },
-    "24": {
+    "31": {
         "name": "Cloud Run Deployment Validator",
         "description": "Validación de configuración pre-deploy",
         "path": "cloud-run/gcp_cloudrun_deployment_validator.py",
@@ -379,7 +379,7 @@ TOOLS = {
         "group": "cloudrun",
         "status": "ready"
     },
-    "25": {
+    "32": {
         "name": "Cloud Run Traffic Analyzer",
         "description": "Análisis de tráfico y distribución entre servicios",
         "path": "cloud-run/gcp_cloudrun_traffic_analyzer.py",
@@ -388,7 +388,7 @@ TOOLS = {
         "group": "cloudrun",
         "status": "ready"
     },
-    "26": {
+    "33": {
         "name": "Cloud Run Dependency Mapper",
         "description": "Mapeo de dependencias y conectividad",
         "path": "cloud-run/gcp_cloudrun_dependency_mapper.py",
@@ -397,7 +397,7 @@ TOOLS = {
         "group": "cloudrun",
         "status": "ready"
     },
-    "27": {
+    "34": {
         "name": "Cloud Run Executive Dashboard",
         "description": "Dashboard ejecutivo consolidado de Cloud Run",
         "path": "cloud-run/gcp_cloudrun_executive_dashboard.py",
