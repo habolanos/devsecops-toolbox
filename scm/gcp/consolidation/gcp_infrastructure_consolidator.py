@@ -168,16 +168,38 @@ def create_orphaned_table(orphaned: Dict, console) -> Table:
     table.add_column("Estado", style="green")
     
     for cr in orphaned.get('cloud_run', []):
-        name = cr.get('name', 'N/A').split('/')[-1]
+        name = cr.get('name', 'N/A')
+        if isinstance(name, str) and '/' in name:
+            name = name.split('/')[-1]
+        else:
+            name = str(name) if not isinstance(name, str) else name
+        
         region = cr.get('location', 'N/A')
-        state = cr.get('status', 'UNKNOWN')
-        table.add_row("Cloud Run", name, region, state)
+        if isinstance(region, dict):
+            region = region.get('name', 'N/A')
+        
+        status = cr.get('status', 'UNKNOWN')
+        if isinstance(status, dict):
+            status = status.get('conditions', [{}])[0].get('type', 'UNKNOWN') if status.get('conditions') else 'UNKNOWN'
+        
+        table.add_row("Cloud Run", str(name), str(region), str(status))
     
     for cf in orphaned.get('cloud_functions', []):
-        name = cf.get('name', 'N/A').split('/')[-1]
+        name = cf.get('name', 'N/A')
+        if isinstance(name, str) and '/' in name:
+            name = name.split('/')[-1]
+        else:
+            name = str(name) if not isinstance(name, str) else name
+        
         region = cf.get('serviceConfig', {}).get('region', 'N/A')
+        if isinstance(region, dict):
+            region = region.get('name', 'N/A')
+        
         state = cf.get('state', 'UNKNOWN')
-        table.add_row("Cloud Functions", name, region, state)
+        if isinstance(state, dict):
+            state = str(state)
+        
+        table.add_row("Cloud Functions", str(name), str(region), str(state))
     
     return table
 
