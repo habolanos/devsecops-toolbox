@@ -67,17 +67,20 @@ def check_gcp_connection(project_id: str, console, debug: bool = False) -> bool:
     """Verifica conexión a GCP."""
     try:
         import subprocess
-        auth_cmd = 'gcloud auth list --filter=status:ACTIVE --format="value(account)"'
-        auth_result = subprocess.run(auth_cmd, shell=True, capture_output=True, text=True)
         
-        if auth_result.returncode != 0:
+        # Verificar sesión activa
+        auth_cmd = 'gcloud auth list --filter=status:ACTIVE --format="value(account)"'
+        auth_result = subprocess.run(auth_cmd, shell=True, capture_output=True, text=True, timeout=10)
+        
+        if auth_result.returncode != 0 or not auth_result.stdout.strip():
             console.print("[red]❌ No hay sesión activa de gcloud[/red]")
             return False
         
         console.print(f"[green]✓[/green] Sesión activa")
         
+        # Verificar acceso al proyecto
         project_cmd = f'gcloud projects describe {project_id} --format="value(projectId)" 2>&1'
-        project_result = subprocess.run(project_cmd, shell=True, capture_output=True, text=True)
+        project_result = subprocess.run(project_cmd, shell=True, capture_output=True, text=True, timeout=10)
         
         if project_result.returncode != 0:
             console.print(f"[red]❌ No tienes acceso al proyecto: {project_id}[/red]")
