@@ -80,6 +80,7 @@ TOOL_GROUPS = {
     "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
     "reports": {"name": "Reports", "emoji": "📈", "color": "bright_white"},
     "cloudrun": {"name": "Cloud Run", "emoji": "🚀", "color": "bright_cyan"},
+    "consolidation": {"name": "Consolidación", "emoji": "🔗", "color": "bright_magenta"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
 
@@ -405,6 +406,34 @@ TOOLS = {
         "args": ["--project", "--region", "--period", "--format", "--output", "--debug"],
         "requirements": None,
         "group": "cloudrun",
+        "status": "ready"
+    },
+    # ══════════ CONSOLIDATION (35-37) ══════════
+    "35": {
+        "name": "Cloud Functions Analyzer",
+        "description": "Análisis profundo de Cloud Functions (seguridad, costos, triggers, performance)",
+        "path": "cloud-functions/gcp_cloud_functions_analyzer.py",
+        "args": ["--project", "--view", "--output", "--debug", "--timezone"],
+        "requirements": None,
+        "group": "consolidation",
+        "status": "ready"
+    },
+    "36": {
+        "name": "Infrastructure Consolidator",
+        "description": "Consolida Load Balancers, Cloud Run y Cloud Functions con mapeo de relaciones",
+        "path": "consolidation/gcp_infrastructure_consolidator.py",
+        "args": ["--project", "--view", "--output", "--debug", "--timezone"],
+        "requirements": None,
+        "group": "consolidation",
+        "status": "ready"
+    },
+    "37": {
+        "name": "Unified Infrastructure Dashboard",
+        "description": "Dashboard ejecutivo unificado con alertas y recomendaciones automáticas",
+        "path": "consolidation/gcp_unified_infrastructure_dashboard.py",
+        "args": ["--project", "--interactive", "--debug", "--timezone"],
+        "requirements": None,
+        "group": "consolidation",
         "status": "ready"
     },
     # ══════════ SYSTEM (A, Q) ══════════
