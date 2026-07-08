@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List
+from datetime import datetime
 
 # Agregar parent directory al path
 current_dir = Path(__file__).parent
@@ -26,6 +27,21 @@ from sa_report_generators import (
     JSONReportGenerator, CSVReportGenerator, ExcelReportGenerator, HTMLReportGenerator
 )
 
+# Rich imports para visualización profesional
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from rich.box import ROUNDED, HEAVY
+    from rich.align import Align
+    from rich import print as rprint
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
+console = Console() if RICH_AVAILABLE else None
+
 
 class MultiProjectOrchestrator:
     """Orquesta extracción y análisis de múltiples proyectos."""
@@ -35,27 +51,69 @@ class MultiProjectOrchestrator:
         self.config = config
         self.debug = debug
         self.max_workers = config.get('parallel_workers', 5)
+        self.results_summary = []
     
     def extract_all(self) -> Dict:
-        """Extrae datos de todos los proyectos en paralelo."""
+        """Extrae datos de todos los proyectos en paralelo con visualización."""
         results = {}
         
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {
-                executor.submit(self._extract_project, proj): proj
-                for proj in self.projects
-            }
+        if RICH_AVAILABLE and console:
+            console.print(f"\n🚀 Iniciando análisis de {len(self.projects)} proyecto(s)...\n")
             
-            for future in as_completed(futures):
-                project = futures[future]
-                try:
-                    results[project] = future.result()
-                    if self.debug:
-                        print(f"✅ Proyecto extraído: {project}")
-                except Exception as e:
-                    results[project] = {'error': str(e)}
-                    if self.debug:
-                        print(f"❌ Error en {project}: {e}")
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console
+            ) as progress:
+                task = progress.add_task(
+                    "[cyan]Extrayendo datos de proyectos...",
+                    total=len(self.projects)
+                )
+                
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                    futures = {
+                        executor.submit(self._extract_project, proj): proj
+                        for proj in self.projects
+                    }
+                    
+                    for future in as_completed(futures):
+                        project = futures[future]
+                        try:
+                            results[project] = future.result()
+                            self.results_summary.append({
+                                'project': project,
+                                'status': '✅',
+                                'sas': len(results[project].get('service_accounts', []))
+                            })
+                            progress.update(task, advance=1)
+                        except Exception as e:
+                            results[project] = {'error': str(e)}
+                            self.results_summary.append({
+                                'project': project,
+                                'status': '❌',
+                                'sas': 0
+                            })
+                            progress.update(task, advance=1)
+        else:
+            # Fallback sin Rich
+            print(f"\n🚀 Iniciando análisis de {len(self.projects)} proyecto(s)...\n")
+            
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                futures = {
+                    executor.submit(self._extract_project, proj): proj
+                    for proj in self.projects
+                }
+                
+                for i, future in enumerate(as_completed(futures), 1):
+                    project = futures[future]
+                    try:
+                        results[project] = future.result()
+                        print(f"[{i}/{len(self.projects)}] ✅ {project}")
+                    except Exception as e:
+                        results[project] = {'error': str(e)}
+                        print(f"[{i}/{len(self.projects)}] ❌ {project}: {e}")
         
         return results
     
@@ -119,6 +177,30 @@ class MultiProjectOrchestrator:
             'projects_with_issues': len([p for p in data.values() 
                                         if isinstance(p, dict) and 'error' not in p])
         }
+    
+    def print_results_table(self):
+        """Imprime tabla de resultados con Rich."""
+        if not RICH_AVAILABLE or not console:
+            return
+        
+        table = Table(
+            title="📊 Resumen de Extracción por Proyecto",
+            box=ROUNDED,
+            show_header=True,
+            header_style="bold cyan"
+        )
+        table.add_column("Proyecto", style="cyan", width=40)
+        table.add_column("Estado", style="green", justify="center", width=10)
+        table.add_column("Service Accounts", style="yellow", justify="right", width=15)
+        
+        for result in self.results_summary:
+            table.add_row(
+                result['project'],
+                result['status'],
+                str(result['sas'])
+            )
+        
+        console.print(table)
 
 
 def main():
@@ -186,20 +268,33 @@ Ejemplos:
     # Obtener configuración
     defaults = config_loader.get_defaults()
     
-    print(f"🚀 Iniciando análisis de {len(projects)} proyecto(s)...")
-    print(f"   Proyectos: {', '.join(projects)}")
-    print(f"   Modo: {args.mode}")
-    print(f"   Salida: {args.output}")
+    # Mostrar información inicial con Rich
+    if RICH_AVAILABLE and console:
+        console.print(f"\n[bold cyan]Proyectos:[/bold cyan] {', '.join(projects)}")
+        console.print(f"[bold cyan]Modo:[/bold cyan] {args.mode}")
+        console.print(f"[bold cyan]Salida:[/bold cyan] {args.output}")
+    else:
+        print(f"🚀 Iniciando análisis de {len(projects)} proyecto(s)...")
+        print(f"   Proyectos: {', '.join(projects)}")
+        print(f"   Modo: {args.mode}")
+        print(f"   Salida: {args.output}")
     
     # Extraer datos
+    start_time = datetime.now()
     orchestrator = MultiProjectOrchestrator(projects, defaults, args.debug)
     extracted_data = orchestrator.extract_all()
+    
+    # Mostrar tabla de resultados
+    orchestrator.print_results_table()
     
     # Consolidar datos
     consolidated_data = orchestrator.consolidate(extracted_data)
     
     # Generar reporte
-    print(f"\n📊 Generando reporte {args.output}...")
+    if RICH_AVAILABLE and console:
+        console.print(f"\n[bold cyan]📊 Generando reporte {args.output}...[/bold cyan]")
+    else:
+        print(f"\n📊 Generando reporte {args.output}...")
     
     generators = {
         'json': JSONReportGenerator,
@@ -213,14 +308,42 @@ Ejemplos:
     report_path = generator.generate(consolidated_data)
     
     if report_path:
-        print(f"✅ Reporte generado: {report_path}")
-        print(f"\n📈 Resumen:")
-        summary = consolidated_data.get('summary', {})
-        print(f"   - Proyectos: {summary.get('total_projects', 0)}")
-        print(f"   - Service Accounts: {summary.get('total_service_accounts', 0)}")
-        print(f"   - Roles: {summary.get('total_roles', 0)}")
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        
+        if RICH_AVAILABLE and console:
+            console.print(f"\n[bold green]✅ Reporte generado:[/bold green] {report_path}")
+            
+            # Tabla de resumen
+            summary = consolidated_data.get('summary', {})
+            summary_table = Table(
+                title="📈 Resumen de Ejecución",
+                box=ROUNDED,
+                show_header=True,
+                header_style="bold cyan"
+            )
+            summary_table.add_column("Métrica", style="cyan")
+            summary_table.add_column("Valor", style="green", justify="right")
+            
+            summary_table.add_row("Proyectos", str(summary.get('total_projects', 0)))
+            summary_table.add_row("Service Accounts", str(summary.get('total_service_accounts', 0)))
+            summary_table.add_row("Roles", str(summary.get('total_roles', 0)))
+            summary_table.add_row("Duración", f"{duration:.2f}s")
+            
+            console.print(summary_table)
+        else:
+            print(f"✅ Reporte generado: {report_path}")
+            print(f"\n📈 Resumen:")
+            summary = consolidated_data.get('summary', {})
+            print(f"   - Proyectos: {summary.get('total_projects', 0)}")
+            print(f"   - Service Accounts: {summary.get('total_service_accounts', 0)}")
+            print(f"   - Roles: {summary.get('total_roles', 0)}")
+            print(f"   - Duración: {duration:.2f}s")
     else:
-        print("❌ Error generando reporte")
+        if RICH_AVAILABLE and console:
+            console.print("[bold red]❌ Error generando reporte[/bold red]")
+        else:
+            print("❌ Error generando reporte")
         sys.exit(1)
 
 
