@@ -170,7 +170,7 @@ TOOLS = {
         "name": "Service Account Checker",
         "description": "Lista y analiza Service Accounts, keys y roles IAM",
         "path": "service-account/gcp_service_account_checker.py",
-        "args": ["--project", "-o"],
+        "args": ["-o"],
         "requirements": None,
         "group": "iam",
         "status": "ready"
