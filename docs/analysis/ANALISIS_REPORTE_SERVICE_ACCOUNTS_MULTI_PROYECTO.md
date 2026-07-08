@@ -265,9 +265,191 @@ ServiceAccount = {
 }
 ```
 
-### 2. Módulos Principales
+### 2. Configuración en config.json
 
-#### A. Extractor Base
+**Ubicación:** `scm/config.json`
+
+```json
+{
+  "gcp": {
+    "_info": "Configuración de Google Cloud Platform",
+    "enabled": true,
+    "project_id": "<TU_PROJECT_ID>",
+    "region": "us-central1",
+    
+    "service_accounts_reporter": {
+      "_info": "Configuración para el reporte multi-proyecto de service accounts",
+      "enabled": true,
+      "projects": [
+        "proyecto-produccion-001",
+        "proyecto-staging-002",
+        "proyecto-desarrollo-003",
+        "proyecto-qa-004",
+        "proyecto-backup-005"
+      ],
+      "defaults": {
+        "mode": "all",
+        "output_format": "json",
+        "include_activity": true,
+        "activity_days": 30,
+        "key_rotation_policy_days": 90,
+        "parallel_workers": 5,
+        "timeout_seconds": 300,
+        "cache_enabled": true,
+        "cache_ttl_minutes": 60
+      },
+      "security": {
+        "dangerous_roles": [
+          "roles/editor",
+          "roles/owner",
+          "roles/compute.admin",
+          "roles/iam.securityAdmin",
+          "roles/resourcemanager.organizationAdmin"
+        ],
+        "alert_on_risk_level": ["HIGH", "CRITICAL"],
+        "encrypt_reports": true
+      },
+      "compliance": {
+        "policies": [
+          {
+            "name": "key_rotation_90days",
+            "description": "Rotación de claves cada 90 días",
+            "enabled": true,
+            "threshold_days": 90
+          },
+          {
+            "name": "no_user_managed_keys",
+            "description": "No permitir claves user-managed",
+            "enabled": false
+          },
+          {
+            "name": "no_excessive_permissions",
+            "description": "No permitir roles peligrosos",
+            "enabled": true
+          }
+        ]
+      },
+      "notifications": {
+        "enabled": true,
+        "on_high_risk": true,
+        "on_compliance_violation": true,
+        "webhook_url": "<TU_TEAMS_WEBHOOK_URL>"
+      }
+    },
+    
+    "credentials": {
+      "_info": "Opciones: 'adc' (Application Default Credentials), 'service_account', 'oauth'",
+      "type": "adc",
+      "service_account_key_path": "",
+      "impersonate_service_account": ""
+    },
+    
+    "defaults": {
+      "timezone": "America/Mazatlan",
+      "output_format": "json"
+    }
+  }
+}
+```
+
+**Campos Principales:**
+
+| Campo | Descripción | Ejemplo |
+|-------|-------------|---------|
+| `projects` | Array de nombres de proyectos GCP | `["proyecto-prod", "proyecto-staging"]` |
+| `mode` | Modo de reporte (all, security, compliance, usage) | `all` |
+| `output_format` | Formato de salida (json, csv, excel, html) | `json` |
+| `include_activity` | Incluir análisis de actividad | `true` |
+| `activity_days` | Días de actividad a analizar | `30` |
+| `key_rotation_policy_days` | Días para rotación de claves | `90` |
+| `parallel_workers` | Número de workers para paralelización | `5` |
+| `dangerous_roles` | Roles considerados peligrosos | Array de roles |
+| `alert_on_risk_level` | Niveles de riesgo para alertas | `["HIGH", "CRITICAL"]` |
+
+---
+
+### 3. Módulos Principales
+
+#### A. Config Loader (Cargar desde config.json)
+
+```python
+import json
+from pathlib import Path
+from typing import Dict, List
+
+class ConfigLoader:
+    """Carga configuración desde config.json."""
+    
+    def __init__(self, config_path: str = "config.json"):
+        self.config_path = Path(config_path)
+        self.config = self._load_config()
+    
+    def _load_config(self) -> Dict:
+        """Carga el archivo config.json."""
+        if not self.config_path.exists():
+            raise FileNotFoundError(f"config.json no encontrado en {self.config_path}")
+        
+        with open(self.config_path, 'r') as f:
+            return json.load(f)
+    
+    def get_projects(self) -> List[str]:
+        """Obtiene lista de proyectos desde config.json."""
+        return self.config.get('gcp', {}).get('service_accounts_reporter', {}).get('projects', [])
+    
+    def get_sa_reporter_config(self) -> Dict:
+        """Obtiene configuración del reporte de service accounts."""
+        return self.config.get('gcp', {}).get('service_accounts_reporter', {})
+    
+    def get_defaults(self) -> Dict:
+        """Obtiene valores por defecto."""
+        reporter_config = self.get_sa_reporter_config()
+        return reporter_config.get('defaults', {})
+    
+    def get_security_config(self) -> Dict:
+        """Obtiene configuración de seguridad."""
+        reporter_config = self.get_sa_reporter_config()
+        return reporter_config.get('security', {})
+    
+    def get_compliance_policies(self) -> List[Dict]:
+        """Obtiene políticas de cumplimiento."""
+        reporter_config = self.get_sa_reporter_config()
+        return reporter_config.get('compliance', {}).get('policies', [])
+```
+
+**Uso en CLI:**
+
+```python
+def main():
+    # Cargar configuración
+    config_loader = ConfigLoader('config.json')
+    
+    # Obtener proyectos por defecto
+    projects = config_loader.get_projects()
+    defaults = config_loader.get_defaults()
+    
+    # Permitir override desde línea de comandos
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--projects', 
+                       default=','.join(projects),
+                       help='Proyectos a analizar (default: desde config.json)')
+    parser.add_argument('--mode', 
+                       default=defaults.get('mode', 'all'),
+                       help='Modo de reporte (default: desde config.json)')
+    parser.add_argument('--output', 
+                       default=defaults.get('output_format', 'json'),
+                       help='Formato de salida (default: desde config.json)')
+    
+    args = parser.parse_args()
+    
+    # Usar configuración
+    projects_to_analyze = args.projects.split(',')
+    # ... resto del código
+```
+
+---
+
+#### B. Extractor Base
+
 ```python
 class ServiceAccountExtractor:
     """Extrae service accounts de un proyecto."""
