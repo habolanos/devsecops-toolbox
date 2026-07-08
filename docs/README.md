@@ -9,7 +9,8 @@
 ## 🎯 Inicio Rápido
 
 ### 📖 Leer Primero
-1. **[SESION_FINAL_COMPLETA_FASE2_FASE3_FASE4.md](SESION_FINAL_COMPLETA_FASE2_FASE3_FASE4.md)** - Resumen ejecutivo del proyecto completo
+1. **[ESTRUCTURA.md](ESTRUCTURA.md)** - 📂 Guía de estructura y navegación de documentación
+2. **[SESION_FINAL_COMPLETA_FASE2_FASE3_FASE4.md](SESION_FINAL_COMPLETA_FASE2_FASE3_FASE4.md)** - Resumen ejecutivo del proyecto completo
 
 ### 🔧 Guías de Uso
 - **[refactor_arquitectura/GUIA_BASE_LAUNCHER.md](refactor_arquitectura/GUIA_BASE_LAUNCHER.md)** - Cómo usar base_launcher.py
@@ -26,7 +27,10 @@
 
 ## 📂 Estructura de Documentación
 
-### 🔴 Documentación Principal
+### �️ Guía de Navegación
+👉 **[ESTRUCTURA.md](ESTRUCTURA.md)** - Guía completa de carpetas y cómo navegar la documentación
+
+### �🔴 Documentación Principal
 
 ```
 📄 SESION_FINAL_COMPLETA_FASE2_FASE3_FASE4.md
