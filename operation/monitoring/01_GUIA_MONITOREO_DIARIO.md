@@ -626,146 +626,147 @@ EOF
 
 ---
 
-## � HERRAMIENTAS GCP DISPONIBLES
+## 🔧 HERRAMIENTAS GCP DISPONIBLES
 
-### Tool 5: Release Deep Dive (AZDO)
-**Ubicación:** `scm/azdo/tools.py` → Opción [5]  
-**Objetivo:** Análisis profundo de releases CD con detalles de stages, aprobaciones y variables
+### Tool 5: Certificate Manager Checker (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [5]  
+**Objetivo:** Monitorea certificados SSL/TLS en Certificate Manager
 
 **Uso:**
 ```bash
-cd scm/azdo
+cd scm/gcp
 python tools.py
-# Seleccionar [5] - Release Deep Dive
-# Proyecto: [nombre del proyecto]
-# Pipeline: [nombre del pipeline]
-# Release ID: [opcional]
+# Seleccionar [5] - Certificate Manager Checker
+# Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
 
 **Qué buscar:**
-- ✅ Stages completados exitosamente
-- ✅ Aprobaciones autorizadas
-- ✅ Variables de entorno correctas
-- ⚠️ Alertar si stage falló
-- ⚠️ Alertar si aprobación rechazada
+- ✅ Todos los certificados válidos
+- ✅ Certificados con validez > 30 días
+- ✅ Sin certificados expirados
+- ⚠️ Alertar si certificado vence < 30 días
+- ⚠️ Alertar si certificado expirado
 
 **Interpretación DevSecOps:**
 ```
-SI STAGE FALLÓ:
-├─ Revisar logs del stage
-├─ Verificar configuración
-├─ Ejecutar Tool 8 (Pipeline Logs Scanner)
-├─ Considerar rollback
-└─ Implementar fix
-
-SI APROBACIÓN RECHAZADA:
-├─ Contactar a aprobador
-├─ Revisar razón del rechazo
-├─ Corregir problemas
-├─ Reenviar para aprobación
+SI CERTIFICADO VENCE < 30 DÍAS:
+├─ Riesgo de interrupción de servicio
+├─ Renovar certificado inmediatamente
+├─ Validar en staging primero
+├─ Planificar rotación
 └─ Documentar cambios
 
-SI VARIABLES INCORRECTAS:
-├─ Verificar valores
-├─ Actualizar si es necesario
-├─ Validar en pre-deploy
-└─ Documentar cambios
+SI CERTIFICADO EXPIRADO:
+├─ Crítico - Acción inmediata
+├─ Reemplazar certificado
+├─ Verificar servicios afectados
+├─ Notificar a stakeholders
+├─ Implementar alertas automáticas
+└─ Documentar incidente
+
+SI MÚLTIPLES CERTIFICADOS VENCIENDO:
+├─ Problema de governance
+├─ Implementar sistema de alertas
+├─ Crear proceso de renovación
+├─ Automatizar si es posible
+└─ Capacitar al equipo
 ```
 
 ---
 
-### Tool 7: Task Validator (AZDO)
-**Ubicación:** `scm/azdo/tools.py` → Opción [7]  
-**Objetivo:** Valida tareas de pipelines CI/CD y detecta problemas de configuración
+### Tool 7: Cloud SQL Disk Monitor (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [7]  
+**Objetivo:** Monitorea uso de disco en instancias Cloud SQL
 
 **Uso:**
 ```bash
-cd scm/azdo
+cd scm/gcp
 python tools.py
-# Seleccionar [7] - Task Validator
-# Proyecto: [nombre del proyecto]
-# Pipeline: [nombre del pipeline]
+# Seleccionar [7] - Cloud SQL Disk Monitor
+# Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
 
 **Qué buscar:**
-- ✅ Todas las tareas con configuración válida
-- ✅ Sin tareas deprecadas
-- ✅ Sin tareas con errores
-- ⚠️ Alertar si tarea inválida
-- ⚠️ Alertar si tarea deprecada
+- ✅ Uso de disco < 70%
+- ✅ Crecimiento de disco predecible
+- ✅ Sin alertas de espacio
+- ⚠️ Alertar si uso > 80%
+- ⚠️ Alertar si crecimiento anómalo
 
 **Interpretación DevSecOps:**
 ```
-SI TAREA INVÁLIDA:
-├─ Revisar configuración
-├─ Verificar parámetros
-├─ Consultar documentación
-├─ Corregir inmediatamente
-└─ Validar en test pipeline
+SI USO > 80%:
+├─ Riesgo de agotamiento
+├─ Revisar tamaño de base de datos
+├─ Considerar limpieza de datos
+├─ Aumentar almacenamiento
+├─ Monitorear próximas horas
+└─ Implementar políticas de retención
 
-SI TAREA DEPRECADA:
-├─ Planificar migración
-├─ Buscar alternativa
-├─ Actualizar pipeline
+SI CRECIMIENTO ANÓMALO:
+├─ Posible fuga de datos
+├─ Revisar logs de aplicación
+├─ Ejecutar análisis de tablas
+├─ Identificar tabla problemática
+├─ Implementar solución
+└─ Documentar causa raíz
+
+SI ESPACIO CRÍTICO:
+├─ Acción inmediata
+├─ Aumentar almacenamiento
+├─ Revisar backups
+├─ Notificar a stakeholders
+├─ Implementar alertas
+└─ Documentar incidente
+```
+
+---
+
+### Tool 8: Cloud SQL Database Checker (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [8]  
+**Objetivo:** Lista bases de datos por instancia de Cloud SQL
+
+**Uso:**
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [8] - Cloud SQL Database Checker
+# Proyecto: cpl-corp-cial-prod-17042024
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todas las bases de datos documentadas
+- ✅ Sin bases de datos huérfanas
+- ✅ Permisos de acceso correctos
+- ⚠️ Alertar si base de datos desconocida
+- ⚠️ Alertar si permisos excesivos
+
+**Interpretación DevSecOps:**
+```
+SI BASE DE DATOS DESCONOCIDA:
+├─ Investigar origen
+├─ Verificar si es necesaria
+├─ Revisar permisos de acceso
+├─ Considerar eliminar si no se usa
+└─ Documentar propósito
+
+SI PERMISOS EXCESIVOS:
+├─ Riesgo de seguridad
+├─ Revisar principio de menor privilegio
+├─ Reducir permisos
+├─ Crear usuario específico si es necesario
 ├─ Validar funcionamiento
 └─ Documentar cambios
 
-SI MÚLTIPLES ERRORES:
-├─ Problema sistémico
-├─ Revisar cambios recientes
-├─ Ejecutar Tool 4 (Pipeline Drift)
-├─ Considerar rollback
-└─ Implementar quality gates
-```
-
----
-
-### Tool 8: Pipeline Logs Scanner (AZDO)
-**Ubicación:** `scm/azdo/tools.py` → Opción [8]  
-**Objetivo:** Escanea logs de pipelines para detectar errores, warnings y patrones de fallo
-
-**Uso:**
-```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [8] - Pipeline Logs Scanner
-# Proyecto: [nombre del proyecto]
-# Pipeline: [nombre del pipeline]
-# Build ID: [opcional]
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Sin errores críticos en logs
-- ✅ Sin warnings recurrentes
-- ✅ Patrones de fallo identificados
-- ⚠️ Alertar si error crítico
-- ⚠️ Alertar si warning recurrente
-
-**Interpretación DevSecOps:**
-```
-SI ERROR CRÍTICO:
-├─ Revisar línea exacta del error
-├─ Buscar en documentación
-├─ Ejecutar Tool 5 (Release Deep Dive)
-├─ Implementar fix
-└─ Validar en test
-
-SI WARNING RECURRENTE:
-├─ Investigar causa
-├─ Evaluar impacto
-├─ Planificar corrección
-├─ Implementar en próxima release
-└─ Documentar
-
-SI PATRÓN DE FALLO:
-├─ Analizar tendencia
-├─ Identificar causa común
-├─ Implementar solución
-├─ Monitorear próximas ejecuciones
-└─ Documentar lecciones aprendidas
+SI MÚLTIPLES BASES DE DATOS:
+├─ Revisar consolidación
+├─ Evaluar si se pueden combinar
+├─ Considerar separación por ambiente
+├─ Documentar arquitectura
+└─ Implementar políticas de naming
 ```
 
 ---
@@ -924,7 +925,7 @@ SI NODO NUEVO CON BAJO USO:
 SI MÚLTIPLES NODOS AFECTADOS:
 ├─ Problema sistémico
 ├─ Revisar cambios recientes
-├─ Ejecutar Tool 4 (Pipeline Drift)
+├─ Revisar eventos del cluster
 ├─ Considerar rollback
 └─ Escalar a infraestructura
 ```
@@ -967,7 +968,7 @@ SI LATENCIA > 1000ms:
 SI ERROR RATE > 5%:
 ├─ Problema crítico
 ├─ Revisar logs: Cloud Logging
-├─ Ejecutar Tool 5 (Release Deep Dive)
+├─ Revisar configuración de servicio
 ├─ Considerar rollback
 ├─ Implementar fix
 └─ Validar en staging
@@ -975,7 +976,7 @@ SI ERROR RATE > 5%:
 SI DISPONIBILIDAD < 99%:
 ├─ Problema de confiabilidad
 ├─ Revisar eventos de error
-├─ Ejecutar Tool 8 (Pipeline Logs Scanner)
+├─ Revisar configuración
 ├─ Implementar circuit breaker
 ├─ Considerar retry logic
 └─ Monitorear próximas horas
@@ -1051,7 +1052,7 @@ ACCIONES RECOMENDADAS:
 
 ---
 
-## �🚨 Matriz de Alertas
+## 🚨 Matriz de Alertas
 
 ### Alertas Críticas (Acción Inmediata)
 
