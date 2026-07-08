@@ -436,6 +436,16 @@ TOOLS = {
         "group": "consolidation",
         "status": "ready"
     },
+    # ══════════ SERVICE ACCOUNTS (38) ══════════
+    "38": {
+        "name": "Service Accounts Multi-Project Reporter",
+        "description": "Extrae, analiza y reporta service accounts de múltiples proyectos GCP con análisis de roles, permisos temporales y días restantes",
+        "path": "service-accounts/gcp_sa_multi_project_reporter.py",
+        "args": ["--projects", "--mode", "--output", "--config", "--output-dir", "--debug"],
+        "requirements": None,
+        "group": "iam",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {
