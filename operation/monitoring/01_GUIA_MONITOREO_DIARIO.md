@@ -21,6 +21,22 @@ Este documento proporciona un **plan diario de monitoreo** que debe ejecutarse e
 ### Objetivo
 Establecer baseline de salud de infraestructura y pipelines (GCP, AWS, AZDO)
 
+**Descripción fundamental:**
+El monitoreo matutino es el punto de partida del día. Se ejecuta a primera hora para establecer un baseline de salud de toda la infraestructura multi-cloud (GCP, AWS, AZDO). Este monitoreo es crítico porque:
+- Detecta problemas que ocurrieron durante la noche
+- Valida que todos los sistemas estén operacionales
+- Identifica cambios no autorizados
+- Proporciona contexto para el día
+
+**Qué busca prevenir:**
+- 🛡️ Caídas de servicios no detectadas
+- 🛡️ Degradación de performance sin notificación
+- 🛡️ Certificados expirados que causen interrupciones
+- 🛡️ Agotamiento de recursos sin escalado
+- 🛡️ Pipelines fallidos que bloqueen releases
+- 🛡️ Problemas de seguridad sin auditoría
+- 🛡️ Cambios no autorizados en infraestructura
+
 **Qué se busca detectar:**
 - ✅ Problemas de recursos (CPU, memoria, disco)
 - ✅ Problemas de certificados y seguridad
@@ -450,6 +466,23 @@ Reporte guardado: outcome/daily_morning_report_20260708.json
 ### Objetivo
 Detectar anomalías y problemas que surgieron durante el día
 
+**Descripción fundamental:**
+El monitoreo vespertino se ejecuta a mitad del día para detectar anomalías que surgieron después del monitoreo matutino. Este monitoreo es esencial porque:
+- Identifica problemas en tiempo real durante el horario de trabajo
+- Detecta cambios de carga anormal en aplicaciones
+- Valida que los deployments estén funcionando correctamente
+- Permite intervención rápida antes de que afecte a usuarios
+- Monitorea cambios que ocurrieron durante el día
+
+**Qué busca prevenir:**
+- 🛡️ Outages de servicios durante horario laboral
+- 🛡️ Degradación de performance no detectada
+- 🛡️ Deployments fallidos sin notificación
+- 🛡️ Agotamiento de recursos durante picos de uso
+- 🛡️ Bloqueos en releases que afecten el flujo
+- 🛡️ Problemas de conectividad sin escalado
+- 🛡️ Pérdida de datos por almacenamiento lleno
+
 **Qué se busca detectar:**
 - ✅ Pods con alto uso de recursos
 - ✅ Aprobaciones de releases bloqueadas
@@ -778,6 +811,25 @@ Reporte guardado: outcome/daily_afternoon_report_20260708.json
 
 ### Objetivo
 Auditar cambios del día y preparar reporte para mañana
+
+**Descripción fundamental:**
+El monitoreo nocturno se ejecuta al final del día para auditar todos los cambios que ocurrieron y preparar el reporte para el siguiente día. Este monitoreo es fundamental porque:
+- Audita todos los cambios realizados durante el día
+- Detecta cambios no autorizados o drift en infraestructura
+- Valida la seguridad y cumplimiento normativo
+- Prepara el contexto para el siguiente día
+- Identifica deuda técnica y repos sin pipelines
+- Consolida hallazgos de seguridad
+
+**Qué busca prevenir:**
+- 🛡️ Cambios no autorizados sin detección
+- 🛡️ Drift en configuración de infraestructura
+- 🛡️ Vulnerabilidades de seguridad sin auditoría
+- 🛡️ Keys y credenciales vencidas
+- 🛡️ Repos sin pipelines CI/CD
+- 🛡️ Bases de datos huérfanas o sin documentación
+- 🛡️ Recursos en AWS sin gestión
+- 🛡️ Problemas de cumplimiento normativo
 
 **Qué se busca detectar:**
 - ✅ Service accounts con keys vencidas
