@@ -570,9 +570,14 @@ def main() -> int:
     
     # Determinar proyectos
     if args.projects:
+        # Si se especifica --projects, usar solo esos
         projects = [p.strip() for p in args.projects.split(',') if p.strip()]
     else:
-        projects = [args.project]
+        # Intentar cargar desde config.json
+        projects = load_projects_from_config(debug, console)
+        if not projects:
+            # Fallback al proyecto por defecto
+            projects = [args.project]
     
     # Mostrar información inicial
     if RICH_AVAILABLE and console:
@@ -725,6 +730,47 @@ def main() -> int:
         return 1
 
     return 0
+
+
+def load_projects_from_config(debug: bool, console) -> List[str]:
+    """Carga proyectos desde config.json."""
+    try:
+        import json
+        from pathlib import Path
+        
+        # Buscar config.json en diferentes ubicaciones
+        config_paths = [
+            Path("config.json"),
+            Path("scm/config.json"),
+            Path("../config.json"),
+        ]
+        
+        config_file = None
+        for path in config_paths:
+            if path.exists():
+                config_file = path
+                break
+        
+        if not config_file:
+            if debug and console and RICH_AVAILABLE:
+                console.print("[dim]config.json no encontrado[/dim]")
+            return []
+        
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        # Buscar proyectos en config.json
+        projects = config.get('gcp', {}).get('service_accounts_reporter', {}).get('projects', [])
+        
+        if projects and debug and console and RICH_AVAILABLE:
+            console.print(f"[dim]Cargados {len(projects)} proyectos desde config.json[/dim]")
+        
+        return projects if isinstance(projects, list) else []
+    
+    except Exception as e:
+        if debug and console and RICH_AVAILABLE:
+            console.print(f"[dim]Error cargando config.json: {e}[/dim]")
+        return []
 
 
 def process_project(project_id: str, debug: bool, console) -> List[Dict]:
