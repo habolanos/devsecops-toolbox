@@ -1,6 +1,6 @@
 {
   "_info": "Template de configuración unificada para DevSecOps Toolbox. Copia como config.json y completa los valores. NUNCA subas config.json al repositorio.",
-  "_version": "1.6.10",
+  "_version": "1.6.17",
 
   "azdo": {
     "_info": "Configuración de Azure DevOps",
@@ -202,6 +202,36 @@
     "defaults": {
       "output_format": "json",
       "output_dir": "outcome"
+    }
+  },
+
+  "terminal": {
+    "_info": "Configuración de Terminal Scripts - Scripts shell agnósticos",
+    "enabled": true,
+    "_enabled_info": "Terminal scripts no requieren configuración especial. Se ejecutan localmente.",
+    "defaults": {
+      "timezone": "America/Mazatlan",
+      "output_format": "json",
+      "debug": false
+    }
+  },
+
+  "kpi_analyzer": {
+    "_info": "Configuración de KPI Analyzer - Análisis de KPIs DevSecOps",
+    "enabled": true,
+    "_enabled_info": "KPI Analyzer no requiere configuración especial. Usa datos de las otras plataformas.",
+    "defaults": {
+      "timezone": "America/Mazatlan",
+      "output_format": "json",
+      "maturity_model": "6_levels",
+      "_maturity_model_info": "Modelo de madurez: 6_levels (Inicial, Repetible, Definido, Gestionado, Optimizado, Excelencia)",
+      "debug": false
+    },
+    "benchmarks": {
+      "_info": "Benchmarks de industria para comparación",
+      "enabled": true,
+      "industry": "tech",
+      "_industry_info": "Industria: tech, finance, healthcare, retail"
     }
   },
 
