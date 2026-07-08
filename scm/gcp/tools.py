@@ -441,7 +441,7 @@ TOOLS = {
         "name": "Service Accounts Multi-Project Reporter",
         "description": "Extrae, analiza y reporta service accounts de múltiples proyectos GCP con análisis de roles, permisos temporales y días restantes",
         "path": "service-accounts/gcp_sa_multi_project_reporter.py",
-        "args": ["--projects", "--mode", "--output", "--config", "--output-dir", "--debug"],
+        "args": ["-o"],
         "requirements": None,
         "group": "iam",
         "status": "ready"

@@ -16,12 +16,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List
 
 # Agregar parent directory al path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
 
-from service_accounts.sa_config_loader import ConfigLoader
-from service_accounts.sa_extractors import ServiceAccountExtractor
-from service_accounts.sa_analyzers import RolesAndPermissionsAnalyzer, SecurityAnalyzer
-from service_accounts.sa_report_generators import (
+from sa_config_loader import ConfigLoader
+from sa_extractors import ServiceAccountExtractor
+from sa_analyzers import RolesAndPermissionsAnalyzer, SecurityAnalyzer
+from sa_report_generators import (
     JSONReportGenerator, CSVReportGenerator, ExcelReportGenerator, HTMLReportGenerator
 )
 
@@ -147,7 +148,7 @@ Ejemplos:
                        choices=['all', 'security', 'compliance', 'usage'],
                        default='all',
                        help='Modo de reporte (default: all)')
-    parser.add_argument('--output', 
+    parser.add_argument('-o', '--output', 
                        choices=['json', 'csv', 'excel', 'html'],
                        default='json',
                        help='Formato de salida (default: json)')
