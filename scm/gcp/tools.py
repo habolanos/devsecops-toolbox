@@ -444,7 +444,8 @@ TOOLS = {
         "args": ["-o"],
         "requirements": None,
         "group": "iam",
-        "status": "ready"
+        "status": "ready",
+        "additional_args": ["--config", "scm/config.json"]
     },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
