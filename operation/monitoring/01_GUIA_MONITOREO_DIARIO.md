@@ -21,6 +21,28 @@ Este documento proporciona un **plan diario de monitoreo** que debe ejecutarse e
 ### Objetivo
 Establecer baseline de salud de infraestructura y pipelines (GCP, AWS, AZDO)
 
+**Qué se busca detectar:**
+- ✅ Problemas de recursos (CPU, memoria, disco)
+- ✅ Problemas de certificados y seguridad
+- ✅ Problemas de almacenamiento en bases de datos
+- ✅ Problemas de capacidad de red
+- ✅ Problemas de salud en servicios Cloud Run
+- ✅ Problemas en clusters GKE
+- ✅ Problemas en pipelines CI/CD
+- ✅ Problemas en releases CD
+
+**Herramientas ejecutadas:**
+- Tool 1: Monitoreo de Recursos GCP
+- Tool 14: GKE Cluster Checker
+- Tool 5: Certificate Manager Checker
+- Tool 7: Cloud SQL Disk Monitor
+- Tool 13: IP Addresses Checker
+- Tool 28: Cloud Run Health Analyzer
+- Tool 18: Pipeline Status AZDO
+- Tool 3: Release CD Health AZDO
+- AWS Tool 1: IAM Users & Policies Checker
+- AWS Tool 13: CloudWatch Alarms Checker
+
 ### Ejecución
 
 #### Paso 1: Recursos GCP (5 min)
@@ -378,17 +400,27 @@ Luego ejecutar:
 
 #### Paso 10: Generar Dashboard Matutino (5 min)
 ```bash
-# Consolidar resultados
+# Consolidar resultados de todos los pasos
 cat > outcome/daily_morning_report_$(date +%Y%m%d).json << 'EOF'
 {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "gcp_resources": { /* Resultado Tool 1 */ },
-  "gke_clusters": { /* Resultado Tool 14 */ },
-  "aws_iam": { /* Resultado AWS Tool 1 */ },
-  "aws_cloudwatch": { /* Resultado AWS Tool 13 */ },
-  "azdo_pipeline_status": { /* Resultado Tool 18 */ },
-  "azdo_release_health": { /* Resultado Tool 3 */ },
-  "alerts": [ /* Alertas críticas */ ]
+  "gcp_resources": { /* Resultado Tool 1 - CPU, Memoria, Disco */ },
+  "gke_clusters": { /* Resultado Tool 14 - Nodos, Versión, Pods */ },
+  "certificates": { /* Resultado Tool 5 - Certificados SSL/TLS */ },
+  "cloud_sql_disk": { /* Resultado Tool 7 - Uso de disco Cloud SQL */ },
+  "ip_addresses": { /* Resultado Tool 13 - Capacidad de red GKE */ },
+  "cloud_run_health": { /* Resultado Tool 28 - Latencia, Error Rate, Disponibilidad */ },
+  "azdo_pipeline_status": { /* Resultado Tool 18 - CI/CD Success Rate */ },
+  "azdo_release_health": { /* Resultado Tool 3 - Health Score, Estabilidad */ },
+  "aws_iam": { /* Resultado AWS Tool 1 - Usuarios, MFA, Keys */ },
+  "aws_cloudwatch": { /* Resultado AWS Tool 13 - Alarmas activas */ },
+  "alerts": [ /* Alertas críticas consolidadas */ ],
+  "summary": {
+    "total_checks": 10,
+    "passed": 0,
+    "warnings": 0,
+    "critical": 0
+  }
 }
 EOF
 ```
@@ -396,12 +428,16 @@ EOF
 **Salida esperada:**
 ```
 ✅ MONITOREO MATUTINO COMPLETADO
-├─ GCP Resources: OK (CPU 45%, Mem 62%, Disk 35%)
-├─ GKE Clusters: OK (3 nodos Ready, 150 pods running)
-├─ AWS IAM: OK (Todos con MFA, keys < 90 días)
-├─ AWS CloudWatch: OK (Todas las alarmas activas)
-├─ Pipeline Status: OK (CI 92%, CD 96%)
-├─ Release Health: OK (Score 85)
+├─ GCP Resources (Tool 1): OK (CPU 45%, Mem 62%, Disk 35%)
+├─ GKE Clusters (Tool 14): OK (3 nodos Ready, 150 pods running)
+├─ Certificates (Tool 5): OK (Todos válidos, vencimiento > 30 días)
+├─ Cloud SQL Disk (Tool 7): OK (Uso 65%, crecimiento normal)
+├─ IP Addresses (Tool 13): OK (Disponibilidad 45%, distribución uniforme)
+├─ Cloud Run Health (Tool 28): OK (Latencia 250ms, Error Rate 0.5%)
+├─ Pipeline Status (Tool 18): OK (CI 92%, CD 96%)
+├─ Release Health (Tool 3): OK (Score 85, Estabilidad 94%)
+├─ AWS IAM (Tool 1): OK (Todos con MFA, keys < 90 días)
+├─ AWS CloudWatch (Tool 13): OK (Todas las alarmas activas)
 └─ Alertas: 0 críticas
 
 Reporte guardado: outcome/daily_morning_report_20260708.json
@@ -413,6 +449,26 @@ Reporte guardado: outcome/daily_morning_report_20260708.json
 
 ### Objetivo
 Detectar anomalías y problemas que surgieron durante el día
+
+**Qué se busca detectar:**
+- ✅ Pods con alto uso de recursos
+- ✅ Aprobaciones de releases bloqueadas
+- ✅ Distribución desigual de carga en nodos
+- ✅ Deployments no running o con problemas
+- ✅ Problemas de almacenamiento en Cloud SQL
+- ✅ Agotamiento de capacidad de red
+- ✅ Problemas en almacenamiento RDS
+- ✅ Problemas en pods de EKS
+
+**Herramientas ejecutadas:**
+- Tool 25: GKE Pod Resources Monitor
+- Tool 11: Pending Approvals AZDO
+- Tool 24: GKE Node Resources Monitor
+- Tool 40: Deployments Off Analyzer
+- Tool 7: Cloud SQL Disk Monitor
+- Tool 13: IP Addresses Checker
+- AWS Tool 5: RDS Storage Monitor
+- AWS Tool 15: EKS Pod Monitor
 
 ### Ejecución
 
@@ -680,15 +736,40 @@ Luego:
 cat > outcome/daily_afternoon_report_$(date +%Y%m%d).json << 'EOF'
 {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "gcp_pod_resources": { /* Resultado GCP Tool 25 */ },
-  "aws_rds_storage": { /* Resultado AWS Tool 5 */ },
-  "aws_eks_pods": { /* Resultado AWS Tool 15 */ },
-  "pending_approvals": { /* Resultado AZDO Tool 11 */ },
-  "node_resources": { /* Resultado GCP Tool 24 */ },
+  "gcp_pod_resources": { /* Resultado Tool 25 - Pods con alto uso */ },
+  "pending_approvals": { /* Resultado Tool 11 - Aprobaciones bloqueadas */ },
+  "gke_node_resources": { /* Resultado Tool 24 - Distribución de carga */ },
+  "deployments_off": { /* Resultado Tool 40 - Deployments no running */ },
+  "cloud_sql_disk": { /* Resultado Tool 7 - Almacenamiento Cloud SQL */ },
+  "ip_addresses": { /* Resultado Tool 13 - Capacidad de red */ },
+  "aws_rds_storage": { /* Resultado AWS Tool 5 - Almacenamiento RDS */ },
+  "aws_eks_pods": { /* Resultado AWS Tool 15 - Pods en EKS */ },
   "anomalies": [ /* Anomalías detectadas */ ],
-  "actions_taken": [ /* Acciones tomadas */ ]
+  "actions_taken": [ /* Acciones tomadas */ ],
+  "summary": {
+    "total_checks": 8,
+    "anomalies_found": 0,
+    "critical_issues": 0,
+    "warnings": 0
+  }
 }
 EOF
+```
+
+**Salida esperada:**
+```
+✅ MONITOREO VESPERTINO COMPLETADO
+├─ Pod Resources (Tool 25): OK (Top 10 pods monitoreados)
+├─ Pending Approvals (Tool 11): OK (Sin aprobaciones bloqueadas)
+├─ Node Resources (Tool 24): OK (Distribución uniforme)
+├─ Deployments Off (Tool 40): OK (Todos running)
+├─ Cloud SQL Disk (Tool 7): OK (Uso 65%)
+├─ IP Addresses (Tool 13): OK (Disponibilidad 45%)
+├─ RDS Storage (AWS Tool 5): OK (Uso 55%)
+├─ EKS Pods (AWS Tool 15): OK (Pods saludables)
+└─ Anomalías: 0 detectadas
+
+Reporte guardado: outcome/daily_afternoon_report_20260708.json
 ```
 
 ---
@@ -697,6 +778,24 @@ EOF
 
 ### Objetivo
 Auditar cambios del día y preparar reporte para mañana
+
+**Qué se busca detectar:**
+- ✅ Service accounts con keys vencidas
+- ✅ Bases de datos huérfanas o con problemas
+- ✅ Repos sin pipelines CI/CD
+- ✅ Cambios no autorizados en pipelines
+- ✅ Problemas de salud en Cloud Run
+- ✅ Cambios en usuarios y permisos IAM
+- ✅ Recursos nuevos o huérfanos en AWS
+
+**Herramientas ejecutadas:**
+- Tool 4: Service Account Checker
+- Tool 8: Cloud SQL Database Checker
+- Tool 9: CICD Inventory AZDO
+- Tool 4: Pipeline Drift Analyzer AZDO
+- Tool 28: Cloud Run Health Analyzer
+- AWS Tool 1: IAM Users & Policies Checker
+- AWS Tool 19: AWS Inventory Generator
 
 ### Ejecución
 
@@ -930,15 +1029,38 @@ Luego:
 cat > outcome/daily_night_report_$(date +%Y%m%d).json << 'EOF'
 {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "gcp_service_accounts": { /* Resultado GCP Tool 4 */ },
-  "aws_iam_audit": { /* Resultado AWS Tool 1 */ },
-  "aws_inventory": { /* Resultado AWS Tool 19 */ },
-  "cicd_inventory": { /* Resultado AZDO Tool 9 */ },
-  "pipeline_drift": { /* Resultado AZDO Tool 4 */ },
-  "security_findings": [ /* Hallazgos de seguridad */ ],
-  "recommendations": [ /* Recomendaciones */ ]
+  "gcp_service_accounts": { /* Resultado Tool 4 - Keys, Permisos */ },
+  "cloud_sql_databases": { /* Resultado Tool 8 - Bases de datos, Permisos */ },
+  "cicd_inventory": { /* Resultado Tool 9 - Repos, Pipelines */ },
+  "pipeline_drift": { /* Resultado Tool 4 (AZDO) - Cambios detectados */ },
+  "cloud_run_health": { /* Resultado Tool 28 - Salud de servicios */ },
+  "aws_iam_audit": { /* Resultado AWS Tool 1 - Usuarios, MFA, Keys */ },
+  "aws_inventory": { /* Resultado AWS Tool 19 - Recursos, Huérfanos */ },
+  "security_findings": [ /* Hallazgos de seguridad consolidados */ ],
+  "recommendations": [ /* Recomendaciones para mañana */ ],
+  "summary": {
+    "total_checks": 7,
+    "security_issues": 0,
+    "drift_detected": false,
+    "changes_found": 0
+  }
 }
 EOF
+```
+
+**Salida esperada:**
+```
+✅ MONITOREO NOCTURNO COMPLETADO
+├─ Service Accounts (Tool 4): OK (Keys < 90 días)
+├─ SQL Databases (Tool 8): OK (Bases de datos documentadas)
+├─ CICD Inventory (Tool 9): OK (Todos los repos con pipelines)
+├─ Pipeline Drift (Tool 4): OK (Sin cambios no autorizados)
+├─ Cloud Run Health (Tool 28): OK (Servicios saludables)
+├─ AWS IAM (Tool 1): OK (Todos con MFA)
+├─ AWS Inventory (Tool 19): OK (Sin recursos huérfanos)
+└─ Hallazgos de seguridad: 0
+
+Reporte guardado: outcome/daily_night_report_20260708.json
 ```
 
 ---
