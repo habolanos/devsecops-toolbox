@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.13-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.16-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -11,10 +11,12 @@
 
 ---
 
-## 📝 Historial de Cambios (v1.6.13)
+## 📝 Historial de Cambios (v1.6.16)
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| **1.6.16** | 2026-07-08 | ✨ Tool 4 & Tool 38 Enhancements: Soporte para múltiples proyectos GCP con visualización Rich (spinners, tablas, progreso). Tool 4 carga proyectos desde config.json por defecto. Tool 38 mejorada con procesamiento paralelo (5 workers) y tablas de resultados por proyecto. |
+| 1.6.15 | 2026-07-05 | 🔧 Mejoras en herramientas GCP |
 | **1.6.13** | 2026-07-03 | 🚀 Cloud Run Tools Suite (7 herramientas): Health Analyzer, Security Auditor, Cost Analyzer, Deployment Validator, Traffic Analyzer, Dependency Mapper, Executive Dashboard. IDs 28-34. Validación de _system_options completada. Grupo "cloudrun" agregado a TOOL_GROUPS. Tests unitarios creados. |
 | 1.6.12 | 2026-06-29 | ✨ Dinamización de menús: Eliminar hardcode en opciones A, B, Q. Generación dinámica con _system_options, get_auto_tools(), build_system_options(). Reducción 50% de código (113→56 líneas). Implementado en todas las plataformas |
 | 1.6.11 | 2026-06-29 | 📋 Análisis exhaustivo de refactorización: hardcode en menús (113 líneas), búsqueda interactiva (17% cobertura), propuestas de solución con documentación completa |
@@ -23,6 +25,42 @@
 | 1.6.8 | 2026-06-22 | ✨ Dashboard Matutino con ejecución paralela, Rich UI y barras de progreso |
 | 1.6.7 | 2026-06-20 | Dashboard Matutino inicial |
 | 1.6.6 | 2026-06-15 | KPI Analyzer mejorado |
+
+### v1.6.16 - Tool 4 & Tool 38 Enhancements - Múltiples Proyectos GCP
+
+**Cambios Principales:**
+- ✅ **Tool 4 (Service Account Checker)**: Soporte para múltiples proyectos GCP
+  - Carga proyectos desde `config.json` por defecto
+  - Permite override con `--projects=proj1,proj2,proj3`
+  - Procesamiento paralelo con 5 workers
+  - Tabla de resultados por proyecto
+  - Spinner animado y barra de progreso
+
+- ✅ **Tool 38 (Service Accounts Multi-Project Reporter)**: Visualización profesional
+  - Spinners y progreso con Rich library
+  - Tabla de extracción por proyecto con columna de proyecto
+  - Tabla de resumen final con duración
+  - Procesamiento paralelo (5 workers)
+  - Fallback a print() si Rich no disponible
+
+- ✅ **Integración tools.py**: Tool 4 no pregunta por proyecto
+  - Cambio: `"args": ["--project", "-o"]` → `"args": ["-o"]`
+  - Permite carga automática desde config.json
+
+**Características Nuevas:**
+- 🎯 Múltiples proyectos procesados en paralelo
+- 📊 Tablas Rich con columna de proyecto
+- ⏱️ Duración total de ejecución
+- 🔄 Fallback automático sin Rich
+- 📋 Carga desde config.json por defecto
+
+**Commits Realizados:**
+- `fd4d71e`: feat: Agregar visualización profesional con Rich a Tool 38
+- `c64033f`: feat: Agregar soporte para múltiples proyectos a Tool 4
+- `f3e68a5`: feat: Tool 4 carga proyectos desde config.json por defecto
+- `e19a373`: fix: Tool 4 no pregunta por proyecto, carga desde config.json
+
+---
 
 ### v1.6.12 - Dinamización de Menús - Eliminar Hardcode
 
