@@ -1158,37 +1158,155 @@ Reporte guardado: outcome/daily_night_report_20260708.json
 
 ## 📋 Checklist Diario
 
-### Mañana (08:00)
-- [ ] Ejecutar GCP Tool 1 (Resources)
-- [ ] Ejecutar GCP Tool 14 (GKE Clusters)
-- [ ] Ejecutar AWS Tool 1 (IAM Users)
-- [ ] Ejecutar AWS Tool 13 (CloudWatch Alarms)
+### 📅 MONITOREO MATUTINO (08:00) - Baseline de Salud
+
+**Paso 1: Recursos GCP**
+- [ ] Ejecutar GCP Tool 1 (Monitoreo de Recursos GCP)
+- [ ] Verificar: CPU < 70%, Memoria < 80%, Disco > 20%
+- [ ] Alertar si alguno > 85%
+
+**Paso 2: Clusters GKE**
+- [ ] Ejecutar GCP Tool 14 (GKE Cluster Checker)
+- [ ] Verificar: Nodos Ready, Versión actualizada, Pods > 95%
+- [ ] Alertar si hay nodos NotReady
+
+**Paso 3: Certificados SSL/TLS**
+- [ ] Ejecutar GCP Tool 5 (Certificate Manager Checker)
+- [ ] Verificar: Certificados válidos, Validez > 30 días
+- [ ] Alertar si vencimiento < 30 días
+
+**Paso 4: Cloud SQL Disk**
+- [ ] Ejecutar GCP Tool 7 (Cloud SQL Disk Monitor)
+- [ ] Verificar: Uso < 70%, Crecimiento predecible
+- [ ] Alertar si uso > 80%
+
+**Paso 5: IP Addresses**
+- [ ] Ejecutar GCP Tool 13 (IP Addresses Checker)
+- [ ] Verificar: Disponibilidad > 30%, Distribución uniforme
+- [ ] Alertar si disponibilidad < 20%
+
+**Paso 6: Cloud Run Health**
+- [ ] Ejecutar GCP Tool 28 (Cloud Run Health Analyzer)
+- [ ] Verificar: Latencia < 500ms, Error rate < 1%
+- [ ] Alertar si latencia > 1000ms
+
+**Paso 7: Pipeline Status AZDO**
 - [ ] Ejecutar AZDO Tool 18 (Pipeline Status)
-- [ ] Ejecutar AZDO Tool 3 (Release Health)
-- [ ] Generar Dashboard Matutino Multi-Cloud
+- [ ] Verificar: CI > 90%, CD > 95%
+- [ ] Alertar si success rate < 80%
+
+**Paso 8: Release Health AZDO**
+- [ ] Ejecutar AZDO Tool 3 (Release CD Health)
+- [ ] Verificar: Health score > 80, Estabilidad > 90%
+- [ ] Alertar si score < 70
+
+**Paso 9: IAM Users AWS**
+- [ ] Ejecutar AWS Tool 1 (IAM Users & Policies Checker)
+- [ ] Verificar: Todos con MFA, Keys < 90 días
+- [ ] Alertar si hay usuarios sin MFA
+
+**Paso 10: CloudWatch Alarms AWS**
+- [ ] Ejecutar AWS Tool 13 (CloudWatch Alarms Checker)
+- [ ] Verificar: Todas las alarmas activas
+- [ ] Alertar si hay alarmas fallando
+
+**Paso 11: Generar Dashboard Matutino**
+- [ ] Consolidar resultados de 10 herramientas
+- [ ] Generar reporte JSON: outcome/daily_morning_report_YYYYMMDD.json
 - [ ] Revisar alertas críticas
 - [ ] Notificar al equipo si hay problemas
 
-### Tarde (14:00)
-- [ ] Ejecutar GCP Tool 25 (Pod Resources)
-- [ ] Ejecutar GCP Tool 40 (Deployments Off Analyzer)
-- [ ] Ejecutar AWS Tool 5 (RDS Storage)
-- [ ] Ejecutar AWS Tool 15 (EKS Pod Monitor)
-- [ ] Ejecutar AZDO Tool 11 (Pending Approvals)
-- [ ] Ejecutar GCP Tool 24 (Node Resources)
-- [ ] Generar Reporte Vespertino Multi-Cloud
-- [ ] Revisar anomalías
-- [ ] Tomar acciones correctivas
+### 📊 MONITOREO VESPERTINO (14:00) - Detección de Anomalías
 
-### Noche (22:00)
-- [ ] Ejecutar GCP Tool 4 (Service Accounts)
-- [ ] Ejecutar AWS Tool 1 (IAM Audit)
-- [ ] Ejecutar AWS Tool 19 (Inventory)
+**Paso 1: Pod Resources**
+- [ ] Ejecutar GCP Tool 25 (GKE Pod Resources Monitor)
+- [ ] Verificar: Pods CPU < 80%, Memoria < 85%
+- [ ] Alertar si alguno > 90%
+
+**Paso 2: Pending Approvals**
+- [ ] Ejecutar AZDO Tool 11 (Pending Approvals)
+- [ ] Verificar: Sin aprobaciones bloqueadas
+- [ ] Alertar si > 3 aprobaciones pendientes
+
+**Paso 3: Node Resources**
+- [ ] Ejecutar GCP Tool 24 (GKE Node Resources Monitor)
+- [ ] Verificar: Distribución uniforme, CPU < 70%, Memoria < 75%
+- [ ] Alertar si algún nodo > 85%
+
+**Paso 4: Deployments Off**
+- [ ] Ejecutar GCP Tool 40 (Deployments Off Analyzer)
+- [ ] Verificar: Sin deployments no running
+- [ ] Alertar si hay deployments con replicas < desired
+
+**Paso 5: Cloud SQL Disk**
+- [ ] Ejecutar GCP Tool 7 (Cloud SQL Disk Monitor)
+- [ ] Verificar: Uso < 70%, Crecimiento normal
+- [ ] Alertar si uso > 80%
+
+**Paso 6: IP Addresses**
+- [ ] Ejecutar GCP Tool 13 (IP Addresses Checker)
+- [ ] Verificar: Disponibilidad > 30%
+- [ ] Alertar si disponibilidad < 20%
+
+**Paso 7: RDS Storage AWS**
+- [ ] Ejecutar AWS Tool 5 (RDS Storage Monitor)
+- [ ] Verificar: Almacenamiento < 80%
+- [ ] Alertar si > 85%
+
+**Paso 8: EKS Pod Monitor AWS**
+- [ ] Ejecutar AWS Tool 15 (EKS Pod Monitor)
+- [ ] Verificar: Pods CPU < 80%, Memoria < 85%
+- [ ] Alertar si alguno > 90%
+
+**Paso 9: Generar Reporte Vespertino**
+- [ ] Consolidar resultados de 8 herramientas
+- [ ] Generar reporte JSON: outcome/daily_afternoon_report_YYYYMMDD.json
+- [ ] Revisar anomalías detectadas
+- [ ] Tomar acciones correctivas inmediatas
+
+### 🌙 MONITOREO NOCTURNO (22:00) - Auditoría y Cambios
+
+**Paso 1: Service Accounts**
+- [ ] Ejecutar GCP Tool 4 (Service Account Checker)
+- [ ] Verificar: Keys < 90 días, SAs habilitadas
+- [ ] Alertar si key > 90 días
+
+**Paso 2: Cloud SQL Databases**
+- [ ] Ejecutar GCP Tool 8 (Cloud SQL Database Checker)
+- [ ] Verificar: Bases de datos documentadas, Permisos correctos
+- [ ] Alertar si hay bases de datos desconocidas
+
+**Paso 3: CICD Inventory**
 - [ ] Ejecutar AZDO Tool 9 (CICD Inventory)
-- [ ] Ejecutar AZDO Tool 4 (Pipeline Drift)
-- [ ] Generar Reporte Nocturno Multi-Cloud
+- [ ] Verificar: Todos los repos con CI pipeline
+- [ ] Alertar si hay repos sin CI
+
+**Paso 4: Pipeline Drift**
+- [ ] Ejecutar AZDO Tool 4 (Pipeline Drift Analyzer)
+- [ ] Verificar: Sin drift en pipelines
+- [ ] Alertar si drift CRITICAL o MEDIUM
+
+**Paso 5: Cloud Run Health**
+- [ ] Ejecutar GCP Tool 28 (Cloud Run Health Analyzer)
+- [ ] Verificar: Latencia < 500ms, Error rate < 1%
+- [ ] Alertar si latencia > 1000ms
+
+**Paso 6: IAM Audit AWS**
+- [ ] Ejecutar AWS Tool 1 (IAM Users & Policies Checker)
+- [ ] Verificar: Todos con MFA, Keys < 90 días
+- [ ] Alertar si hay cambios
+
+**Paso 7: AWS Inventory**
+- [ ] Ejecutar AWS Tool 19 (AWS Inventory Generator)
+- [ ] Verificar: Inventario completo, Sin recursos huérfanos
+- [ ] Alertar si hay cambios
+
+**Paso 8: Generar Reporte Nocturno**
+- [ ] Consolidar resultados de 7 herramientas
+- [ ] Generar reporte JSON: outcome/daily_night_report_YYYYMMDD.json
 - [ ] Revisar cambios del día
 - [ ] Preparar reporte para mañana
+- [ ] Documentar hallazgos de seguridad
 
 ---
 
