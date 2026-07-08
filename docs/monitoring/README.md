@@ -176,28 +176,31 @@ MENSUAL:
 
 ### Por Escenario
 
-#### Monitoreo Diario
+#### Monitoreo Diario Multi-Cloud
 ```
 Documentos: 01_GUIA_MONITOREO_DIARIO.md
 Tiempo: 45 min/día
-Herramientas: 6 herramientas
+Herramientas: 14 herramientas (GCP: 4, AWS: 5, AZDO: 5)
 Frecuencia: Diaria (08:00, 14:00, 22:00)
+Nubes: GCP + AWS + AZDO
 ```
 
-#### Auditoría Semanal
+#### Auditoría Semanal Multi-Cloud
 ```
 Documentos: 02_GUIA_AUDITORIA_SEMANAL.md
 Tiempo: 2 horas/semana
-Herramientas: 10 herramientas
+Herramientas: 22 herramientas (GCP: 6, AWS: 9, AZDO: 7)
 Frecuencia: Semanal (L, M, V)
+Nubes: GCP + AWS + AZDO
 ```
 
-#### Pre-Deploy Validation
+#### Pre-Deploy Validation Multi-Cloud
 ```
 Documentos: 03_GUIA_PRE_DEPLOY_VALIDATION.md
 Tiempo: 35 min/deployment
-Herramientas: 7 herramientas
+Herramientas: 16 herramientas (GCP: 7, AWS: 3, AZDO: 2)
 Frecuencia: Por cada deployment
+Nubes: GCP + AWS + AZDO
 ```
 
 #### Investigación de Incidente
@@ -212,47 +215,69 @@ Frecuencia: Según sea necesario
 
 ## 🚀 Guía de Inicio Rápido
 
-### Día 1: Configuración Inicial
+### Día 1: Configuración Inicial Multi-Cloud
 ```
 1. Leer: 00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md (30 min)
-2. Entender: Qué herramientas tenemos
-3. Planificar: Estrategia de monitoreo
-4. Configurar: Credenciales y acceso
+2. Leer: 04_ANALISIS_HERRAMIENTAS_AWS.md (20 min)
+3. Entender: Qué herramientas tenemos (GCP + AWS + AZDO)
+4. Planificar: Estrategia de monitoreo multi-cloud
+5. Configurar: Credenciales y acceso (GCP, AWS, AZDO)
 ```
 
-### Día 2: Monitoreo Matutino
+### Día 2: Monitoreo Matutino Multi-Cloud
 ```
 1. Leer: 01_GUIA_MONITOREO_DIARIO.md - Sección Matutino (10 min)
-2. Ejecutar: Monitoreo Matutino (25 min)
-3. Generar: Dashboard Matutino
-4. Revisar: Alertas críticas
+2. Ejecutar: GCP Tool 1 + Tool 14 (10 min)
+3. Ejecutar: AWS Tool 1 + Tool 13 (5 min)
+4. Ejecutar: AZDO Tool 18 + Tool 3 (5 min)
+5. Generar: Dashboard Matutino Multi-Cloud
+6. Revisar: Alertas críticas
 ```
 
-### Día 3: Monitoreo Completo
+### Día 3: Monitoreo Completo Multi-Cloud
 ```
 1. Ejecutar: Monitoreo Matutino (25 min)
-2. Ejecutar: Monitoreo Vespertino (10 min)
-3. Ejecutar: Monitoreo Nocturno (10 min)
-4. Consolidar: Reportes diarios
+2. Ejecutar: Monitoreo Vespertino (15 min)
+   - GCP: Tool 25, Tool 24
+   - AWS: Tool 5, Tool 15
+   - AZDO: Tool 11
+3. Ejecutar: Monitoreo Nocturno (15 min)
+   - GCP: Tool 4
+   - AWS: Tool 1, Tool 19
+   - AZDO: Tool 9, Tool 4
+4. Consolidar: Reportes diarios multi-cloud
 ```
 
-### Semana 1: Auditoría Semanal
+### Semana 1: Auditoría Semanal Multi-Cloud
 ```
 1. Lunes: Auditoría de Seguridad & IAM (60 min)
+   - GCP: Tool 3, 4, 6
+   - AWS: Tool 1, 2, 3
+   - AZDO: Tool 2
+
 2. Miércoles: Auditoría de Compliance (60 min)
+   - GCP: Tool 5, 29
+   - AWS: Tool 6, 7, 14, 17, 18
+   - AZDO: Tool 7, 8
+
 3. Viernes: Governance & Reporte (60 min)
-4. Presentar: Reporte ejecutivo
+   - GCP: Tool 35
+   - AWS: Tool 19
+   - AZDO: Tool 9, 16, 18
+   - Consolidar: Reporte ejecutivo multi-cloud
 ```
 
-### Deployment: Pre-Deploy Validation
+### Deployment: Pre-Deploy Validation Multi-Cloud
 ```
 1. Leer: 03_GUIA_PRE_DEPLOY_VALIDATION.md (10 min)
-2. Ejecutar: Validación de Configuración (5 min)
-3. Ejecutar: Validación de Seguridad (10 min)
-4. Ejecutar: Validación de Dependencias (10 min)
-5. Ejecutar: Validación de Calidad (5 min)
-6. Obtener: Aprobación Final (5 min)
-7. Ejecutar: Deployment
+2. Validación GCP (15 min)
+   - Tool 15, 16, 17, 18, 19, 3, 10
+3. Validación AWS (10 min)
+   - Tool 7, 9, 16
+4. Validación AZDO (10 min)
+   - Tool 6, 20
+5. Obtener: Aprobación Final (5 min)
+6. Ejecutar: Deployment Multi-Cloud
 ```
 
 ---
