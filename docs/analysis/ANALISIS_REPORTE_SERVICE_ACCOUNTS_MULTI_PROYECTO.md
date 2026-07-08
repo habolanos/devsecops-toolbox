@@ -44,7 +44,104 @@ Crear una herramienta profesional para extraer, consolidar y reportar service ac
 
 ## 🔍 Análisis Técnico
 
-### 1. Fuentes de Datos
+### 1. Análisis de Roles y Permisos Temporales
+
+#### A. Estructura de Datos Extendida para Roles
+
+```python
+# Service Account con análisis detallado de roles
+ServiceAccountWithRoles = {
+    "project_id": "mi-proyecto",
+    "email": "sa-name@mi-proyecto.iam.gserviceaccount.com",
+    
+    "iam_bindings": [
+        {
+            "role": "roles/compute.admin",
+            "role_title": "Compute Admin",
+            "role_description": "Acceso completo a Compute Engine",
+            "permission_count": 127,
+            "granted_at": "2024-01-15T10:30:00Z",
+            "granted_by": "user@example.com",
+            "requested_duration_days": 90,
+            "expiration_date": "2024-04-15T10:30:00Z",
+            "days_remaining": 45,
+            "is_temporary": True,
+            "is_expired": False,
+            "condition": {
+                "expression": "resource.name.startsWith('projects/_/buckets/my-bucket')",
+                "title": "Acceso limitado a bucket específico",
+                "description": "Solo acceso a mi-bucket"
+            },
+            "risk_level": "HIGH",
+            "risk_factors": [
+                "Permiso administrativo",
+                "Acceso a múltiples servicios",
+                "Sin restricción de recursos"
+            ]
+        },
+        {
+            "role": "roles/storage.objectViewer",
+            "role_title": "Storage Object Viewer",
+            "role_description": "Lectura de objetos en Cloud Storage",
+            "permission_count": 2,
+            "granted_at": "2024-06-01T14:20:00Z",
+            "granted_by": "admin@example.com",
+            "requested_duration_days": 365,
+            "expiration_date": "2025-06-01T14:20:00Z",
+            "days_remaining": 358,
+            "is_temporary": True,
+            "is_expired": False,
+            "condition": {
+                "expression": "resource.matchTag('env', 'prod')",
+                "title": "Solo ambiente producción",
+                "description": "Acceso limitado a recursos con tag env=prod"
+            },
+            "risk_level": "LOW",
+            "risk_factors": []
+        },
+        {
+            "role": "roles/viewer",
+            "role_title": "Viewer",
+            "role_description": "Acceso de lectura a todos los recursos",
+            "permission_count": 5000,
+            "granted_at": "2023-01-01T00:00:00Z",
+            "granted_by": "owner@example.com",
+            "requested_duration_days": None,  # Permanente
+            "expiration_date": None,
+            "days_remaining": None,
+            "is_temporary": False,
+            "is_expired": False,
+            "condition": None,
+            "risk_level": "MEDIUM",
+            "risk_factors": [
+                "Permiso permanente sin fecha de expiración",
+                "Acceso de lectura a todos los recursos"
+            ]
+        }
+    ],
+    
+    "role_summary": {
+        "total_roles": 3,
+        "temporary_roles": 2,
+        "permanent_roles": 1,
+        "expired_roles": 0,
+        "expiring_soon": [
+            {
+                "role": "roles/compute.admin",
+                "days_remaining": 45,
+                "expiration_date": "2024-04-15T10:30:00Z"
+            }
+        ],
+        "highest_risk_role": "roles/compute.admin",
+        "total_permissions": 5127,
+        "average_days_remaining": 201
+    }
+}
+```
+
+---
+
+### 2. Fuentes de Datos
 
 #### A. Service Accounts
 ```bash
@@ -491,7 +588,219 @@ class ServiceAccountExtractor:
         return self._analyze_activity(logs, days)
 ```
 
-#### B. Security Analyzer
+#### B. Roles and Permissions Analyzer
+
+```python
+from datetime import datetime, timedelta
+from typing import Dict, List
+
+class RolesAndPermissionsAnalyzer:
+    """Analiza roles, permisos temporales y días restantes."""
+    
+    def __init__(self, debug: bool = False):
+        self.debug = debug
+        self.role_metadata = self._load_role_metadata()
+    
+    def analyze_roles(self, sa: Dict, iam_bindings: List[Dict]) -> Dict:
+        """Analiza roles de un service account."""
+        analyzed_bindings = []
+        
+        for binding in iam_bindings:
+            if self._is_sa_in_binding(sa['email'], binding):
+                analyzed_binding = self._analyze_single_binding(binding)
+                analyzed_bindings.append(analyzed_binding)
+        
+        return {
+            'iam_bindings': analyzed_bindings,
+            'role_summary': self._generate_role_summary(analyzed_bindings)
+        }
+    
+    def _analyze_single_binding(self, binding: Dict) -> Dict:
+        """Analiza un binding individual."""
+        role = binding.get('role', '')
+        condition = binding.get('condition', {})
+        
+        # Extraer información de la condición (si existe)
+        granted_at = self._extract_grant_date(condition)
+        requested_duration = self._extract_duration(condition)
+        expiration_date = self._calculate_expiration(granted_at, requested_duration)
+        days_remaining = self._calculate_days_remaining(expiration_date)
+        
+        return {
+            'role': role,
+            'role_title': self._get_role_title(role),
+            'role_description': self._get_role_description(role),
+            'permission_count': self._get_permission_count(role),
+            'granted_at': granted_at,
+            'granted_by': self._extract_granted_by(binding),
+            'requested_duration_days': requested_duration,
+            'expiration_date': expiration_date,
+            'days_remaining': days_remaining,
+            'is_temporary': requested_duration is not None,
+            'is_expired': days_remaining is not None and days_remaining < 0,
+            'condition': condition if condition else None,
+            'risk_level': self._calculate_role_risk(role, days_remaining),
+            'risk_factors': self._identify_role_risks(role, days_remaining)
+        }
+    
+    def _calculate_days_remaining(self, expiration_date: str) -> int:
+        """Calcula días restantes hasta expiración."""
+        if not expiration_date:
+            return None
+        
+        try:
+            exp_date = datetime.fromisoformat(expiration_date.replace('Z', '+00:00'))
+            today = datetime.now(exp_date.tzinfo)
+            delta = (exp_date - today).days
+            return delta
+        except:
+            return None
+    
+    def _calculate_expiration(self, granted_at: str, duration_days: int) -> str:
+        """Calcula fecha de expiración."""
+        if not granted_at or not duration_days:
+            return None
+        
+        try:
+            grant_date = datetime.fromisoformat(granted_at.replace('Z', '+00:00'))
+            expiration = grant_date + timedelta(days=duration_days)
+            return expiration.isoformat()
+        except:
+            return None
+    
+    def _calculate_role_risk(self, role: str, days_remaining: int) -> str:
+        """Calcula nivel de riesgo del rol."""
+        risk_score = 0
+        
+        # Riesgo por tipo de rol
+        dangerous_roles = {
+            'roles/editor': 50,
+            'roles/owner': 60,
+            'roles/compute.admin': 40,
+            'roles/iam.securityAdmin': 50,
+            'roles/resourcemanager.organizationAdmin': 60
+        }
+        
+        risk_score += dangerous_roles.get(role, 0)
+        
+        # Riesgo por expiración
+        if days_remaining is not None:
+            if days_remaining < 0:
+                risk_score += 30  # Expirado
+            elif days_remaining < 7:
+                risk_score += 20  # Expira pronto
+            elif days_remaining < 30:
+                risk_score += 10  # Expira en menos de 30 días
+        else:
+            risk_score += 15  # Permanente sin expiración
+        
+        if risk_score >= 70:
+            return 'CRITICAL'
+        elif risk_score >= 50:
+            return 'HIGH'
+        elif risk_score >= 30:
+            return 'MEDIUM'
+        else:
+            return 'LOW'
+    
+    def _identify_role_risks(self, role: str, days_remaining: int) -> List[str]:
+        """Identifica factores de riesgo."""
+        risks = []
+        
+        dangerous_roles = [
+            'roles/editor', 'roles/owner', 'roles/compute.admin',
+            'roles/iam.securityAdmin', 'roles/resourcemanager.organizationAdmin'
+        ]
+        
+        if role in dangerous_roles:
+            risks.append(f"Rol administrativo: {role}")
+        
+        if days_remaining is None:
+            risks.append("Permiso permanente sin fecha de expiración")
+        elif days_remaining < 0:
+            risks.append(f"Permiso expirado hace {abs(days_remaining)} días")
+        elif days_remaining < 7:
+            risks.append(f"Permiso expira en {days_remaining} días")
+        elif days_remaining < 30:
+            risks.append(f"Permiso expira en {days_remaining} días (menos de 30)")
+        
+        return risks
+    
+    def _generate_role_summary(self, bindings: List[Dict]) -> Dict:
+        """Genera resumen de roles."""
+        temporary = [b for b in bindings if b['is_temporary']]
+        expired = [b for b in bindings if b['is_expired']]
+        expiring_soon = [b for b in bindings 
+                        if b['days_remaining'] and 0 <= b['days_remaining'] < 30]
+        
+        return {
+            'total_roles': len(bindings),
+            'temporary_roles': len(temporary),
+            'permanent_roles': len(bindings) - len(temporary),
+            'expired_roles': len(expired),
+            'expiring_soon': [
+                {
+                    'role': b['role'],
+                    'days_remaining': b['days_remaining'],
+                    'expiration_date': b['expiration_date']
+                }
+                for b in expiring_soon
+            ],
+            'highest_risk_role': max(bindings, key=lambda x: self._risk_score(x['risk_level']))['role'] if bindings else None,
+            'total_permissions': sum(b['permission_count'] for b in bindings),
+            'average_days_remaining': self._calculate_average_days_remaining(bindings)
+        }
+    
+    def _calculate_average_days_remaining(self, bindings: List[Dict]) -> int:
+        """Calcula promedio de días restantes."""
+        days_list = [b['days_remaining'] for b in bindings if b['days_remaining'] is not None]
+        return int(sum(days_list) / len(days_list)) if days_list else None
+    
+    def _risk_score(self, risk_level: str) -> int:
+        """Convierte nivel de riesgo a puntuación."""
+        scores = {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}
+        return scores.get(risk_level, 0)
+    
+    def _get_role_title(self, role: str) -> str:
+        """Obtiene título del rol."""
+        role_titles = {
+            'roles/editor': 'Editor',
+            'roles/owner': 'Owner',
+            'roles/viewer': 'Viewer',
+            'roles/compute.admin': 'Compute Admin',
+            'roles/storage.admin': 'Storage Admin',
+            'roles/iam.securityAdmin': 'Security Admin',
+            'roles/resourcemanager.organizationAdmin': 'Organization Admin'
+        }
+        return role_titles.get(role, role.replace('roles/', ''))
+    
+    def _get_role_description(self, role: str) -> str:
+        """Obtiene descripción del rol."""
+        # En implementación real, usar GCP API para obtener descripciones
+        descriptions = {
+            'roles/editor': 'Acceso completo de lectura y escritura',
+            'roles/owner': 'Acceso completo incluyendo gestión de permisos',
+            'roles/viewer': 'Acceso de lectura a todos los recursos',
+            'roles/compute.admin': 'Acceso completo a Compute Engine'
+        }
+        return descriptions.get(role, 'Descripción no disponible')
+    
+    def _get_permission_count(self, role: str) -> int:
+        """Obtiene cantidad de permisos del rol."""
+        # En implementación real, usar GCP API
+        permission_counts = {
+            'roles/editor': 5000,
+            'roles/owner': 5000,
+            'roles/viewer': 5000,
+            'roles/compute.admin': 127,
+            'roles/storage.admin': 50
+        }
+        return permission_counts.get(role, 0)
+```
+
+---
+
+#### C. Security Analyzer
 ```python
 class SecurityAnalyzer:
     """Analiza riesgos de seguridad de service accounts."""
@@ -616,7 +925,153 @@ class MultiProjectOrchestrator:
 
 ---
 
-## 📋 Casos de Uso
+## � Formatos de Reporte con Análisis de Roles
+
+### 1. Reporte JSON (Estructura Completa)
+
+```json
+{
+  "report_metadata": {
+    "generated_at": "2026-07-08T11:00:00Z",
+    "projects_analyzed": 5,
+    "total_service_accounts": 45,
+    "total_roles": 120
+  },
+  "service_accounts": [
+    {
+      "project_id": "proyecto-prod",
+      "email": "app-sa@proyecto-prod.iam.gserviceaccount.com",
+      "roles_analysis": {
+        "iam_bindings": [
+          {
+            "role": "roles/compute.admin",
+            "role_title": "Compute Admin",
+            "permission_count": 127,
+            "granted_at": "2024-01-15T10:30:00Z",
+            "granted_by": "admin@example.com",
+            "requested_duration_days": 90,
+            "expiration_date": "2024-04-15T10:30:00Z",
+            "days_remaining": 45,
+            "is_temporary": true,
+            "is_expired": false,
+            "risk_level": "HIGH"
+          }
+        ],
+        "role_summary": {
+          "total_roles": 3,
+          "temporary_roles": 2,
+          "permanent_roles": 1,
+          "expired_roles": 0,
+          "expiring_soon": [
+            {
+              "role": "roles/compute.admin",
+              "days_remaining": 45,
+              "expiration_date": "2024-04-15T10:30:00Z"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+### 2. Reporte CSV (Tabla Plana)
+
+```csv
+Proyecto,Service Account,Rol,Título Rol,Permisos,Otorgado En,Otorgado Por,Duración Solicitada (días),Fecha Expiración,Días Restantes,Es Temporal,Expirado,Nivel Riesgo
+proyecto-prod,app-sa@proyecto-prod.iam.gserviceaccount.com,roles/compute.admin,Compute Admin,127,2024-01-15T10:30:00Z,admin@example.com,90,2024-04-15T10:30:00Z,45,true,false,HIGH
+proyecto-prod,app-sa@proyecto-prod.iam.gserviceaccount.com,roles/storage.objectViewer,Storage Object Viewer,2,2024-06-01T14:20:00Z,admin@example.com,365,2025-06-01T14:20:00Z,358,true,false,LOW
+proyecto-staging,ci-cd-sa@proyecto-staging.iam.gserviceaccount.com,roles/viewer,Viewer,5000,2023-01-01T00:00:00Z,owner@example.com,,,,false,false,MEDIUM
+```
+
+### 3. Reporte Excel (Múltiples Tabs)
+
+**Tab 1: Resumen Ejecutivo**
+```
+┌────────────────────────────────────────────────┐
+│ RESUMEN DE SERVICE ACCOUNTS MULTI-PROYECTO      │
+├────────────────────────────────────────────────┤
+│ Total Proyectos:                             5 │
+│ Total Service Accounts:                      45 │
+│ Total Roles:                                120 │
+│ Roles Temporales:                            78 │
+│ Roles Permanentes:                           42 │
+│ Roles Expirados:                              3 │
+│ Roles Expirando Pronto (< 30 días):          12 │
+│ Promedio Días Restantes:                    201 │
+│ Roles de Alto Riesgo:                        18 │
+└────────────────────────────────────────────────┘
+```
+
+**Tab 2: Roles por Service Account**
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ SA │ Rol │ Duración │ Expiración │ Días Rest. │ Riesgo │ Acción │
+├──────────────────────────────────────────────────────────────────┤
+│ app-sa │ compute.admin │ 90d │ 2024-04-15 │ 45 │ HIGH │ Revisar │
+│ app-sa │ storage.viewer │ 365d │ 2025-06-01 │ 358 │ LOW │ OK │
+│ ci-cd │ viewer │ Perm. │ - │ - │ MEDIUM │ Revisar │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Tab 3: Roles Expirando Pronto**
+```
+┌────────────────────────────────────────────────────────────────┐
+│ Proyecto │ Service Account │ Rol │ Expira En │ Acción Requerida │
+├────────────────────────────────────────────────────────────────┤
+│ p-prod │ app-sa │ compute.admin │ 45 días │ Renovar o revocar │
+│ p-staging │ ci-cd-sa │ editor │ 15 días │ Renovar urgente │
+│ p-dev │ test-sa │ owner │ 3 días │ CRÍTICO: Renovar YA │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Tab 4: Análisis de Riesgos**
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Proyecto │ SA │ Rol │ Riesgo │ Días Rest. │ Recomendación │
+├──────────────────────────────────────────────────────────────┤
+│ p-prod │ app-sa │ compute.admin │ HIGH │ 45 │ Revisar │
+│ p-prod │ app-sa │ storage.viewer │ LOW │ 358 │ OK │
+│ p-staging │ ci-cd │ viewer │ MEDIUM │ - │ Revisar │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 4. Reporte HTML (Interactivo)
+
+```html
+<section class="roles-by-sa">
+  <h2>Roles por Service Account</h2>
+  <table class="interactive-table">
+    <thead>
+      <tr>
+        <th>Proyecto</th>
+        <th>Service Account</th>
+        <th>Rol</th>
+        <th>Duración Solicitada</th>
+        <th>Fecha Expiración</th>
+        <th>Días Restantes</th>
+        <th>Nivel Riesgo</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="risk-high">
+        <td>proyecto-prod</td>
+        <td>app-sa@proyecto-prod.iam.gserviceaccount.com</td>
+        <td>roles/compute.admin</td>
+        <td>90 días</td>
+        <td>2024-04-15</td>
+        <td class="warning">45</td>
+        <td><span class="badge high">HIGH</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+```
+
+---
+
+## �📋 Casos de Uso
 
 ### 1. Auditoría de Seguridad
 ```bash
