@@ -26,6 +26,24 @@
 
 ---
 
+### 1b. ☁️ [Análisis de Herramientas AWS](04_ANALISIS_HERRAMIENTAS_AWS.md)
+**Duración:** 20 min lectura  
+**Objetivo:** Entender herramientas AWS y cómo integrarlas
+
+**Contenido:**
+- ✅ Inventario de 19 herramientas AWS
+- ✅ Análisis detallado por grupo
+- ✅ Matriz de cobertura Multi-Cloud
+- ✅ Escenarios de monitoreo AWS
+- ✅ Casos de integración Multi-Cloud
+
+**Cuándo leer:**
+- Si usas AWS en tu infraestructura
+- Necesitas monitoreo multi-cloud
+- Planificando auditoría integrada
+
+---
+
 ### 2. 📅 [Guía de Monitoreo Diario](01_GUIA_MONITOREO_DIARIO.md)
 **Duración:** 45 minutos/día  
 **Objetivo:** Ejecutar monitoreo diario de ambientes
@@ -40,6 +58,7 @@
 
 **Herramientas Usadas:**
 - GCP: Tool 1, 14, 24, 25
+- AWS: Tool 1, 5, 13, 15
 - AZDO: Tool 3, 11, 18
 
 **Cuándo usar:**
@@ -63,6 +82,7 @@
 
 **Herramientas Usadas:**
 - GCP: Tool 3, 4, 5, 6, 29, 35
+- AWS: Tool 1, 2, 3, 6, 7, 14, 17, 18, 19
 - AZDO: Tool 2, 7, 8, 9, 16, 18
 
 **Cuándo usar:**
@@ -88,6 +108,7 @@
 
 **Herramientas Usadas:**
 - GCP: Tool 15, 16, 17, 18, 19, 3, 10
+- AWS: Tool 7, 9, 16
 - AZDO: Tool 6, 20
 
 **Cuándo usar:**
@@ -240,19 +261,26 @@ Frecuencia: Según sea necesario
 
 ### 00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md
 - GCP: Todas (1-38)
+- AWS: Todas (1-19)
 - AZDO: Todas (1-25)
 
 ### 01_GUIA_MONITOREO_DIARIO.md
 - GCP: 1, 14, 24, 25
+- AWS: 1, 5, 13, 15
 - AZDO: 3, 11, 18
 
 ### 02_GUIA_AUDITORIA_SEMANAL.md
 - GCP: 3, 4, 5, 6, 29, 35
+- AWS: 1, 2, 3, 6, 7, 14, 17, 18, 19
 - AZDO: 2, 7, 8, 9, 16, 18
 
 ### 03_GUIA_PRE_DEPLOY_VALIDATION.md
 - GCP: 3, 10, 15, 16, 17, 18, 19
+- AWS: 7, 9, 16
 - AZDO: 6, 20
+
+### 04_ANALISIS_HERRAMIENTAS_AWS.md
+- AWS: Todas (1-19)
 
 ---
 
@@ -363,11 +391,16 @@ Documento: 02 (Auditoría Semanal)
 - `docs/monitoring/01_GUIA_MONITOREO_DIARIO.md`
 - `docs/monitoring/02_GUIA_AUDITORIA_SEMANAL.md`
 - `docs/monitoring/03_GUIA_PRE_DEPLOY_VALIDATION.md`
+- `docs/monitoring/04_ANALISIS_HERRAMIENTAS_AWS.md`
 
 ### Herramientas GCP
 - `scm/gcp/tools.py` - Launcher de herramientas GCP
 - `scm/gcp/monitoring/` - Scripts de monitoreo
 - `scm/gcp/rolesypermisos/` - Scripts de IAM
+
+### Herramientas AWS
+- `scm/aws/tools.py` - Launcher de herramientas AWS
+- `scm/aws/` - Scripts de AWS
 
 ### Herramientas AZDO
 - `scm/azdo/tools.py` - Launcher de herramientas AZDO

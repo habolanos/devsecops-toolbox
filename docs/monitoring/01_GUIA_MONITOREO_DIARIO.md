@@ -19,7 +19,7 @@ Este documento proporciona un **plan diario de monitoreo** que debe ejecutarse e
 ## 📊 MONITOREO MATUTINO (08:00)
 
 ### Objetivo
-Establecer baseline de salud de infraestructura y pipelines
+Establecer baseline de salud de infraestructura y pipelines (GCP, AWS, AZDO)
 
 ### Ejecución
 
@@ -174,7 +174,51 @@ SI SIN RELEASES RECIENTES:
 
 ---
 
-#### Paso 5: Generar Dashboard Matutino (5 min)
+#### Paso 5: Monitoreo AWS (5 min)
+```bash
+# Terminal 5: Monitoreo de AWS
+cd scm/aws
+python tools.py
+# Seleccionar [1] - IAM Users & Policies Checker
+# Profile: default
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todos los usuarios con MFA habilitado
+- ✅ Sin access keys > 90 días
+- ✅ Roles con permisos correctos
+- ⚠️ Alertar si hay usuarios sin MFA
+
+**Interpretación DevSecOps:**
+```
+SI USUARIO SIN MFA:
+├─ Riesgo de seguridad crítico
+├─ Habilitar MFA inmediatamente
+├─ Usar hardware keys si es posible
+└─ Auditar acceso anterior
+
+SI ACCESS KEY > 90 DÍAS:
+├─ Riesgo de seguridad
+├─ Rotar key inmediatamente
+└─ Implementar key rotation policy
+```
+
+Luego ejecutar:
+```bash
+# Seleccionar [13] - CloudWatch Alarms Checker
+# Profile: default
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todas las alarmas activas
+- ✅ Sin alarmas en estado ALARM
+- ⚠️ Alertar si hay alarmas fallando
+
+---
+
+#### Paso 6: Generar Dashboard Matutino (5 min)
 ```bash
 # Consolidar resultados
 cat > outcome/daily_morning_report_$(date +%Y%m%d).json << 'EOF'
@@ -182,6 +226,8 @@ cat > outcome/daily_morning_report_$(date +%Y%m%d).json << 'EOF'
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "gcp_resources": { /* Resultado Tool 1 */ },
   "gke_clusters": { /* Resultado Tool 14 */ },
+  "aws_iam": { /* Resultado AWS Tool 1 */ },
+  "aws_cloudwatch": { /* Resultado AWS Tool 13 */ },
   "azdo_pipeline_status": { /* Resultado Tool 18 */ },
   "azdo_release_health": { /* Resultado Tool 3 */ },
   "alerts": [ /* Alertas críticas */ ]
@@ -194,6 +240,8 @@ EOF
 ✅ MONITOREO MATUTINO COMPLETADO
 ├─ GCP Resources: OK (CPU 45%, Mem 62%, Disk 35%)
 ├─ GKE Clusters: OK (3 nodos Ready, 150 pods running)
+├─ AWS IAM: OK (Todos con MFA, keys < 90 días)
+├─ AWS CloudWatch: OK (Todas las alarmas activas)
 ├─ Pipeline Status: OK (CI 92%, CD 96%)
 ├─ Release Health: OK (Score 85)
 └─ Alertas: 0 críticas
@@ -323,14 +371,44 @@ SI NODO NUEVO CON BAJO USO:
 
 ---
 
-#### Paso 4: Generar Reporte Vespertino (2 min)
+#### Paso 4: Monitoreo AWS Vespertino (3 min)
+```bash
+cd scm/aws
+python tools.py
+# Seleccionar [5] - RDS Storage Monitor
+# Profile: default
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Almacenamiento RDS < 80%
+- ⚠️ Alertar si > 85%
+
+Luego:
+```bash
+# Seleccionar [15] - EKS Pod Monitor
+# Profile: default
+# Cluster: [nombre del cluster]
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Pods con CPU < 80%
+- ✅ Pods con memoria < 85%
+- ⚠️ Alertar si alguno > 90%
+
+---
+
+#### Paso 5: Generar Reporte Vespertino (2 min)
 ```bash
 cat > outcome/daily_afternoon_report_$(date +%Y%m%d).json << 'EOF'
 {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "pod_resources": { /* Resultado Tool 25 */ },
-  "pending_approvals": { /* Resultado Tool 11 */ },
-  "node_resources": { /* Resultado Tool 24 */ },
+  "gcp_pod_resources": { /* Resultado GCP Tool 25 */ },
+  "aws_rds_storage": { /* Resultado AWS Tool 5 */ },
+  "aws_eks_pods": { /* Resultado AWS Tool 15 */ },
+  "pending_approvals": { /* Resultado AZDO Tool 11 */ },
+  "node_resources": { /* Resultado GCP Tool 24 */ },
   "anomalies": [ /* Anomalías detectadas */ ],
   "actions_taken": [ /* Acciones tomadas */ ]
 }
@@ -460,14 +538,44 @@ SI DRIFT RECURRENTE:
 
 ---
 
-#### Paso 4: Generar Reporte Nocturno (5 min)
+#### Paso 4: Auditoría AWS Nocturna (5 min)
+```bash
+cd scm/aws
+python tools.py
+# Seleccionar [1] - IAM Users & Policies Checker
+# Profile: default
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todos los usuarios con MFA
+- ✅ Sin access keys > 90 días
+- ⚠️ Alertar si hay cambios
+
+Luego:
+```bash
+# Seleccionar [19] - AWS Inventory Generator
+# Profile: default
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Inventario completo de recursos
+- ✅ Identificar recursos huérfanos
+- ⚠️ Alertar si hay cambios
+
+---
+
+#### Paso 5: Generar Reporte Nocturno (5 min)
 ```bash
 cat > outcome/daily_night_report_$(date +%Y%m%d).json << 'EOF'
 {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "service_accounts": { /* Resultado Tool 4 */ },
-  "cicd_inventory": { /* Resultado Tool 9 */ },
-  "pipeline_drift": { /* Resultado Tool 4 */ },
+  "gcp_service_accounts": { /* Resultado GCP Tool 4 */ },
+  "aws_iam_audit": { /* Resultado AWS Tool 1 */ },
+  "aws_inventory": { /* Resultado AWS Tool 19 */ },
+  "cicd_inventory": { /* Resultado AZDO Tool 9 */ },
+  "pipeline_drift": { /* Resultado AZDO Tool 4 */ },
   "security_findings": [ /* Hallazgos de seguridad */ ],
   "recommendations": [ /* Recomendaciones */ ]
 }
@@ -518,27 +626,33 @@ EOF
 ## 📋 Checklist Diario
 
 ### Mañana (08:00)
-- [ ] Ejecutar Tool 1 (GCP Resources)
-- [ ] Ejecutar Tool 14 (GKE Clusters)
-- [ ] Ejecutar Tool 18 (Pipeline Status)
-- [ ] Ejecutar Tool 3 (Release Health)
-- [ ] Generar Dashboard Matutino
+- [ ] Ejecutar GCP Tool 1 (Resources)
+- [ ] Ejecutar GCP Tool 14 (GKE Clusters)
+- [ ] Ejecutar AWS Tool 1 (IAM Users)
+- [ ] Ejecutar AWS Tool 13 (CloudWatch Alarms)
+- [ ] Ejecutar AZDO Tool 18 (Pipeline Status)
+- [ ] Ejecutar AZDO Tool 3 (Release Health)
+- [ ] Generar Dashboard Matutino Multi-Cloud
 - [ ] Revisar alertas críticas
 - [ ] Notificar al equipo si hay problemas
 
 ### Tarde (14:00)
-- [ ] Ejecutar Tool 25 (Pod Resources)
-- [ ] Ejecutar Tool 11 (Pending Approvals)
-- [ ] Ejecutar Tool 24 (Node Resources)
-- [ ] Generar Reporte Vespertino
+- [ ] Ejecutar GCP Tool 25 (Pod Resources)
+- [ ] Ejecutar AWS Tool 5 (RDS Storage)
+- [ ] Ejecutar AWS Tool 15 (EKS Pod Monitor)
+- [ ] Ejecutar AZDO Tool 11 (Pending Approvals)
+- [ ] Ejecutar GCP Tool 24 (Node Resources)
+- [ ] Generar Reporte Vespertino Multi-Cloud
 - [ ] Revisar anomalías
 - [ ] Tomar acciones correctivas
 
 ### Noche (22:00)
-- [ ] Ejecutar Tool 4 (Service Accounts)
-- [ ] Ejecutar Tool 9 (CICD Inventory)
-- [ ] Ejecutar Tool 4 (Pipeline Drift)
-- [ ] Generar Reporte Nocturno
+- [ ] Ejecutar GCP Tool 4 (Service Accounts)
+- [ ] Ejecutar AWS Tool 1 (IAM Audit)
+- [ ] Ejecutar AWS Tool 19 (Inventory)
+- [ ] Ejecutar AZDO Tool 9 (CICD Inventory)
+- [ ] Ejecutar AZDO Tool 4 (Pipeline Drift)
+- [ ] Generar Reporte Nocturno Multi-Cloud
 - [ ] Revisar cambios del día
 - [ ] Preparar reporte para mañana
 
