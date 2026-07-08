@@ -135,7 +135,127 @@ SI MÚLTIPLES CERTIFICADOS VENCIENDO:
 
 ---
 
-#### Paso 5: Pipeline Status AZDO (5 min)
+#### Paso 4: Cloud SQL Disk Monitor (3 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [7] - Cloud SQL Disk Monitor
+# Proyecto: cpl-corp-cial-prod-17042024
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Uso de disco < 70%
+- ✅ Crecimiento de disco predecible
+- ⚠️ Alertar si uso > 80%
+- ⚠️ Alertar si crecimiento anómalo
+
+**Interpretación DevSecOps:**
+```
+SI USO > 80%:
+├─ Riesgo de agotamiento
+├─ Revisar tamaño de base de datos
+├─ Aumentar almacenamiento
+└─ Monitorear próximas horas
+
+SI CRECIMIENTO ANÓMALO:
+├─ Posible fuga de datos
+├─ Revisar logs de aplicación
+└─ Documentar causa raíz
+
+SI ESPACIO CRÍTICO:
+├─ Acción inmediata
+├─ Aumentar almacenamiento
+└─ Notificar a stakeholders
+```
+
+---
+
+#### Paso 5: IP Addresses Checker (3 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [13] - IP Addresses Checker
+# Proyecto: cpl-corp-cial-prod-17042024
+# Cluster: prod-gke-cluster
+# Region: us-central1
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Disponibilidad de IPs > 30%
+- ✅ Sin agotamiento de IPs
+- ⚠️ Alertar si disponibilidad < 20%
+- ⚠️ Alertar si agotamiento próximo
+
+**Interpretación DevSecOps:**
+```
+SI DISPONIBILIDAD < 20%:
+├─ Riesgo de agotamiento
+├─ Planificar expansión de CIDR
+├─ Revisar uso de IPs
+└─ Escalar a infraestructura
+
+SI AGOTAMIENTO PRÓXIMO:
+├─ Crítico - Acción inmediata
+├─ Expandir rango de IPs
+├─ Revisar pods innecesarios
+└─ Implementar IP management policy
+
+SI DISTRIBUCIÓN DESIGUAL:
+├─ Posible problema de scheduling
+├─ Revisar node selectors
+└─ Rebalancear si es necesario
+```
+
+---
+
+#### Paso 6: Cloud Run Health Analyzer (5 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [28] - Cloud Run Health Analyzer
+# Proyecto: cpl-corp-cial-prod-17042024
+# Region: us-central1
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Latencia < 500ms
+- ✅ Error rate < 1%
+- ✅ Disponibilidad > 99.5%
+- ⚠️ Alertar si latencia > 1000ms
+- ⚠️ Alertar si error rate > 5%
+
+**Interpretación DevSecOps:**
+```
+SI LATENCIA > 1000ms:
+├─ Posible problema de performance
+├─ Revisar código de aplicación
+├─ Revisar dependencias externas
+└─ Considerar aumentar recursos
+
+SI ERROR RATE > 5%:
+├─ Problema crítico
+├─ Revisar logs: Cloud Logging
+├─ Considerar rollback
+└─ Implementar fix
+
+SI DISPONIBILIDAD < 99%:
+├─ Problema de confiabilidad
+├─ Revisar eventos de error
+├─ Implementar circuit breaker
+└─ Monitorear próximas horas
+
+SI RECURSOS > 80%:
+├─ Posible escalado necesario
+├─ Revisar límites de memoria/CPU
+└─ Implementar auto-scaling
+```
+
+---
+
+#### Paso 7: Pipeline Status AZDO (5 min)
 ```bash
 # Terminal 4: Estado de pipelines
 cd scm/azdo
@@ -173,9 +293,9 @@ SI PIPELINES INACTIVOS > 20%:
 
 ---
 
-#### Paso 6: Release Health (5 min)
+#### Paso 8: Release Health (5 min)
 ```bash
-# Terminal 4: Salud de releases
+# Terminal 5: Salud de releases
 cd scm/azdo
 python tools.py
 # Seleccionar [3] - Release CD Health
@@ -212,7 +332,7 @@ SI SIN RELEASES RECIENTES:
 
 ---
 
-#### Paso 7: Monitoreo AWS (5 min)
+#### Paso 9: Monitoreo AWS (5 min)
 ```bash
 # Terminal 5: Monitoreo de AWS
 cd scm/aws
@@ -256,7 +376,7 @@ Luego ejecutar:
 
 ---
 
-#### Paso 8: Generar Dashboard Matutino (5 min)
+#### Paso 10: Generar Dashboard Matutino (5 min)
 ```bash
 # Consolidar resultados
 cat > outcome/daily_morning_report_$(date +%Y%m%d).json << 'EOF'
