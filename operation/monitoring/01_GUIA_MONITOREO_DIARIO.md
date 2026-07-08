@@ -97,9 +97,47 @@ SI VERSIÓN DESACTUALIZADA:
 
 ---
 
-#### Paso 3: Pipeline Status AZDO (5 min)
+#### Paso 3: Certificados SSL/TLS (3 min)
 ```bash
-# Terminal 3: Estado de pipelines
+# Terminal 3: Monitoreo de certificados
+cd scm/gcp
+python tools.py
+# Seleccionar [5] - Certificate Manager Checker
+# Proyecto: cpl-corp-cial-prod-17042024
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todos los certificados válidos
+- ✅ Certificados con validez > 30 días
+- ✅ Sin certificados expirados
+- ⚠️ Alertar si certificado vence < 30 días
+
+**Interpretación DevSecOps:**
+```
+SI CERTIFICADO VENCE < 30 DÍAS:
+├─ Riesgo de interrupción de servicio
+├─ Renovar certificado inmediatamente
+├─ Validar en staging primero
+└─ Documentar cambios
+
+SI CERTIFICADO EXPIRADO:
+├─ Crítico - Acción inmediata
+├─ Reemplazar certificado
+├─ Verificar servicios afectados
+└─ Notificar a stakeholders
+
+SI MÚLTIPLES CERTIFICADOS VENCIENDO:
+├─ Problema de governance
+├─ Implementar sistema de alertas
+└─ Crear proceso de renovación automática
+```
+
+---
+
+#### Paso 5: Pipeline Status AZDO (5 min)
+```bash
+# Terminal 4: Estado de pipelines
 cd scm/azdo
 python tools.py
 # Seleccionar [18] - Pipeline Status
@@ -135,7 +173,7 @@ SI PIPELINES INACTIVOS > 20%:
 
 ---
 
-#### Paso 4: Release Health (5 min)
+#### Paso 6: Release Health (5 min)
 ```bash
 # Terminal 4: Salud de releases
 cd scm/azdo
@@ -174,7 +212,7 @@ SI SIN RELEASES RECIENTES:
 
 ---
 
-#### Paso 5: Monitoreo AWS (5 min)
+#### Paso 7: Monitoreo AWS (5 min)
 ```bash
 # Terminal 5: Monitoreo de AWS
 cd scm/aws
@@ -218,7 +256,7 @@ Luego ejecutar:
 
 ---
 
-#### Paso 6: Generar Dashboard Matutino (5 min)
+#### Paso 8: Generar Dashboard Matutino (5 min)
 ```bash
 # Consolidar resultados
 cat > outcome/daily_morning_report_$(date +%Y%m%d).json << 'EOF'
@@ -413,7 +451,83 @@ CAUSAS COMUNES:
 
 ---
 
-#### Paso 5: Monitoreo AWS Vespertino (3 min)
+#### Paso 5: Cloud SQL Disk Monitor (3 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [7] - Cloud SQL Disk Monitor
+# Proyecto: cpl-corp-cial-prod-17042024
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Uso de disco < 70%
+- ✅ Crecimiento de disco predecible
+- ⚠️ Alertar si uso > 80%
+- ⚠️ Alertar si crecimiento anómalo
+
+**Interpretación DevSecOps:**
+```
+SI USO > 80%:
+├─ Riesgo de agotamiento
+├─ Revisar tamaño de base de datos
+├─ Aumentar almacenamiento
+└─ Monitorear próximas horas
+
+SI CRECIMIENTO ANÓMALO:
+├─ Posible fuga de datos
+├─ Revisar logs de aplicación
+├─ Ejecutar análisis de tablas
+└─ Documentar causa raíz
+
+SI ESPACIO CRÍTICO:
+├─ Acción inmediata
+├─ Aumentar almacenamiento
+└─ Notificar a stakeholders
+```
+
+---
+
+#### Paso 6: IP Addresses Checker (3 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [13] - IP Addresses Checker
+# Proyecto: cpl-corp-cial-prod-17042024
+# Cluster: prod-gke-cluster
+# Region: us-central1
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Disponibilidad de IPs > 30%
+- ✅ Sin agotamiento de IPs
+- ⚠️ Alertar si disponibilidad < 20%
+- ⚠️ Alertar si agotamiento próximo
+
+**Interpretación DevSecOps:**
+```
+SI DISPONIBILIDAD < 20%:
+├─ Riesgo de agotamiento
+├─ Planificar expansión de CIDR
+├─ Revisar uso de IPs
+└─ Escalar a infraestructura
+
+SI AGOTAMIENTO PRÓXIMO:
+├─ Crítico - Acción inmediata
+├─ Expandir rango de IPs
+├─ Revisar pods innecesarios
+└─ Implementar IP management policy
+
+SI DISTRIBUCIÓN DESIGUAL:
+├─ Posible problema de scheduling
+├─ Revisar node selectors
+└─ Rebalancear si es necesario
+```
+
+---
+
+#### Paso 7: Monitoreo AWS Vespertino (3 min)
 ```bash
 cd scm/aws
 python tools.py
@@ -441,7 +555,7 @@ Luego:
 
 ---
 
-#### Paso 5: Generar Reporte Vespertino (2 min)
+#### Paso 8: Generar Reporte Vespertino (2 min)
 ```bash
 cat > outcome/daily_afternoon_report_$(date +%Y%m%d).json << 'EOF'
 {
@@ -504,7 +618,45 @@ SI SA CON PERMISOS EXCESIVOS:
 
 ---
 
-#### Paso 2: Inventario CICD (5 min)
+#### Paso 2: Cloud SQL Database Checker (3 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [8] - Cloud SQL Database Checker
+# Proyecto: cpl-corp-cial-prod-17042024
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todas las bases de datos documentadas
+- ✅ Sin bases de datos huérfanas
+- ✅ Permisos de acceso correctos
+- ⚠️ Alertar si base de datos desconocida
+- ⚠️ Alertar si permisos excesivos
+
+**Interpretación DevSecOps:**
+```
+SI BASE DE DATOS DESCONOCIDA:
+├─ Investigar origen
+├─ Verificar si es necesaria
+├─ Revisar permisos de acceso
+└─ Considerar eliminar si no se usa
+
+SI PERMISOS EXCESIVOS:
+├─ Riesgo de seguridad
+├─ Revisar principio de menor privilegio
+├─ Reducir permisos
+└─ Crear usuario específico si es necesario
+
+SI MÚLTIPLES BASES DE DATOS:
+├─ Revisar consolidación
+├─ Evaluar si se pueden combinar
+└─ Documentar arquitectura
+```
+
+---
+
+#### Paso 3: Inventario CICD (5 min)
 ```bash
 cd scm/azdo
 python tools.py
@@ -541,7 +693,7 @@ SI REPO OBSOLETO:
 
 ---
 
-#### Paso 3: Cambios y Drift (5 min)
+#### Paso 4: Cambios y Drift (5 min)
 ```bash
 cd scm/azdo
 python tools.py
@@ -580,7 +732,52 @@ SI DRIFT RECURRENTE:
 
 ---
 
-#### Paso 4: Auditoría AWS Nocturna (5 min)
+#### Paso 5: Cloud Run Health Analyzer (5 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [28] - Cloud Run Health Analyzer
+# Proyecto: cpl-corp-cial-prod-17042024
+# Region: us-central1
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Latencia < 500ms
+- ✅ Error rate < 1%
+- ✅ Disponibilidad > 99.5%
+- ⚠️ Alertar si latencia > 1000ms
+- ⚠️ Alertar si error rate > 5%
+
+**Interpretación DevSecOps:**
+```
+SI LATENCIA > 1000ms:
+├─ Posible problema de performance
+├─ Revisar código de aplicación
+├─ Revisar dependencias externas
+└─ Considerar aumentar recursos
+
+SI ERROR RATE > 5%:
+├─ Problema crítico
+├─ Revisar logs: Cloud Logging
+├─ Considerar rollback
+└─ Implementar fix
+
+SI DISPONIBILIDAD < 99%:
+├─ Problema de confiabilidad
+├─ Revisar eventos de error
+├─ Implementar circuit breaker
+└─ Monitorear próximas horas
+
+SI RECURSOS > 80%:
+├─ Posible escalado necesario
+├─ Revisar límites de memoria/CPU
+└─ Implementar auto-scaling
+```
+
+---
+
+#### Paso 6: Auditoría AWS Nocturna (5 min)
 ```bash
 cd scm/aws
 python tools.py
@@ -608,7 +805,7 @@ Luego:
 
 ---
 
-#### Paso 5: Generar Reporte Nocturno (5 min)
+#### Paso 7: Generar Reporte Nocturno (5 min)
 ```bash
 cat > outcome/daily_night_report_$(date +%Y%m%d).json << 'EOF'
 {
@@ -626,433 +823,7 @@ EOF
 
 ---
 
-## 🔧 HERRAMIENTAS GCP DISPONIBLES
-
-### Tool 5: Certificate Manager Checker (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [5]  
-**Objetivo:** Monitorea certificados SSL/TLS en Certificate Manager
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [5] - Certificate Manager Checker
-# Proyecto: cpl-corp-cial-prod-17042024
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Todos los certificados válidos
-- ✅ Certificados con validez > 30 días
-- ✅ Sin certificados expirados
-- ⚠️ Alertar si certificado vence < 30 días
-- ⚠️ Alertar si certificado expirado
-
-**Interpretación DevSecOps:**
-```
-SI CERTIFICADO VENCE < 30 DÍAS:
-├─ Riesgo de interrupción de servicio
-├─ Renovar certificado inmediatamente
-├─ Validar en staging primero
-├─ Planificar rotación
-└─ Documentar cambios
-
-SI CERTIFICADO EXPIRADO:
-├─ Crítico - Acción inmediata
-├─ Reemplazar certificado
-├─ Verificar servicios afectados
-├─ Notificar a stakeholders
-├─ Implementar alertas automáticas
-└─ Documentar incidente
-
-SI MÚLTIPLES CERTIFICADOS VENCIENDO:
-├─ Problema de governance
-├─ Implementar sistema de alertas
-├─ Crear proceso de renovación
-├─ Automatizar si es posible
-└─ Capacitar al equipo
-```
-
----
-
-### Tool 7: Cloud SQL Disk Monitor (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [7]  
-**Objetivo:** Monitorea uso de disco en instancias Cloud SQL
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [7] - Cloud SQL Disk Monitor
-# Proyecto: cpl-corp-cial-prod-17042024
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Uso de disco < 70%
-- ✅ Crecimiento de disco predecible
-- ✅ Sin alertas de espacio
-- ⚠️ Alertar si uso > 80%
-- ⚠️ Alertar si crecimiento anómalo
-
-**Interpretación DevSecOps:**
-```
-SI USO > 80%:
-├─ Riesgo de agotamiento
-├─ Revisar tamaño de base de datos
-├─ Considerar limpieza de datos
-├─ Aumentar almacenamiento
-├─ Monitorear próximas horas
-└─ Implementar políticas de retención
-
-SI CRECIMIENTO ANÓMALO:
-├─ Posible fuga de datos
-├─ Revisar logs de aplicación
-├─ Ejecutar análisis de tablas
-├─ Identificar tabla problemática
-├─ Implementar solución
-└─ Documentar causa raíz
-
-SI ESPACIO CRÍTICO:
-├─ Acción inmediata
-├─ Aumentar almacenamiento
-├─ Revisar backups
-├─ Notificar a stakeholders
-├─ Implementar alertas
-└─ Documentar incidente
-```
-
----
-
-### Tool 8: Cloud SQL Database Checker (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [8]  
-**Objetivo:** Lista bases de datos por instancia de Cloud SQL
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [8] - Cloud SQL Database Checker
-# Proyecto: cpl-corp-cial-prod-17042024
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Todas las bases de datos documentadas
-- ✅ Sin bases de datos huérfanas
-- ✅ Permisos de acceso correctos
-- ⚠️ Alertar si base de datos desconocida
-- ⚠️ Alertar si permisos excesivos
-
-**Interpretación DevSecOps:**
-```
-SI BASE DE DATOS DESCONOCIDA:
-├─ Investigar origen
-├─ Verificar si es necesaria
-├─ Revisar permisos de acceso
-├─ Considerar eliminar si no se usa
-└─ Documentar propósito
-
-SI PERMISOS EXCESIVOS:
-├─ Riesgo de seguridad
-├─ Revisar principio de menor privilegio
-├─ Reducir permisos
-├─ Crear usuario específico si es necesario
-├─ Validar funcionamiento
-└─ Documentar cambios
-
-SI MÚLTIPLES BASES DE DATOS:
-├─ Revisar consolidación
-├─ Evaluar si se pueden combinar
-├─ Considerar separación por ambiente
-├─ Documentar arquitectura
-└─ Implementar políticas de naming
-```
-
----
-
-### Tool 13: IP Addresses Checker (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [13]  
-**Objetivo:** Analiza capacidad de red de clusters GKE (IPs de pods y servicios)
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [13] - IP Addresses Checker
-# Proyecto: cpl-corp-cial-prod-17042024
-# Cluster: prod-gke-cluster
-# Region: us-central1
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Disponibilidad de IPs > 30%
-- ✅ Sin agotamiento de IPs
-- ✅ Distribución uniforme entre subnets
-- ⚠️ Alertar si disponibilidad < 20%
-- ⚠️ Alertar si agotamiento próximo
-
-**Interpretación DevSecOps:**
-```
-SI DISPONIBILIDAD < 20%:
-├─ Riesgo de agotamiento
-├─ Planificar expansión de CIDR
-├─ Revisar uso de IPs
-├─ Considerar IP secundarias
-└─ Escalar a infraestructura
-
-SI AGOTAMIENTO PRÓXIMO:
-├─ Crítico - Acción inmediata
-├─ Expandir rango de IPs
-├─ Revisar pods innecesarios
-├─ Considerar consolidación
-└─ Implementar IP management policy
-
-SI DISTRIBUCIÓN DESIGUAL:
-├─ Posible problema de scheduling
-├─ Revisar node selectors
-├─ Revisar pod affinity
-├─ Rebalancear si es necesario
-└─ Monitorear próximas horas
-```
-
----
-
-### Tool 14: GKE Cluster Checker (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [14]  
-**Objetivo:** Monitorea clusters GKE, versiones, nodos y pods
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [14] - GKE Cluster Checker
-# Proyecto: cpl-corp-cial-prod-17042024
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Todos los nodos en estado "Ready"
-- ✅ Versión de Kubernetes actualizada
-- ✅ Pods corriendo > 95%
-- ✅ Sin nodos NotReady
-- ⚠️ Alertar si nodo NotReady
-- ⚠️ Alertar si versión desactualizada
-
-**Interpretación DevSecOps:**
-```
-SI NODO NotReady:
-├─ Posible fallo de hardware
-├─ Revisar logs del nodo: kubectl describe node
-├─ Ejecutar kubectl logs para detalles
-├─ Considerar recrear nodo
-├─ Escalar a infraestructura
-└─ Documentar incidente
-
-SI PODS PENDING > 5%:
-├─ Posible falta de recursos
-├─ Ejecutar Tool 24 (Node Resources Monitor)
-├─ Revisar requests/limits
-├─ Considerar escalado
-├─ Revisar eventos: kubectl get events
-└─ Ejecutar Tool 40 (Deployments Off Analyzer)
-
-SI VERSIÓN DESACTUALIZADA:
-├─ Riesgo de seguridad
-├─ Planificar actualización
-├─ Revisar breaking changes
-├─ Validar en staging
-├─ Ejecutar en ventana de mantenimiento
-└─ Documentar cambios
-
-SI MÚLTIPLES PROBLEMAS:
-├─ Problema sistémico
-├─ Ejecutar diagnóstico completo
-├─ Revisar cambios recientes
-├─ Considerar rollback
-└─ Escalar a equipo de infraestructura
-```
-
----
-
-### Tool 24: GKE Node Resources Monitor (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [24]  
-**Objetivo:** Monitorea recursos de nodos GKE (CPU, memoria, disco)
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [24] - GKE Node Resources Monitor
-# Proyecto: cpl-corp-cial-prod-17042024
-# Cluster: prod-gke-cluster
-# Output: html
-```
-
-**Qué buscar:**
-- ✅ Distribución uniforme de carga entre nodos
-- ✅ CPU promedio < 70% por nodo
-- ✅ Memoria promedio < 75% por nodo
-- ⚠️ Alertar si algún nodo > 85%
-- ⚠️ Alertar si distribución desigual > 30%
-
-**Interpretación DevSecOps:**
-```
-SI NODO > 85%:
-├─ Posible pod mal distribuido
-├─ Revisar afinidad de pods
-├─ Ejecutar kubectl top node
-├─ Considerar rebalanceo
-├─ Escalar nodo si es necesario
-└─ Monitorear próximas horas
-
-SI DISTRIBUCIÓN DESIGUAL:
-├─ Posible problema de scheduling
-├─ Revisar node selectors
-├─ Revisar pod disruption budgets
-├─ Revisar pod affinity rules
-├─ Considerar pod affinity rules
-└─ Ejecutar rebalanceo manual
-
-SI NODO NUEVO CON BAJO USO:
-├─ Posible nodo recién agregado
-├─ Esperar a que se estabilice
-├─ Revisar si hay pods pendientes
-├─ Ejecutar Tool 40 (Deployments Off Analyzer)
-└─ Considerar drenar nodos antiguos
-
-SI MÚLTIPLES NODOS AFECTADOS:
-├─ Problema sistémico
-├─ Revisar cambios recientes
-├─ Revisar eventos del cluster
-├─ Considerar rollback
-└─ Escalar a infraestructura
-```
-
----
-
-### Tool 28: Cloud Run Health Analyzer (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [28]  
-**Objetivo:** Análisis profundo de salud y rendimiento de servicios Cloud Run
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [28] - Cloud Run Health Analyzer
-# Proyecto: cpl-corp-cial-prod-17042024
-# Region: us-central1
-# Service: [nombre del servicio, opcional]
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Latencia < 500ms
-- ✅ Error rate < 1%
-- ✅ Disponibilidad > 99.5%
-- ✅ Recursos utilizados < 80%
-- ⚠️ Alertar si latencia > 1000ms
-- ⚠️ Alertar si error rate > 5%
-
-**Interpretación DevSecOps:**
-```
-SI LATENCIA > 1000ms:
-├─ Posible problema de performance
-├─ Revisar código de aplicación
-├─ Revisar dependencias externas
-├─ Considerar aumentar recursos
-├─ Ejecutar profiling
-└─ Implementar optimizaciones
-
-SI ERROR RATE > 5%:
-├─ Problema crítico
-├─ Revisar logs: Cloud Logging
-├─ Revisar configuración de servicio
-├─ Considerar rollback
-├─ Implementar fix
-└─ Validar en staging
-
-SI DISPONIBILIDAD < 99%:
-├─ Problema de confiabilidad
-├─ Revisar eventos de error
-├─ Revisar configuración
-├─ Implementar circuit breaker
-├─ Considerar retry logic
-└─ Monitorear próximas horas
-
-SI RECURSOS > 80%:
-├─ Posible escalado necesario
-├─ Revisar límites de memoria/CPU
-├─ Considerar aumentar recursos
-├─ Revisar código para optimizaciones
-└─ Implementar auto-scaling
-```
-
----
-
-### Tool 40: Deployments Off Analyzer (GCP)
-**Ubicación:** `scm/gcp/tools.py` → Opción [40]  
-**Objetivo:** Analiza deployments no running en GKE con diagnóstico automático de causa raíz
-
-**Uso:**
-```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [40] - Deployments Off Analyzer
-# Proyecto: cpl-corp-cial-prod-17042024
-# Cluster: prod-gke-cluster
-# Namespace: production
-# Output: json
-```
-
-**Qué buscar:**
-- ✅ Sin deployments en estado no running
-- ✅ Todas las replicas en estado Ready
-- ✅ Sin pods en CrashLoopBackOff
-- ⚠️ Alertar si deployment no running
-- ⚠️ Alertar si severidad = CRITICAL
-
-**Interpretación DevSecOps:**
-```
-SI DEPLOYMENT NO RUNNING:
-├─ Causa raíz identificada automáticamente
-├─ Revisar recomendaciones generadas
-├─ Ejecutar acciones recomendadas
-├─ Monitorear recuperación
-└─ Documentar incidente
-
-SI SEVERIDAD CRITICAL:
-├─ Escalar inmediatamente
-├─ Ejecutar kubectl logs para más detalles
-├─ Considerar rollback si es reciente
-├─ Notificar al equipo de aplicaciones
-├─ Crear ticket de incidente
-└─ Implementar post-mortem
-
-CAUSAS COMUNES Y SOLUCIONES:
-├─ ImagePullBackOff → Verificar registry y credenciales
-├─ CrashLoopBackOff → Revisar logs de aplicación
-├─ Pending → Escalar cluster o revisar requests
-├─ CreateContainerConfigError → Verificar Secrets/ConfigMaps
-├─ FailedScheduling → Revisar recursos disponibles
-├─ ImagePullError → Validar nombre y acceso a imagen
-└─ OOMKilled → Aumentar límite de memoria
-
-ACCIONES RECOMENDADAS:
-1. Revisar logs: kubectl logs POD_NAME -n NAMESPACE
-2. Revisar eventos: kubectl describe pod POD_NAME -n NAMESPACE
-3. Revisar configuración: kubectl get deployment -n NAMESPACE
-4. Revisar recursos: kubectl top nodes
-5. Ejecutar diagnóstico: Tool 24 (Node Resources Monitor)
-6. Considerar rollback si es reciente
-7. Documentar incidente y causa raíz
-8. Implementar prevención
-```
-
----
-
-## 🚨 Matriz de Alertas
+##  Matriz de Alertas
 
 ### Alertas Críticas (Acción Inmediata)
 
