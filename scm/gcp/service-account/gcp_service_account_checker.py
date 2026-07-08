@@ -31,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any
+from pathlib import Path
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
@@ -53,8 +54,9 @@ try:
     from rich.console import Console
     from rich.table import Table
     from rich.panel import Panel
-    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
     from rich.markdown import Markdown
+    from rich.box import ROUNDED, HEAVY
     from rich import box
     RICH_AVAILABLE = True
 except ImportError:
@@ -493,6 +495,12 @@ def get_args():
         help="ID del proyecto GCP (Default: cpl-corp-cial-prod-17042024)"
     )
     parser.add_argument(
+        "--projects",
+        type=str,
+        default="",
+        help="Múltiples proyectos GCP separados por coma (ej: proj1,proj2,proj3)"
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Activa modo debug para ver información adicional"
@@ -558,86 +566,153 @@ def main() -> int:
         return 0
     
     start_time = datetime.now()
-    project_id = args.project
     debug = args.debug
     
-    if RICH_AVAILABLE and console:
-        console.print(Panel(
-            f"[bold cyan]GCP Service Account Checker v{__version__}[/bold cyan]\n"
-            f"Proyecto: [yellow]{project_id}[/yellow]",
-            border_style="blue",
-            expand=False
-        ))
+    # Determinar proyectos
+    if args.projects:
+        projects = [p.strip() for p in args.projects.split(',') if p.strip()]
     else:
-        print(f"GCP Service Account Checker v{__version__}")
-        print(f"Proyecto: {project_id}")
+        projects = [args.project]
     
-    if not check_gcp_connection(project_id, console, debug):
-        return 1
-
-    try:
-        if RICH_AVAILABLE and console:
-            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
-                task = progress.add_task("[cyan]Obteniendo Service Accounts...", total=None)
-                
-                # Obtener SAs y política IAM en paralelo
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    sa_future = executor.submit(get_service_accounts, project_id, debug, console)
-                    iam_future = executor.submit(get_iam_policy, project_id, debug, console)
-                    
-                    service_accounts = sa_future.result()
-                    iam_policy = iam_future.result()
-                
-                progress.update(task, description=f"[cyan]Analizando {len(service_accounts)} Service Accounts...")
-                
-                # Analizar SAs
-                analyzed_sas = analyze_service_accounts(
-                    service_accounts, iam_policy, project_id, debug, console
-                )
-                
-                progress.update(task, description="[green]✓ Análisis completado")
-        else:
-            print("Obteniendo Service Accounts...")
-            service_accounts = get_service_accounts(project_id, debug, console)
-            iam_policy = get_iam_policy(project_id, debug, console)
+    # Mostrar información inicial
+    if RICH_AVAILABLE and console:
+        console.print(f"\n[bold cyan]Proyectos:[/bold cyan] {', '.join(projects)}")
+        console.print(f"[bold cyan]Total:[/bold cyan] {len(projects)}")
+    else:
+        print(f"🚀 Iniciando análisis de {len(projects)} proyecto(s)...")
+        print(f"   Proyectos: {', '.join(projects)}")
+    
+    # Procesar múltiples proyectos en paralelo
+    results_summary = []
+    all_analyzed_sas = {}
+    
+    if RICH_AVAILABLE and console:
+        console.print(f"\n[bold cyan]Extrayendo datos de proyectos...[/bold cyan]\n")
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task(
+                "[cyan]Procesando proyectos...",
+                total=len(projects)
+            )
             
-            print(f"Analizando {len(service_accounts)} Service Accounts...")
-            analyzed_sas = analyze_service_accounts(
-                service_accounts, iam_policy, project_id, debug, console
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(process_project, proj, debug, console): proj
+                    for proj in projects
+                }
+                
+                for future in as_completed(futures):
+                    project = futures[future]
+                    try:
+                        analyzed_sas = future.result()
+                        all_analyzed_sas[project] = analyzed_sas
+                        results_summary.append({
+                            'project': project,
+                            'status': '✅',
+                            'sas': len(analyzed_sas)
+                        })
+                    except Exception as e:
+                        results_summary.append({
+                            'project': project,
+                            'status': '❌',
+                            'sas': 0
+                        })
+                        if debug:
+                            console.print(f"[red]Error en {project}: {e}[/red]")
+                    
+                    progress.update(task, advance=1)
+    else:
+        # Fallback sin Rich
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(process_project, proj, debug, console): proj
+                for proj in projects
+            }
+            
+            for i, future in enumerate(as_completed(futures), 1):
+                project = futures[future]
+                try:
+                    analyzed_sas = future.result()
+                    all_analyzed_sas[project] = analyzed_sas
+                    print(f"[{i}/{len(projects)}] ✅ {project}: {len(analyzed_sas)} SAs")
+                except Exception as e:
+                    print(f"[{i}/{len(projects)}] ❌ {project}: {e}")
+    
+    # Mostrar tabla de resultados
+    if RICH_AVAILABLE and console and results_summary:
+        table = Table(
+            title="📊 Resumen de Extracción por Proyecto",
+            box=ROUNDED,
+            show_header=True,
+            header_style="bold cyan"
+        )
+        table.add_column("Proyecto", style="cyan", width=40)
+        table.add_column("Estado", style="green", justify="center", width=10)
+        table.add_column("Service Accounts", style="yellow", justify="right", width=15)
+        
+        for result in results_summary:
+            table.add_row(
+                result['project'],
+                result['status'],
+                str(result['sas'])
             )
         
-        # Mostrar tablas
-        if RICH_AVAILABLE and console:
-            console.print()
-            console.print(create_summary_table(analyzed_sas, console))
-            console.print()
-            console.print(create_sa_table(analyzed_sas, console))
-            console.print()
-        
-        # Generar reporte
-        report = generate_report(project_id, analyzed_sas)
-        
-        if not RICH_AVAILABLE:
-            print(report)
-
-        # Guardar en archivo
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        console.print(table)
+    
+    # Procesar y mostrar resultados por proyecto
+    try:
         outcome_dir = str(get_output_dir("outcome"))
         os.makedirs(outcome_dir, exist_ok=True)
         
-        if args.output == "json":
-            filepath = export_to_json(analyzed_sas, project_id, outcome_dir, "America/Mazatlan")
-        elif args.output == "csv":
-            filepath = export_to_csv(analyzed_sas, project_id, outcome_dir)
-        else:
-            filepath = export_to_txt(report, project_id, outcome_dir)
-
-        if RICH_AVAILABLE and console:
-            console.print(f"\n[green]📁 Reporte guardado en:[/] {filepath}")
-        else:
-            print(f"\n📁 Reporte guardado en: {filepath}")
+        for project_id, analyzed_sas in all_analyzed_sas.items():
+            if RICH_AVAILABLE and console:
+                console.print(f"\n[bold cyan]Proyecto: {project_id}[/bold cyan]")
+                console.print(create_summary_table(analyzed_sas, console))
+                console.print(create_sa_table(analyzed_sas, console))
+            
+            # Generar reporte
+            report = generate_report(project_id, analyzed_sas)
+            
+            if not RICH_AVAILABLE:
+                print(report)
+            
+            # Guardar en archivo
+            if args.output == "json":
+                filepath = export_to_json(analyzed_sas, project_id, outcome_dir, "America/Mazatlan")
+            elif args.output == "csv":
+                filepath = export_to_csv(analyzed_sas, project_id, outcome_dir)
+            else:
+                filepath = export_to_txt(report, project_id, outcome_dir)
+            
+            if RICH_AVAILABLE and console:
+                console.print(f"[green]✅ Reporte guardado:[/] {filepath}")
         
-        print_execution_summary(start_time, console, project_id, analyzed_sas)
+        # Resumen final
+        if RICH_AVAILABLE and console:
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            summary_table = Table(
+                title="📈 Resumen de Ejecución",
+                box=ROUNDED,
+                show_header=True,
+                header_style="bold cyan"
+            )
+            summary_table.add_column("Métrica", style="cyan")
+            summary_table.add_column("Valor", style="green", justify="right")
+            
+            total_sas = sum(len(sas) for sas in all_analyzed_sas.values())
+            summary_table.add_row("Proyectos", str(len(projects)))
+            summary_table.add_row("Service Accounts", str(total_sas))
+            summary_table.add_row("Duración", f"{duration:.2f}s")
+            
+            console.print(summary_table)
 
     except Exception as e:
         if RICH_AVAILABLE and console:
@@ -650,6 +725,27 @@ def main() -> int:
         return 1
 
     return 0
+
+
+def process_project(project_id: str, debug: bool, console) -> List[Dict]:
+    """Procesa un proyecto individual."""
+    if not check_gcp_connection(project_id, console, debug):
+        raise Exception(f"No se pudo conectar a {project_id}")
+    
+    # Obtener SAs y política IAM en paralelo
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        sa_future = executor.submit(get_service_accounts, project_id, debug, console)
+        iam_future = executor.submit(get_iam_policy, project_id, debug, console)
+        
+        service_accounts = sa_future.result()
+        iam_policy = iam_future.result()
+    
+    # Analizar SAs
+    analyzed_sas = analyze_service_accounts(
+        service_accounts, iam_policy, project_id, debug, console
+    )
+    
+    return analyzed_sas
 
 
 if __name__ == "__main__":
