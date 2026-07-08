@@ -626,7 +626,432 @@ EOF
 
 ---
 
-## 🚨 Matriz de Alertas
+## � HERRAMIENTAS GCP DISPONIBLES
+
+### Tool 5: Release Deep Dive (AZDO)
+**Ubicación:** `scm/azdo/tools.py` → Opción [5]  
+**Objetivo:** Análisis profundo de releases CD con detalles de stages, aprobaciones y variables
+
+**Uso:**
+```bash
+cd scm/azdo
+python tools.py
+# Seleccionar [5] - Release Deep Dive
+# Proyecto: [nombre del proyecto]
+# Pipeline: [nombre del pipeline]
+# Release ID: [opcional]
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Stages completados exitosamente
+- ✅ Aprobaciones autorizadas
+- ✅ Variables de entorno correctas
+- ⚠️ Alertar si stage falló
+- ⚠️ Alertar si aprobación rechazada
+
+**Interpretación DevSecOps:**
+```
+SI STAGE FALLÓ:
+├─ Revisar logs del stage
+├─ Verificar configuración
+├─ Ejecutar Tool 8 (Pipeline Logs Scanner)
+├─ Considerar rollback
+└─ Implementar fix
+
+SI APROBACIÓN RECHAZADA:
+├─ Contactar a aprobador
+├─ Revisar razón del rechazo
+├─ Corregir problemas
+├─ Reenviar para aprobación
+└─ Documentar cambios
+
+SI VARIABLES INCORRECTAS:
+├─ Verificar valores
+├─ Actualizar si es necesario
+├─ Validar en pre-deploy
+└─ Documentar cambios
+```
+
+---
+
+### Tool 7: Task Validator (AZDO)
+**Ubicación:** `scm/azdo/tools.py` → Opción [7]  
+**Objetivo:** Valida tareas de pipelines CI/CD y detecta problemas de configuración
+
+**Uso:**
+```bash
+cd scm/azdo
+python tools.py
+# Seleccionar [7] - Task Validator
+# Proyecto: [nombre del proyecto]
+# Pipeline: [nombre del pipeline]
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todas las tareas con configuración válida
+- ✅ Sin tareas deprecadas
+- ✅ Sin tareas con errores
+- ⚠️ Alertar si tarea inválida
+- ⚠️ Alertar si tarea deprecada
+
+**Interpretación DevSecOps:**
+```
+SI TAREA INVÁLIDA:
+├─ Revisar configuración
+├─ Verificar parámetros
+├─ Consultar documentación
+├─ Corregir inmediatamente
+└─ Validar en test pipeline
+
+SI TAREA DEPRECADA:
+├─ Planificar migración
+├─ Buscar alternativa
+├─ Actualizar pipeline
+├─ Validar funcionamiento
+└─ Documentar cambios
+
+SI MÚLTIPLES ERRORES:
+├─ Problema sistémico
+├─ Revisar cambios recientes
+├─ Ejecutar Tool 4 (Pipeline Drift)
+├─ Considerar rollback
+└─ Implementar quality gates
+```
+
+---
+
+### Tool 8: Pipeline Logs Scanner (AZDO)
+**Ubicación:** `scm/azdo/tools.py` → Opción [8]  
+**Objetivo:** Escanea logs de pipelines para detectar errores, warnings y patrones de fallo
+
+**Uso:**
+```bash
+cd scm/azdo
+python tools.py
+# Seleccionar [8] - Pipeline Logs Scanner
+# Proyecto: [nombre del proyecto]
+# Pipeline: [nombre del pipeline]
+# Build ID: [opcional]
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Sin errores críticos en logs
+- ✅ Sin warnings recurrentes
+- ✅ Patrones de fallo identificados
+- ⚠️ Alertar si error crítico
+- ⚠️ Alertar si warning recurrente
+
+**Interpretación DevSecOps:**
+```
+SI ERROR CRÍTICO:
+├─ Revisar línea exacta del error
+├─ Buscar en documentación
+├─ Ejecutar Tool 5 (Release Deep Dive)
+├─ Implementar fix
+└─ Validar en test
+
+SI WARNING RECURRENTE:
+├─ Investigar causa
+├─ Evaluar impacto
+├─ Planificar corrección
+├─ Implementar en próxima release
+└─ Documentar
+
+SI PATRÓN DE FALLO:
+├─ Analizar tendencia
+├─ Identificar causa común
+├─ Implementar solución
+├─ Monitorear próximas ejecuciones
+└─ Documentar lecciones aprendidas
+```
+
+---
+
+### Tool 13: IP Addresses Checker (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [13]  
+**Objetivo:** Analiza capacidad de red de clusters GKE (IPs de pods y servicios)
+
+**Uso:**
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [13] - IP Addresses Checker
+# Proyecto: cpl-corp-cial-prod-17042024
+# Cluster: prod-gke-cluster
+# Region: us-central1
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Disponibilidad de IPs > 30%
+- ✅ Sin agotamiento de IPs
+- ✅ Distribución uniforme entre subnets
+- ⚠️ Alertar si disponibilidad < 20%
+- ⚠️ Alertar si agotamiento próximo
+
+**Interpretación DevSecOps:**
+```
+SI DISPONIBILIDAD < 20%:
+├─ Riesgo de agotamiento
+├─ Planificar expansión de CIDR
+├─ Revisar uso de IPs
+├─ Considerar IP secundarias
+└─ Escalar a infraestructura
+
+SI AGOTAMIENTO PRÓXIMO:
+├─ Crítico - Acción inmediata
+├─ Expandir rango de IPs
+├─ Revisar pods innecesarios
+├─ Considerar consolidación
+└─ Implementar IP management policy
+
+SI DISTRIBUCIÓN DESIGUAL:
+├─ Posible problema de scheduling
+├─ Revisar node selectors
+├─ Revisar pod affinity
+├─ Rebalancear si es necesario
+└─ Monitorear próximas horas
+```
+
+---
+
+### Tool 14: GKE Cluster Checker (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [14]  
+**Objetivo:** Monitorea clusters GKE, versiones, nodos y pods
+
+**Uso:**
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [14] - GKE Cluster Checker
+# Proyecto: cpl-corp-cial-prod-17042024
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Todos los nodos en estado "Ready"
+- ✅ Versión de Kubernetes actualizada
+- ✅ Pods corriendo > 95%
+- ✅ Sin nodos NotReady
+- ⚠️ Alertar si nodo NotReady
+- ⚠️ Alertar si versión desactualizada
+
+**Interpretación DevSecOps:**
+```
+SI NODO NotReady:
+├─ Posible fallo de hardware
+├─ Revisar logs del nodo: kubectl describe node
+├─ Ejecutar kubectl logs para detalles
+├─ Considerar recrear nodo
+├─ Escalar a infraestructura
+└─ Documentar incidente
+
+SI PODS PENDING > 5%:
+├─ Posible falta de recursos
+├─ Ejecutar Tool 24 (Node Resources Monitor)
+├─ Revisar requests/limits
+├─ Considerar escalado
+├─ Revisar eventos: kubectl get events
+└─ Ejecutar Tool 40 (Deployments Off Analyzer)
+
+SI VERSIÓN DESACTUALIZADA:
+├─ Riesgo de seguridad
+├─ Planificar actualización
+├─ Revisar breaking changes
+├─ Validar en staging
+├─ Ejecutar en ventana de mantenimiento
+└─ Documentar cambios
+
+SI MÚLTIPLES PROBLEMAS:
+├─ Problema sistémico
+├─ Ejecutar diagnóstico completo
+├─ Revisar cambios recientes
+├─ Considerar rollback
+└─ Escalar a equipo de infraestructura
+```
+
+---
+
+### Tool 24: GKE Node Resources Monitor (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [24]  
+**Objetivo:** Monitorea recursos de nodos GKE (CPU, memoria, disco)
+
+**Uso:**
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [24] - GKE Node Resources Monitor
+# Proyecto: cpl-corp-cial-prod-17042024
+# Cluster: prod-gke-cluster
+# Output: html
+```
+
+**Qué buscar:**
+- ✅ Distribución uniforme de carga entre nodos
+- ✅ CPU promedio < 70% por nodo
+- ✅ Memoria promedio < 75% por nodo
+- ⚠️ Alertar si algún nodo > 85%
+- ⚠️ Alertar si distribución desigual > 30%
+
+**Interpretación DevSecOps:**
+```
+SI NODO > 85%:
+├─ Posible pod mal distribuido
+├─ Revisar afinidad de pods
+├─ Ejecutar kubectl top node
+├─ Considerar rebalanceo
+├─ Escalar nodo si es necesario
+└─ Monitorear próximas horas
+
+SI DISTRIBUCIÓN DESIGUAL:
+├─ Posible problema de scheduling
+├─ Revisar node selectors
+├─ Revisar pod disruption budgets
+├─ Revisar pod affinity rules
+├─ Considerar pod affinity rules
+└─ Ejecutar rebalanceo manual
+
+SI NODO NUEVO CON BAJO USO:
+├─ Posible nodo recién agregado
+├─ Esperar a que se estabilice
+├─ Revisar si hay pods pendientes
+├─ Ejecutar Tool 40 (Deployments Off Analyzer)
+└─ Considerar drenar nodos antiguos
+
+SI MÚLTIPLES NODOS AFECTADOS:
+├─ Problema sistémico
+├─ Revisar cambios recientes
+├─ Ejecutar Tool 4 (Pipeline Drift)
+├─ Considerar rollback
+└─ Escalar a infraestructura
+```
+
+---
+
+### Tool 28: Cloud Run Health Analyzer (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [28]  
+**Objetivo:** Análisis profundo de salud y rendimiento de servicios Cloud Run
+
+**Uso:**
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [28] - Cloud Run Health Analyzer
+# Proyecto: cpl-corp-cial-prod-17042024
+# Region: us-central1
+# Service: [nombre del servicio, opcional]
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Latencia < 500ms
+- ✅ Error rate < 1%
+- ✅ Disponibilidad > 99.5%
+- ✅ Recursos utilizados < 80%
+- ⚠️ Alertar si latencia > 1000ms
+- ⚠️ Alertar si error rate > 5%
+
+**Interpretación DevSecOps:**
+```
+SI LATENCIA > 1000ms:
+├─ Posible problema de performance
+├─ Revisar código de aplicación
+├─ Revisar dependencias externas
+├─ Considerar aumentar recursos
+├─ Ejecutar profiling
+└─ Implementar optimizaciones
+
+SI ERROR RATE > 5%:
+├─ Problema crítico
+├─ Revisar logs: Cloud Logging
+├─ Ejecutar Tool 5 (Release Deep Dive)
+├─ Considerar rollback
+├─ Implementar fix
+└─ Validar en staging
+
+SI DISPONIBILIDAD < 99%:
+├─ Problema de confiabilidad
+├─ Revisar eventos de error
+├─ Ejecutar Tool 8 (Pipeline Logs Scanner)
+├─ Implementar circuit breaker
+├─ Considerar retry logic
+└─ Monitorear próximas horas
+
+SI RECURSOS > 80%:
+├─ Posible escalado necesario
+├─ Revisar límites de memoria/CPU
+├─ Considerar aumentar recursos
+├─ Revisar código para optimizaciones
+└─ Implementar auto-scaling
+```
+
+---
+
+### Tool 40: Deployments Off Analyzer (GCP)
+**Ubicación:** `scm/gcp/tools.py` → Opción [40]  
+**Objetivo:** Analiza deployments no running en GKE con diagnóstico automático de causa raíz
+
+**Uso:**
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [40] - Deployments Off Analyzer
+# Proyecto: cpl-corp-cial-prod-17042024
+# Cluster: prod-gke-cluster
+# Namespace: production
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Sin deployments en estado no running
+- ✅ Todas las replicas en estado Ready
+- ✅ Sin pods en CrashLoopBackOff
+- ⚠️ Alertar si deployment no running
+- ⚠️ Alertar si severidad = CRITICAL
+
+**Interpretación DevSecOps:**
+```
+SI DEPLOYMENT NO RUNNING:
+├─ Causa raíz identificada automáticamente
+├─ Revisar recomendaciones generadas
+├─ Ejecutar acciones recomendadas
+├─ Monitorear recuperación
+└─ Documentar incidente
+
+SI SEVERIDAD CRITICAL:
+├─ Escalar inmediatamente
+├─ Ejecutar kubectl logs para más detalles
+├─ Considerar rollback si es reciente
+├─ Notificar al equipo de aplicaciones
+├─ Crear ticket de incidente
+└─ Implementar post-mortem
+
+CAUSAS COMUNES Y SOLUCIONES:
+├─ ImagePullBackOff → Verificar registry y credenciales
+├─ CrashLoopBackOff → Revisar logs de aplicación
+├─ Pending → Escalar cluster o revisar requests
+├─ CreateContainerConfigError → Verificar Secrets/ConfigMaps
+├─ FailedScheduling → Revisar recursos disponibles
+├─ ImagePullError → Validar nombre y acceso a imagen
+└─ OOMKilled → Aumentar límite de memoria
+
+ACCIONES RECOMENDADAS:
+1. Revisar logs: kubectl logs POD_NAME -n NAMESPACE
+2. Revisar eventos: kubectl describe pod POD_NAME -n NAMESPACE
+3. Revisar configuración: kubectl get deployment -n NAMESPACE
+4. Revisar recursos: kubectl top nodes
+5. Ejecutar diagnóstico: Tool 24 (Node Resources Monitor)
+6. Considerar rollback si es reciente
+7. Documentar incidente y causa raíz
+8. Implementar prevención
+```
+
+---
+
+## �🚨 Matriz de Alertas
 
 ### Alertas Críticas (Acción Inmediata)
 
