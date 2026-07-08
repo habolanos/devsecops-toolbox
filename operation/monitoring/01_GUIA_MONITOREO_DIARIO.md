@@ -371,7 +371,49 @@ SI NODO NUEVO CON BAJO USO:
 
 ---
 
-#### Paso 4: Monitoreo AWS Vespertino (3 min)
+#### Paso 4: Deployments No Running (5 min)
+```bash
+cd scm/gcp
+python tools.py
+# Seleccionar [40] - Deployments Off Analyzer
+# Proyecto: cpl-corp-cial-prod-17042024
+# Cluster: prod-gke-cluster
+# Namespace: production
+# Output: json
+```
+
+**Qué buscar:**
+- ✅ Sin deployments en estado no running
+- ⚠️ Alertar si hay deployments con replicas < desired
+- ⚠️ Alertar si severidad = CRITICAL
+
+**Interpretación DevSecOps:**
+```
+SI DEPLOYMENT NO RUNNING:
+├─ Causa raíz identificada automáticamente
+├─ Revisar recomendaciones generadas
+├─ Ejecutar acciones recomendadas
+├─ Monitorear recuperación
+└─ Documentar incidente
+
+SI SEVERIDAD CRITICAL:
+├─ Escalar inmediatamente
+├─ Ejecutar kubectl logs para más detalles
+├─ Considerar rollback si es reciente
+├─ Notificar al equipo de aplicaciones
+└─ Crear ticket de incidente
+
+CAUSAS COMUNES:
+├─ ImagePullBackOff → Verificar registry
+├─ CrashLoopBackOff → Revisar logs
+├─ Pending → Escalar cluster
+├─ ConfigError → Verificar Secrets/ConfigMaps
+└─ FailedScheduling → Recursos insuficientes
+```
+
+---
+
+#### Paso 5: Monitoreo AWS Vespertino (3 min)
 ```bash
 cd scm/aws
 python tools.py
@@ -638,6 +680,7 @@ EOF
 
 ### Tarde (14:00)
 - [ ] Ejecutar GCP Tool 25 (Pod Resources)
+- [ ] Ejecutar GCP Tool 40 (Deployments Off Analyzer)
 - [ ] Ejecutar AWS Tool 5 (RDS Storage)
 - [ ] Ejecutar AWS Tool 15 (EKS Pod Monitor)
 - [ ] Ejecutar AZDO Tool 11 (Pending Approvals)

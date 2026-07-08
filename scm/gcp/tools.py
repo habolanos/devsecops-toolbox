@@ -447,6 +447,16 @@ TOOLS = {
         "status": "ready",
         "additional_args": ["--config", "scm/config.json"]
     },
+    # ══════════ DEPLOYMENTS (40) ══════════
+    "40": {
+        "name": "Deployments Off Analyzer",
+        "description": "Analiza deployments no running en GKE con diagnóstico automático de causa raíz y recomendaciones",
+        "path": "deployments_off/gcp_deployments_off_analyzer.py",
+        "args": ["--project", "--cluster", "--namespace", "-o"],
+        "requirements": "deployments_off/requirements.txt",
+        "group": "kubernetes",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {
