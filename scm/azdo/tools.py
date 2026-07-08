@@ -612,7 +612,7 @@ def print_header():
         from base_launcher import print_header as _print_header
         _print_header(
             title="Azure DevOps Tools",
-            subtitle=f"v{__version__} | by {__author__}",
+            subtitle=f"v{__version__} | ",
             description=__description__,
             emoji="🔷",
             border_color="cyan",

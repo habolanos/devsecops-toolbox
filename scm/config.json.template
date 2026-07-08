@@ -246,7 +246,7 @@
       "enabled": true,
       "cron": "0 7 * * *",
       "_cron_info": "Expresión cron: 0 7 * * * = 7:00 AM diariamente",
-      "timezone": "America/Mexico_City"
+      "timezone": "America/Mazatlan"
     },
     
     "metrics": {

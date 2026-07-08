@@ -295,6 +295,205 @@ TOOLS = {
         "group": "inventory",
         "status": "ready"
     },
+    # ══════════ MONITORING (20) ══════════
+    "20": {
+        "name": "CloudWatch Metrics Monitor",
+        "description": "Monitorea métricas de CloudWatch para EC2, RDS, EKS, Lambda",
+        "path": "cloudwatch/aws_cloudwatch_metrics_monitor.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "monitoring",
+        "status": "ready"
+    },
+    # ══════════ KUBERNETES (21-27) ══════════
+    "21": {
+        "name": "EKS Deployments Report",
+        "description": "Genera reporte detallado de deployments en EKS",
+        "path": "eks/aws_eks_deployments_report.py",
+        "args": ["--profile", "--region", "--cluster", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "26": {
+        "name": "EKS Pod Connectivity Checker",
+        "description": "Valida conectividad desde pods EKS a RDS",
+        "path": "eks/aws_eks_pod_connectivity_checker.py",
+        "args": ["--profile", "--region", "--cluster", "--deployment", "--rds-instance", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "27": {
+        "name": "EKS Deployment Validator",
+        "description": "Valida configuración y conectividad de deployments EKS",
+        "path": "eks/aws_eks_deployment_validator.py",
+        "args": ["--profile", "--region", "--cluster", "--deployment", "--namespace", "--validate", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "35": {
+        "name": "EKS Deployments Off Analyzer",
+        "description": "Analiza deployments no running en EKS con diagnóstico automático",
+        "path": "eks/aws_eks_deployments_off_analyzer.py",
+        "args": ["--profile", "--region", "--cluster", "--namespace", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    "39": {
+        "name": "EKS Deploy Dependency Checker",
+        "description": "Analiza dependencias de deployments EKS",
+        "path": "eks/aws_eks_deploy_dependency_checker.py",
+        "args": ["--profile", "--region", "--cluster", "--deployment", "--namespace", "-o"],
+        "requirements": None,
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    # ══════════ DATABASE (22-23) ══════════
+    "22": {
+        "name": "RDS Database Checker",
+        "description": "Lista bases de datos por instancia RDS",
+        "path": "rds/aws_rds_database_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "database",
+        "status": "ready"
+    },
+    "23": {
+        "name": "RDS Comparator",
+        "description": "Compara instancias RDS entre regiones o cuentas",
+        "path": "rds/aws_rds_comparator.py",
+        "args": ["--profile", "--region1", "--region2", "--instance", "-o"],
+        "requirements": None,
+        "group": "database",
+        "status": "ready"
+    },
+    # ══════════ NETWORKING (24-25) ══════════
+    "24": {
+        "name": "API Gateway Checker",
+        "description": "Analiza API Gateways, stages, métodos y autorizaciones",
+        "path": "vpc/aws_api_gateway_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "network",
+        "status": "ready"
+    },
+    "25": {
+        "name": "VPC IP Addresses Checker",
+        "description": "Analiza capacidad de red de VPCs y subnets",
+        "path": "vpc/aws_vpc_ip_addresses_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "network",
+        "status": "ready"
+    },
+    # ══════════ COMPUTE (28-31, 34, 36) ══════════
+    "28": {
+        "name": "Lambda Functions Analyzer",
+        "description": "Análisis profundo de funciones Lambda (seguridad, costos, performance)",
+        "path": "lambda/aws_lambda_analyzer.py",
+        "args": ["--profile", "--region", "--function", "--view", "-o"],
+        "requirements": None,
+        "group": "compute",
+        "status": "ready"
+    },
+    "31": {
+        "name": "Lambda Cost Analyzer",
+        "description": "Análisis de costos y optimización de funciones Lambda",
+        "path": "lambda/aws_lambda_cost_analyzer.py",
+        "args": ["--profile", "--region", "--function", "--period", "-o"],
+        "requirements": None,
+        "group": "compute",
+        "status": "ready"
+    },
+    "34": {
+        "name": "Lambda Health Analyzer",
+        "description": "Análisis profundo de salud y rendimiento de Lambda",
+        "path": "lambda/aws_lambda_health_analyzer.py",
+        "args": ["--profile", "--region", "--function", "-o"],
+        "requirements": None,
+        "group": "compute",
+        "status": "ready"
+    },
+    "36": {
+        "name": "Lambda Security Auditor",
+        "description": "Auditoría completa de seguridad en funciones Lambda",
+        "path": "lambda/aws_lambda_security_auditor.py",
+        "args": ["--profile", "--region", "--function", "--severity", "-o"],
+        "requirements": None,
+        "group": "compute",
+        "status": "ready"
+    },
+    # ══════════ ARTIFACTS (29) ══════════
+    "29": {
+        "name": "ECR Image Filter",
+        "description": "Filtra y exporta imágenes de ECR a Excel",
+        "path": "ecr/aws_ecr_image_filter.py",
+        "args": ["--profile", "--region", "--csv-file", "-o"],
+        "requirements": None,
+        "group": "artifacts",
+        "status": "ready"
+    },
+    # ══════════ REPORTS (30) ══════════
+    "30": {
+        "name": "AWS Reports Viewer",
+        "description": "Genera gráficos HTML desde reportes JSON",
+        "path": "inventory/aws_reports_viewer.py",
+        "args": [],
+        "requirements": None,
+        "group": "reports",
+        "status": "ready"
+    },
+    # ══════════ CONSOLIDATION (32-33) ══════════
+    "32": {
+        "name": "AWS Infrastructure Consolidator",
+        "description": "Consolida ALB, Lambda, RDS con mapeo de relaciones",
+        "path": "inventory/aws_infrastructure_consolidator.py",
+        "args": ["--profile", "--region", "--view", "-o"],
+        "requirements": None,
+        "group": "consolidation",
+        "status": "ready"
+    },
+    "33": {
+        "name": "AWS Unified Infrastructure Dashboard",
+        "description": "Dashboard ejecutivo unificado con alertas y recomendaciones",
+        "path": "inventory/aws_unified_infrastructure_dashboard.py",
+        "args": ["--profile", "--region", "--interactive", "-o"],
+        "requirements": None,
+        "group": "consolidation",
+        "status": "ready"
+    },
+    # ══════════ IAM (37-38) ══════════
+    "37": {
+        "name": "IAM Service Linked Roles Checker",
+        "description": "Analiza Service Linked Roles y permisos",
+        "path": "iam/aws_service_linked_roles_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "iam",
+        "status": "ready"
+    },
+    "38": {
+        "name": "IAM Service Linked Roles Reporter",
+        "description": "Reporte multi-cuenta de Service Linked Roles",
+        "path": "iam/aws_service_linked_roles_reporter.py",
+        "args": ["--profile", "-o"],
+        "requirements": None,
+        "group": "iam",
+        "status": "ready"
+    },
+    # ══════════ INVENTORY (40) ══════════
+    "40": {
+        "name": "AWS Inventory Consolidator",
+        "description": "Consolida inventario de múltiples regiones y cuentas",
+        "path": "inventory/aws_inventory_consolidator.py",
+        "args": ["--profile", "--regions", "-o"],
+        "requirements": None,
+        "group": "inventory",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {
