@@ -454,7 +454,6 @@ def print_header_rich():
     subtitle = Text()
     subtitle.append(f"v{__version__}", style="bold green")
     subtitle.append(" | ", style="dim")
-    subtitle.append(f"by {__author__}", style="italic yellow")
     
     panel = Panel(
         Align.center(
@@ -462,7 +461,6 @@ def print_header_rich():
                 title,
                 "\n",
                 subtitle,
-                "\n",
                 Text(__description__, style="dim white")
             )
         ),
