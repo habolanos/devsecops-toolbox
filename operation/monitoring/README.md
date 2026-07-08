@@ -1,8 +1,9 @@
 # 📊 Guía de Monitoreo DevSecOps - Índice
 
-**Versión:** 1.0.0  
+**Versión:** 1.1.0  
 **Fecha:** 8 de Julio de 2026  
-**Objetivo:** Guía completa de monitoreo de ambientes con herramientas GCP y AZDO
+**Última actualización:** 8 de Julio de 2026 (v1.1.0)  
+**Objetivo:** Guía completa de monitoreo multi-cloud (GCP, AWS, AZDO) con 25 herramientas integradas
 
 ---
 
@@ -45,27 +46,31 @@
 ---
 
 ### 2. 📅 [Guía de Monitoreo Diario](01_GUIA_MONITOREO_DIARIO.md)
-**Duración:** 45 minutos/día  
-**Objetivo:** Ejecutar monitoreo diario de ambientes
+**Duración:** ~135 minutos/día  
+**Objetivo:** Ejecutar monitoreo diario de ambientes multi-cloud
 
 **Contenido:**
-- ✅ Monitoreo Matutino (08:00) - 25 min
-- ✅ Monitoreo Vespertino (14:00) - 10 min
-- ✅ Monitoreo Nocturno (22:00) - 10 min
-- ✅ Matriz de alertas
-- ✅ Checklist diario
+- ✅ Monitoreo Matutino (08:00) - 60 min (11 pasos)
+- ✅ Monitoreo Vespertino (14:00) - 35 min (9 pasos)
+- ✅ Monitoreo Nocturno (22:00) - 40 min (8 pasos)
+- ✅ Descripción fundamental de cada monitoreo
+- ✅ Qué busca prevenir cada monitoreo
+- ✅ Matriz de alertas (Crítica, Alta, Media)
+- ✅ Checklist diario detallado (28 pasos)
 - ✅ Automatización recomendada
+- ✅ Interpretación de resultados
 
-**Herramientas Usadas:**
-- GCP: Tool 1, 14, 24, 25
-- AWS: Tool 1, 5, 13, 15
-- AZDO: Tool 3, 11, 18
+**Herramientas Usadas (25 herramientas):**
+- **GCP (10):** Tool 1, 5, 7, 13, 14, 24, 25, 28, 40
+- **AWS (5):** Tool 1, 5, 13, 15, 19
+- **AZDO (5):** Tool 3, 4, 9, 11, 18
 
 **Cuándo usar:**
 - Todos los días
 - Establecer baseline de salud
 - Detectar anomalías temprano
-- Preparar reportes
+- Preparar reportes consolidados
+- Auditar cambios diarios
 
 ---
 
@@ -179,10 +184,12 @@ MENSUAL:
 #### Monitoreo Diario Multi-Cloud
 ```
 Documentos: 01_GUIA_MONITOREO_DIARIO.md
-Tiempo: 45 min/día
-Herramientas: 14 herramientas (GCP: 4, AWS: 5, AZDO: 5)
+Tiempo: ~135 min/día (Matutino 60 + Vespertino 35 + Nocturno 40)
+Herramientas: 25 herramientas (GCP: 10, AWS: 5, AZDO: 5)
+Pasos: 28 pasos (Matutino 11 + Vespertino 9 + Nocturno 8)
 Frecuencia: Diaria (08:00, 14:00, 22:00)
 Nubes: GCP + AWS + AZDO
+Reportes: 3 reportes JSON consolidados
 ```
 
 #### Auditoría Semanal Multi-Cloud
@@ -227,25 +234,33 @@ Frecuencia: Según sea necesario
 ### Día 2: Monitoreo Matutino Multi-Cloud
 ```
 1. Leer: 01_GUIA_MONITOREO_DIARIO.md - Sección Matutino (10 min)
-2. Ejecutar: GCP Tool 1 + Tool 14 (10 min)
-3. Ejecutar: AWS Tool 1 + Tool 13 (5 min)
-4. Ejecutar: AZDO Tool 18 + Tool 3 (5 min)
+2. Ejecutar: GCP Tools (1, 5, 7, 13, 14, 28) (30 min)
+3. Ejecutar: AWS Tools (1, 13) (10 min)
+4. Ejecutar: AZDO Tools (18, 3) (10 min)
 5. Generar: Dashboard Matutino Multi-Cloud
 6. Revisar: Alertas críticas
+7. Documentar: Hallazgos en reporte
 ```
 
 ### Día 3: Monitoreo Completo Multi-Cloud
 ```
-1. Ejecutar: Monitoreo Matutino (25 min)
-2. Ejecutar: Monitoreo Vespertino (15 min)
-   - GCP: Tool 25, Tool 24
-   - AWS: Tool 5, Tool 15
+1. Ejecutar: Monitoreo Matutino (60 min)
+   - GCP: Tool 1, 5, 7, 13, 14, 28
+   - AWS: Tool 1, 13
+   - AZDO: Tool 18, 3
+   
+2. Ejecutar: Monitoreo Vespertino (35 min)
+   - GCP: Tool 25, 24, 7, 13, 40
+   - AWS: Tool 5, 15
    - AZDO: Tool 11
-3. Ejecutar: Monitoreo Nocturno (15 min)
-   - GCP: Tool 4
-   - AWS: Tool 1, Tool 19
-   - AZDO: Tool 9, Tool 4
-4. Consolidar: Reportes diarios multi-cloud
+   
+3. Ejecutar: Monitoreo Nocturno (40 min)
+   - GCP: Tool 4, 8, 28
+   - AWS: Tool 1, 19
+   - AZDO: Tool 9, 4
+   
+4. Consolidar: 3 reportes diarios multi-cloud
+5. Revisar: Anomalías y cambios del día
 ```
 
 ### Semana 1: Auditoría Semanal Multi-Cloud
@@ -290,9 +305,10 @@ Frecuencia: Según sea necesario
 - AZDO: Todas (1-25)
 
 ### 01_GUIA_MONITOREO_DIARIO.md
-- GCP: 1, 14, 24, 25
-- AWS: 1, 5, 13, 15
-- AZDO: 3, 11, 18
+- GCP: 1, 5, 7, 13, 14, 24, 25, 28, 40 (10 herramientas)
+- AWS: 1, 5, 13, 15, 19 (5 herramientas)
+- AZDO: 3, 4, 9, 11, 18 (5 herramientas)
+- **Total: 25 herramientas**
 
 ### 02_GUIA_AUDITORIA_SEMANAL.md
 - GCP: 3, 4, 5, 6, 29, 35
@@ -479,6 +495,18 @@ Para preguntas o sugerencias sobre esta guía:
 
 ---
 
-**Guía de Monitoreo DevSecOps v1.0.0**  
+**Guía de Monitoreo DevSecOps v1.1.0**  
 **Última actualización:** 8 de Julio de 2026  
+**Cambios en v1.1.0:**
+- ✅ Agregadas 8 herramientas GCP nuevas (5, 7, 8, 13, 28, 40)
+- ✅ Agregada herramienta AWS Tool 19 (AWS Inventory)
+- ✅ Agregada herramienta AZDO Tool 4 (Pipeline Drift)
+- ✅ Actualizado Monitoreo Matutino: 25 min → 60 min (11 pasos)
+- ✅ Actualizado Monitoreo Vespertino: 10 min → 35 min (9 pasos)
+- ✅ Actualizado Monitoreo Nocturno: 10 min → 40 min (8 pasos)
+- ✅ Agregadas descripciones fundamentales de cada monitoreo
+- ✅ Agregado "Qué busca prevenir" para cada monitoreo
+- ✅ Actualizado Checklist Diario con 28 pasos detallados
+- ✅ Agregados reportes JSON consolidados
+
 **Próxima revisión:** 8 de Octubre de 2026
