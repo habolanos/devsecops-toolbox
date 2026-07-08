@@ -106,7 +106,7 @@
 
     "service_accounts_reporter": {
       "_info": "Configuración para el reporte multi-proyecto de service accounts (Tool 38)",
-      "enabled": false,
+      "enabled": true,
       "_enabled_info": "Cambiar a true para habilitar el reporte de service accounts",
       
       "projects": [
