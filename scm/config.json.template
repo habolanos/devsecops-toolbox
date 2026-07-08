@@ -102,6 +102,86 @@
     "defaults": {
       "timezone": "America/Mazatlan",
       "output_format": "json"
+    },
+
+    "service_accounts_reporter": {
+      "_info": "Configuración para el reporte multi-proyecto de service accounts (Tool 38)",
+      "enabled": false,
+      "_enabled_info": "Cambiar a true para habilitar el reporte de service accounts",
+      
+      "projects": [
+        "<PROYECTO_GCP_1>",
+        "<PROYECTO_GCP_2>",
+        "<PROYECTO_GCP_3>"
+      ],
+      "_projects_info": "Array de nombres de proyectos GCP a analizar. Ej: ['proyecto-prod', 'proyecto-staging']",
+      
+      "defaults": {
+        "mode": "all",
+        "_mode_info": "Opciones: all, security, compliance, usage",
+        "output_format": "json",
+        "_output_format_info": "Opciones: json, csv, excel, html",
+        "include_activity": true,
+        "activity_days": 30,
+        "key_rotation_policy_days": 90,
+        "parallel_workers": 5,
+        "_parallel_workers_info": "Número de workers para paralelización (default: 5)",
+        "timeout_seconds": 300,
+        "cache_enabled": true,
+        "cache_ttl_minutes": 60
+      },
+      
+      "security": {
+        "_info": "Configuración de análisis de seguridad",
+        "dangerous_roles": [
+          "roles/editor",
+          "roles/owner",
+          "roles/compute.admin",
+          "roles/iam.securityAdmin",
+          "roles/resourcemanager.organizationAdmin"
+        ],
+        "_dangerous_roles_info": "Roles considerados peligrosos. Personalizar según políticas de seguridad",
+        "alert_on_risk_level": [
+          "HIGH",
+          "CRITICAL"
+        ],
+        "_alert_on_risk_level_info": "Niveles de riesgo que generan alertas",
+        "encrypt_reports": false,
+        "_encrypt_reports_info": "Encriptar reportes (requiere configuración adicional)"
+      },
+      
+      "compliance": {
+        "_info": "Configuración de cumplimiento normativo",
+        "policies": [
+          {
+            "name": "key_rotation_90days",
+            "description": "Rotación de claves cada 90 días",
+            "enabled": true,
+            "threshold_days": 90
+          },
+          {
+            "name": "no_user_managed_keys",
+            "description": "No permitir claves user-managed",
+            "enabled": false,
+            "_enabled_info": "Cambiar a true para habilitar esta política"
+          },
+          {
+            "name": "no_excessive_permissions",
+            "description": "No permitir roles peligrosos",
+            "enabled": true
+          }
+        ]
+      },
+      
+      "notifications": {
+        "_info": "Configuración de notificaciones automáticas",
+        "enabled": false,
+        "_enabled_info": "Cambiar a true para habilitar notificaciones",
+        "on_high_risk": true,
+        "on_compliance_violation": true,
+        "webhook_url": "<TU_TEAMS_WEBHOOK_URL>",
+        "_webhook_url_info": "Obtener en Teams: Equipo → Connectors → Incoming Webhook"
+      }
     }
   },
 
