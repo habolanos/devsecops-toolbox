@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.16-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.9.5-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -11,11 +11,12 @@
 
 ---
 
-## 📝 Historial de Cambios (v1.6.16)
+## 📝 Historial de Cambios (v1.9.5)
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| **1.6.16** | 2026-07-08 | ✨ Tool 4 & Tool 38 Enhancements: Soporte para múltiples proyectos GCP con visualización Rich (spinners, tablas, progreso). Tool 4 carga proyectos desde config.json por defecto. Tool 38 mejorada con procesamiento paralelo (5 workers) y tablas de resultados por proyecto. |
+| **1.9.5** | 2026-07-09 | 🚀 **Implementación Completa de Herramientas AWS**: 18 nuevas herramientas AWS (Tools 23-40) para lograr paridad con GCP. Incluye RDS Comparator, API Gateway Checker, VPC IP Checker, EKS Pod Connectivity, Lambda Analyzer, ECR Image Filter, Infrastructure Consolidator, Unified Dashboard, Inventory Consolidator, Service Linked Roles, etc. + 9 guías de actualización de pipelines CD (3,344 líneas) + Tests unitarios + Documentación de API completa. |
+| 1.6.16 | 2026-07-08 | ✨ Tool 4 & Tool 38 Enhancements: Soporte para múltiples proyectos GCP con visualización Rich (spinners, tablas, progreso). Tool 4 carga proyectos desde config.json por defecto. Tool 38 mejorada con procesamiento paralelo (5 workers) y tablas de resultados por proyecto. |
 | 1.6.15 | 2026-07-05 | 🔧 Mejoras en herramientas GCP |
 | **1.6.13** | 2026-07-03 | 🚀 Cloud Run Tools Suite (7 herramientas): Health Analyzer, Security Auditor, Cost Analyzer, Deployment Validator, Traffic Analyzer, Dependency Mapper, Executive Dashboard. IDs 28-34. Validación de _system_options completada. Grupo "cloudrun" agregado a TOOL_GROUPS. Tests unitarios creados. |
 | 1.6.12 | 2026-06-29 | ✨ Dinamización de menús: Eliminar hardcode en opciones A, B, Q. Generación dinámica con _system_options, get_auto_tools(), build_system_options(). Reducción 50% de código (113→56 líneas). Implementado en todas las plataformas |
