@@ -47,22 +47,19 @@ try:
     from rich.progress import Progress, SpinnerColumn, TextColumn
     from rich.markdown import Markdown
     RICH_AVAILABLE = True
+    import sys
+    print(f"✓ Rich importado desde: {Console.__module__}", file=sys.stderr)
+except ImportError as e:
+    RICH_AVAILABLE = False
+    Console = type(None)
+    import sys
+    print(f"✗ Rich NO disponible: {e}", file=sys.stderr)
+
 try:
     from export_manager import ExportManager
     EXPORT_MANAGER_AVAILABLE = True
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
-
-
-    # Confirmar que Rich se importó correctamente
-    import sys
-    print(f"✓ Rich importado desde: {Console.__module__}", file=sys.stderr)
-except ImportError as e:
-    RICH_AVAILABLE = False
-    # Type hint fallback - won't be used at runtime if Rich is available
-    Console = type(None)
-    import sys
-    print(f"✗ Rich NO disponible: {e}", file=sys.stderr)
 
 DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
 DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
