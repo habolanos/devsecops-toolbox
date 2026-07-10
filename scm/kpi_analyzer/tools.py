@@ -94,6 +94,9 @@ class Colors:
 
 # Herramientas disponibles
 TOOLS = {
+    # ═══════════════════════════════════════════════════════════
+    # ANÁLISIS DE KPIs (1-5)
+    # ═══════════════════════════════════════════════════════════
     "1": {
         "name": "Análisis Básico de KPIs",
         "emoji": "📊",
@@ -105,65 +108,116 @@ TOOLS = {
         "name": "Análisis por Plataforma",
         "emoji": "🎯",
         "script": "analyze_kpis.py",
-        "args": None,  # Se preguntará interactivamente
+        "args": None,
         "description": "Filtrar análisis por plataforma (GCP, AZDO, AWS, Terminal)"
     },
     "3": {
         "name": "Evaluación de Madurez",
-        "emoji": "🎯",
+        "emoji": "📈",
         "script": "analyze_kpis.py",
         "args": ["--maturity"],
         "description": "Mostrar evaluación de madurez DevSecOps (6 niveles)"
     },
     "4": {
-        "name": "Generar Reporte JSON",
-        "emoji": "📄",
+        "name": "Análisis Completo",
+        "emoji": "�",
         "script": "analyze_kpis.py",
-        "args": ["--output", "json"],
-        "description": "Exportar resultados en formato JSON"
+        "args": ["--output", "all", "--maturity", "--dashboard"],
+        "description": "Generar todos los reportes y dashboard"
     },
     "5": {
-        "name": "Generar Reporte CSV",
-        "emoji": "📊",
-        "script": "analyze_kpis.py",
-        "args": ["--output", "csv"],
-        "description": "Exportar resultados en formato CSV"
+        "name": "Tests Unitarios",
+        "emoji": "🧪",
+        "script": "test_kpi_analyzer.py",
+        "args": [],
+        "description": "Ejecutar suite de tests del KPI Analyzer"
     },
+    
+    # ═══════════════════════════════════════════════════════════
+    # HEALTH SCORE & DASHBOARDS (6-12)
+    # ═══════════════════════════════════════════════════════════
     "6": {
-        "name": "Generar Reporte HTML Simple",
-        "emoji": "🌐",
-        "script": "analyze_kpis.py",
-        "args": ["--output", "html"],
-        "description": "Exportar reporte HTML básico con estilos"
+        "name": "Health Score DORA",
+        "emoji": "💪",
+        "script": "health_score.py",
+        "args": ["--output", "display"],
+        "description": "Calcular Health Score usando métricas DORA"
     },
     "7": {
         "name": "Dashboard Estático (HTML + Chart.js)",
         "emoji": "📈",
-        "script": "analyze_kpis.py",
-        "args": ["--dashboard", "--maturity"],
+        "script": "generator.py",
+        "args": [],
         "description": "Generar dashboard HTML interactivo con gráficos"
     },
     "8": {
         "name": "Dashboard Interactivo (Streamlit)",
         "emoji": "🚀",
         "script": "streamlit_app.py",
-        "args": None,  # Streamlit usa su propio comando
+        "args": None,
         "description": "Lanzar dashboard web interactivo con Streamlit"
     },
     "9": {
-        "name": "Análisis Completo (Todos los Reportes)",
-        "emoji": "📦",
-        "script": "analyze_kpis.py",
-        "args": ["--output", "all", "--maturity", "--dashboard"],
-        "description": "Generar todos los reportes y dashboard"
+        "name": "Dashboard Matutino AZDO",
+        "emoji": "🌅",
+        "script": "consolidator.py",
+        "args": [],
+        "description": "Dashboard consolidado AZDO con Health Score DORA"
     },
     "10": {
-        "name": "Ejecutar Tests Unitarios",
-        "emoji": "🧪",
-        "script": "test_kpi_analyzer.py",
-        "args": [],
-        "description": "Ejecutar suite de tests del KPI Analyzer"
+        "name": "Consolidador de Datos",
+        "emoji": "�",
+        "script": "consolidator.py",
+        "args": ["--action", "consolidate"],
+        "description": "Consolidar datos de múltiples fuentes"
     },
+    "11": {
+        "name": "Planificador Automático",
+        "emoji": "⏰",
+        "script": "scheduler.py",
+        "args": ["--action", "list"],
+        "description": "Planificar ejecución automática de análisis"
+    },
+    "12": {
+        "name": "Generador Dashboard Pro",
+        "emoji": "🎨",
+        "script": "generator.py",
+        "args": ["--output", "outcome/kpi_analyzer"],
+        "description": "Generar dashboard profesional con formatos avanzados"
+    },
+    
+    # ═══════════════════════════════════════════════════════════
+    # EXPORTACIÓN & REPORTES (13-16)
+    # ═══════════════════════════════════════════════════════════
+    "13": {
+        "name": "Exportar a JSON",
+        "emoji": "📄",
+        "script": "exporter.py",
+        "args": ["--format", "json"],
+        "description": "Exportar resultados en formato JSON"
+    },
+    "14": {
+        "name": "Exportar a CSV",
+        "emoji": "📊",
+        "script": "exporter.py",
+        "args": ["--format", "csv"],
+        "description": "Exportar resultados en formato CSV"
+    },
+    "15": {
+        "name": "Exportar a HTML",
+        "emoji": "🌐",
+        "script": "exporter.py",
+        "args": ["--format", "html"],
+        "description": "Exportar reporte HTML con estilos profesionales"
+    },
+    "16": {
+        "name": "Exportar a Excel Pro",
+        "emoji": "📑",
+        "script": "exporter.py",
+        "args": ["--format", "excel"],
+        "description": "Exportar a Excel con formatos, gráficos y tablas"
+    },
+    
     "_system_options": {
         "Q": {
             "name": "Volver al Menú Principal",
