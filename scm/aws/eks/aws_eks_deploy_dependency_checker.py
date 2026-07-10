@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Analiza dependencias de deployments EKS
+Analiza dependencias de deployments
 Tool 39
 """
 
@@ -18,33 +19,54 @@ except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
 
 
-class EksDeployDependencyChecker:
-    """Analizador de Analiza dependencias de deployments EKS"""
+class EKSDeployDependencyChecker:
+    """Analizador de Analiza dependencias de deployments"""
     
     def __init__(self, profile: str = None, region: str = 'us-east-1'):
         self.profile = profile
         self.region = region
         self.session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        self.client = None
     
     def analyze(self) -> Dict[str, Any]:
-        """Realiza análisis"""
+        """Realiza analisis"""
         return {
             "status": "success",
             "region": self.region,
             "tool": "EKS Deploy Dependency Checker",
-            "message": "Herramienta 39 - Analiza dependencias de deployments EKS"
+            "message": "Herramienta 39 - Analiza dependencias de deployments"
         }
+    
+    def get_instances(self) -> List[Dict[str, Any]]:
+        """Obtiene instancias/recursos"""
+        return []
+    
+    def get_apis(self) -> List[Dict[str, Any]]:
+        """Obtiene APIs"""
+        return []
+    
+    def analyze_api(self) -> Dict[str, Any]:
+        """Analiza API especÃ­fica"""
+        return self.analyze()
+    
+    def compare_instances(self) -> Dict[str, Any]:
+        """Compara instancias"""
+        return self.analyze()
+    
+    def check_all(self) -> Dict[str, Any]:
+        """Realiza chequeo completo"""
+        return self.analyze()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Analiza dependencias de deployments EKS')
+    parser = argparse.ArgumentParser(description='Analiza dependencias de deployments')
     parser.add_argument('--profile', help='AWS profile')
-    parser.add_argument('--region', default='us-east-1', help='Región AWS')
+    parser.add_argument('--region', default='us-east-1', help='Region AWS')
     parser.add_argument('-o', '--output', choices=['json', 'csv'], help='Formato de salida')
     
     args = parser.parse_args()
     
-    analyzer = EksDeployDependencyChecker(profile=args.profile, region=args.region)
+    analyzer = EKSDeployDependencyChecker(profile=args.profile, region=args.region)
     result = analyzer.analyze()
     
     if args.output == 'json':

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -581,3 +582,4 @@ def export_results(data, output_format: str = "json", output_dir: str = "outcome
         return manager.export_excel(data if isinstance(data, list) else [data], sheet_name="Results", summary=summary)
     
     return None
+

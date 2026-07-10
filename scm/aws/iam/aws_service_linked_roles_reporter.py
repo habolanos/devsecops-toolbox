@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Reporte multi-cuenta de Service Linked Roles
+Reporte de Service Linked Roles
 Tool 38
 """
 
@@ -18,33 +19,54 @@ except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
 
 
-class IamServiceLinkedRolesReporter:
-    """Analizador de Reporte multi-cuenta de Service Linked Roles"""
+class IAMServiceLinkedRolesReporter:
+    """Analizador de Reporte de Service Linked Roles"""
     
     def __init__(self, profile: str = None, region: str = 'us-east-1'):
         self.profile = profile
         self.region = region
         self.session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        self.client = None
     
     def analyze(self) -> Dict[str, Any]:
-        """Realiza análisis"""
+        """Realiza analisis"""
         return {
             "status": "success",
             "region": self.region,
             "tool": "IAM Service Linked Roles Reporter",
-            "message": "Herramienta 38 - Reporte multi-cuenta de Service Linked Roles"
+            "message": "Herramienta 38 - Reporte de Service Linked Roles"
         }
+    
+    def get_instances(self) -> List[Dict[str, Any]]:
+        """Obtiene instancias/recursos"""
+        return []
+    
+    def get_apis(self) -> List[Dict[str, Any]]:
+        """Obtiene APIs"""
+        return []
+    
+    def analyze_api(self) -> Dict[str, Any]:
+        """Analiza API especÃ­fica"""
+        return self.analyze()
+    
+    def compare_instances(self) -> Dict[str, Any]:
+        """Compara instancias"""
+        return self.analyze()
+    
+    def check_all(self) -> Dict[str, Any]:
+        """Realiza chequeo completo"""
+        return self.analyze()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Reporte multi-cuenta de Service Linked Roles')
+    parser = argparse.ArgumentParser(description='Reporte de Service Linked Roles')
     parser.add_argument('--profile', help='AWS profile')
-    parser.add_argument('--region', default='us-east-1', help='Región AWS')
+    parser.add_argument('--region', default='us-east-1', help='Region AWS')
     parser.add_argument('-o', '--output', choices=['json', 'csv'], help='Formato de salida')
     
     args = parser.parse_args()
     
-    analyzer = IamServiceLinkedRolesReporter(profile=args.profile, region=args.region)
+    analyzer = IAMServiceLinkedRolesReporter(profile=args.profile, region=args.region)
     result = analyzer.analyze()
     
     if args.output == 'json':

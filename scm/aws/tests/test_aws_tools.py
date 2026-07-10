@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 """
 Tests unitarios para herramientas AWS
@@ -73,7 +74,10 @@ class TestLambdaAnalyzer(unittest.TestCase):
     @patch('boto3.Session')
     def test_initialization(self, mock_session):
         """Test inicialización"""
-        from lambda_.aws_lambda_analyzer import LambdaFunctionsAnalyzer
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lambda'))
+        from aws_lambda_analyzer import LambdaFunctionsAnalyzer
         analyzer = LambdaFunctionsAnalyzer(profile='test')
         self.assertIsNotNone(analyzer)
 

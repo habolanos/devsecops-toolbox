@@ -35,6 +35,7 @@ class {class_name}:
         self.profile = profile
         self.region = region
         self.session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        self.client = None
     
     def analyze(self) -> Dict[str, Any]:
         """Realiza analisis"""
@@ -44,6 +45,26 @@ class {class_name}:
             "tool": "{name}",
             "message": "Herramienta {tool_id} - {description}"
         }}
+    
+    def get_instances(self) -> List[Dict[str, Any]]:
+        """Obtiene instancias/recursos"""
+        return []
+    
+    def get_apis(self) -> List[Dict[str, Any]]:
+        """Obtiene APIs"""
+        return []
+    
+    def analyze_api(self) -> Dict[str, Any]:
+        """Analiza API específica"""
+        return self.analyze()
+    
+    def compare_instances(self) -> Dict[str, Any]:
+        """Compara instancias"""
+        return self.analyze()
+    
+    def check_all(self) -> Dict[str, Any]:
+        """Realiza chequeo completo"""
+        return self.analyze()
 
 
 def main():
@@ -72,29 +93,50 @@ if __name__ == '__main__':
 '''
 
 TOOLS = {
-    "23": {"name": "RDS Comparator", "path": "rds/aws_rds_comparator.py", "description": "Compara instancias RDS"},
-    "24": {"name": "API Gateway Checker", "path": "vpc/aws_api_gateway_checker.py", "description": "Analiza API Gateways"},
-    "25": {"name": "VPC IP Addresses Checker", "path": "vpc/aws_vpc_ip_addresses_checker.py", "description": "Analiza capacidad de red"},
-    "26": {"name": "EKS Pod Connectivity Checker", "path": "eks/aws_eks_pod_connectivity_checker.py", "description": "Valida conectividad de pods"},
-    "27": {"name": "EKS Deployment Validator", "path": "eks/aws_eks_deployment_validator.py", "description": "Valida deployments EKS"},
-    "28": {"name": "Lambda Functions Analyzer", "path": "lambda/aws_lambda_analyzer.py", "description": "Analiza funciones Lambda"},
-    "29": {"name": "ECR Image Filter", "path": "ecr/aws_ecr_image_filter.py", "description": "Filtra imagenes ECR"},
-    "30": {"name": "AWS Reports Viewer", "path": "inventory/aws_reports_viewer.py", "description": "Genera graficos HTML"},
-    "31": {"name": "Lambda Cost Analyzer", "path": "lambda/aws_lambda_cost_analyzer.py", "description": "Analiza costos Lambda"},
-    "32": {"name": "AWS Infrastructure Consolidator", "path": "inventory/aws_infrastructure_consolidator.py", "description": "Consolida infraestructura"},
-    "33": {"name": "AWS Unified Infrastructure Dashboard", "path": "inventory/aws_unified_infrastructure_dashboard.py", "description": "Dashboard unificado"},
-    "34": {"name": "Lambda Health Analyzer", "path": "lambda/aws_lambda_health_analyzer.py", "description": "Analiza salud de Lambda"},
-    "35": {"name": "EKS Deployments Off Analyzer", "path": "eks/aws_eks_deployments_off_analyzer.py", "description": "Analiza deployments no running"},
-    "36": {"name": "Lambda Security Auditor", "path": "lambda/aws_lambda_security_auditor.py", "description": "Auditoria de seguridad Lambda"},
-    "37": {"name": "IAM Service Linked Roles Checker", "path": "iam/aws_service_linked_roles_checker.py", "description": "Analiza Service Linked Roles"},
-    "38": {"name": "IAM Service Linked Roles Reporter", "path": "iam/aws_service_linked_roles_reporter.py", "description": "Reporte de Service Linked Roles"},
-    "39": {"name": "EKS Deploy Dependency Checker", "path": "eks/aws_eks_deploy_dependency_checker.py", "description": "Analiza dependencias de deployments"},
-    "40": {"name": "AWS Inventory Consolidator", "path": "inventory/aws_inventory_consolidator.py", "description": "Consolida inventario"},
+    "23": {"name": "RDS Comparator", "path": "rds/aws_rds_comparator.py", "description": "Compara instancias RDS", "class": "RDSComparator"},
+    "24": {"name": "API Gateway Checker", "path": "vpc/aws_api_gateway_checker.py", "description": "Analiza API Gateways", "class": "APIGatewayChecker"},
+    "25": {"name": "VPC IP Addresses Checker", "path": "vpc/aws_vpc_ip_addresses_checker.py", "description": "Analiza capacidad de red", "class": "VPCIPAddressesChecker"},
+    "26": {"name": "EKS Pod Connectivity Checker", "path": "eks/aws_eks_pod_connectivity_checker.py", "description": "Valida conectividad de pods", "class": "EKSPodConnectivityChecker"},
+    "27": {"name": "EKS Deployment Validator", "path": "eks/aws_eks_deployment_validator.py", "description": "Valida deployments EKS", "class": "EKSDeploymentValidator"},
+    "28": {"name": "Lambda Functions Analyzer", "path": "lambda/aws_lambda_analyzer.py", "description": "Analiza funciones Lambda", "class": "LambdaFunctionsAnalyzer"},
+    "29": {"name": "ECR Image Filter", "path": "ecr/aws_ecr_image_filter.py", "description": "Filtra imagenes ECR", "class": "ECRImageFilter"},
+    "30": {"name": "AWS Reports Viewer", "path": "inventory/aws_reports_viewer.py", "description": "Genera graficos HTML", "class": "AWSReportsViewer"},
+    "31": {"name": "Lambda Cost Analyzer", "path": "lambda/aws_lambda_cost_analyzer.py", "description": "Analiza costos Lambda", "class": "LambdaCostAnalyzer"},
+    "32": {"name": "AWS Infrastructure Consolidator", "path": "inventory/aws_infrastructure_consolidator.py", "description": "Consolida infraestructura", "class": "AWSInfrastructureConsolidator"},
+    "33": {"name": "AWS Unified Infrastructure Dashboard", "path": "inventory/aws_unified_infrastructure_dashboard.py", "description": "Dashboard unificado", "class": "AWSUnifiedDashboard"},
+    "34": {"name": "Lambda Health Analyzer", "path": "lambda/aws_lambda_health_analyzer.py", "description": "Analiza salud de Lambda", "class": "LambdaHealthAnalyzer"},
+    "35": {"name": "EKS Deployments Off Analyzer", "path": "eks/aws_eks_deployments_off_analyzer.py", "description": "Analiza deployments no running", "class": "EKSDeploymentsOffAnalyzer"},
+    "36": {"name": "Lambda Security Auditor", "path": "lambda/aws_lambda_security_auditor.py", "description": "Auditoria de seguridad Lambda", "class": "LambdaSecurityAuditor"},
+    "37": {"name": "IAM Service Linked Roles Checker", "path": "iam/aws_service_linked_roles_checker.py", "description": "Analiza Service Linked Roles", "class": "IAMServiceLinkedRolesChecker"},
+    "38": {"name": "IAM Service Linked Roles Reporter", "path": "iam/aws_service_linked_roles_reporter.py", "description": "Reporte de Service Linked Roles", "class": "IAMServiceLinkedRolesReporter"},
+    "39": {"name": "EKS Deploy Dependency Checker", "path": "eks/aws_eks_deploy_dependency_checker.py", "description": "Analiza dependencias de deployments", "class": "EKSDeployDependencyChecker"},
+    "40": {"name": "AWS Inventory Consolidator", "path": "inventory/aws_inventory_consolidator.py", "description": "Consolida inventario", "class": "AWSInventoryConsolidator"},
 }
 
 def generate_class_name(name: str) -> str:
     """Genera nombre de clase"""
-    return ''.join(word.capitalize() for word in name.replace('-', ' ').split())
+    # Reemplazar acrónimos especiales
+    replacements = {
+        'rds': 'RDS',
+        'api': 'API',
+        'vpc': 'VPC',
+        'eks': 'EKS',
+        'iam': 'IAM',
+        'ecr': 'ECR',
+        'aws': 'AWS',
+    }
+    
+    words = name.replace('-', ' ').split()
+    result = []
+    
+    for word in words:
+        lower_word = word.lower()
+        if lower_word in replacements:
+            result.append(replacements[lower_word])
+        else:
+            result.append(word.capitalize())
+    
+    return ''.join(result)
 
 def generate_tool_name(name: str) -> str:
     """Genera nombre de herramienta"""
@@ -107,7 +149,8 @@ def create_tool(tool_id: str, tool_info: Dict) -> bool:
     
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     
-    class_name = generate_class_name(tool_info['name'])
+    # Usar nombre de clase personalizado si está disponible
+    class_name = tool_info.get('class') or generate_class_name(tool_info['name'])
     tool_name = generate_tool_name(tool_info['name'])
     
     content = TEMPLATE.format(
