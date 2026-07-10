@@ -46,9 +46,15 @@ def get_char_windows() -> Optional[str]:
         import msvcrt
         if msvcrt.kbhit():
             ch = msvcrt.getch()
-            if ch == b'\x00' or ch == b'\xe0':  # Teclas especiales
-                msvcrt.getch()  # Consumir siguiente byte
-                return None
+            # Teclas especiales en Windows (flechas, Fn, etc.)
+            # Estos códigos requieren consumir un byte adicional
+            if ch == b'\x00' or ch == b'\xe0':
+                # Consumir el siguiente byte de la secuencia
+                next_ch = msvcrt.getch()
+                # Retornar ESC + siguiente byte para procesamiento
+                # Esto permite manejar secuencias de flechas
+                return ch.decode('utf-8', errors='ignore') + next_ch.decode('utf-8', errors='ignore')
+            # ESC es una tecla simple (0x1b = 27 en ASCII)
             return ch.decode('utf-8', errors='ignore')
     except Exception:
         pass
@@ -323,33 +329,35 @@ def interactive_search(items: Dict, search_fields: Dict = None, columns: List[st
             if ch is None:
                 continue
             
-            # Tecla ESC (27 en ASCII)
-            if ord(ch) == 27:
-                # Podría ser ESC simple o secuencia de escape para flechas
-                ch2 = get_single_char()
-                if ch2 is None:
-                    # ESC simple - cancelar búsqueda
+            # Tecla ESC (27 en ASCII = '\x1b')
+            if ch == '\x1b' or (len(ch) > 0 and ord(ch[0]) == 27):
+                # ESC simple - cancelar búsqueda
+                if len(ch) == 1:
                     return None
-                elif ord(ch2) == 91:  # [ = inicio de secuencia de flecha
-                    ch3 = get_single_char()
-                    if ch3 and ord(ch3) == 65:  # A = flecha arriba
+                # Secuencia de escape (Windows: \x00 o \xe0 + código)
+                elif len(ch) > 1:
+                    # En Windows, las flechas vienen como \x00 + código o \xe0 + código
+                    second_byte = ord(ch[1]) if len(ch) > 1 else 0
+                    # Códigos de flechas en Windows:
+                    # 72 = arriba, 80 = abajo, 75 = izquierda, 77 = derecha
+                    if second_byte == 72:  # Flecha arriba
                         selected_idx = max(0, selected_idx - 1)
-                    elif ch3 and ord(ch3) == 66:  # B = flecha abajo
+                        filtered = search_items(items, query, search_fields)
+                        print_search_interface(query, filtered, columns, selected_idx)
+                    elif second_byte == 80:  # Flecha abajo
                         filtered = search_items(items, query, search_fields)
                         selected_idx = min(len(filtered) - 1, selected_idx + 1)
-                # Actualizar pantalla después de navegación
-                filtered = search_items(items, query, search_fields)
-                print_search_interface(query, filtered, columns, selected_idx)
+                        print_search_interface(query, filtered, columns, selected_idx)
             
             # Tecla ENTER
-            elif ord(ch) == 13:
+            elif ord(ch[0]) == 13:
                 filtered = search_items(items, query, search_fields)
                 if filtered and selected_idx < len(filtered):
                     return filtered[selected_idx][0]
                 return None
             
             # Tecla BACKSPACE
-            elif ord(ch) == 8 or ord(ch) == 127:
+            elif ord(ch[0]) == 8 or ord(ch[0]) == 127:
                 query = query[:-1]
                 selected_idx = 0  # Reset selección al borrar
                 # Actualizar resultados y pantalla
@@ -357,8 +365,8 @@ def interactive_search(items: Dict, search_fields: Dict = None, columns: List[st
                 print_search_interface(query, filtered, columns, selected_idx)
             
             # Caracteres normales (letras, números, espacios, etc.)
-            elif ch.isprintable():
-                query += ch
+            elif ch[0].isprintable():
+                query += ch[0]
                 selected_idx = 0  # Reset selección al escribir
                 # Actualizar resultados y pantalla
                 filtered = search_items(items, query, search_fields)
