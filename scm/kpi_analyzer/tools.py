@@ -325,6 +325,9 @@ def print_menu_rich():
     table.add_column("Descripción", justify="left", style="dim", min_width=35)
     
     for key, tool in TOOLS.items():
+        if key == "_system_options":
+            continue
+        
         if key == "Q":
             name_style = "bold yellow"
             key_style = "bold yellow"
@@ -333,12 +336,14 @@ def print_menu_rich():
             key_style = "bold cyan"
         
         emoji = tool.get('emoji', '⚙️')
-        tool_name = f"{emoji} {tool['name']}"
+        name = tool.get('name', 'Sin nombre')
+        tool_name = f"{emoji} {name}"
         
+        description = tool.get('description', '')
         table.add_row(
             f"[{key_style}]{key}[/{key_style}]",
             f"[{name_style}]{tool_name}[/{name_style}]",
-            tool['description']
+            description
         )
     
     console.print(table)
@@ -349,14 +354,19 @@ def print_menu_fallback():
     print(f"{Colors.BOLD}Herramientas Disponibles:{Colors.ENDC}\n")
     
     for key, tool in TOOLS.items():
+        if key == "_system_options":
+            continue
+        
         if key == "Q":
             style = Colors.WARNING
         else:
             style = Colors.CYAN
         
         emoji = tool.get('emoji', '⚙️')
-        print(f"  {style}[{key}]{Colors.ENDC} {emoji} {tool['name']}")
-        print(f"      {tool['description']}")
+        name = tool.get('name', 'Sin nombre')
+        description = tool.get('description', '')
+        print(f"  {style}[{key}]{Colors.ENDC} {emoji} {name}")
+        print(f"      {description}")
     print()
 
 def print_menu():
@@ -469,10 +479,12 @@ def run_tool(tool_key: str):
     # Mostrar mensaje de ejecución
     if RICH_AVAILABLE and console:
         emoji = tool.get('emoji', '⚙️')
-        console.print(f"\n[bold cyan]🚀 Ejecutando: {emoji} {tool['name']}...[/bold cyan]\n")
+        name = tool.get('name', 'Sin nombre')
+        console.print(f"\n[bold cyan]🚀 Ejecutando: {emoji} {name}...[/bold cyan]\n")
     else:
         emoji = tool.get('emoji', '⚙️')
-        print(f"\n{Colors.CYAN}🚀 Ejecutando: {emoji} {tool['name']}...{Colors.ENDC}\n")
+        name = tool.get('name', 'Sin nombre')
+        print(f"\n{Colors.CYAN}🚀 Ejecutando: {emoji} {name}...{Colors.ENDC}\n")
     
     # Ejecutar script
     try:
