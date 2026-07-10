@@ -1,6 +1,6 @@
 {
   "_info": "Template de configuración unificada para DevSecOps Toolbox. Copia como config.json y completa los valores. NUNCA subas config.json al repositorio.",
-  "_version": "1.6.17",
+  "_version": "1.9.6",
 
   "azdo": {
     "_info": "Configuración de Azure DevOps",
@@ -236,9 +236,9 @@
   },
 
   "dashboard": {
-    "_info": "Configuración del Dashboard Matutino DevSecOps. Usa credenciales de AZDO (org, project, pat)",
+    "_info": "Configuración del Dashboard Matutino DevSecOps (INTEGRADO EN KPI ANALYZER PRO v1.9.6). Usa credenciales de AZDO (org, project, pat)",
     "enabled": true,
-    "_credentials_info": "Se usan automáticamente desde la sección 'azdo' (organization, project, pat). Solo agregar webhook_url si se desean notificaciones a Teams.",
+    "_credentials_info": "Se usan automáticamente desde la sección 'azdo' (organization, project, pat). Solo agregar webhook_url si se desean notificaciones a Teams. Dashboard está integrado en KPI Analyzer Pro (Opción 5).",
     "webhook_url": "<TU_TEAMS_WEBHOOK_URL>",
     
     "schedule": {
