@@ -332,7 +332,8 @@ def print_menu_rich():
             name_style = "cyan"
             key_style = "bold cyan"
         
-        tool_name = f"{tool['emoji']} {tool['name']}"
+        emoji = tool.get('emoji', '⚙️')
+        tool_name = f"{emoji} {tool['name']}"
         
         table.add_row(
             f"[{key_style}]{key}[/{key_style}]",
@@ -353,7 +354,8 @@ def print_menu_fallback():
         else:
             style = Colors.CYAN
         
-        print(f"  {style}[{key}]{Colors.ENDC} {tool['emoji']} {tool['name']}")
+        emoji = tool.get('emoji', '⚙️')
+        print(f"  {style}[{key}]{Colors.ENDC} {emoji} {tool['name']}")
         print(f"      {tool['description']}")
     print()
 
@@ -466,9 +468,11 @@ def run_tool(tool_key: str):
     
     # Mostrar mensaje de ejecución
     if RICH_AVAILABLE and console:
-        console.print(f"\n[bold cyan]🚀 Ejecutando: {tool['emoji']} {tool['name']}...[/bold cyan]\n")
+        emoji = tool.get('emoji', '⚙️')
+        console.print(f"\n[bold cyan]🚀 Ejecutando: {emoji} {tool['name']}...[/bold cyan]\n")
     else:
-        print(f"\n{Colors.CYAN}🚀 Ejecutando: {tool['emoji']} {tool['name']}...{Colors.ENDC}\n")
+        emoji = tool.get('emoji', '⚙️')
+        print(f"\n{Colors.CYAN}🚀 Ejecutando: {emoji} {tool['name']}...{Colors.ENDC}\n")
     
     # Ejecutar script
     try:
