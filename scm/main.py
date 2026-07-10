@@ -271,7 +271,7 @@ def get_config_status() -> Dict[str, str]:
     config = load_config()
     status = {}
     
-    for key in ["1", "2", "3", "4", "5", "6"]:
+    for key in ["1", "2", "3", "4", "5"]:
         if not config:
             status[key] = "no_config"
         elif is_platform_configured(key):
@@ -393,7 +393,7 @@ def print_config_status():
             ))
         else:
             status_lines = []
-            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI", "6": "DASHBOARD"}
+            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}
             for key, name in platform_names.items():
                 st = status.get(key, "no_config")
                 if st == "configured":
@@ -414,7 +414,7 @@ def print_config_status():
             print(f"{Colors.WARNING}⚠️ No se encontró config.json{Colors.ENDC}")
         else:
             print(f"{Colors.CYAN}Estado de configuración:{Colors.ENDC}")
-            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI", "6": "DASHBOARD"}.items():
+            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}.items():
                 st = status.get(key, "no_config")
                 symbol = "✅" if st == "configured" else "⚠️" if st == "incomplete" else "❌"
                 print(f"  {symbol} {name}")
@@ -479,7 +479,7 @@ def print_header():
 def print_menu_rich():
     """Muestra el menú con Rich."""
     config_status = get_config_status()
-    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI", "6": "DASHBOARD"}
+    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}
 
     table = Table(
         title="🚀 Seleccione una Plataforma",
