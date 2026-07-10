@@ -90,6 +90,12 @@ def fuzzy_match(query: str, text: str) -> float:
     """
     Calcula similitud fuzzy entre query y text.
     Retorna valor entre 0 y 1 (1 = coincidencia perfecta).
+    
+    Prioriza:
+    1. Coincidencia exacta (1.0)
+    2. Coincidencia al inicio (0.95)
+    3. Coincidencia de palabra completa (0.85)
+    4. Fuzzy matching (ratio)
     """
     if not query:
         return 1.0
@@ -98,16 +104,29 @@ def fuzzy_match(query: str, text: str) -> float:
     text = text.lower()
     
     # Coincidencia exacta
-    if query in text:
+    if query == text:
         return 1.0
+    
+    # Coincidencia exacta como substring
+    if query in text:
+        return 0.95
     
     # Coincidencia al inicio
     if text.startswith(query):
-        return 0.9
+        return 0.90
     
-    # Fuzzy matching
+    # Coincidencia de palabra completa (separada por espacios)
+    words = text.split()
+    for word in words:
+        if word.startswith(query):
+            return 0.85
+    
+    # Fuzzy matching con SequenceMatcher
     matcher = SequenceMatcher(None, query, text)
-    return matcher.ratio()
+    ratio = matcher.ratio()
+    
+    # Solo retornar si hay al menos 50% de similitud
+    return ratio if ratio >= 0.5 else 0.0
 
 
 def search_items(items: Dict, query: str, search_fields: Dict = None) -> List[Tuple[str, Dict, float]]:
@@ -145,8 +164,9 @@ def search_items(items: Dict, query: str, search_fields: Dict = None) -> List[Tu
         if scores:
             max_score = max(scores)
             
-            # Solo incluir si hay alguna coincidencia
-            if max_score > 0.3:
+            # Solo incluir si hay alguna coincidencia significativa
+            # Threshold: 0.5 (50% de similitud mínima)
+            if max_score > 0.5:
                 results.append((key, item, max_score))
     
     # Ordenar por puntuación descendente
@@ -305,7 +325,21 @@ def interactive_search(items: Dict, search_fields: Dict = None, columns: List[st
             
             # Tecla ESC (27 en ASCII)
             if ord(ch) == 27:
-                return None
+                # Podría ser ESC simple o secuencia de escape para flechas
+                ch2 = get_single_char()
+                if ch2 is None:
+                    # ESC simple - cancelar búsqueda
+                    return None
+                elif ord(ch2) == 91:  # [ = inicio de secuencia de flecha
+                    ch3 = get_single_char()
+                    if ch3 and ord(ch3) == 65:  # A = flecha arriba
+                        selected_idx = max(0, selected_idx - 1)
+                    elif ch3 and ord(ch3) == 66:  # B = flecha abajo
+                        filtered = search_items(items, query, search_fields)
+                        selected_idx = min(len(filtered) - 1, selected_idx + 1)
+                # Actualizar pantalla después de navegación
+                filtered = search_items(items, query, search_fields)
+                print_search_interface(query, filtered, columns, selected_idx)
             
             # Tecla ENTER
             elif ord(ch) == 13:
@@ -317,27 +351,18 @@ def interactive_search(items: Dict, search_fields: Dict = None, columns: List[st
             # Tecla BACKSPACE
             elif ord(ch) == 8 or ord(ch) == 127:
                 query = query[:-1]
+                selected_idx = 0  # Reset selección al borrar
+                # Actualizar resultados y pantalla
+                filtered = search_items(items, query, search_fields)
+                print_search_interface(query, filtered, columns, selected_idx)
             
-            # Tecla ARRIBA
-            elif ord(ch) == 27:  # Secuencia de escape
-                # Leer siguiente carácter para flechas
-                ch2 = get_single_char()
-                if ch2 and ord(ch2) == 91:  # [
-                    ch3 = get_single_char()
-                    if ch3 and ord(ch3) == 65:  # A = arriba
-                        selected_idx = max(0, selected_idx - 1)
-                    elif ch3 and ord(ch3) == 66:  # B = abajo
-                        filtered = search_items(items, query, search_fields)
-                        selected_idx = min(len(filtered) - 1, selected_idx + 1)
-            
-            # Caracteres normales
+            # Caracteres normales (letras, números, espacios, etc.)
             elif ch.isprintable():
                 query += ch
                 selected_idx = 0  # Reset selección al escribir
-            
-            # Actualizar resultados y pantalla
-            filtered = search_items(items, query, search_fields)
-            print_search_interface(query, filtered, columns, selected_idx)
+                # Actualizar resultados y pantalla
+                filtered = search_items(items, query, search_fields)
+                print_search_interface(query, filtered, columns, selected_idx)
         
         except KeyboardInterrupt:
             return None
