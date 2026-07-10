@@ -1,6 +1,6 @@
 {
   "_info": "Template de configuración unificada para DevSecOps Toolbox. Copia como config.json y completa los valores. NUNCA subas config.json al repositorio.",
-  "_version": "1.9.6",
+  "_version": "1.6.17",
 
   "azdo": {
     "_info": "Configuración de Azure DevOps",
