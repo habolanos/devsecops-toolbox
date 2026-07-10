@@ -525,7 +525,8 @@ def print_menu_rich():
             name_style = platform.get("color", "white")
             key_style = "bold cyan"
         
-        platform_name = f"{platform['emoji']} {platform['name']}"
+        emoji = platform.get('emoji', '⚙️')
+        platform_name = f"{emoji} {platform['name']}"
         
         # Config status badge
         if key in platform_map:
@@ -567,7 +568,8 @@ def print_menu_fallback():
         else:
             style = Colors.CYAN
         
-        print(f"  {style}[{key}]{Colors.ENDC} {indicator[0]} {platform['emoji']} {platform['name']}")
+        emoji = platform.get('emoji', '⚙️')
+        print(f"  {style}[{key}]{Colors.ENDC} {indicator[0]} {emoji} {platform['name']}")
         print(f"      {platform.get('description', '')}")
     print()
 
@@ -635,12 +637,13 @@ def launch_platform(platform_key: str):
     env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
 
     # Mostrar mensaje de transición con spinner
+    emoji = platform.get('emoji', '⚙️')
     if RICH_AVAILABLE and console:
-        with console.status(f"[bold cyan]🚀 Lanzando {platform['emoji']} {platform['name']}...[/bold cyan]", spinner="dots"):
+        with console.status(f"[bold cyan]🚀 Lanzando {emoji} {platform['name']}...[/bold cyan]", spinner="dots"):
             pass
-        console.print(f"[bold cyan]🚀 Lanzando {platform['emoji']} {platform['name']}...[/bold cyan]\n")
+        console.print(f"[bold cyan]🚀 Lanzando {emoji} {platform['name']}...[/bold cyan]\n")
     else:
-        print(f"\n{Colors.CYAN}🚀 Lanzando {platform['emoji']} {platform['name']}...{Colors.ENDC}\n")
+        print(f"\n{Colors.CYAN}🚀 Lanzando {emoji} {platform['name']}...{Colors.ENDC}\n")
     
     # Manejo especial para Dashboard
     if platform_key == "6":
