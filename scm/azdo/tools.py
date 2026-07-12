@@ -367,6 +367,14 @@ TOOLS: Dict = {
         "group":       "release",
         "status":      "ready",
     },
+    "40": {
+        "name":        "Health Probe Masivo Validator",
+        "description": "Validación masiva de health probes en K8s desde AZDO - Mapeo de stages, pruebas de conectividad, reportería ejecutiva",
+        "path":        "health-probe-masive/health_probe_validator.py",
+        "args":        ["-i", "-o", "--workers", "--timeout", "--format", "--verbose"],
+        "group":       "health",
+        "status":      "ready",
+    },
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos",
