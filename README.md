@@ -273,23 +273,162 @@ docker build -t devsecops-toolbox:latest .
 
 ## 🎯 Uso Rápido
 
-### Launcher Principal
+### ⭐ Opción Recomendada: Launcher Principal
 
 ```bash
-cd scm/
-python main.py
+# Desde la raíz del proyecto
+python scm/main.py
 ```
 
-### Acceso Directo a Plataformas
+**Esto te abrirá un menú interactivo con todas las opciones:**
+
+```
+╔═══════════════════════════════════════════════════════════════╗
+║          🔐 DevSecOps Toolbox - Launcher Principal           ║
+╚═══════════════════════════════════════════════════════════════╝
+
+[1] 🔷 AZDO (Azure DevOps)
+[2] ☁️  GCP (Google Cloud Platform)
+[3] 🟠 AWS (Amazon Web Services)
+[4] 🐧 Terminal (Scripts Universales)
+[5] 📊 KPI Analyzer Pro
+[6] 📈 Dashboard Matutino
+
+[A] 🚀 Ejecutar Todas las Herramientas
+[B] ⚡ Ejecutar Todo + JSON (Dashboard Feed)
+[Q] 🚪 Salir
+
+Selecciona una opción [1-6, A, B, Q]:
+```
+
+---
+
+### 📋 Opciones Disponibles
+
+#### **Opción 1: AZDO (Azure DevOps)** 🔷
+Herramientas para gestión de repositorios, pipelines y releases en Azure DevOps:
+- PR Master Checker
+- Branch Policy Checker
+- Release CD Health
+- Pipeline Drift Analyzer
+- Task Validator
+- **[40] Health Probe Masivo Validator** ⭐ NUEVO
 
 ```bash
-cd scm/
-python gcp/tools.py      # Herramientas GCP
-python azdo/tools.py     # Herramientas Azure DevOps
-python aws/tools.py      # Herramientas AWS
+# Acceso directo
+python scm/main.py
+# Seleccionar: 1 (AZDO)
+# Luego seleccionar herramienta específica (1-40)
 ```
 
-### Con Docker
+#### **Opción 2: GCP (Google Cloud Platform)** ☁️
+Herramientas especializadas para operaciones SRE en GCP:
+- Service Account Checker
+- Cloud SQL Manager
+- GKE Cluster Manager
+- Cloud Run Tools Suite
+- Connectivity Checkers
+
+```bash
+# Acceso directo
+python scm/main.py
+# Seleccionar: 2 (GCP)
+```
+
+#### **Opción 3: AWS (Amazon Web Services)** 🟠
+Herramientas DevSecOps para AWS:
+- IAM Analyzer
+- RDS Manager
+- VPC Manager
+- EKS Manager
+- ECR Scanner
+- Lambda Manager
+
+```bash
+# Acceso directo
+python scm/main.py
+# Seleccionar: 3 (AWS)
+```
+
+#### **Opción 4: Terminal (Scripts Universales)** 🐧
+Scripts agnósticos de cloud provider para cualquier cluster Kubernetes:
+- Certificate TLS Report
+- Database Connections Checker
+- Deployments Last News
+- Deployments Last Update
+
+```bash
+# Acceso directo
+python scm/main.py
+# Seleccionar: 4 (Terminal)
+```
+
+#### **Opción 5: KPI Analyzer Pro** 📊
+Análisis de métricas DevSecOps con modelo de madurez y dashboards:
+- Health Score DORA
+- Exporter (JSON, CSV, HTML, Excel)
+- Consolidator (multi-fuente)
+- Generator (dashboards HTML)
+- Scheduler (planificación automática)
+
+```bash
+# Acceso directo
+python scm/main.py
+# Seleccionar: 5 (KPI Analyzer Pro)
+```
+
+#### **Opción 6: Dashboard Matutino** 📈
+Dashboard automatizado que consolida el estado de repositorios, pipelines y servicios:
+- Ejecución automática diaria
+- Consolidación multi-cloud
+- Visualización web interactiva
+- Notificaciones inteligentes
+
+```bash
+# Acceso directo
+python scm/main.py
+# Seleccionar: 6 (Dashboard Matutino)
+```
+
+#### **Opción A: Ejecutar Todas las Herramientas** 🚀
+Ejecuta todas las herramientas con la misma configuración (sin Deep Dive):
+
+```bash
+python scm/main.py
+# Seleccionar: A
+```
+
+#### **Opción B: Ejecutar Todo + JSON** ⚡
+Ejecuta TODAS las herramientas forzando salida JSON en `outcome/` (ideal para Dashboard):
+
+```bash
+python scm/main.py
+# Seleccionar: B
+```
+
+---
+
+### 🚀 Acceso Directo a Plataformas (Avanzado)
+
+Si prefieres acceder directamente a una plataforma sin pasar por el menú principal:
+
+```bash
+# Herramientas GCP
+python scm/gcp/tools.py
+
+# Herramientas Azure DevOps
+python scm/azdo/tools.py
+
+# Herramientas AWS
+python scm/aws/tools.py
+
+# Herramientas KPI Analyzer
+python scm/kpi_analyzer/tools.py
+```
+
+---
+
+### 🐳 Con Docker
 
 ```bash
 # Ejecutar toolbox interactivo
@@ -300,6 +439,33 @@ docker-compose exec toolbox bash
 docker run --rm devsecops-toolbox:latest az version
 docker run --rm devsecops-toolbox:latest aws --version
 docker run --rm devsecops-toolbox:latest gcloud version
+```
+
+---
+
+### 💡 Ejemplos Prácticos
+
+#### Ejemplo 1: Validar Health Probes en Kubernetes
+```bash
+python scm/main.py
+# Seleccionar: 1 (AZDO)
+# Seleccionar: 40 (Health Probe Masivo Validator)
+# Ingresar: deployment-web-prod,deployment-api-prod
+```
+
+#### Ejemplo 2: Ejecutar Análisis de KPI
+```bash
+python scm/main.py
+# Seleccionar: 5 (KPI Analyzer Pro)
+# Seleccionar herramienta específica
+```
+
+#### Ejemplo 3: Generar Dashboard Completo
+```bash
+python scm/main.py
+# Seleccionar: B (Ejecutar Todo + JSON)
+# Esperar a que se ejecuten todas las herramientas
+# Los JSONs se guardarán en outcome/
 ```
 
 ---
