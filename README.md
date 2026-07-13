@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.18-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.6.19-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -112,6 +112,9 @@ Herramientas para gestión de repositorios, pipelines y releases en Azure DevOps
 - Release CD Health
 - Pipeline Drift Analyzer
 - Task Validator
+- **[21] Pipeline Updater** - Actualización masiva de pipelines con templates YAML
+- **[22] Pipeline Rollback** - Rollback con 3 métodos (Full Backup, Hybrid, Manual Revision)
+  - **Opción 6: Redo** ⭐ NUEVO - Volver a versión previa del pipeline basado en definition_id
 - **[40] Health Probe Masivo Validator** ⭐ NUEVO
 
 ```bash
