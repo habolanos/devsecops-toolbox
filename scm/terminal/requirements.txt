@@ -1,0 +1,9 @@
+# Terminal Scripts Requirements
+# Dependencias para scripts universales de terminal
+
+# Ya incluidas en dependencias base:
+# - requests (para HTTP calls)
+# - pyyaml (para YAML parsing)
+# - rich (para output formateado)
+
+# Sin dependencias adicionales requeridas
