@@ -268,41 +268,32 @@ search:
     - name: "QA"
     - name: "Staging"
     - name: "Producción"
+
+# Comentario global para toda la reorganización
+global_comment:
+  type: "stage_reorder"
+  message: "Reorganización masiva de stages"
+  custom_comment: |
+    Nuevo orden de ejecución:
+    1. Staging (ambiente de prueba inicial)
+    2. Producción (deploy a producción)
+    3. QA (validación post-deploy)
+    
+    Razón: Validar en staging antes de producción, y QA después para auditoría
   
 update:
   stages:
-    # Mover QA al final (después de Producción)
-    - name: "QA"
-      fields:
-        - path: "rank"
-          old_value: 1
-          new_value: 3
-      comment:
-        type: "stage_reorder"
-        message: "Stage QA movido al final del pipeline"
-      custom_comment: "QA ahora se ejecuta después de producción para validación post-deploy"
-    
     # Mover Staging a la primera posición
     - name: "Staging"
-      fields:
-        - path: "rank"
-          old_value: 2
-          new_value: 1
-      comment:
-        type: "stage_reorder"
-        message: "Stage Staging movido a la primera posición"
-      custom_comment: "Staging es ahora el primer ambiente de prueba"
+      rank: 1
     
-    # Producción se mantiene en el medio
+    # Mover Producción a la segunda posición
     - name: "Producción"
-      fields:
-        - path: "rank"
-          old_value: 3
-          new_value: 2
-      comment:
-        type: "stage_reorder"
-        message: "Stage Producción reordenado a posición 2"
-      custom_comment: "Nuevo orden: Staging → Producción → QA"
+      rank: 2
+    
+    # Mover QA al final
+    - name: "QA"
+      rank: 3
 ```
 
 **Resultado esperado**:

@@ -271,7 +271,7 @@ update:
 
 ## 3. REORGANIZACIÓN DE STAGES
 
-### 3.1 Cambiar Orden de Ejecución
+### 3.1 Cambiar Orden de Ejecución (Masivo)
 
 **Caso**: Cambiar el orden en que se ejecutan los stages
 
@@ -288,49 +288,33 @@ search:
     - name: "Deploy"
     - name: "Validate"
 
+# Comentario global para toda la reorganización
+global_comment:
+  type: "stage_reorder"
+  message: "Reorganización masiva de stages"
+  custom_comment: |
+    Nuevo orden de ejecución:
+    1. Build (compilación)
+    2. Deploy (despliegue a staging)
+    3. Test (pruebas post-deploy)
+    4. Validate (validación final)
+    
+    Razón: Validar deployment antes de pruebas para detectar errores temprano
+
 update:
   stages:
     # Nuevo orden: Build → Deploy → Test → Validate
-    
     - name: "Build"
-      fields:
-        - path: "rank"
-          old_value: 1
-          new_value: 1
-      comment:
-        type: "stage_reorder"
-        message: "Build mantiene posición 1"
-      custom_comment: "Build sigue siendo el primer stage"
+      rank: 1
     
     - name: "Deploy"
-      fields:
-        - path: "rank"
-          old_value: 3
-          new_value: 2
-      comment:
-        type: "stage_reorder"
-        message: "Deploy movido a posición 2 (antes de Test)"
-      custom_comment: "Deploy ahora ocurre antes de Test para validación temprana"
+      rank: 2
     
     - name: "Test"
-      fields:
-        - path: "rank"
-          old_value: 2
-          new_value: 3
-      comment:
-        type: "stage_reorder"
-        message: "Test movido a posición 3 (después de Deploy)"
-      custom_comment: "Test ahora valida el deployment en lugar de antes"
+      rank: 3
     
     - name: "Validate"
-      fields:
-        - path: "rank"
-          old_value: 4
-          new_value: 4
-      comment:
-        type: "stage_reorder"
-        message: "Validate mantiene posición 4"
-      custom_comment: "Validate sigue siendo el último stage"
+      rank: 4
 
 options:
   dry_run: false
@@ -367,44 +351,40 @@ search:
     - name: "Staging"
     - name: "Producción"
 
+# Comentario global para la reorganización y cambios de dependencias
+global_comment:
+  type: "stage_reorder"
+  message: "Reorganización masiva con actualización de dependencias"
+  custom_comment: |
+    Cambios realizados:
+    1. Nuevo orden: Staging → QA → Producción
+    2. Staging es ahora el primer ambiente de prueba
+    3. Producción depende de QA en lugar de Staging
+    
+    Razón: QA debe validar después de Staging antes de producción
+
 update:
   stages:
     # Mover Staging a primer lugar
     - name: "Staging"
-      fields:
-        - path: "rank"
-          old_value: 2
-          new_value: 1
-      comment:
-        type: "stage_reorder"
-        message: "Staging movido a posición 1"
-      custom_comment: "Staging es ahora el primer ambiente de prueba"
+      rank: 1
     
     # Mover QA a segundo lugar
     - name: "QA"
-      fields:
-        - path: "rank"
-          old_value: 1
-          new_value: 2
-      comment:
-        type: "stage_reorder"
-        message: "QA movido a posición 2"
-      custom_comment: "QA ahora se ejecuta después de Staging"
+      rank: 2
     
-    # Actualizar dependencias de Producción
+    # Producción en tercer lugar
     - name: "Producción"
+      rank: 3
+      # Actualizar dependencias
       fields:
-        - path: "rank"
-          old_value: 3
-          new_value: 3
-        # Cambiar aprobador (dependencia)
         - path: "preDeployApprovals.approvals[0].approver.displayName"
           old_value: "QA Team"
           new_value: "Staging Team"
+      # Comentario específico solo para cambio de dependencia
       comment:
         type: "dependency_change"
         message: "Dependencia de Producción actualizada a Staging"
-      custom_comment: "Producción ahora depende de Staging en lugar de QA"
 ```
 
 ---
@@ -422,6 +402,18 @@ search:
     - name: "Deploy"
     - name: "Producción"
 
+# Comentario global para la inserción de nuevo stage
+global_comment:
+  type: "stage_addition"
+  message: "Nuevo stage de Security Check insertado en el pipeline"
+  custom_comment: |
+    Cambios realizados:
+    1. Nuevo stage: Security Check (posición 2)
+    2. Nuevo orden: Build → Security Check → Deploy → Producción
+    3. Duración estimada: 10-15 minutos
+    
+    Razón: Validar seguridad antes de deploy para cumplir políticas de compliance
+
 update:
   stages:
     # Insertar Security Check entre Build y Deploy
@@ -430,18 +422,6 @@ update:
       position: "between"
       after_stage: "Build"
       before_stage: "Deploy"
-      
-      comment:
-        type: "stage_addition"
-        message: "Stage de Security Check insertado entre Build y Deploy"
-      
-      custom_comment: |
-        Nuevo stage de seguridad:
-        - Escanea vulnerabilidades
-        - Valida dependencias
-        - Genera reporte de compliance
-        - Duración: 10-15 minutos
-      
       definition:
         id: 2
         name: "Security Check"
@@ -461,16 +441,12 @@ update:
                       #!/bin/bash
                       echo "Running security scan..."
     
-    # Actualizar rank de Deploy (ahora es 3 en lugar de 2)
+    # Deploy y Producción se reordenan automáticamente
     - name: "Deploy"
-      fields:
-        - path: "rank"
-          old_value: 2
-          new_value: 3
-      comment:
-        type: "stage_reorder"
-        message: "Deploy reordenado a posición 3"
-      custom_comment: "Deploy ahora ocurre después de Security Check"
+      rank: 3
+    
+    - name: "Producción"
+      rank: 4
 ```
 
 ---
