@@ -46,6 +46,16 @@ Archivo YAML/JSON que define QUÉ BUSCAR y QUÉ ACTUALIZAR:
 metadata:
   name: "Actualizar namespace en Kubectl"
   version: "1.0"
+  description: "Migración de cluster GKE y namespace"
+  comment: |
+    Cambios realizados:
+    - Cluster: old-gke-cluster → new-gke-cluster
+    - Namespace: default → production
+    - Manifiestos: k8s/old-manifest.yaml → k8s/new-manifest.yaml
+    
+    Razón: Migración a nuevo cluster GKE en us-central1
+    Aprobado por: Infrastructure Team
+    Fecha: 2026-07-13
   
 search:
   stages: ["Producción"]
@@ -262,6 +272,17 @@ metadata:
   name: "Reorganizar orden de stages"
   version: "1.0"
   description: "Cambiar el orden de ejecución de los stages en el pipeline"
+  comment: |
+    Reorganización masiva de stages
+    
+    Nuevo orden de ejecución:
+    1. Staging (ambiente de prueba inicial)
+    2. Producción (deploy a producción)
+    3. QA (validación post-deploy)
+    
+    Razón: Validar en staging antes de producción, y QA después para auditoría
+    Aprobado por: DevOps Team
+    Efectivo desde: 2026-07-13
   
 search:
   stages:
@@ -269,18 +290,6 @@ search:
     - name: "Staging"
     - name: "Producción"
 
-# Comentario global para toda la reorganización
-global_comment:
-  type: "stage_reorder"
-  message: "Reorganización masiva de stages"
-  custom_comment: |
-    Nuevo orden de ejecución:
-    1. Staging (ambiente de prueba inicial)
-    2. Producción (deploy a producción)
-    3. QA (validación post-deploy)
-    
-    Razón: Validar en staging antes de producción, y QA después para auditoría
-  
 update:
   stages:
     # Mover Staging a la primera posición
@@ -315,6 +324,19 @@ metadata:
   name: "Migración completa con nuevo stage"
   version: "3.0"
   description: "Agregar stage de validación, cambiar tasks y actualizar dependencias"
+  comment: |
+    Migración integral de infraestructura
+    
+    Cambios realizados:
+    1. Eliminar: Azure App Service Deploy (obsoleta)
+    2. Actualizar: Docker Push → nuevo proyecto GCP (old-project → new-project)
+    3. Actualizar: Kubectl → nuevo cluster GKE (old-gke → new-gke)
+    4. Agregar: Stage de Validation (Smoke Testing)
+    
+    Razón: Consolidación de infraestructura y modernización de deployments
+    Aprobado por: Infrastructure & DevOps Team
+    Fecha: 2026-07-13
+    Contacto: devops@company.com
   
 search:
   stages:
@@ -334,10 +356,6 @@ update:
   tasks:
     - name: "Old Legacy Task"
       action: "remove"
-      comment:
-        type: "task_removal"
-        message: "Task obsoleta removida - Reemplazada por KubectlDeploy"
-      custom_comment: "Azure App Service Deploy ya no se usa. Todos los deployments ahora usan Kubernetes"
     
     # 2. Cambiar Docker Push
     - name: "Docker Push"
@@ -345,10 +363,6 @@ update:
         - path: "inputs.imageRepository"
           old_value: "gcr.io/old-project/app"
           new_value: "gcr.io/new-project/app"
-      comment:
-        type: "task_update"
-        message: "Registro Docker actualizado a nuevo proyecto GCP"
-      custom_comment: "Migración de proyecto GCP: old-project → new-project"
     
     # 3. Cambiar Kubectl
     - name: "Deploy with Kubectl"
@@ -359,10 +373,6 @@ update:
         - path: "inputs.namespace"
           old_value: "default"
           new_value: "production"
-      comment:
-        type: "task_update"
-        message: "Cluster Kubernetes y namespace actualizados"
-      custom_comment: "Migración a nuevo cluster GKE en us-central1 con namespace production"
   
   # 4. Agregar nuevo stage de validación
   stages:
@@ -371,10 +381,6 @@ update:
       position: "between"
       after_stage: "Staging"
       before_stage: "Producción"
-      comment:
-        type: "stage_addition"
-        message: "Nuevo stage de validación agregado entre Staging y Producción"
-      custom_comment: "Stage de Smoke Testing para validar deployments antes de producción"
       definition:
         id: 3
         name: "Validation"
@@ -394,21 +400,6 @@ update:
                       #!/bin/bash
                       echo "Validating..."
                       kubectl get pods -n production
-```
-
-**Comentarios Automáticos Generados**:
-```
-[TASK REMOVAL] Task obsoleta removida - Reemplazada por KubectlDeploy
-  → Detalle: Azure App Service Deploy ya no se usa. Todos los deployments ahora usan Kubernetes
-
-[TASK UPDATE] Registro Docker actualizado a nuevo proyecto GCP
-  → Detalle: Migración de proyecto GCP: old-project → new-project
-
-[TASK UPDATE] Cluster Kubernetes y namespace actualizados
-  → Detalle: Migración a nuevo cluster GKE en us-central1 con namespace production
-
-[STAGE ADDITION] Nuevo stage de validación agregado entre Staging y Producción
-  → Detalle: Stage de Smoke Testing para validar deployments antes de producción
 ```
 
 ### 2. **Procesamiento Masivo**

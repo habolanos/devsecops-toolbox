@@ -2,45 +2,58 @@
 
 ## 1. SISTEMA DE COMENTARIOS
 
-### 1.1 Tipos de Comentarios
+### 1.1 Comentario Global (metadata.comment)
 
-El sistema soporta dos tipos de comentarios:
-
-#### **Comentarios Automáticos (comment)**
-Se generan automáticamente basados en el tipo de cambio realizado.
+El comentario es **único a nivel de template** en la sección `metadata` y se usa para toda la ejecución de la actualización.
 
 ```yaml
-comment:
-  type: "task_update"  # Tipo de cambio
-  message: "Descripción automática del cambio"
+metadata:
+  name: "Nombre del template"
+  version: "1.0"
+  description: "Descripción breve"
+  comment: |
+    Comentario único para toda la actualización
+    
+    Puede incluir:
+    - Resumen de cambios
+    - Razón de la actualización
+    - Aprobaciones
+    - Contacto
+    - Fecha efectiva
 ```
 
-**Tipos disponibles**:
-```
-- task_update          → Actualización de task
-- task_removal         → Eliminación de task
-- task_addition        → Adición de task
-- stage_update         → Actualización de stage
-- stage_removal        → Eliminación de stage
-- stage_addition       → Adición de stage
-- dependency_change    → Cambio de dependencias
-- stage_reorder        → Reorganización de stages
-- variable_update      → Actualización de variables
-- approval_change      → Cambio de aprobadores
-```
-
-#### **Comentarios Personalizados (custom_comment)**
-Comentarios adicionales definidos por el usuario para proporcionar contexto.
-
-```yaml
-custom_comment: "Descripción detallada del cambio"
-```
+**Características**:
+- ✅ Un único comentario por template
+- ✅ Se usa en todas las llamadas a la API de AZDO
+- ✅ Multi-línea para contexto completo
+- ✅ Se incluye en auditoría y reportes
+- ✅ Se registra en el historial de cambios de AZDO
 
 ---
 
-### 1.2 Estructura Completa de Comentarios
+### 1.2 Estructura del Template con Comentario
 
 ```yaml
+metadata:
+  name: "Actualizar imagen Docker"
+  version: "1.0"
+  description: "Cambiar imagen en pipelines de producción"
+  comment: |
+    Actualización de imagen Docker
+    
+    Cambios realizados:
+    - Imagen: gcr.io/old/app:1.0 → gcr.io/new/app:2.0
+    - Razón: Actualización de versión y consolidación de registros
+    - Aprobado por: DevOps Team
+    - Fecha: 2026-07-13
+    - Contacto: devops@company.com
+
+search:
+  stages: ["Producción"]
+  tasks:
+    - name: "Docker Push"
+      type: "DockerPush"
+
 update:
   tasks:
     - name: "Docker Push"
@@ -48,19 +61,16 @@ update:
         - path: "inputs.imageRepository"
           old_value: "gcr.io/old/app"
           new_value: "gcr.io/new/app"
-      
-      # Comentario automático
-      comment:
-        type: "task_update"
-        message: "Registro Docker actualizado"
-      
-      # Comentario personalizado (opcional)
-      custom_comment: "Migración a nuevo proyecto GCP como parte de la consolidación de infraestructura"
+        - path: "inputs.tag"
+          old_value: "1.0"
+          new_value: "2.0"
 ```
+
+**Nota**: El comentario en metadata es el ÚNICO comentario que se usa. No hay comentarios adicionales en tasks o stages.
 
 ---
 
-## 2. EJEMPLOS DE COMENTARIOS POR TIPO
+## 2. EJEMPLOS DE TEMPLATES CON COMENTARIO EN METADATA
 
 ### 2.1 Task Update (Actualización de Task)
 
@@ -68,6 +78,16 @@ update:
 metadata:
   name: "Actualizar configuración de Docker"
   version: "1.0"
+  description: "Cambiar imagen Docker en pipelines de producción"
+  comment: |
+    Actualización de imagen Docker
+    
+    Cambios realizados:
+    - Proyecto GCP: old-project → new-project
+    - Versión: 1.0.0 → 2.0.0
+    - Razón: Consolidación de registros y actualización de versión
+    - Aprobado por: DevOps Team
+    - Fecha: 2026-07-13
 
 search:
   stages:
@@ -86,29 +106,6 @@ update:
         - path: "inputs.tag"
           old_value: "1.0.0"
           new_value: "2.0.0"
-      
-      comment:
-        type: "task_update"
-        message: "Imagen Docker actualizada a v2.0.0 en nuevo registro"
-      
-      custom_comment: |
-        Cambios realizados:
-        - Proyecto GCP: old-project → new-project
-        - Versión: 1.0.0 → 2.0.0
-        - Razón: Consolidación de registros y actualización de versión
-        - Aprobado por: DevOps Team
-        - Fecha: 2026-07-13
-```
-
-**Salida esperada**:
-```
-[TASK UPDATE] Imagen Docker actualizada a v2.0.0 en nuevo registro
-  → Detalle: Cambios realizados:
-    - Proyecto GCP: old-project → new-project
-    - Versión: 1.0.0 → 2.0.0
-    - Razón: Consolidación de registros y actualización de versión
-    - Aprobado por: DevOps Team
-    - Fecha: 2026-07-13
 ```
 
 ---
@@ -119,6 +116,16 @@ update:
 metadata:
   name: "Eliminar task obsoleta"
   version: "1.0"
+  description: "Remover Azure App Service Deploy"
+  comment: |
+    Eliminación de task obsoleta
+    
+    Razón de eliminación:
+    - Azure App Service ya no se usa en producción
+    - Todos los deployments ahora usan Kubernetes
+    - Simplifica el pipeline y reduce complejidad
+    - Migración completada el 2026-07-10
+    - Contacto: devops@company.com
 
 search:
   stages:
@@ -131,18 +138,6 @@ update:
   tasks:
     - name: "Old Deployment"
       action: "remove"
-      
-      comment:
-        type: "task_removal"
-        message: "Task obsoleta removida - Reemplazada por KubectlDeploy"
-      
-      custom_comment: |
-        Razón de eliminación:
-        - Azure App Service ya no se usa en producción
-        - Todos los deployments ahora usan Kubernetes
-        - Simplifica el pipeline y reduce complejidad
-        - Migración completada el 2026-07-10
-        - Contacto: devops@company.com
 ```
 
 ---
@@ -153,6 +148,16 @@ update:
 metadata:
   name: "Agregar validación de seguridad"
   version: "1.0"
+  description: "Agregar task de escaneo de seguridad"
+  comment: |
+    Nueva task de validación de seguridad
+    
+    Características:
+    - Escanea vulnerabilidades en imágenes Docker
+    - Valida políticas de seguridad de Kubernetes
+    - Genera reporte de compliance
+    - Requerido por: Security Team
+    - Implementado: 2026-07-13
 
 search:
   stages:
@@ -167,19 +172,6 @@ update:
       action: "add"
       position: "after"
       reference_task: "Deploy with Kubectl"
-      
-      comment:
-        type: "task_addition"
-        message: "Task de escaneo de seguridad agregada después del deploy"
-      
-      custom_comment: |
-        Nueva task de validación:
-        - Escanea vulnerabilidades en imágenes Docker
-        - Valida políticas de seguridad de Kubernetes
-        - Genera reporte de compliance
-        - Requerido por: Security Team
-        - Implementado: 2026-07-13
-      
       definition:
         displayName: "Security Scan"
         enabled: true
@@ -190,7 +182,6 @@ update:
           script: |
             #!/bin/bash
             echo "Running security scan..."
-            # Scan implementation
 ```
 
 ---
@@ -201,6 +192,17 @@ update:
 metadata:
   name: "Agregar stage de validación"
   version: "1.0"
+  description: "Agregar stage de Smoke Testing"
+  comment: |
+    Nuevo stage de Smoke Testing
+    
+    Propósito:
+    - Validar deployment antes de producción
+    - Ejecutar pruebas de humo (smoke tests)
+    - Verificar endpoints críticos
+    - Duración estimada: 5-10 minutos
+    - Responsable: QA Team
+    - Inicio: 2026-07-15
 
 search:
   stages:
@@ -214,20 +216,6 @@ update:
       position: "between"
       after_stage: "Staging"
       before_stage: "Producción"
-      
-      comment:
-        type: "stage_addition"
-        message: "Nuevo stage de Smoke Testing agregado entre Staging y Producción"
-      
-      custom_comment: |
-        Propósito del nuevo stage:
-        - Validar deployment antes de producción
-        - Ejecutar pruebas de humo (smoke tests)
-        - Verificar endpoints críticos
-        - Duración estimada: 5-10 minutos
-        - Responsable: QA Team
-        - Inicio: 2026-07-15
-      
       definition:
         # ... definición del stage
 ```
@@ -240,6 +228,17 @@ update:
 metadata:
   name: "Actualizar dependencias"
   version: "1.0"
+  description: "Cambiar aprobador de Producción"
+  comment: |
+    Cambio de dependencias en Producción
+    
+    Cambios:
+    - Aprobador anterior: QA Team
+    - Nuevo aprobador: DevOps Team
+    - Razón: QA ahora está en stage separado
+    - Timeout: 24 horas
+    - Notificaciones: Habilitadas
+    - Efectivo desde: 2026-07-13
 
 search:
   stages:
@@ -252,19 +251,6 @@ update:
         - path: "preDeployApprovals.approvals[0].approver.displayName"
           old_value: "QA Team"
           new_value: "DevOps Team"
-      
-      comment:
-        type: "dependency_change"
-        message: "Aprobador previo cambiado de QA Team a DevOps Team"
-      
-      custom_comment: |
-        Cambio de dependencias:
-        - Aprobador anterior: QA Team
-        - Nuevo aprobador: DevOps Team
-        - Razón: QA ahora está en stage separado
-        - Timeout: 24 horas
-        - Notificaciones: Habilitadas
-        - Efectivo desde: 2026-07-13
 ```
 
 ---
