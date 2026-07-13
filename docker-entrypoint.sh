@@ -71,5 +71,8 @@ echo ""
 echo "✅ Container listo para usar!"
 echo ""
 
+# Crear alias para toolbox
+alias toolbox="python /app/scm/main.py"
+
 # Ejecutar el comando proporcionado
 exec "$@"

@@ -180,6 +180,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Crear alias toolbox en bashrc para sesiones interactivas
+RUN echo "" >> /etc/bash.bashrc && \
+    echo "# DevSecOps Toolbox alias" >> /etc/bash.bashrc && \
+    echo "alias toolbox='python /app/scm/main.py'" >> /etc/bash.bashrc
+
 USER devsecops
 WORKDIR /home/devsecops
 
