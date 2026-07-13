@@ -10,16 +10,16 @@
 
 | Métrica | Valor | Estado |
 |---------|-------|--------|
-| **Tests Unitarios** | 340 ✅ | PASSED |
+| **Tests Unitarios** | 364 ✅ | PASSED |
 | **Tests Integración** | 27 ⏭️ | SKIPPED |
 | **Cobertura Total** | 15.13% | ⚠️ |
-| **Tiempo Ejecución** | 32.34s | ✅ |
+| **Tiempo Ejecución** | 4.93s | ✅ |
 | **Plataforma** | Windows 10 | ✅ |
 | **Python** | 3.14.2 | ✅ |
 
 ---
 
-## ✅ TESTS UNITARIOS (340 PASSED)
+## ✅ TESTS UNITARIOS (364 PASSED)
 
 ### Desglose por Módulo
 
@@ -32,7 +32,8 @@
 | `test_pr_master_checker.py` | 100+ | ✅ PASSED | ~5.0s |
 | `test_utils.py` | 23 | ✅ PASSED | ~1.2s |
 | `test_zero_coverage.py` | 11 | ✅ PASSED | ~0.6s |
-| **TOTAL** | **340** | **✅ PASSED** | **32.34s** |
+| `test_pipeline_rollback_redo.py` | 24 | ✅ PASSED | ~0.3s |
+| **TOTAL** | **364** | **✅ PASSED** | **4.93s** |
 
 ---
 
@@ -150,8 +151,8 @@ scm/tests/unit/test_zero_coverage.py
 
 ### ✅ Fortalezas
 
-1. **340 tests pasando** - Cobertura completa de funcionalidad crítica
-2. **Tiempo de ejecución rápido** - 32.34s para suite completa
+1. **364 tests pasando** - Cobertura completa de funcionalidad crítica
+2. **Tiempo de ejecución rápido** - 4.93s para suite completa
 3. **Módulos core bien testeados**:
    - `scm/utils.py` - 100% cobertura
    - `scm/kpi_analyzer/maturity_model.py` - 95% cobertura
@@ -163,7 +164,6 @@ scm/tests/unit/test_zero_coverage.py
 
 1. **Cobertura total baja** - 15.13% vs objetivo 25%
 2. **Módulos sin tests**:
-   - Pipeline rollback/update (nuevos en v1.6.19)
    - Dashboard consolidation
    - Search modules
    - Health probe validator
@@ -176,10 +176,11 @@ scm/tests/unit/test_zero_coverage.py
 
 ### Corto Plazo (v1.6.20)
 
-1. **Agregar tests para pipeline-cd-rollback-pipeline.py**
-   - Tests para `redo_pipeline_to_previous_version()`
-   - Tests para argumentos CLI
-   - Tests para logging
+1. ✅ **COMPLETADO: Agregar tests para pipeline-cd-rollback-pipeline.py**
+   - ✅ Tests para `redo_pipeline_to_previous_version()`
+   - ✅ Tests para argumentos CLI
+   - ✅ Tests para logging
+   - ✅ 24 nuevos tests agregados
 
 2. **Agregar tests para dashboard modules**
    - `dashboard_generator.py`
