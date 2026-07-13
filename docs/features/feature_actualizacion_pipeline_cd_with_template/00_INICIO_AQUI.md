@@ -128,6 +128,66 @@ update:
           new_value: "kubectl apply -f manifests/new/"
 ```
 
+#### Ejemplo 3b: Buscar y Cambiar Cadena en Script (Inline Script Task)
+```yaml
+metadata:
+  name: "Actualizar cadena en script inline"
+  version: "1.0"
+  description: "Cambiar URL de base de datos en script inline"
+  comment: |
+    Actualización de cadena en script
+    
+    Cambios realizados:
+    - URL de BD: old-db.company.com → new-db.company.com
+    - Puerto: 5432 → 5433
+    - Razón: Migración a nuevo servidor de base de datos
+    - Aprobado por: Database Team
+    - Fecha: 2026-07-13
+
+search:
+  stages: ["Staging", "Producción"]
+  tasks:
+    - name: "Initialize Database"
+      type: "PowerShell"
+
+update:
+  tasks:
+    - name: "Initialize Database"
+      fields:
+        # Buscar y reemplazar URL de base de datos
+        - path: "inputs.script"
+          old_value: "Server=old-db.company.com;Port=5432"
+          new_value: "Server=new-db.company.com;Port=5433"
+        
+        # Buscar y reemplazar credencial
+        - path: "inputs.script"
+          old_value: "User=dbuser_old;Password=$(OLD_DB_PASSWORD)"
+          new_value: "User=dbuser_new;Password=$(NEW_DB_PASSWORD)"
+        
+        # Buscar y reemplazar nombre de base de datos
+        - path: "inputs.script"
+          old_value: "Database=production_old"
+          new_value: "Database=production_new"
+```
+
+**Ejemplo de script original**:
+```powershell
+$connectionString = "Server=old-db.company.com;Port=5432;User=dbuser_old;Password=$(OLD_DB_PASSWORD);Database=production_old"
+$connection = New-Object System.Data.SqlClient.SqlConnection
+$connection.ConnectionString = $connectionString
+$connection.Open()
+Write-Host "Connected to old-db.company.com"
+```
+
+**Resultado después de la actualización**:
+```powershell
+$connectionString = "Server=new-db.company.com;Port=5433;User=dbuser_new;Password=$(NEW_DB_PASSWORD);Database=production_new"
+$connection = New-Object System.Data.SqlClient.SqlConnection
+$connection.ConnectionString = $connectionString
+$connection.Open()
+Write-Host "Connected to new-db.company.com"
+```
+
 #### Ejemplo 4: Eliminar una Task
 ```yaml
 metadata:
