@@ -574,38 +574,77 @@ def redo_pipeline_to_previous_version(definition_id: int, org: str, project: str
         pat: Personal Access Token
         dry_run: Si es True, solo simula el redo
     """
+    import datetime
+    from pathlib import Path
+    
+    # Crear carpeta outcome si no existe
+    outcome_dir = Path("outcome")
+    outcome_dir.mkdir(exist_ok=True)
+    
+    # Crear archivo de log
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = outcome_dir / f"redo_pipeline_{definition_id}_{timestamp}.log"
+    
+    def log_message(msg: str, level: str = "INFO"):
+        """Escribe mensaje en log y consola."""
+        timestamp_msg = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp_msg}] [{level}] {msg}"
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry + "\n")
+        print(msg)
+    
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
     print(f"{Colors.BOLD}  Azure DevOps Pipeline Redo v{__version__}{Colors.ENDC}")
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    log_message(f"=== INICIO REDO PIPELINE {definition_id} ===", "INFO")
+    log_message(f"Organización: {org}", "INFO")
+    log_message(f"Proyecto: {project}", "INFO")
+    log_message(f"Modo DRY-RUN: {dry_run}", "INFO")
     
     # Obtener definición actual
     print(f"{Colors.CYAN}>>> Obteniendo definición actual del pipeline {definition_id}...{Colors.ENDC}")
+    log_message(f"Obteniendo definición actual del pipeline {definition_id}...", "INFO")
     current_definition = get_release_definition(org, project, definition_id, pat)
     current_revision = current_definition.get('revision', 'N/A')
     print(f"{Colors.GREEN}✓ Definición actual obtenida (Revision: {current_revision}){Colors.ENDC}")
+    log_message(f"Definición actual obtenida (Revision: {current_revision})", "INFO")
     
     # Validar que hay una revisión anterior
     if current_revision <= 1:
         print(f"{Colors.YELLOW}⚠ No hay revisión anterior a la actual (Revisión: {current_revision}){Colors.ENDC}")
+        log_message(f"No hay revisión anterior (Revisión: {current_revision})", "WARNING")
         return 1
     
     # Calcular revisión anterior
     previous_revision = current_revision - 1
+    log_message(f"Revisión anterior calculada: {previous_revision}", "INFO")
     
     # Obtener definición de la revisión anterior
     print(f"\n{Colors.CYAN}>>> Obteniendo revisión anterior ({previous_revision})...{Colors.ENDC}")
+    log_message(f"Obteniendo revisión anterior ({previous_revision})...", "INFO")
     previous_definition = get_pipeline_revision(org, project, definition_id, previous_revision, pat)
     print(f"{Colors.GREEN}✓ Revisión {previous_revision} obtenida exitosamente{Colors.ENDC}")
+    log_message(f"Revisión {previous_revision} obtenida exitosamente", "INFO")
     
     # Mostrar información de la revisión anterior
     print(f"\n{Colors.CYAN}Información de la revisión anterior:{Colors.ENDC}")
+    pipeline_name = previous_definition.get('name', 'Unknown')
+    modified_by = previous_definition.get('modifiedBy', {}).get('displayName', 'Unknown')
+    modified_on = previous_definition.get('modifiedOn', 'Unknown')
+    comment = previous_definition.get('comment', 'No comment')
+    
     print(f"  Pipeline ID: {definition_id}")
-    print(f"  Pipeline Name: {previous_definition.get('name', 'Unknown')}")
+    print(f"  Pipeline Name: {pipeline_name}")
     print(f"  Revisión actual: {current_revision}")
     print(f"  Revisión anterior: {previous_revision}")
-    print(f"  Modificado por: {previous_definition.get('modifiedBy', {}).get('displayName', 'Unknown')}")
-    print(f"  Fecha: {previous_definition.get('modifiedOn', 'Unknown')}")
-    print(f"  Comentario: {previous_definition.get('comment', 'No comment')}")
+    print(f"  Modificado por: {modified_by}")
+    print(f"  Fecha: {modified_on}")
+    print(f"  Comentario: {comment}")
+    
+    log_message(f"Pipeline Name: {pipeline_name}", "INFO")
+    log_message(f"Revisión actual: {current_revision}, Anterior: {previous_revision}", "INFO")
+    log_message(f"Modificado por: {modified_by}", "INFO")
+    log_message(f"Fecha: {modified_on}", "INFO")
     
     # Confirmación
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
@@ -623,25 +662,34 @@ def redo_pipeline_to_previous_version(definition_id: int, org: str, project: str
     
     if confirm != 'SI':
         print(f"\n{Colors.YELLOW}✗ Redo cancelado por el usuario{Colors.ENDC}")
+        log_message("Redo cancelado por el usuario", "WARNING")
+        log_message(f"=== FIN REDO PIPELINE {definition_id} (CANCELADO) ===", "INFO")
         return 0
     
     print(f"\n{Colors.GREEN}✓ Confirmación recibida. Iniciando redo...{Colors.ENDC}\n")
+    log_message("Confirmación recibida. Iniciando redo...", "INFO")
     
     # Realizar redo
     if dry_run:
         print(f"{Colors.YELLOW}>>> Modo DRY-RUN: Cambios NO aplicados{Colors.ENDC}")
         print(f"{Colors.CYAN}  Se restauraría la definición de la revisión {previous_revision}{Colors.ENDC}")
+        log_message(f"Modo DRY-RUN: Se restauraría la definición de la revisión {previous_revision}", "INFO")
     else:
         # Modificar el comentario para indicar redo
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        previous_definition['comment'] = f"[Redo - {timestamp}] Reverted to previous revision {previous_revision}"
+        timestamp_redo = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        previous_definition['comment'] = f"[Redo - {timestamp_redo}] Reverted to previous revision {previous_revision}"
         
+        log_message(f"Restaurando definición del pipeline a revisión {previous_revision}...", "INFO")
         response = restore_pipeline_definition(org, project, definition_id, pat, previous_definition)
+        new_revision = response.get('revision', 'N/A')
+        log_message(f"Pipeline restaurado exitosamente. Nueva revisión: {new_revision}", "INFO")
+        
         print(f"\n{Colors.GREEN}{'='*70}{Colors.ENDC}")
         print(f"{Colors.GREEN}  ✓ Redo completado exitosamente{Colors.ENDC}")
         print(f"{Colors.GREEN}{'='*70}{Colors.ENDC}\n")
     
+    log_message(f"=== FIN REDO PIPELINE {definition_id} (EXITOSO) ===", "INFO")
+    log_message(f"Log guardado en: {log_file}", "INFO")
     return 0
 
 
