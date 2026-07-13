@@ -244,6 +244,78 @@ update:
         - path: "rank"
           old_value: 3
           new_value: 4
+      
+      # Comentario automático basado en el tipo de cambio
+      comment:
+        type: "dependency_change"  # Tipos: dependency_change, stage_reorder, task_update, etc.
+        message: "Actualización de dependencias: Ahora requiere aprobación de DevOps Team"
+      
+      # Comentario personalizado adicional (opcional)
+      custom_comment: "Cambio realizado como parte de la migración a nuevo cluster GKE"
+```
+
+---
+
+#### Ejemplo 7b: Reorganizar Orden de Stages
+```yaml
+metadata:
+  name: "Reorganizar orden de stages"
+  version: "1.0"
+  description: "Cambiar el orden de ejecución de los stages en el pipeline"
+  
+search:
+  stages:
+    - name: "QA"
+    - name: "Staging"
+    - name: "Producción"
+  
+update:
+  stages:
+    # Mover QA al final (después de Producción)
+    - name: "QA"
+      fields:
+        - path: "rank"
+          old_value: 1
+          new_value: 3
+      comment:
+        type: "stage_reorder"
+        message: "Stage QA movido al final del pipeline"
+      custom_comment: "QA ahora se ejecuta después de producción para validación post-deploy"
+    
+    # Mover Staging a la primera posición
+    - name: "Staging"
+      fields:
+        - path: "rank"
+          old_value: 2
+          new_value: 1
+      comment:
+        type: "stage_reorder"
+        message: "Stage Staging movido a la primera posición"
+      custom_comment: "Staging es ahora el primer ambiente de prueba"
+    
+    # Producción se mantiene en el medio
+    - name: "Producción"
+      fields:
+        - path: "rank"
+          old_value: 3
+          new_value: 2
+      comment:
+        type: "stage_reorder"
+        message: "Stage Producción reordenado a posición 2"
+      custom_comment: "Nuevo orden: Staging → Producción → QA"
+```
+
+**Resultado esperado**:
+```
+Antes:
+1. QA
+2. Staging
+3. Producción
+
+Después:
+1. Staging
+2. Producción
+3. QA
 ```
 
 #### Ejemplo 8: Actualización Compleja (Multi-stage, Multi-task)
@@ -271,6 +343,10 @@ update:
   tasks:
     - name: "Old Legacy Task"
       action: "remove"
+      comment:
+        type: "task_removal"
+        message: "Task obsoleta removida - Reemplazada por KubectlDeploy"
+      custom_comment: "Azure App Service Deploy ya no se usa. Todos los deployments ahora usan Kubernetes"
     
     # 2. Cambiar Docker Push
     - name: "Docker Push"
@@ -278,6 +354,10 @@ update:
         - path: "inputs.imageRepository"
           old_value: "gcr.io/old-project/app"
           new_value: "gcr.io/new-project/app"
+      comment:
+        type: "task_update"
+        message: "Registro Docker actualizado a nuevo proyecto GCP"
+      custom_comment: "Migración de proyecto GCP: old-project → new-project"
     
     # 3. Cambiar Kubectl
     - name: "Deploy with Kubectl"
@@ -288,6 +368,10 @@ update:
         - path: "inputs.namespace"
           old_value: "default"
           new_value: "production"
+      comment:
+        type: "task_update"
+        message: "Cluster Kubernetes y namespace actualizados"
+      custom_comment: "Migración a nuevo cluster GKE en us-central1 con namespace production"
   
   # 4. Agregar nuevo stage de validación
   stages:
@@ -296,6 +380,10 @@ update:
       position: "between"
       after_stage: "Staging"
       before_stage: "Producción"
+      comment:
+        type: "stage_addition"
+        message: "Nuevo stage de validación agregado entre Staging y Producción"
+      custom_comment: "Stage de Smoke Testing para validar deployments antes de producción"
       definition:
         id: 3
         name: "Validation"
@@ -315,6 +403,21 @@ update:
                       #!/bin/bash
                       echo "Validating..."
                       kubectl get pods -n production
+```
+
+**Comentarios Automáticos Generados**:
+```
+[TASK REMOVAL] Task obsoleta removida - Reemplazada por KubectlDeploy
+  → Detalle: Azure App Service Deploy ya no se usa. Todos los deployments ahora usan Kubernetes
+
+[TASK UPDATE] Registro Docker actualizado a nuevo proyecto GCP
+  → Detalle: Migración de proyecto GCP: old-project → new-project
+
+[TASK UPDATE] Cluster Kubernetes y namespace actualizados
+  → Detalle: Migración a nuevo cluster GKE en us-central1 con namespace production
+
+[STAGE ADDITION] Nuevo stage de validación agregado entre Staging y Producción
+  → Detalle: Stage de Smoke Testing para validar deployments antes de producción
 ```
 
 ### 2. **Procesamiento Masivo**
