@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.6.19`** — 2026-07-13
+**`1.6.20`** — 2026-07-13
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-07-13 | **1.6.20** | **Testing & Coverage Expansion**: Expansión significativa de cobertura de tests con 123 tests nuevos, alcanzando 370 tests totales. (1) **Tests por Plataforma**: 16 tests AZDO (PR Checker, Branch Policies, Release Health, Pipeline Drift, Task Validator, Pipeline Updater, Rollback, Redo), 18 tests GCP (Service Accounts, Cloud SQL, GKE, Cloud Run, Connectivity, Cloud Functions), 18 tests AWS (IAM, RDS, VPC, EKS, ECR, Lambda, S3), 30 tests KPI (DORA, SRE, Security, Cost, Quality, Performance, Maturity Levels, Benchmarks, Scoring). (2) **Consolidación de Tests**: Todos los tests movidos a `scm/tests/unit/` para mejor mantenibilidad. Removidos tests con imports incompatibles. (3) **Tests Adicionales**: test_analyzer_kpi.py (13), test_reporter_kpi.py (13), test_output_manager.py (15), test_pipeline_rollback_redo.py (24). (4) **Estadísticas**: 370 tests pasando, 0 fallos, 12.79% cobertura, 3.88s ejecución. | `scm/tests/unit/`, `RELEASE_NOTES_1.6.20.md` |
 | 2026-07-13 | **1.6.19** | **Pipeline Redo & Logging System**: (1) **Opción Redo** (Tool 22, Opción 6): Nueva funcionalidad para volver a la versión previa de un pipeline basado en definition_id. Obtiene revisión anterior, muestra información detallada, solicita confirmación (requiere escribir "SI"), soporta modo DRY-RUN. (2) **Logging Completo**: Todas las operaciones de Redo registran en `outcome/redo_pipeline_[id]_[timestamp].log` con timestamps, niveles (INFO/WARNING), y eventos clave (inicio, obtención de definiciones, confirmación, ejecución, fin). (3) **Dockerfile Enhancement**: Agregado `nano` para editar/copiar templates dentro del contenedor. (4) **Documentación**: Actualizado README.md con nueva funcionalidad de Redo. (5) **Validación de Templates**: Sistema preparado para leer y validar archivos template antes de ejecutar operaciones. | `scm/azdo/pipeline-cd-rollback-pipeline.py`, `scm/azdo/tools.py`, `Dockerfile`, `README.md` |
 | 2026-07-09 | **1.6.18** | **KPI Analyzer Pro v1.9.6 - Integración Dashboard Completa**: Integración exitosa de Dashboard Matutino en KPI Analyzer Pro. (1) **5 Módulos Nuevos** (~1,980 líneas): health_score.py (DORA metrics), exporter.py (JSON/CSV/HTML/Excel), consolidator.py (multi-fuente), generator.py (dashboards HTML), scheduler.py (planificación automática). (2) **16 Herramientas Integradas**: 5 análisis KPI + 7 dashboards/consolidación + 4 exportación. (3) **Correcciones**: Fix acceso defensivo a 'emoji' y 'name' en tools.py con .get(). (4) **Limpieza**: Opción 6 (Dashboard) removida de main.py, consolidada en Opción 5. (5) **Configuración**: config.json.template actualizado a v1.9.6 con Dashboard integrado. | `scm/kpi_analyzer/`, `scm/main.py`, `scm/config.json.template` |
 | 2026-07-08 | **1.6.17** | **Validación y Limpieza de Configuración**: Actualización de versión en config.json.template a 1.6.17 con referencias a Dashboard integrado en KPI Analyzer Pro. | `scm/config.json.template` |
