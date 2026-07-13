@@ -146,6 +146,12 @@ WORKDIR /app
 # Copiar solo el código fuente necesario (sin tests, docs, etc.)
 COPY scm/ /app/scm/
 COPY VERSION /app/VERSION
+
+# Crear archivos README por defecto (pueden ser sobrescritos si existen en el contexto)
+RUN echo "# DevSecOps Toolbox" > /app/README.md && \
+    echo "# Versiones" > /app/README.version.md
+
+# Copiar archivos README si existen en el contexto (sobrescriben los por defecto)
 COPY README.md /app/README.md
 COPY README.version.md /app/README.version.md
 
