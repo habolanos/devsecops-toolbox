@@ -81,7 +81,7 @@ devsecops-toolbox/
 
 ### **Paso 1: Crear Template YAML** (en `scm/templates/`)
 
-Archivo: `scm/templates/cambiar-docker.yaml`
+Archivo: `scm/templates/pipe_cd_update_docker.yaml`
 
 ```yaml
 metadata:
@@ -113,7 +113,7 @@ Luego:
 1. Seleccionar: **Azure DevOps**
 2. Seleccionar: **Tool 21 (Pipeline Updater)**
 3. Ingresar: **definition-ids** (ej: `3388,3389,3390`)
-4. Ingresar: **ruta del template** (ej: `scm/templates/cambiar-docker.yaml`)
+4. Ingresar: **ruta del template** (ej: `scm/templates/pipe_cd_update_docker.yaml`)
 5. Confirmar: **Y**
 
 ### **Paso 3: Revisar Resultados**
@@ -334,10 +334,13 @@ Sí, validación + confirmación + snapshots + rollback
 devsecops-toolbox/
 ├── scm/
 │   ├── templates/                    ← GUARDAR AQUÍ LOS TEMPLATES
-│   │   ├── cambiar-docker.yaml
-│   │   ├── cambiar-k8s.yaml
-│   │   ├── cambiar-variables.yaml
-│   │   └── cambiar-azure.yaml
+│   │   ├── pipe_cd_update_docker.yaml
+│   │   ├── pipe_cd_update_kubernetes.yaml
+│   │   ├── pipe_cd_update_variables.yaml
+│   │   ├── pipe_cd_update_azure.yaml
+│   │   ├── pipe_cd_update_script.yaml
+│   │   ├── pipe_cd_update_migracion.yaml
+│   │   └── README.md
 │   │
 │   ├── azdo/
 │   │   ├── tools.py                  ← Tool 21 aquí
@@ -360,7 +363,7 @@ devsecops-toolbox/
 ## ✅ CHECKLIST ANTES DE EJECUTAR
 
 - [ ] Creé carpeta `scm/templates/`
-- [ ] Creé archivo template YAML (ej: `cambiar-docker.yaml`)
+- [ ] Creé archivo template YAML (ej: `pipe_cd_update_docker.yaml`)
 - [ ] Verifiqué nombres exactos de stages/tasks
 - [ ] Preparé lista de definition-ids
 - [ ] Leí ESPECIFICACION.md
@@ -371,14 +374,15 @@ devsecops-toolbox/
 
 ---
 
-## �🚀 Próximos Pasos
+## �� Próximos Pasos
 
-1. **Crear carpeta**: `mkdir scm/templates`
-2. **Crear template**: `scm/templates/mi-template.yaml`
+1. **Carpeta creada**: `scm/templates/` ✅
+2. **Templates listos**: `pipe_cd_update_*.yaml` ✅
 3. **Leer**: ESPECIFICACION.md - Formato del template
 4. **Aprender**: EJEMPLOS.md - Casos reales
 5. **Ejecutar**: `python scm/main.py` → Tool 21
-6. **Monitorear**: Revisar reportes JSON
+6. **Ingresar**: `scm/templates/pipe_cd_update_docker.yaml`
+7. **Monitorear**: Revisar reportes JSON
 
 ---
 
