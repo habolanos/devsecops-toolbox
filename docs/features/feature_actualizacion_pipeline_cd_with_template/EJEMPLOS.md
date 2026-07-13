@@ -19,7 +19,7 @@ search:
   stages: ["Producción"]
   tasks:
     - name: "Push Docker"
-      type: "Docker"
+    # type: "Docker"              # Opcional
 
 update:
   tasks:
@@ -59,7 +59,8 @@ metadata:
 search:
   stages: ["Producción", "Staging"]
   tasks:
-    - type: "KubectlDeploy"
+    - name: "Deploy"
+    # type: "KubectlDeploy"       # Opcional
 
 update:
   tasks:
@@ -119,7 +120,8 @@ metadata:
 search:
   stages: ["Deploy"]
   tasks:
-    - type: "AzureCLI"
+    - name: "Deploy"
+    # type: "AzureCLI"            # Opcional
 
 update:
   tasks:
@@ -151,7 +153,7 @@ search:
   stages: ["Staging", "Producción"]
   tasks:
     - name: "Initialize Database"
-      type: "PowerShell"
+    # type: "PowerShell"          # Opcional
 
 update:
   tasks:
@@ -216,8 +218,10 @@ metadata:
 search:
   stages: ["Producción"]
   tasks:
-    - type: "Docker"
-    - type: "KubectlDeploy"
+    - name: "Push Docker"
+    # type: "Docker"              # Opcional
+    - name: "Deploy"
+    # type: "KubectlDeploy"       # Opcional
   variables:
     - name: "ENVIRONMENT"
 
@@ -255,7 +259,8 @@ metadata:
 search:
   stages: ["Producción"]    # Solo buscar en Producción
   tasks:
-    - type: "Docker"
+    - name: "Push Docker"
+    # type: "Docker"              # Opcional
 
 update:
   tasks:
@@ -281,7 +286,8 @@ metadata:
 
 search:
   tasks:
-    - type: "KubectlDeploy"   # Solo este tipo
+    - name: "Deploy"
+    # type: "KubectlDeploy"       # Opcional (solo este tipo)
 
 update:
   tasks:

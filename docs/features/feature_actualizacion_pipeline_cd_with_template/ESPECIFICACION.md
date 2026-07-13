@@ -62,19 +62,26 @@ Busca stages cuyo nombre coincida exactamente.
 ```yaml
 search:
   tasks:
-    - name: "Deploy"              # Nombre exacto
-      type: "KubectlDeploy"       # Tipo de task (opcional)
+    - name: "Deploy"              # Requerido: Nombre exacto
+    # - type: "KubectlDeploy"     # Opcional: Tipo de task (más específico)
     - name: "Build"
-      type: "Docker"
+    # - type: "Docker"
 ```
 
-**Tipos de Tasks Comunes:**
+**Notas:**
+- `name`: Requerido - Nombre exacto de la tarea
+- `type`: Opcional - Tipo de tarea (para más precisión)
+
+**Tipos de Tasks Comunes (referencia):**
 - `KubectlDeploy` - Desplegar en Kubernetes
 - `Docker` - Construir/empujar imagen Docker
 - `PowerShell` - Ejecutar script PowerShell
 - `BashScript` - Ejecutar script Bash
 - `AzureCLI` - Ejecutar comando Azure CLI
 - `ServiceFabricDeploy` - Desplegar en Service Fabric
+- `AzureAppServiceDeploy` - Desplegar en App Service
+- `CmdLine` - Ejecutar comando línea
+- `VSTest` - Ejecutar tests Visual Studio
 
 ### Buscar Variables
 

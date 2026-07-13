@@ -103,8 +103,8 @@ options:           # OPCIONES
 search:
   stages: ["Producción", "Staging"]
   tasks:
-    - name: "Deploy"
-      type: "KubectlDeploy"
+    - name: "Deploy"                    # Requerido
+    # - type: "KubectlDeploy"           # Opcional (más específico)
   variables:
     - name: "IMAGE_TAG"
 ```
