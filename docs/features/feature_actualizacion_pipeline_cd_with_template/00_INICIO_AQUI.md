@@ -39,25 +39,282 @@ Permitir a DevOps Engineers actualizar **múltiples pipelines CD simultáneament
 ## 🔑 Conceptos Clave
 
 ### 1. **Template de Actualización**
-Archivo YAML/JSON que define:
+Archivo YAML/JSON que define QUÉ BUSCAR y QUÉ ACTUALIZAR:
+
+#### Ejemplo 1: Buscar y Cambiar Propiedad en Task Kubectl
 ```yaml
 metadata:
-  name: "Actualizar imagen Docker"
+  name: "Actualizar namespace en Kubectl"
   version: "1.0"
   
 search:
-  stages: ["QA", "Producción"]
+  stages: ["Producción"]
   tasks:
-    - name: "Docker Push"
-      type: "DockerPush"
+    - name: "Deploy with Kubectl"
+      type: "KubectlDeploy"
   
 update:
   tasks:
+    - name: "Deploy with Kubectl"
+      fields:
+        - path: "inputs.kubernetesServiceConnection"
+          old_value: "old-gke-cluster"
+          new_value: "new-gke-cluster"
+        - path: "inputs.namespace"
+          old_value: "default"
+          new_value: "production"
+        - path: "inputs.manifests"
+          old_value: "k8s/old-manifest.yaml"
+          new_value: "k8s/new-manifest.yaml"
+```
+
+#### Ejemplo 2: Buscar Cadena en Task Command Line
+```yaml
+metadata:
+  name: "Buscar y reemplazar en PowerShell"
+  version: "1.0"
+  
+search:
+  stages: ["QA", "Staging"]
+  tasks:
+    - name: "Run PowerShell Script"
+      type: "PowerShell"
+  
+update:
+  tasks:
+    - name: "Run PowerShell Script"
+      fields:
+        # Buscar cadena en el script y reemplazarla
+        - path: "inputs.script"
+          old_value: "Write-Host 'Environment: staging'"
+          new_value: "Write-Host 'Environment: production'"
+        # O cambiar parámetros
+        - path: "inputs.arguments"
+          old_value: "-Environment staging -Replicas 3"
+          new_value: "-Environment production -Replicas 5"
+```
+
+#### Ejemplo 3: Buscar y Cambiar en Task Bash/Shell
+```yaml
+metadata:
+  name: "Actualizar variables en Bash"
+  version: "1.0"
+  
+search:
+  stages: ["Deploy"]
+  tasks:
+    - name: "Execute Bash Script"
+      type: "BashScript"
+  
+update:
+  tasks:
+    - name: "Execute Bash Script"
+      fields:
+        - path: "inputs.script"
+          old_value: "export DOCKER_REGISTRY=gcr.io/old-project"
+          new_value: "export DOCKER_REGISTRY=gcr.io/new-project"
+        - path: "inputs.script"
+          old_value: "kubectl apply -f manifests/old/"
+          new_value: "kubectl apply -f manifests/new/"
+```
+
+#### Ejemplo 4: Eliminar una Task
+```yaml
+metadata:
+  name: "Eliminar task obsoleta"
+  version: "1.0"
+  
+search:
+  stages: ["QA"]
+  tasks:
+    - name: "Old Deployment Task"
+      type: "AzureAppServiceDeploy"
+  
+update:
+  tasks:
+    - name: "Old Deployment Task"
+      action: "remove"  # Eliminar esta task
+```
+
+#### Ejemplo 5: Agregar una Nueva Task
+```yaml
+metadata:
+  name: "Agregar task de validación"
+  version: "1.0"
+  
+search:
+  stages: ["Staging"]
+  tasks:
+    - name: "Deploy to Kubernetes"
+      type: "KubernetesManifest"
+  
+update:
+  tasks:
+    # Agregar nueva task DESPUÉS de "Deploy to Kubernetes"
+    - name: "Health Check Validation"
+      action: "add"
+      position: "after"
+      reference_task: "Deploy to Kubernetes"
+      definition:
+        displayName: "Health Check Validation"
+        enabled: true
+        task:
+          id: "6C731787-BC2C-4436-8290-A81493FFEA35"  # BashScript
+          versionSpec: "3.*"
+        inputs:
+          script: |
+            #!/bin/bash
+            echo "Validating deployment health..."
+            kubectl get pods -n production
+            kubectl get services -n production
+```
+
+#### Ejemplo 6: Agregar Stage Completo con Dependencias
+```yaml
+metadata:
+  name: "Agregar stage de validación"
+  version: "2.0"
+  description: "Agregar stage de Smoke Testing que depende de Staging"
+  
+search:
+  stages:
+    - name: "Staging"
+    - name: "Producción"
+  
+update:
+  stages:
+    # Agregar nuevo stage entre Staging y Producción
+    - name: "Smoke Testing"
+      action: "add"
+      position: "between"
+      before_stage: "Producción"
+      after_stage: "Staging"
+      definition:
+        id: 4
+        name: "Smoke Testing"
+        rank: 2
+        deployPhases:
+          - id: 1
+            name: "Run Smoke Tests"
+            deploymentInput:
+              tasks:
+                - displayName: "Run Smoke Tests"
+                  enabled: true
+                  task:
+                    id: "6C731787-BC2C-4436-8290-A81493FFEA35"
+                    versionSpec: "3.*"
+                  inputs:
+                    script: |
+                      #!/bin/bash
+                      echo "Running smoke tests..."
+                      curl -f https://api.production.com/health
+                      curl -f https://web.production.com/
+        # Hacer que este stage dependa de Staging
+        preDeployApprovals:
+          approvals:
+            - rank: 1
+              isAutomated: true
+              isNotificationOn: false
+              approver:
+                displayName: "Automated"
+        # Hacer que Producción dependa de este stage
+        postDeployApprovals:
+          approvals: []
+```
+
+#### Ejemplo 7: Cambiar Dependencias Entre Stages
+```yaml
+metadata:
+  name: "Cambiar dependencias de stages"
+  version: "1.0"
+  
+search:
+  stages:
+    - name: "Producción"
+  
+update:
+  stages:
+    - name: "Producción"
+      fields:
+        # Cambiar el stage del que depende
+        - path: "preDeployApprovals.approvals[0].approver.displayName"
+          old_value: "QA Team"
+          new_value: "DevOps Team"
+        # Cambiar rank (posición en el pipeline)
+        - path: "rank"
+          old_value: 3
+          new_value: 4
+```
+
+#### Ejemplo 8: Actualización Compleja (Multi-stage, Multi-task)
+```yaml
+metadata:
+  name: "Migración completa con nuevo stage"
+  version: "3.0"
+  description: "Agregar stage de validación, cambiar tasks y actualizar dependencias"
+  
+search:
+  stages:
+    - name: "QA"
+    - name: "Staging"
+    - name: "Producción"
+  tasks:
+    - name: "Docker Push"
+      type: "DockerPush"
+    - name: "Deploy with Kubectl"
+      type: "KubectlDeploy"
+    - name: "Old Legacy Task"
+      type: "AzureAppServiceDeploy"
+  
+update:
+  # 1. Eliminar task obsoleta
+  tasks:
+    - name: "Old Legacy Task"
+      action: "remove"
+    
+    # 2. Cambiar Docker Push
     - name: "Docker Push"
       fields:
         - path: "inputs.imageRepository"
           old_value: "gcr.io/old-project/app"
           new_value: "gcr.io/new-project/app"
+    
+    # 3. Cambiar Kubectl
+    - name: "Deploy with Kubectl"
+      fields:
+        - path: "inputs.kubernetesServiceConnection"
+          old_value: "old-gke"
+          new_value: "new-gke"
+        - path: "inputs.namespace"
+          old_value: "default"
+          new_value: "production"
+  
+  # 4. Agregar nuevo stage de validación
+  stages:
+    - name: "Validation"
+      action: "add"
+      position: "between"
+      after_stage: "Staging"
+      before_stage: "Producción"
+      definition:
+        id: 3
+        name: "Validation"
+        rank: 2
+        deployPhases:
+          - id: 1
+            name: "Health Checks"
+            deploymentInput:
+              tasks:
+                - displayName: "Validate Deployment"
+                  enabled: true
+                  task:
+                    id: "6C731787-BC2C-4436-8290-A81493FFEA35"
+                    versionSpec: "3.*"
+                  inputs:
+                    script: |
+                      #!/bin/bash
+                      echo "Validating..."
+                      kubectl get pods -n production
 ```
 
 ### 2. **Procesamiento Masivo**
