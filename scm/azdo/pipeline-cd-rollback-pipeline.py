@@ -562,6 +562,89 @@ def rollback_to_revision(pipeline_id: int, to_revision: int, org: str, project: 
     return 0
 
 
+def redo_pipeline_to_previous_version(definition_id: int, org: str, project: str, pat: str, dry_run: bool = False):
+    """
+    Realiza redo (vuelve a la versión previa) de un pipeline basado en definition id.
+    Obtiene la revisión anterior a la actual y la restaura.
+    
+    Args:
+        definition_id: ID del pipeline
+        org: Organización
+        project: Proyecto
+        pat: Personal Access Token
+        dry_run: Si es True, solo simula el redo
+    """
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  Azure DevOps Pipeline Redo v{__version__}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    
+    # Obtener definición actual
+    print(f"{Colors.CYAN}>>> Obteniendo definición actual del pipeline {definition_id}...{Colors.ENDC}")
+    current_definition = get_release_definition(org, project, definition_id, pat)
+    current_revision = current_definition.get('revision', 'N/A')
+    print(f"{Colors.GREEN}✓ Definición actual obtenida (Revision: {current_revision}){Colors.ENDC}")
+    
+    # Validar que hay una revisión anterior
+    if current_revision <= 1:
+        print(f"{Colors.YELLOW}⚠ No hay revisión anterior a la actual (Revisión: {current_revision}){Colors.ENDC}")
+        return 1
+    
+    # Calcular revisión anterior
+    previous_revision = current_revision - 1
+    
+    # Obtener definición de la revisión anterior
+    print(f"\n{Colors.CYAN}>>> Obteniendo revisión anterior ({previous_revision})...{Colors.ENDC}")
+    previous_definition = get_pipeline_revision(org, project, definition_id, previous_revision, pat)
+    print(f"{Colors.GREEN}✓ Revisión {previous_revision} obtenida exitosamente{Colors.ENDC}")
+    
+    # Mostrar información de la revisión anterior
+    print(f"\n{Colors.CYAN}Información de la revisión anterior:{Colors.ENDC}")
+    print(f"  Pipeline ID: {definition_id}")
+    print(f"  Pipeline Name: {previous_definition.get('name', 'Unknown')}")
+    print(f"  Revisión actual: {current_revision}")
+    print(f"  Revisión anterior: {previous_revision}")
+    print(f"  Modificado por: {previous_definition.get('modifiedBy', {}).get('displayName', 'Unknown')}")
+    print(f"  Fecha: {previous_definition.get('modifiedOn', 'Unknown')}")
+    print(f"  Comentario: {previous_definition.get('comment', 'No comment')}")
+    
+    # Confirmación
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.YELLOW}⚠  CONFIRMACIÓN DE REDO{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"Estás a punto de revertir el pipeline {Colors.BOLD}{definition_id}{Colors.ENDC}")
+    print(f"  Revisión actual: {current_revision}")
+    print(f"  Revisión anterior: {previous_revision}")
+    if not dry_run:
+        print(f"{Colors.RED}Los cambios se aplicarán INMEDIATAMENTE y serán PERMANENTES{Colors.ENDC}")
+    else:
+        print(f"{Colors.YELLOW}Modo DRY-RUN: Solo se simulará el redo{Colors.ENDC}")
+    
+    confirm = input(f"\n{Colors.BOLD}¿Deseas continuar? (escribe 'SI' para confirmar): {Colors.ENDC}").strip()
+    
+    if confirm != 'SI':
+        print(f"\n{Colors.YELLOW}✗ Redo cancelado por el usuario{Colors.ENDC}")
+        return 0
+    
+    print(f"\n{Colors.GREEN}✓ Confirmación recibida. Iniciando redo...{Colors.ENDC}\n")
+    
+    # Realizar redo
+    if dry_run:
+        print(f"{Colors.YELLOW}>>> Modo DRY-RUN: Cambios NO aplicados{Colors.ENDC}")
+        print(f"{Colors.CYAN}  Se restauraría la definición de la revisión {previous_revision}{Colors.ENDC}")
+    else:
+        # Modificar el comentario para indicar redo
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        previous_definition['comment'] = f"[Redo - {timestamp}] Reverted to previous revision {previous_revision}"
+        
+        response = restore_pipeline_definition(org, project, definition_id, pat, previous_definition)
+        print(f"\n{Colors.GREEN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.GREEN}  ✓ Redo completado exitosamente{Colors.ENDC}")
+        print(f"{Colors.GREEN}{'='*70}{Colors.ENDC}\n")
+    
+    return 0
+
+
 def get_args():
     """Parsea argumentos de línea de comandos."""
     parser = argparse.ArgumentParser(
@@ -584,6 +667,9 @@ Ejemplos:
   # Listar revisiones de un pipeline
   python rollback-pipeline.py --list-revisions --pipeline-id 2758 --org Coppel-Retail --project Cadena_de_Suministros --pat YOUR_PAT
   
+  # Redo (volver a versión previa)
+  python rollback-pipeline.py --redo --definition-id 2758 --org Coppel-Retail --project Cadena_de_Suministros --pat YOUR_PAT
+  
   # Dry-run
   python rollback-pipeline.py --backup-file outcome/backups/pipeline_2758_backup_20260618_153645.json --pat YOUR_PAT --dry-run
         """
@@ -593,6 +679,8 @@ Ejemplos:
                         help='Ruta al archivo de backup para restaurar')
     parser.add_argument('--pipeline-id', type=int,
                         help='ID del Release Pipeline (para rollback por revisión)')
+    parser.add_argument('--definition-id', type=int,
+                        help='ID de definición del pipeline (para redo a versión previa)')
     parser.add_argument('--to-revision', type=int,
                         help='Número de revisión a la que revertir')
     parser.add_argument('--org', '--organization', type=str,
@@ -605,6 +693,8 @@ Ejemplos:
                         help='Listar todos los backups disponibles')
     parser.add_argument('--list-revisions', action='store_true',
                         help='Listar revisiones de un pipeline (requiere --pipeline-id, --org, --project, --pat)')
+    parser.add_argument('--redo', action='store_true',
+                        help='Redo: volver a la versión previa del pipeline (requiere --definition-id, --org, --project, --pat)')
     parser.add_argument('--hybrid', action='store_true',
                         help='Modo híbrido: usa revisión del backup para rollback desde Azure DevOps (requiere --backup-file)')
     parser.add_argument('--dry-run', action='store_true',
@@ -631,6 +721,13 @@ def main():
             sys.exit(1)
         list_pipeline_revisions(args.org, args.project, args.pipeline_id, args.pat)
         return 0
+    
+    # Redo (volver a versión previa)
+    if args.redo:
+        if not args.definition_id or not args.org or not args.project or not args.pat:
+            print(f"{Colors.RED}✗ Error: --definition-id, --org, --project y --pat son requeridos para redo{Colors.ENDC}")
+            sys.exit(1)
+        return redo_pipeline_to_previous_version(args.definition_id, args.org, args.project, args.pat, args.dry_run)
     
     # Validar argumentos
     if not args.backup_file and not (args.pipeline_id and args.to_revision):

@@ -937,6 +937,7 @@ def run_tool(tool_key: str):
             print(f"{Colors.CYAN}[3]{Colors.ENDC} Manual Revision (rollback a revisión específica)")
             print(f"{Colors.CYAN}[4]{Colors.ENDC} Listar backups disponibles")
             print(f"{Colors.CYAN}[5]{Colors.ENDC} Listar revisiones de un pipeline")
+            print(f"{Colors.CYAN}[6]{Colors.ENDC} Redo (volver a versión previa del pipeline)")
             print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
             print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
             
@@ -1133,8 +1134,52 @@ def run_tool(tool_key: str):
                 input("\nPresione Enter para continuar...")
                 continue
             
+            # Opción 6: Redo (volver a versión previa)
+            elif option == "6":
+                print(f"\n{Colors.BOLD}Pipeline ID (Definition ID):{Colors.ENDC} ", end="")
+                definition_id = input().strip()
+                if not definition_id:
+                    print(f"{Colors.RED}✗ Pipeline ID requerido{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Solicitar PAT y otros parámetros
+                params = ask_common_params(cfg, tool_key=tool_key)
+                if not params:
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Preguntar si dry-run
+                print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
+                dry_run = input().strip().lower()
+                
+                # Construir comando para redo
+                cmd = [
+                    str(venv_python), str(script_path),
+                    "--redo",
+                    "--definition-id", definition_id,
+                    "--org", params["org"],
+                    "--project", params["project"],
+                    "--pat", params["pat"]
+                ]
+                if dry_run == 's':
+                    cmd.append("--dry-run")
+                
+                print(f"\n{Colors.CYAN}▶ Ejecutando Redo (volver a versión previa) del pipeline {definition_id}...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Redo completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Redo falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                
+                input("\nPresione Enter para continuar...")
+                continue
+            
             else:
-                print(f"{Colors.RED}✗ Opción inválida. Por favor seleccione 0-5.{Colors.ENDC}")
+                print(f"{Colors.RED}✗ Opción inválida. Por favor seleccione 0-6.{Colors.ENDC}")
                 input("\nPresione Enter para continuar...")
                 continue
     
