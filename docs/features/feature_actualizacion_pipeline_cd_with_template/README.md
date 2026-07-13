@@ -20,9 +20,68 @@ Sistema para **actualizar múltiples pipelines CD en Azure DevOps simultáneamen
 
 ---
 
-## 🎯 Uso Rápido
+## 📁 DÓNDE CREAR LOS TEMPLATES
 
-### 1. Crear Template YAML
+### **Ubicación Recomendada**
+
+```
+devsecops-toolbox/
+├── scm/
+│   ├── templates/                    ← CREAR ESTA CARPETA
+│   │   ├── cambiar-docker.yaml
+│   │   ├── cambiar-k8s.yaml
+│   │   └── cambiar-variables.yaml
+│   │
+│   └── azdo/
+│       └── tools.py
+```
+
+### **Pasos para Crear la Carpeta**
+
+1. **Crear carpeta `templates`**
+   ```bash
+   mkdir scm/templates
+   ```
+
+2. **Crear archivo template YAML**
+   ```bash
+   # Ejemplo: cambiar-docker.yaml
+   nano scm/templates/cambiar-docker.yaml
+   ```
+
+3. **Pegar contenido del template**
+   ```yaml
+   metadata:
+     name: "Cambiar imagen Docker"
+     version: "1.0"
+     comment: "Actualizar imagen de v1.0 a v2.0"
+   
+   search:
+     stages: ["Producción"]
+     tasks:
+       - name: "Push Docker"
+   
+   update:
+     tasks:
+       - name: "Push Docker"
+         fields:
+           - path: "inputs.repository"
+             old_value: "myapp:v1.0"
+             new_value: "myapp:v2.0"
+   ```
+
+4. **Guardar archivo**
+   ```
+   Ctrl+O → Enter → Ctrl+X
+   ```
+
+---
+
+## 🎯 Uso Rápido (3 Pasos)
+
+### **Paso 1: Crear Template YAML** (en `scm/templates/`)
+
+Archivo: `scm/templates/cambiar-docker.yaml`
 
 ```yaml
 metadata:
@@ -34,7 +93,6 @@ search:
   stages: ["Producción"]
   tasks:
     - name: "Deploy Docker"
-      type: "Docker"
 
 update:
   tasks:
@@ -45,21 +103,26 @@ update:
           new_value: "myapp:v2.0"
 ```
 
-### 2. Ejecutar Actualización
+### **Paso 2: Ejecutar Tool 21**
 
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21 (Pipeline Updater)
-# Ingresar: definition-ids: "3388,3389,3390"
-# Ingresar: archivo template
-# Confirmar cambios
 ```
 
-### 3. Resultado
+Luego:
+1. Seleccionar: **Azure DevOps**
+2. Seleccionar: **Tool 21 (Pipeline Updater)**
+3. Ingresar: **definition-ids** (ej: `3388,3389,3390`)
+4. Ingresar: **ruta del template** (ej: `scm/templates/cambiar-docker.yaml`)
+5. Confirmar: **Y**
 
-✅ Todos los pipelines actualizados  
-✅ Reporte JSON con cambios  
-✅ Rollback automático si falla  
+### **Paso 3: Revisar Resultados**
+
+```
+✅ Reporte JSON con cambios aplicados
+✅ Confirmación de pipelines actualizados
+✅ Rollback automático si algo falla
+```  
 
 ---
 
@@ -265,12 +328,57 @@ Sí, validación + confirmación + snapshots + rollback
 
 ---
 
-## 🚀 Próximos Pasos
+## � ESTRUCTURA DE CARPETAS FINAL
 
-1. **Leer**: ESPECIFICACION.md - Formato del template
-2. **Aprender**: EJEMPLOS.md - Casos reales
-3. **Ejecutar**: Usar Tool 21 en Azure DevOps
-4. **Monitorear**: Revisar reportes JSON
+```
+devsecops-toolbox/
+├── scm/
+│   ├── templates/                    ← GUARDAR AQUÍ LOS TEMPLATES
+│   │   ├── cambiar-docker.yaml
+│   │   ├── cambiar-k8s.yaml
+│   │   ├── cambiar-variables.yaml
+│   │   └── cambiar-azure.yaml
+│   │
+│   ├── azdo/
+│   │   ├── tools.py                  ← Tool 21 aquí
+│   │   └── ...
+│   │
+│   ├── main.py                       ← Ejecutar desde aquí
+│   └── ...
+│
+└── docs/
+    └── features/
+        └── feature_actualizacion_pipeline_cd_with_template/
+            ├── 00_ACCESO.md          ← Guía de acceso
+            ├── README.md             ← Este archivo
+            ├── ESPECIFICACION.md     ← Formato YAML
+            └── EJEMPLOS.md           ← Casos prácticos
+```
+
+---
+
+## ✅ CHECKLIST ANTES DE EJECUTAR
+
+- [ ] Creé carpeta `scm/templates/`
+- [ ] Creé archivo template YAML (ej: `cambiar-docker.yaml`)
+- [ ] Verifiqué nombres exactos de stages/tasks
+- [ ] Preparé lista de definition-ids
+- [ ] Leí ESPECIFICACION.md
+- [ ] Copié un ejemplo de EJEMPLOS.md
+- [ ] Personalicé los valores
+- [ ] Guardé el archivo en `scm/templates/`
+- [ ] Estoy listo para ejecutar Tool 21
+
+---
+
+## �🚀 Próximos Pasos
+
+1. **Crear carpeta**: `mkdir scm/templates`
+2. **Crear template**: `scm/templates/mi-template.yaml`
+3. **Leer**: ESPECIFICACION.md - Formato del template
+4. **Aprender**: EJEMPLOS.md - Casos reales
+5. **Ejecutar**: `python scm/main.py` → Tool 21
+6. **Monitorear**: Revisar reportes JSON
 
 ---
 
@@ -279,10 +387,15 @@ Sí, validación + confirmación + snapshots + rollback
 Para preguntas o problemas, revisar:
 - `ESPECIFICACION.md` - Formato y validación
 - `EJEMPLOS.md` - Casos de uso
-- `ARQUITECTURA.md` - Detalles técnicos
+- `00_ACCESO.md` - Guía de acceso
+
+**Ubicación de templates**: `scm/templates/`
 
 ---
 
 **Versión**: 1.0  
 **Última actualización**: 2026-07-13  
 **Estado**: ✅ Listo para usar
+
+**Ubicación de templates**: `scm/templates/`  
+**Ejecución**: `python scm/main.py` → Tool 21 (Pipeline Updater)
