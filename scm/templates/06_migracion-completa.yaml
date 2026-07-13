@@ -1,0 +1,36 @@
+metadata:
+  name: "Migración completa a v2.0"
+  version: "1.0"
+  comment: |
+    Cambios:
+    - Imagen: myapp:v1.0 → myapp:v2.0
+    - Cluster: old-gke → new-gke
+    - Ambiente: staging → production
+    Razón: Lanzamiento de v2.0
+    Aprobado por: Release Manager
+    Fecha: 2026-07-13
+
+search:
+  stages: ["Producción"]
+  tasks:
+    - name: "Push Docker"
+    - name: "Deploy"
+  variables:
+    - name: "ENVIRONMENT"
+
+update:
+  tasks:
+    - name: "Push Docker"
+      fields:
+        - path: "inputs.repository"
+          old_value: "myapp:v1.0"
+          new_value: "myapp:v2.0"
+    - name: "Deploy"
+      fields:
+        - path: "inputs.kubernetesServiceConnection"
+          old_value: "old-gke"
+          new_value: "new-gke"
+  variables:
+    - name: "ENVIRONMENT"
+      old_value: "staging"
+      new_value: "production"

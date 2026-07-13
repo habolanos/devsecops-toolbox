@@ -1,0 +1,18 @@
+metadata:
+  name: "Cambiar variables de entorno"
+  version: "1.0"
+  comment: |
+    Cambios: ENVIRONMENT staging → production
+    Razón: Promoción a producción
+    Aprobado por: DevOps Lead
+    Fecha: 2026-07-13
+
+search:
+  variables:
+    - name: "ENVIRONMENT"
+
+update:
+  variables:
+    - name: "ENVIRONMENT"
+      old_value: "staging"
+      new_value: "production"

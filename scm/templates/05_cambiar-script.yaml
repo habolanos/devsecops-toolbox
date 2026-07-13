@@ -1,0 +1,25 @@
+metadata:
+  name: "Cambiar script PowerShell"
+  version: "1.0"
+  comment: |
+    Cambios: old-db.company.com → new-db.company.com
+    Puerto: 5432 → 5433
+    Razón: Migración a nuevo servidor de base de datos
+    Aprobado por: Database Team
+    Fecha: 2026-07-13
+
+search:
+  stages: ["Staging", "Producción"]
+  tasks:
+    - name: "Initialize Database"
+
+update:
+  tasks:
+    - name: "Initialize Database"
+      fields:
+        - path: "inputs.script"
+          old_value: "Server=old-db.company.com;Port=5432"
+          new_value: "Server=new-db.company.com;Port=5433"
+        - path: "inputs.script"
+          old_value: "User=dbuser_old"
+          new_value: "User=dbuser_new"

@@ -1,0 +1,21 @@
+metadata:
+  name: "Cambiar suscripción Azure"
+  version: "1.0"
+  comment: |
+    Cambios: old-subscription → new-subscription
+    Razón: Consolidación de suscripciones
+    Aprobado por: Cloud Ops Team
+    Fecha: 2026-07-13
+
+search:
+  stages: ["Deploy"]
+  tasks:
+    - name: "Deploy"
+
+update:
+  tasks:
+    - name: "Deploy"
+      fields:
+        - path: "inputs.azureSubscription"
+          old_value: "old-subscription"
+          new_value: "new-subscription"

@@ -1,0 +1,25 @@
+metadata:
+  name: "Cambiar cluster Kubernetes"
+  version: "1.0"
+  comment: |
+    Cambios: old-gke-cluster → new-gke-cluster
+    Región: us-central1 → us-east1
+    Razón: Migración a nuevo cluster
+    Aprobado por: Infrastructure Team
+    Fecha: 2026-07-13
+
+search:
+  stages: ["Producción", "Staging"]
+  tasks:
+    - name: "Deploy"
+
+update:
+  tasks:
+    - name: "Deploy"
+      fields:
+        - path: "inputs.kubernetesServiceConnection"
+          old_value: "old-gke-cluster"
+          new_value: "new-gke-cluster"
+        - path: "inputs.namespace"
+          old_value: "default"
+          new_value: "production"

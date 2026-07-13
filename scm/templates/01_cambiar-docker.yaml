@@ -1,0 +1,21 @@
+metadata:
+  name: "Cambiar imagen Docker"
+  version: "1.0"
+  comment: |
+    Cambios: myapp:v1.0 → myapp:v2.0
+    Razón: Actualización de versión
+    Aprobado por: DevOps Team
+    Fecha: 2026-07-13
+
+search:
+  stages: ["Producción"]
+  tasks:
+    - name: "Push Docker"
+
+update:
+  tasks:
+    - name: "Push Docker"
+      fields:
+        - path: "inputs.repository"
+          old_value: "myapp:v1.0"
+          new_value: "myapp:v2.0"
