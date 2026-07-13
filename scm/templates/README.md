@@ -6,74 +6,74 @@ Esta carpeta contiene templates YAML de ejemplo para actualizar masivamente pipe
 
 ## 📁 Templates Disponibles
 
-### **01_cambiar-docker.yaml**
+### **pipe_cd_update_docker.yaml**
 Cambiar imagen Docker en pipelines de producción.
 
 **Uso**:
 ```bash
 python scm/main.py
 # Seleccionar: Azure DevOps → Tool 21
-# Ingresar: scm/templates/01_cambiar-docker.yaml
+# Ingresar: scm/templates/pipe_cd_update_docker.yaml
 ```
 
 ---
 
-### **02_cambiar-k8s.yaml**
+### **pipe_cd_update_kubernetes.yaml**
 Cambiar cluster Kubernetes y namespace.
 
 **Uso**:
 ```bash
 python scm/main.py
 # Seleccionar: Azure DevOps → Tool 21
-# Ingresar: scm/templates/02_cambiar-k8s.yaml
+# Ingresar: scm/templates/pipe_cd_update_kubernetes.yaml
 ```
 
 ---
 
-### **03_cambiar-variables.yaml**
+### **pipe_cd_update_variables.yaml**
 Cambiar variables de entorno (ENVIRONMENT, etc).
 
 **Uso**:
 ```bash
 python scm/main.py
 # Seleccionar: Azure DevOps → Tool 21
-# Ingresar: scm/templates/03_cambiar-variables.yaml
+# Ingresar: scm/templates/pipe_cd_update_variables.yaml
 ```
 
 ---
 
-### **04_cambiar-azure.yaml**
+### **pipe_cd_update_azure.yaml**
 Cambiar suscripción Azure en tasks.
 
 **Uso**:
 ```bash
 python scm/main.py
 # Seleccionar: Azure DevOps → Tool 21
-# Ingresar: scm/templates/04_cambiar-azure.yaml
+# Ingresar: scm/templates/pipe_cd_update_azure.yaml
 ```
 
 ---
 
-### **05_cambiar-script.yaml**
+### **pipe_cd_update_script.yaml**
 Cambiar contenido de scripts PowerShell.
 
 **Uso**:
 ```bash
 python scm/main.py
 # Seleccionar: Azure DevOps → Tool 21
-# Ingresar: scm/templates/05_cambiar-script.yaml
+# Ingresar: scm/templates/pipe_cd_update_script.yaml
 ```
 
 ---
 
-### **06_migracion-completa.yaml**
+### **pipe_cd_update_migracion.yaml**
 Realizar múltiples cambios simultáneamente (imagen, cluster, variables).
 
 **Uso**:
 ```bash
 python scm/main.py
 # Seleccionar: Azure DevOps → Tool 21
-# Ingresar: scm/templates/06_migracion-completa.yaml
+# Ingresar: scm/templates/pipe_cd_update_migracion.yaml
 ```
 
 ---
