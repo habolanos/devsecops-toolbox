@@ -447,6 +447,16 @@ TOOLS = {
         "status": "ready",
         "additional_args": ["--config", "scm/config.json"]
     },
+    # ══════════ EVENT TRACKER (39) ══════════
+    "39": {
+        "name": "Event Tracker - Rastreo de Eventos",
+        "description": "Rastreo de eventos, caídas de servicio e interrupciones en Cloud Run y Kubernetes. Busca en Cloud Logging, Monitoring, Audit Logs, Kubernetes Events y Pod Logs. Genera reportes en JSON, CSV, HTML, Markdown con análisis de causa raíz",
+        "path": "event-tracker/event_tracker.py",
+        "args": ["--component-name", "--project-id", "--start-time", "--end-time", "--output-format", "--output-file"],
+        "requirements": "event-tracker/requirements.txt",
+        "group": "monitoring",
+        "status": "ready"
+    },
     # ══════════ DEPLOYMENTS (40) ══════════
     "40": {
         "name": "Deployments Off Analyzer",

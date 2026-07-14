@@ -1,0 +1,6 @@
+google-cloud-logging>=3.0.0
+google-cloud-monitoring>=2.15.0
+google-cloud-audit-logs>=1.0.0
+kubernetes>=20.0.0
+pandas>=1.0.0
+jinja2>=3.0.0
