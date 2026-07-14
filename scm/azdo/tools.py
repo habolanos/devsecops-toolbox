@@ -375,6 +375,14 @@ TOOLS: Dict = {
         "group":       "health",
         "status":      "ready",
     },
+    "41": {
+        "name":        "Pipeline Updater Template",
+        "description": "Actualización masiva de pipelines CD usando templates YAML. Define búsquedas y cambios de forma declarativa. Soporta ejecución paralela, snapshots automáticos y rollback.",
+        "path":        "pipeline_updater/pipeline_updater.py",
+        "args":        ["--definition-ids", "--template", "--dry-run", "--workers"],
+        "group":       "updatepipe",
+        "status":      "ready",
+    },
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos",
@@ -1431,6 +1439,90 @@ def run_tool(tool_key: str):
                 print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
             else:
                 print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+        
+        input("\nPresione Enter para continuar...")
+        return
+    
+    # ── Caso especial: Pipeline Updater Template (tool 41) ──────────────────────
+    if tool_key == "41":
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}  🆙 Pipeline Updater Template - Actualización Masiva{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+        
+        # Solicitar definition IDs
+        print(f"{Colors.BOLD}Definition IDs (separados por coma, ej: 2758,2759,2760):{Colors.ENDC} ", end="")
+        definition_ids_str = input().strip()
+        
+        if not definition_ids_str:
+            print(f"{Colors.RED}❌ Definition IDs requeridos.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        try:
+            definition_ids = [int(x.strip()) for x in definition_ids_str.split(',')]
+        except ValueError:
+            print(f"{Colors.RED}❌ Definition IDs deben ser números separados por coma.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Solicitar ruta del template
+        print(f"{Colors.BOLD}Ruta del template YAML (ej: scm/azdo/pipeline_updater/example_template.yaml):{Colors.ENDC} ", end="")
+        template_path = input().strip()
+        
+        if not template_path:
+            print(f"{Colors.RED}❌ Ruta del template requerida.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Verificar que el template existe
+        template_full_path = BASE_DIR / template_path
+        if not template_full_path.exists():
+            print(f"{Colors.RED}❌ Template no encontrado: {template_full_path}{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Solicitar parámetros comunes
+        params = ask_common_params(cfg, tool_key=tool_key)
+        if not params:
+            input("\nPresione Enter para continuar...")
+            return
+        
+        # Solicitar número de workers
+        print(f"{Colors.BOLD}Número de workers paralelos [5]:{Colors.ENDC} ", end="")
+        workers_str = input().strip() or "5"
+        try:
+            workers = int(workers_str)
+        except ValueError:
+            workers = 5
+        
+        # Preguntar si es dry-run
+        print(f"{Colors.BOLD}¿Modo dry-run (simulación sin cambios)? (s/n) [n]:{Colors.ENDC} ", end="")
+        dry_run = input().strip().lower() == "s"
+        
+        # Construir comando
+        cmd = [
+            str(venv_python), str(script_path),
+            "--definition-ids", definition_ids_str,
+            "--template", template_path,
+            "--org", params["org"],
+            "--project", params["project"],
+            "--pat", params["pat"],
+            "--workers", str(workers)
+        ]
+        
+        if dry_run:
+            cmd.append("--dry-run")
+        
+        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+        try:
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+            
+            if result.returncode == 0:
+                print(f"\n{Colors.GREEN}✅ Actualización completada exitosamente.{Colors.ENDC}")
+            else:
+                print(f"\n{Colors.RED}✗ Actualización falló (exit {result.returncode}){Colors.ENDC}")
         except Exception as e:
             print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
         
