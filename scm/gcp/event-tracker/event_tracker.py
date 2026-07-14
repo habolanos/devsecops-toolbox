@@ -52,6 +52,9 @@ class EventTracker:
     
     def _init_gcp_clients(self):
         """Inicializa clientes de GCP."""
+        self.logging_client = None
+        self.monitoring_client = None
+        
         if not GCP_AVAILABLE:
             print("⚠️  google-cloud-logging no está instalado")
             return
@@ -78,6 +81,8 @@ class EventTracker:
     
     def _init_k8s_client(self):
         """Inicializa cliente de Kubernetes."""
+        self.k8s_client = None
+        
         if not K8S_AVAILABLE:
             print("⚠️  kubernetes no está instalado")
             return
