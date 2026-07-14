@@ -56,7 +56,7 @@ class EventTracker:
         self.monitoring_client = None
         
         if not GCP_AVAILABLE:
-            print("⚠️  google-cloud-logging no está instalado")
+            print("[WARNING] google-cloud-logging no esta instalado")
             return
         
         try:
@@ -75,7 +75,7 @@ class EventTracker:
                 self.logging_client = cloud_logging.Client(project=self.project_id)
                 self.monitoring_client = monitoring_v3.MetricServiceClient()
         except Exception as e:
-            print(f"❌ Error inicializando clientes GCP: {e}")
+            print(f"[ERROR] Error inicializando clientes GCP: {e}")
             self.logging_client = None
             self.monitoring_client = None
     
@@ -84,14 +84,14 @@ class EventTracker:
         self.k8s_client = None
         
         if not K8S_AVAILABLE:
-            print("⚠️  kubernetes no está instalado")
+            print("[WARNING] kubernetes no esta instalado")
             return
         
         try:
             config.load_kube_config()
             self.k8s_client = client.CoreV1Api()
         except Exception as e:
-            print(f"⚠️  No se pudo conectar a Kubernetes: {e}")
+            print(f"[WARNING] No se pudo conectar a Kubernetes: {e}")
             self.k8s_client = None
     
     def search_component_events(
@@ -117,68 +117,68 @@ class EventTracker:
         Returns:
             Lista de eventos encontrados
         """
-        print(f"\n🔍 Buscando eventos para: {component_name}")
-        print(f"   Período: {start_time} a {end_time}\n")
+        print(f"\n[INFO] Buscando eventos para: {component_name}")
+        print(f"   Periodo: {start_time} a {end_time}\n")
         
         all_events = []
         
         # Buscar en Cloud Logging
-        print("📝 Buscando en Cloud Logging...")
+        print("[INFO] Buscando en Cloud Logging...")
         logging_events = self._search_cloud_logging(
             component_name, start_time, end_time
         )
         all_events.extend(logging_events)
-        print(f"   ✓ {len(logging_events)} eventos encontrados")
+        print(f"   [OK] {len(logging_events)} eventos encontrados")
         
         # Buscar en Cloud Monitoring
         if include_metrics:
-            print("📊 Buscando en Cloud Monitoring...")
+            print("[INFO] Buscando en Cloud Monitoring...")
             monitoring_events = self._search_cloud_monitoring(
                 component_name, start_time, end_time
             )
             all_events.extend(monitoring_events)
-            print(f"   ✓ {len(monitoring_events)} eventos encontrados")
+            print(f"   [OK] {len(monitoring_events)} eventos encontrados")
         
         # Buscar en Audit Logs
         if include_audit_logs:
-            print("🔐 Buscando en Audit Logs...")
+            print("[INFO] Buscando en Audit Logs...")
             audit_events = self._search_audit_logs(
                 component_name, start_time, end_time
             )
             all_events.extend(audit_events)
-            print(f"   ✓ {len(audit_events)} eventos encontrados")
+            print(f"   [OK] {len(audit_events)} eventos encontrados")
         
         # Buscar en Kubernetes Events
-        print("☸️  Buscando en Kubernetes Events...")
+        print("[INFO] Buscando en Kubernetes Events...")
         k8s_events = self._search_kubernetes_events(
             component_name, start_time, end_time
         )
         all_events.extend(k8s_events)
-        print(f"   ✓ {len(k8s_events)} eventos encontrados")
+        print(f"   [OK] {len(k8s_events)} eventos encontrados")
         
         # Buscar logs de Pod
         if include_pod_logs:
-            print("📋 Buscando logs de Pod...")
+            print("[INFO] Buscando logs de Pod...")
             pod_events = self._search_pod_logs(
                 component_name, start_time, end_time
             )
             all_events.extend(pod_events)
-            print(f"   ✓ {len(pod_events)} eventos encontrados")
+            print(f"   [OK] {len(pod_events)} eventos encontrados")
         
         # Normalizar eventos
-        print("\n⚙️  Normalizando eventos...")
+        print("\n[INFO] Normalizando eventos...")
         self.events = self._normalize_events(all_events)
         
         # Deduplicar
-        print("🔄 Deduplicando eventos...")
+        print("[INFO] Deduplicando eventos...")
         self.events = self._deduplicate_events(self.events)
         
         # Correlacionar
-        print("🔗 Correlacionando eventos...")
+        print("[INFO] Correlacionando eventos...")
         self.correlations = self._correlate_events(self.events)
         
-        print(f"\n✅ Total de eventos únicos: {len(self.events)}")
-        print(f"✅ Correlaciones encontradas: {len(self.correlations)}\n")
+        print(f"\n[OK] Total de eventos unicos: {len(self.events)}")
+        print(f"[OK] Correlaciones encontradas: {len(self.correlations)}\n")
         
         return self.events
     
@@ -216,7 +216,7 @@ class EventTracker:
             
             return events
         except Exception as e:
-            print(f"   ❌ Error en Cloud Logging: {e}")
+            print(f"   [ERROR] Error en Cloud Logging: {e}")
             return []
     
     def _search_cloud_monitoring(
@@ -230,7 +230,7 @@ class EventTracker:
             # Implementación básica
             return []
         except Exception as e:
-            print(f"   ❌ Error en Cloud Monitoring: {e}")
+            print(f"   [ERROR] Error en Cloud Monitoring: {e}")
             return []
     
     def _search_audit_logs(
@@ -262,7 +262,7 @@ class EventTracker:
             
             return events
         except Exception as e:
-            print(f"   ❌ Error en Audit Logs: {e}")
+            print(f"   [ERROR] Error en Audit Logs: {e}")
             return []
     
     def _search_kubernetes_events(
@@ -303,7 +303,7 @@ class EventTracker:
             
             return events
         except Exception as e:
-            print(f"   ❌ Error en Kubernetes Events: {e}")
+            print(f"   [ERROR] Error en Kubernetes Events: {e}")
             return []
     
     def _search_pod_logs(
@@ -354,7 +354,7 @@ class EventTracker:
             
             return events
         except Exception as e:
-            print(f"   ❌ Error en Pod Logs: {e}")
+            print(f"   [ERROR] Error en Pod Logs: {e}")
             return []
     
     def _normalize_events(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -640,7 +640,7 @@ def main():
         output_path = Path(args.output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(report)
-        print(f"✅ Reporte guardado en: {output_path}")
+        print(f"[OK] Reporte guardado en: {output_path}")
     else:
         print(report)
 
