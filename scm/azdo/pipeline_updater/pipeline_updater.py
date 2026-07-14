@@ -207,14 +207,13 @@ def main():
         description='Pipeline Updater - Actualización masiva de pipelines CD'
     )
     
+    # Argumentos para actualización
     parser.add_argument(
         '--definition-ids',
-        required=True,
         help='IDs de definiciones separados por coma (ej: 2758,2759,2760)'
     )
     parser.add_argument(
         '--template',
-        required=True,
         help='Ruta al archivo de template YAML'
     )
     parser.add_argument(
@@ -244,7 +243,60 @@ def main():
         help='Número de workers paralelos (default: 5)'
     )
     
+    # Argumentos para rollback
+    parser.add_argument(
+        '--rollback',
+        action='store_true',
+        help='Ejecutar rollback desde snapshot'
+    )
+    parser.add_argument(
+        '--definition-id',
+        help='ID de definición para rollback'
+    )
+    parser.add_argument(
+        '--snapshot-id',
+        help='ID del snapshot para rollback'
+    )
+    
     args = parser.parse_args()
+    
+    # Ejecutar rollback si se especifica
+    if args.rollback:
+        if not args.definition_id or not args.snapshot_id:
+            print("Error: --definition-id y --snapshot-id son requeridos para rollback")
+            sys.exit(1)
+        
+        try:
+            definition_id = int(args.definition_id)
+        except ValueError:
+            print("Error: definition-id debe ser un número")
+            sys.exit(1)
+        
+        updater = PipelineUpdater(args.pat, args.org, args.project)
+        
+        print("\n" + "="*70)
+        print("  Pipeline Updater - Rollback desde Snapshot")
+        print("="*70 + "\n")
+        
+        try:
+            success = updater.azdo_client.rollback(definition_id, args.snapshot_id)
+            
+            if success:
+                print(f"\n✅ Rollback completado exitosamente")
+                print(f"   Pipeline: {definition_id}")
+                print(f"   Snapshot: {args.snapshot_id}\n")
+                sys.exit(0)
+            else:
+                print(f"\n❌ Rollback falló")
+                sys.exit(1)
+        except Exception as e:
+            print(f"\n❌ Error durante rollback: {str(e)}\n")
+            sys.exit(1)
+    
+    # Ejecutar actualización normal
+    if not args.definition_ids or not args.template:
+        print("Error: --definition-ids y --template son requeridos para actualización")
+        sys.exit(1)
     
     # Parsear definition IDs
     try:
