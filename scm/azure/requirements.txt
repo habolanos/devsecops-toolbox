@@ -1,0 +1,12 @@
+azure-identity>=1.14.0
+azure-mgmt-compute>=30.0.0
+azure-mgmt-containerservice>=20.0.0
+azure-mgmt-network>=23.0.0
+azure-mgmt-sql>=4.0.0
+azure-mgmt-storage>=21.0.0
+azure-mgmt-monitor>=6.0.0
+azure-mgmt-authorization>=9.0.0
+azure-mgmt-resource>=23.0.0
+azure-mgmt-appservice>=7.0.0
+azure-mgmt-cosmosdb>=9.0.0
+azure-monitor-opentelemetry>=1.0.0

@@ -109,6 +109,15 @@ PLATFORMS = {
         "status": "ready"
     },
     "2": {
+        "name": "Azure Cloud Platform",
+        "short": "AZURE",
+        "emoji": "☁️",
+        "color": "blue",
+        "path": "azure/tools.py",
+        "description": "25 herramientas: monitoreo, IAM, AKS, App Service, SQL, networking y más",
+        "status": "ready"
+    },
+    "3": {
         "name": "Azure DevOps",
         "short": "AZDO",
         "emoji": "🔷",
@@ -117,7 +126,7 @@ PLATFORMS = {
         "description": "Herramientas para PRs, políticas de rama, releases y drift analysis",
         "status": "ready"
     },
-    "3": {
+    "4": {
         "name": "Amazon Web Services",
         "short": "AWS",
         "emoji": "🟠",
@@ -126,7 +135,7 @@ PLATFORMS = {
         "description": "IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch (13 herramientas)",
         "status": "ready"
     },
-    "4": {
+    "5": {
         "name": "Terminal Scripts",
         "short": "TERMINAL",
         "emoji": "🐧",
@@ -135,7 +144,7 @@ PLATFORMS = {
         "description": "Scripts shell agnósticos: TLS, DB, K8s deployments, manifest diff (6 herramientas)",
         "status": "ready"
     },
-    "5": {
+    "6": {
         "name": "KPI Analyzer Pro",
         "short": "KPI",
         "emoji": "📊",
@@ -205,10 +214,11 @@ def get_platform_config(platform_key: str) -> Optional[Dict[str, Any]]:
     
     platform_map = {
         "1": "gcp",
-        "2": "azdo",
-        "3": "aws",
-        "4": "terminal",
-        "5": "kpi_analyzer"
+        "2": "azure",
+        "3": "azdo",
+        "4": "aws",
+        "5": "terminal",
+        "6": "kpi_analyzer"
     }
     
     platform_name = platform_map.get(platform_key)
@@ -223,7 +233,7 @@ def is_platform_configured(platform_key: str) -> bool:
     platform_config = get_platform_config(platform_key)
     
     # Verificaciones específicas por plataforma
-    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal", "5": "kpi_analyzer"}
+    platform_map = {"1": "gcp", "2": "azure", "3": "azdo", "4": "aws", "5": "terminal", "6": "kpi_analyzer"}
     platform_name = platform_map.get(platform_key)
     
     if not platform_config:
@@ -244,6 +254,11 @@ def is_platform_configured(platform_key: str) -> bool:
         # GCP requiere project_id
         return bool(platform_config.get("project_id") and
                    "<TU_" not in str(platform_config.get("project_id", "")))
+    
+    elif platform_name == "azure":
+        # Azure requiere subscription_id
+        return bool(platform_config.get("subscription_id") and
+                   "<TU_" not in str(platform_config.get("subscription_id", "")))
     
     elif platform_name == "aws":
         # AWS requiere profile o credentials
@@ -271,7 +286,7 @@ def get_config_status() -> Dict[str, str]:
     config = load_config()
     status = {}
     
-    for key in ["1", "2", "3", "4", "5"]:
+    for key in ["1", "2", "3", "4", "5", "6"]:
         if not config:
             status[key] = "no_config"
         elif is_platform_configured(key):
@@ -280,6 +295,115 @@ def get_config_status() -> Dict[str, str]:
             status[key] = "incomplete"
     
     return status
+
+
+def validate_platform_authentication(platform_key: str) -> bool:
+    """Valida la autenticación de una plataforma y ejecuta login si es necesario."""
+    config = load_config()
+    if not config:
+        return True  # Sin config, permitir continuar
+    
+    auth_config = config.get("auth", {}).get("login", {})
+    
+    platform_map = {"1": "gcp", "2": "azure", "3": "azdo", "4": "aws", "5": "terminal", "6": "kpi_analyzer"}
+    platform_name = platform_map.get(platform_key)
+    
+    if not platform_name or platform_name in ["terminal", "kpi_analyzer"]:
+        return True  # No requieren autenticación
+    
+    platform_auth = auth_config.get(platform_name, {})
+    
+    if not platform_auth.get("enabled", True):
+        return True  # Autenticación deshabilitada
+    
+    if platform_name == "gcp":
+        # Validar autenticación GCP
+        try:
+            result = subprocess.run(
+                ["gcloud", "auth", "list", "--filter=status:ACTIVE", "--format=value(account)"],
+                capture_output=True,
+                text=True,
+                timeout=platform_auth.get("timeout_seconds", 30)
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return True  # Ya autenticado
+            
+            if platform_auth.get("auto_login"):
+                if RICH_AVAILABLE and console:
+                    console.print("[yellow]⚠️ GCP no autenticado. Ejecutando gcloud auth login...[/yellow]")
+                else:
+                    print("⚠️ GCP no autenticado. Ejecutando gcloud auth login...")
+                
+                subprocess.run(["gcloud", "auth", "login"], check=False)
+                return True
+        except Exception as e:
+            if RICH_AVAILABLE and console:
+                console.print(f"[yellow]⚠️ No se pudo validar autenticación GCP: {e}[/yellow]")
+            return True  # Permitir continuar
+    
+    elif platform_name == "azure":
+        # Validar autenticación Azure
+        try:
+            result = subprocess.run(
+                ["az", "account", "show"],
+                capture_output=True,
+                text=True,
+                timeout=platform_auth.get("timeout_seconds", 30)
+            )
+            if result.returncode == 0:
+                return True  # Ya autenticado
+            
+            if platform_auth.get("auto_login"):
+                if RICH_AVAILABLE and console:
+                    console.print("[yellow]⚠️ Azure no autenticado. Ejecutando az login...[/yellow]")
+                else:
+                    print("⚠️ Azure no autenticado. Ejecutando az login...")
+                
+                subprocess.run(["az", "login"], check=False)
+                return True
+        except Exception as e:
+            if RICH_AVAILABLE and console:
+                console.print(f"[yellow]⚠️ No se pudo validar autenticación Azure: {e}[/yellow]")
+            return True  # Permitir continuar
+    
+    elif platform_name == "aws":
+        # Validar autenticación AWS
+        try:
+            result = subprocess.run(
+                ["aws", "sts", "get-caller-identity"],
+                capture_output=True,
+                text=True,
+                timeout=platform_auth.get("timeout_seconds", 30)
+            )
+            if result.returncode == 0:
+                return True  # Ya autenticado
+            
+            if platform_auth.get("auto_login"):
+                if RICH_AVAILABLE and console:
+                    console.print("[yellow]⚠️ AWS no autenticado. Ejecutando aws configure...[/yellow]")
+                else:
+                    print("⚠️ AWS no autenticado. Ejecutando aws configure...")
+                
+                subprocess.run(["aws", "configure"], check=False)
+                return True
+        except Exception as e:
+            if RICH_AVAILABLE and console:
+                console.print(f"[yellow]⚠️ No se pudo validar autenticación AWS: {e}[/yellow]")
+            return True  # Permitir continuar
+    
+    elif platform_name == "azdo":
+        # Validar que PAT esté configurado
+        platform_config = get_platform_config(platform_key)
+        if platform_config and platform_config.get("pat") and "<TU_" not in str(platform_config.get("pat", "")):
+            return True
+        
+        if RICH_AVAILABLE and console:
+            console.print("[yellow]⚠️ Azure DevOps: PAT no configurado en config.json[/yellow]")
+        else:
+            print("⚠️ Azure DevOps: PAT no configurado en config.json")
+        return True  # Permitir continuar
+    
+    return True
 
 
 def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
@@ -359,6 +483,27 @@ def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
         if k8s.get("cluster_region"):
             env["GKE_CLUSTER_REGION"] = k8s["cluster_region"]
     
+    elif platform_name == "azure":
+        if platform_config.get("subscription_id"):
+            env["AZURE_SUBSCRIPTION_ID"] = platform_config["subscription_id"]
+        if platform_config.get("tenant_id"):
+            env["AZURE_TENANT_ID"] = platform_config["tenant_id"]
+        if platform_config.get("region"):
+            env["AZURE_REGION"] = platform_config["region"]
+        creds = platform_config.get("credentials", {})
+        if creds.get("type") == "service_principal":
+            if creds.get("client_id"):
+                env["AZURE_CLIENT_ID"] = creds["client_id"]
+            if creds.get("client_secret"):
+                env["AZURE_CLIENT_SECRET"] = creds["client_secret"]
+        k8s = platform_config.get("kubernetes", {})
+        if k8s.get("cluster_name"):
+            env["AKS_CLUSTER_NAME"] = k8s["cluster_name"]
+        if k8s.get("cluster_region"):
+            env["AKS_CLUSTER_REGION"] = k8s["cluster_region"]
+        if k8s.get("resource_group"):
+            env["AZURE_RESOURCE_GROUP"] = k8s["resource_group"]
+    
     elif platform_name == "aws":
         if platform_config.get("profile"):
             env["AWS_PROFILE"] = platform_config["profile"]
@@ -393,7 +538,7 @@ def print_config_status():
             ))
         else:
             status_lines = []
-            platform_names = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}
+            platform_names = {"1": "GCP", "2": "AZURE", "3": "AZDO", "4": "AWS", "5": "TERMINAL", "6": "KPI"}
             for key, name in platform_names.items():
                 st = status.get(key, "no_config")
                 if st == "configured":
@@ -414,7 +559,7 @@ def print_config_status():
             print(f"{Colors.WARNING}⚠️ No se encontró config.json{Colors.ENDC}")
         else:
             print(f"{Colors.CYAN}Estado de configuración:{Colors.ENDC}")
-            for key, name in {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}.items():
+            for key, name in {"1": "GCP", "2": "AZURE", "3": "AZDO", "4": "AWS", "5": "TERMINAL", "6": "KPI"}.items():
                 st = status.get(key, "no_config")
                 symbol = "✅" if st == "configured" else "⚠️" if st == "incomplete" else "❌"
                 print(f"  {symbol} {name}")
@@ -479,7 +624,7 @@ def print_header():
 def print_menu_rich():
     """Muestra el menú con Rich."""
     config_status = get_config_status()
-    platform_map = {"1": "GCP", "2": "AZDO", "3": "AWS", "4": "TERMINAL", "5": "KPI"}
+    platform_map = {"1": "GCP", "2": "AZURE", "3": "AZDO", "4": "AWS", "5": "TERMINAL", "6": "KPI"}
 
     table = Table(
         title="🚀 Seleccione una Plataforma",
@@ -604,6 +749,9 @@ def launch_platform(platform_key: str):
         input("\nPresione Enter para continuar...")
         return
     
+    # Validar autenticación de la plataforma
+    validate_platform_authentication(platform_key)
+    
     # Preparar variables de entorno con configuración
     env = prepare_env_for_platform(platform_key)
 
@@ -677,16 +825,22 @@ def show_config_details():
             gcp_details = f"Project: {gcp.get('project_id', 'N/A')[:30]}"
             table.add_row("☁️ GCP", f"[green]{gcp_status}[/]" if gcp_status == "✅" else f"[yellow]{gcp_status}[/]", gcp_details)
             
+            # AZURE
+            azure = config.get("azure", {})
+            azure_status = "✅" if is_platform_configured("2") else "⚠️"
+            azure_details = f"Subscription: {azure.get('subscription_id', 'N/A')[:30]}"
+            table.add_row("☁️ Azure", f"[green]{azure_status}[/]" if azure_status == "✅" else f"[yellow]{azure_status}[/]", azure_details)
+            
             # AZDO
             azdo = config.get("azdo", {})
-            azdo_status = "✅" if is_platform_configured("2") else "⚠️"
+            azdo_status = "✅" if is_platform_configured("3") else "⚠️"
             org_url = azdo.get("organization_url", "N/A")
             azdo_details = f"Org: {org_url.replace('https://dev.azure.com/', '')[:25]}"
             table.add_row("🔷 Azure DevOps", f"[green]{azdo_status}[/]" if azdo_status == "✅" else f"[yellow]{azdo_status}[/]", azdo_details)
             
             # AWS
             aws = config.get("aws", {})
-            aws_status = "✅" if is_platform_configured("3") else "⚠️"
+            aws_status = "✅" if is_platform_configured("4") else "⚠️"
             aws_details = f"Profile: {aws.get('profile', 'N/A')} | Region: {aws.get('region', 'N/A')}"
             table.add_row("🟠 AWS", f"[green]{aws_status}[/]" if aws_status == "✅" else f"[yellow]{aws_status}[/]", aws_details)
             
