@@ -1447,87 +1447,173 @@ def run_tool(tool_key: str):
     
     # ── Caso especial: Pipeline Updater Template (tool 41) ──────────────────────
     if tool_key == "41":
-        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}  🆙 Pipeline Updater Template - Actualización Masiva{Colors.ENDC}")
-        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
-        
-        # Solicitar definition IDs
-        print(f"{Colors.BOLD}Definition IDs (separados por coma, ej: 2758,2759,2760):{Colors.ENDC} ", end="")
-        definition_ids_str = input().strip()
-        
-        if not definition_ids_str:
-            print(f"{Colors.RED}❌ Definition IDs requeridos.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        
-        try:
-            definition_ids = [int(x.strip()) for x in definition_ids_str.split(',')]
-        except ValueError:
-            print(f"{Colors.RED}❌ Definition IDs deben ser números separados por coma.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        
-        # Solicitar ruta del template
-        print(f"{Colors.BOLD}Ruta del template YAML (ej: scm/azdo/pipeline_updater/example_template.yaml):{Colors.ENDC} ", end="")
-        template_path = input().strip()
-        
-        if not template_path:
-            print(f"{Colors.RED}❌ Ruta del template requerida.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        
-        # Verificar que el template existe
-        template_full_path = BASE_DIR / template_path
-        if not template_full_path.exists():
-            print(f"{Colors.RED}❌ Template no encontrado: {template_full_path}{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-        
-        # Solicitar parámetros comunes
-        params = ask_common_params(cfg, tool_key=tool_key)
-        if not params:
-            input("\nPresione Enter para continuar...")
-            return
-        
-        # Solicitar número de workers
-        print(f"{Colors.BOLD}Número de workers paralelos [5]:{Colors.ENDC} ", end="")
-        workers_str = input().strip() or "5"
-        try:
-            workers = int(workers_str)
-        except ValueError:
-            workers = 5
-        
-        # Preguntar si es dry-run
-        print(f"{Colors.BOLD}¿Modo dry-run (simulación sin cambios)? (s/n) [n]:{Colors.ENDC} ", end="")
-        dry_run = input().strip().lower() == "s"
-        
-        # Construir comando
-        cmd = [
-            str(venv_python), str(script_path),
-            "--definition-ids", definition_ids_str,
-            "--template", template_path,
-            "--org", params["org"],
-            "--project", params["project"],
-            "--pat", params["pat"],
-            "--workers", str(workers)
-        ]
-        
-        if dry_run:
-            cmd.append("--dry-run")
-        
-        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
-        try:
-            result = subprocess.run(cmd, cwd=BASE_DIR)
+        while True:
+            # Mostrar menú de opciones
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}  🆙 Pipeline Updater Template - Seleccione una opción{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Actualizar pipelines (modo interactivo)")
+            print(f"{Colors.CYAN}[2]{Colors.ENDC} Rollback desde snapshot")
+            print(f"{Colors.CYAN}[3]{Colors.ENDC} Listar snapshots disponibles")
+            print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+            print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
             
-            if result.returncode == 0:
-                print(f"\n{Colors.GREEN}✅ Actualización completada exitosamente.{Colors.ENDC}")
+            option = input().strip()
+            
+            # Opción 0: Volver
+            if option == "0":
+                return
+            
+            # Opción 3: Listar snapshots
+            elif option == "3":
+                snapshots_dir = BASE_DIR / "outcome" / "snapshots"
+                if snapshots_dir.exists():
+                    print(f"\n{Colors.CYAN}📁 Snapshots disponibles:{Colors.ENDC}\n")
+                    snapshots = sorted(snapshots_dir.glob("*.json"))
+                    if snapshots:
+                        for i, snap in enumerate(snapshots[-20:], 1):  # Últimos 20
+                            print(f"  {i}. {snap.name}")
+                    else:
+                        print(f"  {Colors.YELLOW}No hay snapshots disponibles{Colors.ENDC}")
+                else:
+                    print(f"  {Colors.YELLOW}Directorio de snapshots no existe{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+            
+            # Opción 2: Rollback desde snapshot
+            elif option == "2":
+                params = ask_common_params(cfg, tool_key=tool_key)
+                if not params:
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                print(f"\n{Colors.BOLD}Definition ID (pipeline a restaurar):{Colors.ENDC} ", end="")
+                def_id = input().strip()
+                if not def_id or not def_id.isdigit():
+                    print(f"{Colors.RED}❌ Definition ID inválido.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                print(f"{Colors.BOLD}Snapshot ID (ej: snapshot_3388_1689254400):{Colors.ENDC} ", end="")
+                snapshot_id = input().strip()
+                if not snapshot_id:
+                    print(f"{Colors.RED}❌ Snapshot ID requerido.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Construir comando de rollback
+                cmd = [
+                    str(venv_python), str(script_path),
+                    "--rollback",
+                    "--definition-id", def_id,
+                    "--snapshot-id", snapshot_id,
+                    "--org", params["org"],
+                    "--project", params["project"],
+                    "--pat", params["pat"]
+                ]
+                
+                print(f"\n{Colors.CYAN}▶ Ejecutando rollback...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Rollback completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Rollback falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                
+                input("\nPresione Enter para continuar...")
+                continue
+            
+            # Opción 1: Actualizar pipelines
+            elif option == "1":
+                print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+                print(f"{Colors.BOLD}  🆙 Pipeline Updater Template - Actualización Masiva{Colors.ENDC}")
+                print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+                
+                # Solicitar definition IDs
+                print(f"{Colors.BOLD}Definition IDs (separados por coma, ej: 2758,2759,2760):{Colors.ENDC} ", end="")
+                definition_ids_str = input().strip()
+                
+                if not definition_ids_str:
+                    print(f"{Colors.RED}❌ Definition IDs requeridos.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                try:
+                    definition_ids = [int(x.strip()) for x in definition_ids_str.split(',')]
+                except ValueError:
+                    print(f"{Colors.RED}❌ Definition IDs deben ser números separados por coma.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Solicitar ruta del template
+                print(f"{Colors.BOLD}Ruta del template YAML (ej: scm/azdo/pipeline_updater/example_template.yaml):{Colors.ENDC} ", end="")
+                template_path = input().strip()
+                
+                if not template_path:
+                    print(f"{Colors.RED}❌ Ruta del template requerida.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Verificar que el template existe
+                template_full_path = BASE_DIR / template_path
+                if not template_full_path.exists():
+                    print(f"{Colors.RED}❌ Template no encontrado: {template_full_path}{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Solicitar parámetros comunes
+                params = ask_common_params(cfg, tool_key=tool_key)
+                if not params:
+                    input("\nPresione Enter para continuar...")
+                    continue
+                
+                # Solicitar número de workers
+                print(f"{Colors.BOLD}Número de workers paralelos [5]:{Colors.ENDC} ", end="")
+                workers_str = input().strip() or "5"
+                try:
+                    workers = int(workers_str)
+                except ValueError:
+                    workers = 5
+                
+                # Preguntar si es dry-run
+                print(f"{Colors.BOLD}¿Modo dry-run (simulación sin cambios)? (s/n) [n]:{Colors.ENDC} ", end="")
+                dry_run = input().strip().lower() == "s"
+                
+                # Construir comando
+                cmd = [
+                    str(venv_python), str(script_path),
+                    "--definition-ids", definition_ids_str,
+                    "--template", template_path,
+                    "--org", params["org"],
+                    "--project", params["project"],
+                    "--pat", params["pat"],
+                    "--workers", str(workers)
+                ]
+                
+                if dry_run:
+                    cmd.append("--dry-run")
+                
+                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Actualización completada exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Actualización falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                
+                input("\nPresione Enter para continuar...")
+                continue
+            
             else:
-                print(f"\n{Colors.RED}✗ Actualización falló (exit {result.returncode}){Colors.ENDC}")
-        except Exception as e:
-            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
-        
-        input("\nPresione Enter para continuar...")
-        return
+                print(f"{Colors.RED}❌ Opción no válida.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
     
     params = ask_common_params(cfg, tool_key=tool_key)
     if not params:
