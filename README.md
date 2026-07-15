@@ -15,8 +15,9 @@
 
 - [🚀 Características Principales](#-características-principales)
 - [📦 Instalación](#-instalación)
+- [🚀 Ejecutables Compilados](#-ejecutables-compilados-recomendado)
 - [🎯 Uso Rápido](#-uso-rápido)
-- [� Templates para Pipeline Updater](#-templates-para-pipeline-updater)
+- [📋 Templates para Pipeline Updater](#-templates-para-pipeline-updater)
 - [🐳 Docker](#-docker)
 - [☁️ Plataformas Soportadas](#️-plataformas-soportadas)
 - [⚙️ Configuración](#️-configuración)
@@ -69,6 +70,80 @@ docker build -t devsecops-toolbox:latest .
 - **Python**: 3.11+
 - **Docker** (opcional): 20.10+
 - **Docker Compose** (opcional): 2.0+
+
+---
+
+## 🚀 Ejecutables Compilados (RECOMENDADO)
+
+### ⭐ Opción Más Simple: Usar Ejecutables
+
+Si prefieres **no instalar Python**, puedes usar los ejecutables compilados precompilados:
+
+#### **Windows** 🪟
+
+```bash
+# Descargar ejecutable
+toolbox.exe
+
+# O usar el script wrapper
+toolbox.bat
+```
+
+**Requisitos**: Ninguno (todo incluido en el ejecutable)
+
+#### **Linux** 🐧
+
+```bash
+# Descargar ejecutable
+./toolbox
+
+# O usar el script wrapper
+./toolbox
+```
+
+**Requisitos**: Ninguno (todo incluido en el ejecutable)
+
+---
+
+### 📦 Compilar Tus Propios Ejecutables
+
+Si necesitas compilar los ejecutables desde el código fuente:
+
+#### **Paso 1: Instalar Dependencias**
+
+```bash
+pip install pyinstaller
+```
+
+#### **Paso 2: Compilar**
+
+```bash
+# Windows
+python build_executables.py
+
+# Linux
+python3 build_executables.py
+```
+
+#### **Paso 3: Usar Ejecutable**
+
+```bash
+# Windows
+dist/toolbox.exe
+
+# Linux
+./dist/toolbox
+```
+
+---
+
+### 📊 Comparativa de Instalación
+
+| Método | Requisitos | Complejidad | Velocidad |
+|--------|-----------|-----------|----------|
+| **Ejecutable** | Ninguno | ⭐ Muy Simple | ⚡ Inmediato |
+| **Python + Git** | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
+| **Docker** | Docker | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
 
 ---
 

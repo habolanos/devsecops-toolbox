@@ -103,7 +103,7 @@ PLATFORMS = {
         "name": "Google Cloud Platform",
         "short": "GCP",
         "emoji": "☁️",
-        "color": "cyan",
+        "color": "gray",
         "path": "gcp/tools.py",
         "description": "22 herramientas SRE: monitoreo, IAM, networking, K8s, inventario y más",
         "status": "ready"
@@ -112,27 +112,27 @@ PLATFORMS = {
         "name": "Azure Cloud Platform",
         "short": "AZURE",
         "emoji": "☁️",
-        "color": "blue",
+        "color": "cyan",
         "path": "azure/tools.py",
         "description": "25 herramientas: monitoreo, IAM, AKS, App Service, SQL, networking y más",
         "status": "ready"
     },
     "3": {
+        "name": "Amazon Web Services",
+        "short": "AWS",
+        "emoji": "☁️",
+        "color": "yellow",
+        "path": "aws/tools.py",
+        "description": "IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch (13 herramientas)",
+        "status": "ready"
+    },
+    "4": {
         "name": "Azure DevOps",
         "short": "AZDO",
         "emoji": "🔷",
         "color": "blue",
         "path": "azdo/tools.py",
         "description": "Herramientas para PRs, políticas de rama, releases y drift analysis",
-        "status": "ready"
-    },
-    "4": {
-        "name": "Amazon Web Services",
-        "short": "AWS",
-        "emoji": "🟠",
-        "color": "yellow",
-        "path": "aws/tools.py",
-        "description": "IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch (13 herramientas)",
         "status": "ready"
     },
     "5": {
@@ -148,7 +148,7 @@ PLATFORMS = {
         "name": "KPI Analyzer Pro",
         "short": "KPI",
         "emoji": "📊",
-        "color": "magenta",
+        "color": "green",
         "path": "kpi_analyzer/tools.py",
         "description": "Plataforma unificada: Análisis KPI, Health Score DORA, Dashboards profesionales, Consolidación multi-fuente (16 herramientas)",
         "status": "ready"

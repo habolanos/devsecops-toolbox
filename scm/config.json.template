@@ -12,7 +12,7 @@
         "timeout_seconds": 30
       },
       "azure": {
-        "enabled": true,
+        "enabled": false,
         "_info": "Si es true, valida autenticación Azure y ejecuta 'az login' si es necesario",
         "auto_login": true,
         "timeout_seconds": 30
@@ -24,7 +24,7 @@
         "timeout_seconds": 10
       },
       "aws": {
-        "enabled": true,
+        "enabled": false,
         "_info": "Si es true, valida autenticación AWS y ejecuta 'aws configure' si es necesario",
         "auto_login": true,
         "timeout_seconds": 30
@@ -217,7 +217,7 @@
 
   "azure": {
     "_info": "Configuración de Azure Cloud Platform",
-    "enabled": true,
+    "enabled": false,
     "subscription_id": "<TU_SUBSCRIPTION_ID>",
     "tenant_id": "<TU_TENANT_ID>",
     "region": "eastus",
