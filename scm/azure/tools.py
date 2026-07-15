@@ -119,7 +119,7 @@ TOOLS = {
         "args": ["--subscription", "--resource-group"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "2": {
         "name": "Reporte de Despliegues AKS",
@@ -128,7 +128,7 @@ TOOLS = {
         "args": [],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ IAM & SECURITY (3-5) ══════════
     "3": {
@@ -138,7 +138,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "rolesypermisos/requirements.txt",
         "group": "iam",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "4": {
         "name": "Service Principals Analyzer",
@@ -147,7 +147,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "service-accounts/requirements.txt",
         "group": "iam",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "5": {
         "name": "Access Control Validator",
@@ -156,7 +156,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "rolesypermisos/requirements.txt",
         "group": "iam",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ DATABASE (6-8) ══════════
     "6": {
@@ -166,7 +166,7 @@ TOOLS = {
         "args": ["--subscription", "--resource-group"],
         "requirements": "azure-sql/requirements.txt",
         "group": "database",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "7": {
         "name": "Cosmos DB Analyzer",
@@ -175,7 +175,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "azure-sql/requirements.txt",
         "group": "database",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "8": {
         "name": "Database Backup Validator",
@@ -184,7 +184,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "azure-sql/requirements.txt",
         "group": "database",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ NETWORKING (9-12) ══════════
     "9": {
@@ -194,7 +194,7 @@ TOOLS = {
         "args": ["--subscription", "--resource-group"],
         "requirements": "connectivity/requirements.txt",
         "group": "network",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "10": {
         "name": "Network Security Groups Audit",
@@ -203,7 +203,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "connectivity/requirements.txt",
         "group": "network",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "11": {
         "name": "Application Gateway Monitor",
@@ -212,7 +212,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "connectivity/requirements.txt",
         "group": "network",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "12": {
         "name": "Connectivity Checker",
@@ -221,7 +221,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "connectivity/requirements.txt",
         "group": "network",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ KUBERNETES (13-18) ══════════
     "13": {
@@ -231,7 +231,7 @@ TOOLS = {
         "args": ["--subscription", "--resource-group"],
         "requirements": "cluster-aks/requirements.txt",
         "group": "kubernetes",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "14": {
         "name": "AKS Node Pool Analyzer",
@@ -240,7 +240,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "cluster-aks/requirements.txt",
         "group": "kubernetes",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "15": {
         "name": "Workload Identity Validator",
@@ -249,7 +249,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "cluster-aks/requirements.txt",
         "group": "kubernetes",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "16": {
         "name": "Pod Security Policy Audit",
@@ -258,7 +258,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "cluster-aks/requirements.txt",
         "group": "kubernetes",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "17": {
         "name": "AKS Deployment Validator",
@@ -267,7 +267,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "cluster-aks/requirements.txt",
         "group": "kubernetes",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "18": {
         "name": "Azure Container Registry Analyzer",
@@ -276,7 +276,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "cluster-aks/requirements.txt",
         "group": "kubernetes",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ APP SERVICE (19-21) ══════════
     "19": {
@@ -286,7 +286,7 @@ TOOLS = {
         "args": ["--subscription", "--resource-group"],
         "requirements": "app-service/requirements.txt",
         "group": "appservice",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "20": {
         "name": "App Service Security Auditor",
@@ -295,7 +295,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "app-service/requirements.txt",
         "group": "appservice",
-        "status": "coming_soon"
+        "status": "ready"
     },
     "21": {
         "name": "App Service Deployment Validator",
@@ -304,7 +304,7 @@ TOOLS = {
         "args": ["--subscription"],
         "requirements": "app-service/requirements.txt",
         "group": "appservice",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ INVENTORY (22) ══════════
     "22": {
@@ -314,7 +314,7 @@ TOOLS = {
         "args": ["--subscription", "-o"],
         "requirements": "inventory/requirements.txt",
         "group": "inventory",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ REPORTS (23) ══════════
     "23": {
@@ -324,7 +324,7 @@ TOOLS = {
         "args": ["--subscription", "-o"],
         "requirements": "reports-viewer/requirements.txt",
         "group": "reports",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ EVENT TRACKER (24) ══════════
     "24": {
@@ -334,7 +334,7 @@ TOOLS = {
         "args": ["--component-name", "--subscription", "--start-time", "--end-time", "--output-format"],
         "requirements": "event-tracker/requirements.txt",
         "group": "monitoring",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ CONSOLIDATION (25) ══════════
     "25": {
@@ -344,7 +344,7 @@ TOOLS = {
         "args": ["--subscription", "-o"],
         "requirements": "consolidation/requirements.txt",
         "group": "consolidation",
-        "status": "coming_soon"
+        "status": "ready"
     },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
