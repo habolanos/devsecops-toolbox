@@ -1,13 +1,13 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.6.21-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.7.0-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
 
 > **Caja de herramientas DevSecOps unificada para operaciones multi-cloud.**
 > 
-> Soporta **Google Cloud Platform (GCP)**, **Azure DevOps (AZDO)** y **Amazon Web Services (AWS)** con un launcher centralizado, testing profesional y distribución Docker.
+> Soporta **Google Cloud Platform (GCP)**, **Azure Cloud Platform (AZURE)**, **Azure DevOps (AZDO)** y **Amazon Web Services (AWS)** con un launcher centralizado, testing profesional y distribución Docker.
 
 ---
 
@@ -39,7 +39,8 @@
 | 🧪 **Testing Profesional** | Suite completa de tests unitarios e integración con pytest (70%+ cobertura) |
 | 🔐 **Configuración Segura** | Gestión centralizada de credenciales vía `config.json` (excluido de git) |
 | � **Reportes** | Generación de reportes y análisis de arquitectura |
-| 🌐 **Multi-Cloud** | Soporte nativo para GCP, Azure DevOps y AWS |
+| 🌐 **Multi-Cloud** | Soporte nativo para GCP, Azure Cloud, Azure DevOps y AWS |
+| 🔑 **Autenticación Automática** | Validación automática de credenciales (gcloud, az, aws) |
 | 🏷️ **SemVer** | Versionado semántico automatizado |
 
 ---
@@ -87,25 +88,48 @@ python scm/main.py
 ║          🔐 DevSecOps Toolbox - Launcher Principal           ║
 ╚═══════════════════════════════════════════════════════════════╝
 
-[1] 🔷 AZDO (Azure DevOps)
-[2] ☁️  GCP (Google Cloud Platform)
-[3] 🟠 AWS (Amazon Web Services)
-[4] 🐧 Terminal (Scripts Universales)
-[5] 📊 KPI Analyzer Pro
-[6] 📈 Dashboard Matutino
+[1] ☁️  GCP (Google Cloud Platform)
+[2] ☁️  AZURE (Azure Cloud Platform)
+[3] 🔷 AZDO (Azure DevOps)
+[4] 🟠 AWS (Amazon Web Services)
+[5] 🐧 Terminal (Scripts Universales)
+[6] 📊 KPI Analyzer Pro
 
 [A] 🚀 Ejecutar Todas las Herramientas
-[B] ⚡ Ejecutar Todo + JSON (Dashboard Feed)
 [Q] 🚪 Salir
 
-Selecciona una opción [1-6, A, B, Q]:
+Selecciona una opción [1-6, A, Q]:
 ```
 
 ---
 
 ### 📋 Opciones Disponibles
 
-#### **Opción 1: AZDO (Azure DevOps)** 🔷
+#### **Opción 1: GCP (Google Cloud Platform)** ☁️
+
+Herramientas para Google Cloud Platform con 22 utilidades SRE:
+- Monitoreo de Recursos GCP
+- Reporte de Despliegues GKE
+- Auditoría de Roles y Permisos
+- Service Accounts Reporter
+- Event Tracker (Rastreo de eventos)
+- Y más...
+
+#### **Opción 2: AZURE (Azure Cloud Platform)** ☁️
+
+**[NUEVO]** Herramientas para Azure Cloud con 25 utilidades SRE:
+- Monitoreo de Recursos Azure
+- Reporte de Despliegues AKS
+- Auditoría de Roles y Permisos (RBAC)
+- AKS Cluster Monitor
+- App Service Monitor
+- Azure SQL Database Monitor
+- Cosmos DB Analyzer
+- Event Tracker (Rastreo de eventos en Azure)
+- Azure Unified Infrastructure Dashboard
+- Y más...
+
+#### **Opción 3: AZDO (Azure DevOps)** 🔷
 Herramientas para gestión de repositorios, pipelines y releases en Azure DevOps:
 - PR Master Checker
 - Branch Policy Checker
