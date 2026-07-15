@@ -35,11 +35,11 @@
 | Característica | Descripción |
 |---------------|-------------|
 | 🎯 **Launcher Unificado** | Punto de entrada único para todas las plataformas cloud |
-| � **KPI Analyzer** | Análisis de métricas DevSecOps con modelo de madurez de 6 niveles y dashboards interactivos |
-| �� **Docker Ready** | Contenedor optimizado con todas las herramientas CLI (Azure, AWS, GCP, Kubernetes, Terraform) |
+| 📊 **KPI Analyzer** | Análisis de métricas DevSecOps con modelo de madurez de 6 niveles y dashboards interactivos |
+| 🐳 **Docker Ready** | Contenedor optimizado con todas las herramientas CLI (Azure, AWS, GCP, Kubernetes, Terraform) |
 | 🧪 **Testing Profesional** | Suite completa de tests unitarios e integración con pytest (70%+ cobertura) |
 | 🔐 **Configuración Segura** | Gestión centralizada de credenciales vía `config.json` (excluido de git) |
-| � **Reportes** | Generación de reportes y análisis de arquitectura |
+| 📊 **Reportes** | Generación de reportes y análisis de arquitectura |
 | 🌐 **Multi-Cloud** | Soporte nativo para GCP, Azure Cloud, Azure DevOps y AWS |
 | 🔑 **Autenticación Automática** | Validación automática de credenciales (gcloud, az, aws) |
 | 🏷️ **SemVer** | Versionado semántico automatizado |
