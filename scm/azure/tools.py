@@ -7,7 +7,7 @@ Azure Tools Launcher
 Este script proporciona una interfaz de menú para ejecutar las herramientas de Azure
 desde un solo lugar.
 
-Características:
+Ahora:
 - Crea (si no existe) un entorno virtual en BASE_DIR/.venv
 - Instala los requirements de cada herramienta dentro de ese venv
 - Ejecuta las herramientas usando el Python del venv
@@ -45,6 +45,7 @@ try:
 except ImportError:
     SEARCH_AVAILABLE = False
 
+
 try:
     from base_launcher import (
         clear_screen, print_header, print_menu,
@@ -58,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.0"
+__version__ = "1.9.4"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure"
 
@@ -78,7 +79,7 @@ TOOL_GROUPS = {
     "artifacts": {"name": "Artifacts", "emoji": "📦", "color": "red"},
     "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
     "reports": {"name": "Reports", "emoji": "📈", "color": "bright_white"},
-    "appservice": {"name": "App Service", "emoji": "🌐", "color": "bright_cyan"},
+    "appservice": {"name": "App Service", "emoji": "🚀", "color": "bright_cyan"},
     "consolidation": {"name": "Consolidación", "emoji": "🔗", "color": "bright_magenta"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
@@ -364,101 +365,254 @@ TOOLS = {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FUNCIONES AUXILIARES
+# SEMÁFOROS Y ESTADOS
 # ═══════════════════════════════════════════════════════════════════════════════
+STATUS_INDICATORS = {
+    "ready": ("🟢", "green", "Listo"),
+    "warning": ("🟡", "yellow", "Advertencia"),
+    "error": ("🔴", "red", "Error"),
+    "running": ("🔵", "blue", "Ejecutando"),
+    "exit": ("🚪", "white", "Salir"),
+}
 
-def get_auto_tools() -> List[str]:
-    """Obtiene lista de herramientas para ejecutar automáticamente."""
-    system_options = TOOLS.get("_system_options", {})
-    auto_option = system_options.get("A", {})
-    exclude = auto_option.get("exclude", [])
-    
-    auto_tools = []
-    for tool_id, tool_info in TOOLS.items():
-        if tool_id.startswith("_"):
-            continue
-        if tool_id in exclude:
-            continue
-        if tool_info.get("status") == "ready":
-            auto_tools.append(tool_id)
-    
-    return auto_tools
-
-def build_system_options() -> Dict[str, Dict]:
-    """Construye opciones del sistema."""
-    return TOOLS.get("_system_options", {})
+# Construir opciones de sistema dinámicamente
+def _init_system_options():
+    """Inicializa las opciones de sistema (A, Q) dinámicamente."""
+    build_system_options()
 
 def clear_screen():
-    """Limpia la pantalla."""
-    if platform.system() == "Windows":
-        os.system('cls')
+    """Limpia la pantalla (usa base_launcher si está disponible)."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import clear_screen as _clear_screen
+        _clear_screen()
     else:
-        os.system('clear')
+        import os, platform
+        if platform.system() == 'Windows':
+            os.system('cls')
+        else:
+            os.system('clear')
+
+
+def print_header_rich():
+    """Imprime el encabezado del menú con Rich (versión moderna)."""
+    clear_screen()
+    
+    # Título principal con panel
+    title = Text()
+    title.append("☁️  ", style="bold white")
+    title.append("SRE Tools for Azure Cloud Platform", style="bold cyan")
+    title.append("  ☁️", style="bold white")
+    
+    subtitle = Text()
+    subtitle.append(f"v{__version__}", style="bold green")
+    subtitle.append(" | ", style="dim")
+    
+    header_content = Align.center(title)
+    
+    panel = Panel(
+        Align.center(
+            Text.assemble(
+                title,
+                "\n",
+                subtitle,
+                Text(__description__, style="dim white")
+            )
+        ),
+        box=DOUBLE_EDGE,
+        border_style="cyan",
+        padding=(1, 2),
+        expand=False,
+    )
+    console.print(Align.left(panel))
+    console.print()
+
+def print_header_fallback():
+    """Imprime el encabezado del menú (versión fallback sin Rich)."""
+    clear_screen()
+    print(f"{Colors.HEADER}{'='*60}")
+    print(f"{'AZURE TOOLS':^60}")
+    print(f"v{__version__} | by {__author__}".center(60))
+    print(f"{'='*60}{Colors.ENDC}\n")
 
 def print_header():
-    """Imprime el encabezado."""
-    clear_screen()
+    """Imprime el encabezado del menú."""
     if RICH_AVAILABLE and console:
-        title = Text()
-        title.append("Azure Tools", style="bold cyan")
-        panel = Panel(
-            title,
-            border_style="cyan",
-            padding=(1, 2),
-            expand=False,
-        )
-        console.print(panel)
+        print_header_rich()
     else:
-        print(f"{Colors.BOLD}═══════════════════════════════════════{Colors.ENDC}")
-        print(f"{Colors.CYAN}Azure Tools Launcher{Colors.ENDC}")
-        print(f"{Colors.BOLD}═══════════════════════════════════════{Colors.ENDC}\n")
+        print_header_fallback()
+
+def get_status_indicator(status: str) -> tuple:
+    """Obtiene el indicador de estado (emoji, color, texto)."""
+    return STATUS_INDICATORS.get(status, ("⚪", "white", "Desconocido"))
+
+def _menu_sort_key(key: str) -> tuple:
+    """Ordena claves numéricamente."""
+    if key.isdigit():
+        return (0, int(key))
+    return (1, key)
+
+
+def get_auto_tools(exclude_list: List[str] = None) -> List[str]:
+    """Genera lista de herramientas para auto_run dinámicamente."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import get_auto_tools as _get_auto_tools
+        return _get_auto_tools(
+            tools=TOOLS,
+            group_order=GROUP_ORDER,
+            exclude_list=exclude_list
+        )
+    else:
+        exclude_list = exclude_list or []
+        auto_tools = []
+        for group_key in GROUP_ORDER:
+            group_tools = [
+                key for key, tool in TOOLS.items()
+                if (tool.get("group") == group_key and 
+                    key not in ("Q", "A", "_system_options") and
+                    key not in exclude_list)
+            ]
+            group_tools.sort(key=_menu_sort_key)
+            auto_tools.extend(group_tools)
+        return auto_tools
+
+
+def build_system_options():
+    """Construye las opciones de sistema dinámicamente."""
+    if BASE_LAUNCHER_AVAILABLE:
+        from base_launcher import build_system_options as _build_system_options
+        _build_system_options(TOOLS, GROUP_ORDER)
+    else:
+        system_opts = TOOLS.get("_system_options", {})
+        for key, opt_config in system_opts.items():
+            if opt_config.get("type") in ("auto_run", "auto_run_json"):
+                exclude = opt_config.get("exclude", [])
+                auto_tools = get_auto_tools(exclude)
+                TOOLS[key] = {
+                    "name": opt_config["name"],
+                    "description": opt_config["description"],
+                    "auto_tools": auto_tools,
+                    "group": "system",
+                    "status": "ready"
+                }
+            else:
+                TOOLS[key] = {
+                    "name": opt_config["name"],
+                    "description": opt_config["description"],
+                    "group": "system",
+                    "status": opt_config.get("type", "exit")
+                }
+        if "_system_options" in TOOLS:
+            del TOOLS["_system_options"]
+
+
+def get_menu_order(include_exit: bool = True) -> List[str]:
+    """Retorna las claves del menú ordenadas por grupo y numéricamente dentro de cada grupo."""
+    ordered: List[str] = []
+    for group_key in GROUP_ORDER:
+        group_keys = [
+            key for key, tool in TOOLS.items()
+            if tool.get("group", "system") == group_key and key not in ("Q", "A")
+        ]
+        group_keys.sort(key=_menu_sort_key)
+        ordered.extend(group_keys)
+    if "A" in TOOLS:
+        ordered.append("A")
+    if include_exit and "Q" in TOOLS:
+        ordered.append("Q")
+    return ordered
+
+def print_menu_rich():
+    """Muestra el menú principal con Rich (versión moderna con tabla)."""
+    # Crear tabla principal
+    table = Table(
+        title="🛠️  Menú Principal",
+        title_style="bold white",
+        box=ROUNDED,
+        header_style="bold cyan",
+        border_style="blue",
+        show_lines=False,
+        pad_edge=True,
+        expand=False,
+    )
+    
+    # Definir columnas con anchos proporcionales
+    table.add_column("#", justify="center", style="bold white", width=4)
+    table.add_column("Grupo", justify="left", width=18)
+    table.add_column("Herramienta", justify="left", style="white")
+    table.add_column("Descripción", justify="left", style="dim", min_width=40)
+    
+    sorted_keys = get_menu_order()
+
+    # Agregar filas
+    for key in sorted_keys:
+        tool = TOOLS[key]
+        group_key = tool.get("group", "system")
+        group_info = TOOL_GROUPS.get(group_key, TOOL_GROUPS["system"])
+        # Formato del grupo con emoji y color
+        group_text = f"{group_info['emoji']} {group_info['name']}"
+        
+        # Estilo especial para opciones de sistema
+        if key == "Q":
+            key_style = "bold yellow"
+            name_style = "yellow"
+        elif key == "A":
+            key_style = "bold magenta"
+            name_style = "magenta"
+        else:
+            key_style = "bold cyan"
+            name_style = "white"
+        
+        table.add_row(
+            f"[{key_style}]{key}[/{key_style}]",
+            f"[{group_info['color']}]{group_text}[/{group_info['color']}]",
+            f"[{name_style}]{tool['name']}[/{name_style}]",
+            tool.get('description', '')
+        )
+    
+    console.print(table)
+    console.print()
+
+def print_menu_fallback():
+    """Muestra el menú principal (versión fallback sin Rich)."""
+    print(f"{Colors.BOLD}Menú Principal:{Colors.ENDC}\n")
+    for key in get_menu_order():
+        tool = TOOLS[key]
+        group_key = tool.get("group", "system")
+        group_info = TOOL_GROUPS.get(group_key, {"emoji": "⚙️", "name": "Sistema"})
+        status_emoji = get_status_indicator(tool.get("status", "ready"))[0]
+        
+        if key == "Q":
+            print(f"  {Colors.WARNING}[{key}]{Colors.ENDC} {status_emoji} {tool['name']}")
+        else:
+            print(f"  {Colors.BLUE}[{key}]{Colors.ENDC} {status_emoji} [{group_info['name']}] {tool['name']} - {tool['description']}")
+    print()
 
 def print_menu():
-    """Imprime el menú de herramientas."""
+    """Muestra el menú principal."""
     if RICH_AVAILABLE and console:
-        table = Table(
-            title="Herramientas Disponibles",
-            box=ROUNDED,
-            header_style="bold cyan",
-        )
-        table.add_column("#", style="bold white", width=4)
-        table.add_column("Nombre", style="cyan", width=30)
-        table.add_column("Descripción", style="dim", width=50)
-        table.add_column("Estado", justify="center", width=12)
-        
-        for tool_id, tool_info in sorted(TOOLS.items()):
-            if tool_id.startswith("_"):
-                continue
-            
-            status = tool_info.get("status", "ready")
-            status_symbol = "✅" if status == "ready" else "🔄" if status == "coming_soon" else "❌"
-            
-            table.add_row(
-                tool_id,
-                tool_info.get("name", ""),
-                tool_info.get("description", ""),
-                f"{status_symbol} {status}"
-            )
-        
-        console.print(table)
+        print_menu_rich()
     else:
-        print(f"{Colors.BOLD}Herramientas Disponibles:{Colors.ENDC}\n")
-        for tool_id, tool_info in sorted(TOOLS.items()):
-            if tool_id.startswith("_"):
-                continue
-            status = tool_info.get("status", "ready")
-            symbol = "✅" if status == "ready" else "🔄"
-            print(f"  [{tool_id}] {symbol} {tool_info.get('name', '')}")
-            print(f"      {tool_info.get('description', '')}\n")
+        print_menu_fallback()
 
 def main():
-    """Función principal."""
+    """Función principal del menú."""
     while True:
         try:
             print_header()
             print_menu()
             
-            choice = input(f"{Colors.BOLD}Seleccione una opción (o 'Q' para salir): {Colors.ENDC}").strip().upper()
+            choice = input(f"\n{Colors.BOLD}Seleccione una opción (o '/' para buscar): {Colors.ENDC}").strip().upper()
+            
+            # Opción de búsqueda
+            if choice == "/":
+                if SEARCH_AVAILABLE:
+                    choice = search_and_select_tools(TOOLS, TOOL_GROUPS)
+                    if choice is None:
+                        continue
+                else:
+                    print(f"\n{Colors.YELLOW}Búsqueda no disponible{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
             
             if choice == "Q":
                 print(f"\n{Colors.GREEN}Saliendo...{Colors.ENDC}")
@@ -469,22 +623,27 @@ def main():
                     print(f"Ejecutando herramienta {tool_id}...")
             elif choice in TOOLS and not choice.startswith("_"):
                 tool = TOOLS[choice]
-                if tool.get("status") == "coming_soon":
-                    print(f"\n{Colors.WARNING}Esta herramienta estará disponible próximamente.{Colors.ENDC}\n")
-                    input("Presione Enter para continuar...")
-                else:
-                    print(f"\n{Colors.CYAN}Ejecutando: {tool.get('name', '')}{Colors.ENDC}\n")
-                    # Aquí iría la lógica para ejecutar la herramienta
+                print(f"\n{Colors.CYAN}Ejecutando: {tool.get('name', '')}{Colors.ENDC}\n")
+                print(f"{tool.get('description', '')}\n")
             else:
-                print(f"\n{Colors.FAIL}Opción no válida.{Colors.ENDC}\n")
-                input("Presione Enter para continuar...")
-        
+                print(f"\n{Colors.FAIL}Opción no válida. Por favor, intente de nuevo.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                
         except KeyboardInterrupt:
             print(f"\n{Colors.WARNING}Saliendo...{Colors.ENDC}")
             sys.exit(0)
         except Exception as e:
-            print(f"\n{Colors.FAIL}Error: {e}{Colors.ENDC}\n")
-            input("Presione Enter para continuar...")
+            print(f"\n{Colors.FAIL}Error inesperado: {e}{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INICIALIZACIÓN
+# ═══════════════════════════════════════════════════════════════════════════════
+# Inicializar opciones de sistema después de que todas las funciones estén definidas
+_init_system_options()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n{Colors.WARNING}Saliendo...{Colors.ENDC}")
