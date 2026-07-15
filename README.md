@@ -16,7 +16,7 @@
 - [🚀 Características Principales](#-características-principales)
 - [📦 Instalación](#-instalación)
 - [🎯 Uso Rápido](#-uso-rápido)
-- [📊 Dashboard Matutino](#-dashboard-matutino)
+- [� Templates para Pipeline Updater](#-templates-para-pipeline-updater)
 - [🐳 Docker](#-docker)
 - [☁️ Plataformas Soportadas](#️-plataformas-soportadas)
 - [⚙️ Configuración](#️-configuración)
@@ -252,6 +252,342 @@ python scm/aws/tools.py
 # Herramientas KPI Analyzer
 python scm/kpi_analyzer/tools.py
 ```
+
+---
+
+## 📋 Templates para Pipeline Updater
+
+La carpeta `scm/templates/` contiene templates YAML predefinidos para actualizar masivamente pipelines CD en Azure DevOps usando la herramienta **Pipeline Updater (Tool 21)**.
+
+### 🎯 ¿Qué son los Templates?
+
+Los templates son archivos YAML que definen:
+- **Qué buscar**: Stages, tasks, variables específicas
+- **Qué cambiar**: Valores antiguos y nuevos
+- **Metadatos**: Nombre, versión, comentarios de auditoría
+
+### 📁 Templates Disponibles
+
+#### **1. pipe_cd_update_docker.yaml** 🐳
+Actualizar imagen Docker en pipelines de producción.
+
+**Caso de uso**: Promocionar nueva versión de aplicación
+```yaml
+metadata:
+  name: "Cambiar imagen Docker"
+  comment: "Cambios: myapp:v1.0 → myapp:v2.0"
+
+search:
+  stages: ["Producción"]
+  tasks:
+    - name: "Push Docker"
+
+update:
+  tasks:
+    - name: "Push Docker"
+      fields:
+        - path: "inputs.repository"
+          old_value: "myapp:v1.0"
+          new_value: "myapp:v2.0"
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_update_docker.yaml
+```
+
+---
+
+#### **2. pipe_cd_update_kubernetes.yaml** ☸️
+Cambiar cluster Kubernetes y namespace.
+
+**Caso de uso**: Migración a nuevo cluster o cambio de región
+```yaml
+metadata:
+  name: "Cambiar cluster Kubernetes"
+  comment: "Cambios: old-gke-cluster → new-gke-cluster"
+
+search:
+  stages: ["Producción", "Staging"]
+  tasks:
+    - name: "Deploy"
+
+update:
+  tasks:
+    - name: "Deploy"
+      fields:
+        - path: "inputs.kubernetesServiceConnection"
+          old_value: "old-gke-cluster"
+          new_value: "new-gke-cluster"
+        - path: "inputs.namespace"
+          old_value: "default"
+          new_value: "production"
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_update_kubernetes.yaml
+```
+
+---
+
+#### **3. pipe_cd_update_variables.yaml** 🔧
+Cambiar variables de entorno en pipelines.
+
+**Caso de uso**: Promoción de ambiente (staging → production)
+```yaml
+metadata:
+  name: "Cambiar variables de entorno"
+  comment: "Cambios: ENVIRONMENT staging → production"
+
+search:
+  variables:
+    - name: "ENVIRONMENT"
+
+update:
+  variables:
+    - name: "ENVIRONMENT"
+      old_value: "staging"
+      new_value: "production"
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_update_variables.yaml
+```
+
+---
+
+#### **4. pipe_cd_update_azure.yaml** ☁️
+Cambiar suscripción Azure en tasks.
+
+**Caso de uso**: Consolidación de suscripciones o cambio de tenant
+```yaml
+metadata:
+  name: "Cambiar suscripción Azure"
+  comment: "Cambios: old-subscription → new-subscription"
+
+search:
+  stages: ["Deploy"]
+  tasks:
+    - name: "Deploy"
+
+update:
+  tasks:
+    - name: "Deploy"
+      fields:
+        - path: "inputs.azureSubscription"
+          old_value: "old-subscription"
+          new_value: "new-subscription"
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_update_azure.yaml
+```
+
+---
+
+#### **5. pipe_cd_update_script.yaml** 📝
+Cambiar contenido de scripts PowerShell en tasks.
+
+**Caso de uso**: Actualizar scripts de deployment o validación
+```yaml
+metadata:
+  name: "Cambiar script PowerShell"
+  comment: "Actualizar script de validación"
+
+search:
+  stages: ["Deploy"]
+  tasks:
+    - name: "PowerShell Script"
+
+update:
+  tasks:
+    - name: "PowerShell Script"
+      fields:
+        - path: "inputs.script"
+          old_value: "old-script-content"
+          new_value: "new-script-content"
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_update_script.yaml
+```
+
+---
+
+#### **6. pipe_cd_update_migracion.yaml** 🚀
+Realizar múltiples cambios simultáneamente.
+
+**Caso de uso**: Migración completa (imagen Docker + cluster K8s + variables)
+```yaml
+metadata:
+  name: "Migración completa"
+  comment: "Cambios: Docker + Kubernetes + Variables"
+
+search:
+  stages: ["Producción"]
+  tasks:
+    - name: "Deploy"
+
+update:
+  tasks:
+    - name: "Deploy"
+      fields:
+        - path: "inputs.repository"
+          old_value: "myapp:v1.0"
+          new_value: "myapp:v2.0"
+        - path: "inputs.kubernetesServiceConnection"
+          old_value: "old-cluster"
+          new_value: "new-cluster"
+        - path: "inputs.namespace"
+          old_value: "default"
+          new_value: "production"
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_update_migracion.yaml
+```
+
+---
+
+### 🚀 Cómo Usar Templates
+
+#### **Paso 1: Personalizar Template**
+
+Copia uno de los templates y personaliza los valores según tu necesidad:
+
+```bash
+# Copiar template base
+cp scm/templates/pipe_cd_update_docker.yaml scm/templates/mi-cambio.yaml
+
+# Editar con tu editor favorito
+nano scm/templates/mi-cambio.yaml
+```
+
+Personaliza:
+- `metadata.name`: Nombre descriptivo
+- `metadata.comment`: Descripción del cambio
+- `search`: Qué buscar (stages, tasks, variables)
+- `update`: Qué cambiar (old_value → new_value)
+
+#### **Paso 2: Ejecutar Pipeline Updater**
+
+```bash
+python scm/main.py
+```
+
+Luego sigue estos pasos:
+1. Selecciona: **3 (AZDO)**
+2. Selecciona: **21 (Pipeline Updater)**
+3. Ingresa: **definition-ids** (ej: 3388,3389,3390)
+4. Ingresa: **ruta del template** (ej: scm/templates/mi-cambio.yaml)
+5. Confirma: **Y** para ejecutar
+
+#### **Paso 3: Revisar Resultados**
+
+El programa generará un reporte con:
+- Pipelines procesados
+- Cambios aplicados
+- Errores (si los hay)
+- Auditoría completa
+
+```
+✅ Pipeline 3388: 2 cambios aplicados
+✅ Pipeline 3389: 1 cambio aplicado
+❌ Pipeline 3390: Error - Task no encontrada
+```
+
+---
+
+### 📊 Estructura de Template YAML
+
+```yaml
+metadata:
+  name: "Nombre descriptivo"
+  version: "1.0"
+  comment: |
+    Descripción detallada del cambio
+    Razón del cambio
+    Aprobado por: [Persona]
+    Fecha: [YYYY-MM-DD]
+
+search:
+  # Buscar en stages específicos (opcional)
+  stages: ["Producción", "Staging"]
+  
+  # Buscar tasks específicas (opcional)
+  tasks:
+    - name: "Nombre exacto de la task"
+  
+  # Buscar variables específicas (opcional)
+  variables:
+    - name: "NOMBRE_VARIABLE"
+
+update:
+  # Actualizar tasks
+  tasks:
+    - name: "Nombre de la task"
+      fields:
+        - path: "inputs.nombrePropiedad"
+          old_value: "valor_actual"
+          new_value: "valor_nuevo"
+  
+  # Actualizar variables
+  variables:
+    - name: "NOMBRE_VARIABLE"
+      old_value: "valor_actual"
+      new_value: "valor_nuevo"
+```
+
+---
+
+### ✅ Checklist Antes de Ejecutar
+
+- [ ] Personalicé el template con mis valores
+- [ ] Verifiqué nombres exactos de stages/tasks
+- [ ] Preparé lista de definition-ids
+- [ ] Guardé el archivo en `scm/templates/`
+- [ ] Leí la documentación completa
+- [ ] Tengo backup de los pipelines
+- [ ] Estoy listo para ejecutar
+
+---
+
+### 🔒 Seguridad y Auditoría
+
+✅ **Validación automática** de estructura YAML  
+✅ **Confirmación del usuario** antes de ejecutar  
+✅ **Snapshots automáticos** antes de cambios  
+✅ **Rollback automático** si algo falla  
+✅ **Auditoría completa** en cada pipeline  
+✅ **Reporte detallado** de cambios aplicados  
+
+---
+
+### 📚 Documentación Adicional
+
+Para más información sobre templates y Pipeline Updater:
+
+- `scm/templates/README.md` - Guía rápida de templates
+- `docs/features/feature_actualizacion_pipeline_cd_with_template/README.md` - Documentación completa
+- `docs/features/feature_actualizacion_pipeline_cd_with_template/ESPECIFICACION.md` - Especificación técnica
+- `docs/features/feature_actualizacion_pipeline_cd_with_template/EJEMPLOS.md` - Ejemplos avanzados
 
 ---
 
