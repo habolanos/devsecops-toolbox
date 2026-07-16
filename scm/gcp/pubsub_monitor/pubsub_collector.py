@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google.cloud import pubsub_v1
+from google.cloud.pubsub_v1.types import ListTopicsRequest, ListSubscriptionsRequest
 from google.cloud import monitoring_v3
 from google.api_core import exceptions
 from rich.console import Console
@@ -146,7 +147,7 @@ class PubSubCollector:
 
         try:
             project_path = f"projects/{project_id}"
-            request = pubsub_v1.ListTopicsRequest(project=project_path)
+            request = ListTopicsRequest(project=project_path)
 
             for topic in self.publisher_client.list_topics(request=request):
                 topic_data = {
@@ -180,7 +181,7 @@ class PubSubCollector:
 
         try:
             project_path = f"projects/{project_id}"
-            request = pubsub_v1.ListSubscriptionsRequest(project=project_path)
+            request = ListSubscriptionsRequest(project=project_path)
 
             for subscription in self.subscriber_client.list_subscriptions(request=request):
                 sub_data = {
