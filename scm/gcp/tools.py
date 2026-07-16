@@ -471,7 +471,7 @@ TOOLS = {
     "41": {
         "name": "Pub/Sub Monitor - Multi-Proyecto",
         "description": "Monitoreo profesional de Google Cloud Pub/Sub con soporte multi-proyecto, alertas preventivas (25+ reglas) y dashboards ejecutivos. Soporta 12 proyectos GCP de CPL (cmanager, cs-csc, cs-wms, oms)",
-        "path": "pubsub_monitor/pubsub_monitor.py",
+        "path": "pubsub_monitor/run.py",
         "args": [],
         "requirements": "pubsub_monitor/requirements.txt",
         "group": "monitoring",
