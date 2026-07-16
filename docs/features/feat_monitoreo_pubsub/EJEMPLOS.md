@@ -22,23 +22,23 @@
 ```json
 {
   "gcp": {
-    "projects": [
-      {
-        "project_id": "prod-project",
-        "region": "us-central1",
-        "credentials": "~/.config/gcloud/prod-credentials.json"
-      },
-      {
-        "project_id": "staging-project",
-        "region": "us-east1",
-        "credentials": "~/.config/gcloud/staging-credentials.json"
-      },
-      {
-        "project_id": "dev-project",
-        "region": "us-west1",
-        "credentials": "~/.config/gcloud/dev-credentials.json"
-      }
-    ]
+    "service_accounts_reporter": {
+      "enabled": true,
+      "projects": [
+        "cpl-cmanager-dev-13072023",
+        "cpl-cmanager-qa-13072023",
+        "cpl-cmanager-stag-01052025",
+        "cpl-cs-csc-dev-16112023",
+        "cpl-cs-csc-qa-16112023",
+        "cpl-cs-csc-stag-11042025",
+        "cpl-cs-wms-dev-30112023",
+        "cpl-cs-wms-qa-30112023",
+        "cpl-cs-wms-stag-09042025",
+        "cpl-oms-dev-08082024",
+        "cpl-oms-qa-08062023",
+        "cpl-oms-stag-09042025"
+      ]
+    }
   },
   "monitoring": {
     "cache_ttl_hours": 1,

@@ -157,24 +157,36 @@ Roles Necesarios:
 
 ### Requisitos de Configuración
 
+Se integra con la configuración existente en `config.json.template` bajo la sección `gcp.service_accounts_reporter.projects`:
+
 ```json
 {
   "gcp": {
-    "projects": [
-      {
-        "project_id": "prod-project",
-        "region": "us-central1",
-        "credentials": "path/to/credentials.json"
-      },
-      {
-        "project_id": "staging-project",
-        "region": "us-east1",
-        "credentials": "path/to/credentials.json"
-      }
-    ]
+    "service_accounts_reporter": {
+      "projects": [
+        "cpl-cmanager-dev-13072023",
+        "cpl-cmanager-qa-13072023",
+        "cpl-cmanager-stag-01052025",
+        "cpl-cs-csc-dev-16112023",
+        "cpl-cs-csc-qa-16112023",
+        "cpl-cs-csc-stag-11042025",
+        "cpl-cs-wms-dev-30112023",
+        "cpl-cs-wms-qa-30112023",
+        "cpl-cs-wms-stag-09042025",
+        "cpl-oms-dev-08082024",
+        "cpl-oms-qa-08062023",
+        "cpl-oms-stag-09042025"
+      ]
+    }
   }
 }
 ```
+
+**Proyectos Soportados** (12 proyectos GCP):
+- **cpl-cmanager**: 3 proyectos (Dev, QA, Staging)
+- **cpl-cs-csc**: 3 proyectos (Dev, QA, Staging)
+- **cpl-cs-wms**: 3 proyectos (Dev, QA, Staging)
+- **cpl-oms**: 3 proyectos (Dev, QA, Staging)
 
 ---
 
