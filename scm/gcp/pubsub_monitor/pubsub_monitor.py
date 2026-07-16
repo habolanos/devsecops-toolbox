@@ -72,7 +72,7 @@ class PubSubMonitor:
 
             choice = Prompt.ask(
                 "[cyan]Selecciona una opción[/cyan]",
-                choices=["1", "2", "3", "4", "5", "Q"]
+                choices=["1", "2", "3", "4", "5", "Q", "q"]
             )
 
             if choice == "1":
@@ -85,7 +85,7 @@ class PubSubMonitor:
                 self.generate_reports()
             elif choice == "5":
                 self.display_configuration()
-            elif choice == "Q":
+            elif choice in ("Q", "q"):
                 console.print("[yellow]👋 Saliendo...[/yellow]")
                 break
 
