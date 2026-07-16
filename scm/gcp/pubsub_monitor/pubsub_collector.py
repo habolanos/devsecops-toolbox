@@ -145,7 +145,7 @@ class PubSubCollector:
         topics = []
 
         try:
-            project_path = self.publisher_client.project_path(project_id)
+            project_path = f"projects/{project_id}"
             request = pubsub_v1.ListTopicsRequest(project=project_path)
 
             for topic in self.publisher_client.list_topics(request=request):
@@ -179,7 +179,7 @@ class PubSubCollector:
         subscriptions = []
 
         try:
-            project_path = self.subscriber_client.project_path(project_id)
+            project_path = f"projects/{project_id}"
             request = pubsub_v1.ListSubscriptionsRequest(project=project_path)
 
             for subscription in self.subscriber_client.list_subscriptions(request=request):
