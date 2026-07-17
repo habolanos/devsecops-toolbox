@@ -645,8 +645,8 @@ def main():
     )
     parser.add_argument(
         "--project-id",
-        default=None,
-        help="ID del proyecto GCP (opcional, para referencia en el reporte)",
+        default="default-gke-project",
+        help="ID del proyecto GCP (default: default-gke-project)",
     )
     parser.add_argument(
         "--output-dir",
@@ -658,16 +658,26 @@ def main():
     output_dir_path = args.output_dir or "outcome"
     logger = setup_logger(output_dir_path)
     logger.info("Iniciando generación de reporte de deployments en GKE")
-    if args.project_id:
-        logger.info(f"Proyecto GCP: {args.project_id}")
     
     console = Console() if RICH_AVAILABLE else None
 
     print("=" * 80)
     print("🔍 GENERANDO REPORTE DE DEPLOYMENTS EN GKE")
     print("=" * 80)
-    if args.project_id:
-        print(f"Proyecto GCP: {args.project_id}")
+    print()
+    
+    project_id = args.project_id
+    if not args.project_id or args.project_id == "default-gke-project":
+        print("📋 Ingrese el ID del proyecto GCP")
+        print("   (Presione Enter para usar el valor por defecto: 'default-gke-project')")
+        user_input = input("Proyecto GCP: ").strip()
+        if user_input:
+            project_id = user_input
+        else:
+            project_id = "default-gke-project"
+    
+    print(f"✓ Proyecto GCP: {project_id}")
+    logger.info(f"Proyecto GCP: {project_id}")
     print()
 
     try:
