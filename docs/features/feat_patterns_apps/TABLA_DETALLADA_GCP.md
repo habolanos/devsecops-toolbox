@@ -22,65 +22,63 @@
 
 ## 📊 TABLA COMPLETA - GCP
 
-| # | Herramienta | Archivo | ⏱️ Tiempo | 📤 JSON | 📝 Log | 📁 Archivos | Cobertura | Estado |
-|---|-------------|---------|----------|--------|--------|-------------|-----------|--------|
-| 1 | Cloud Storage Analyzer | gcp_cloud_storage_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 2 | Compute Engine Analyzer | gcp_compute_engine_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 3 | Cloud SQL Analyzer | gcp_cloud_sql_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 4 | Firestore Analyzer | gcp_firestore_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 5 | Cloud Functions Analyzer | gcp_cloud_functions_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 6 | Cloud Run Health Analyzer | cloudrun_base.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 7 | Cloud Run Security Auditor | cloudrun_metrics.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 8 | Cloud Run Cost Analyzer | cloudrun_alerts.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 9 | Cloud Run Deployment Validator | gcp_cloud_run_deployment_validator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 10 | Cloud Run Traffic Analyzer | gcp_cloud_run_traffic_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 11 | Cloud Run Dependency Mapper | gcp_cloud_run_dependency_mapper.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 12 | Cloud Run Executive Dashboard | gcp_cloud_run_executive_dashboard.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 13 | Deployments Off Analyzer | deployments_off/gcp_deployments_off_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 14 | **Pub/Sub Monitor** | pubsub_monitor/pubsub_monitor.py | ✅ | ✅ | ❌ | ✅ | 3/4 | 🟡 |
-| 15 | GCP Inventory Generator | gcp_inventory_generator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 16 | GCP Inventory Consolidator | gcp_inventory_consolidator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 17 | GCP Infrastructure Consolidator | gcp_infrastructure_consolidator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 18 | GCP Reports Viewer | gcp_reports_viewer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 19 | GCP Unified Dashboard | gcp_unified_infrastructure_dashboard.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 20 | GCP Metadata Analyzer | gcp_metadata_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 21 | GCP Cost Analyzer | gcp_cost_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 22 | GCP Security Auditor | gcp_security_auditor.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 23 | GCP Performance Monitor | gcp_performance_monitor.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 24 | GCP Compliance Checker | gcp_compliance_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 25 | GCP Network Analyzer | gcp_network_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 26 | GCP IAM Analyzer | gcp_iam_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 27 | GCP Logging Analyzer | gcp_logging_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 28 | GCP Monitoring Analyzer | gcp_monitoring_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 29 | GCP Service Mesh Analyzer | gcp_service_mesh_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 30 | GCP Container Registry Analyzer | gcp_container_registry_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 31 | GCP Artifact Registry Analyzer | gcp_artifact_registry_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 32 | GCP BigQuery Analyzer | gcp_bigquery_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 33 | GCP Dataflow Analyzer | gcp_dataflow_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 34 | GCP Dataproc Analyzer | gcp_dataproc_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 35 | GCP Spanner Analyzer | gcp_spanner_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 36 | GCP Memorystore Analyzer | gcp_memorystore_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 37 | GCP Load Balancer Analyzer | gcp_load_balancer_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 38 | GCP VPC Analyzer | gcp_vpc_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 39 | GCP DNS Analyzer | gcp_dns_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| 40 | GCP CDN Analyzer | gcp_cdn_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| Tool ID | Herramienta | Archivo | ⏱️ Tiempo | 📤 JSON | 📝 Log | 📁 Archivos | Cobertura | Estado |
+|---------|-------------|---------|----------|--------|--------|-------------|-----------|--------|
+| **1** | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **2** | Reporte de Despliegues GKE | monitoring/gke_deployments_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **3** | Reporte de Roles y Permisos IAM | rolesypermisos/gcp_iam_roles_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **4** | Service Account Checker | service-account/gcp_service_account_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **5** | Certificate Manager Checker | certificate-manager/gcp_certificate_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **6** | Cloud Armor Checker | cloud-armor/gcp_cloud_armor_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **7** | Cloud SQL Disk Monitor | cloud-sql/gcp_disk_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **8** | Cloud SQL Database Checker | cloud-sql/gcp_database_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **9** | Cloud SQL Comparator | cloud-sql/gcp_sql_comparator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **10** | VPC Networks Checker | vpc-networks/gcp_vpc_networks_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **11** | Gateway Services Checker | gateway-services/gcp_gateway_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **12** | Load Balancer Checker | load-balancer/gcp_load_balancer_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **13** | IP Addresses Checker | vpc-networks/gcp_ip_addresses_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **14** | GKE Cluster Checker | cluster-gke/gcp_cluster_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | � |
+| **15** | Secrets & ConfigMaps Checker | secrets-configmaps/gcp_secrets_configmaps_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **16** | Pod Connectivity Checker | connectivity/pod_connectivity_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **17** | Deploy Dependency Checker | connectivity/deploy_dependency_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **18** | Cloud Run Checker | cloud-run/gcp_cloudrun_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **19** | Deployment Validator | connectivity/deployment_validator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **20** | Artifact Registry Tag Filter | artifact-registry/tag_filter.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **21** | Visualizar Reportes JSON | reports-viewer/gcp_reports_viewer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **22** | Inventario GKE + Cloud SQL | inventory/run_inventory.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **24** | GKE Node Resources Monitor | monitoring/gke_monitor_node.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **25** | GKE Pod Resources Monitor | monitoring/gke_monitor_pod.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **28** | Cloud Run Health Analyzer | cloud-run/gcp_cloudrun_health_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **29** | Cloud Run Security Auditor | cloud-run/gcp_cloudrun_security_auditor.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **30** | Cloud Run Cost Analyzer | cloud-run/gcp_cloudrun_cost_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **31** | Cloud Run Deployment Validator | cloud-run/gcp_cloudrun_deployment_validator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **32** | Cloud Run Traffic Analyzer | cloud-run/gcp_cloudrun_traffic_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **33** | Cloud Run Dependency Mapper | cloud-run/gcp_cloudrun_dependency_mapper.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **34** | Cloud Run Executive Dashboard | cloud-run/gcp_cloudrun_executive_dashboard.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **35** | Cloud Functions Analyzer | cloud-functions/gcp_cloud_functions_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **36** | Infrastructure Consolidator | consolidation/gcp_infrastructure_consolidator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **37** | Unified Infrastructure Dashboard | consolidation/gcp_unified_infrastructure_dashboard.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **38** | Service Accounts Multi-Project Reporter | service-accounts/gcp_sa_multi_project_reporter.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **39** | Event Tracker | event-tracker/event_tracker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **40** | Deployments Off Analyzer | deployments_off/gcp_deployments_off_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **41** | **Pub/Sub Monitor** | pubsub_monitor/pubsub_monitor.py | ✅ | ✅ | ❌ | ✅ | 3/4 | � |
 
 ---
 
 ## 📊 RESUMEN GCP
 
 ```
-Total de Herramientas: 40
-Patrones Implementados: 3/160 (1.9%)
-Herramientas Completas (4/4): 0/40 (0%)
-Herramientas Parciales (3/4): 1/40 (2.5%)
-Herramientas Sin Patrones (0/4): 39/40 (97.5%)
+Total de Herramientas: 41 (Tools 1-40 + Tool 41 Pub/Sub Monitor)
+Patrones Implementados: 3/164 (1.8%)
+Herramientas Completas (4/4): 0/41 (0%)
+Herramientas Parciales (3/4): 1/41 (2.4%)
+Herramientas Sin Patrones (0/4): 40/41 (97.6%)
 
 Desglose por Patrón:
-  ⏱️  Tiempo de Ejecución:    1/40 (2.5%)    █░░░░░░░░░░░░░░░░░░░
-  📤 JSON por Defecto:        1/40 (2.5%)    █░░░░░░░░░░░░░░░░░░░
-  📝 Log de Comandos:         0/40 (0%)      ░░░░░░░░░░░░░░░░░░░░
-  📁 Resumen de Archivos:     1/40 (2.5%)    █░░░░░░░░░░░░░░░░░░░
+  ⏱️  Tiempo de Ejecución:    1/41 (2.4%)    █░░░░░░░░░░░░░░░░░░░
+  📤 JSON por Defecto:        1/41 (2.4%)    █░░░░░░░░░░░░░░░░░░░
+  📝 Log de Comandos:         0/41 (0%)      ░░░░░░░░░░░░░░░░░░░░
+  📁 Resumen de Archivos:     1/41 (2.4%)    █░░░░░░░░░░░░░░░░░░░
 ```
 
 ---
