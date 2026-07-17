@@ -25,6 +25,8 @@ import argparse
 import csv
 import json
 import os
+import logging
+import time
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
 
@@ -60,6 +62,27 @@ try:
     EXPORT_MANAGER_AVAILABLE = True
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
+
+
+def setup_logger(output_dir: str = "outcome") -> logging.Logger:
+    """Configura el logger para registrar comandos ejecutados."""
+    from pathlib import Path
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = output_path / f"gke_deployments_report_{timestamp}.log"
+    
+    logger = logging.getLogger("gke_deployments_report")
+    logger.setLevel(logging.INFO)
+    
+    handler = logging.FileHandler(log_file, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    
+    return logger
+
 
 def parse_cpu_to_cores(cpu_str):
     """
@@ -546,6 +569,8 @@ def write_json(report_data, filepath):
 # ---------------------------------------------------------------------------
 
 def main():
+    start_time = time.time()
+    
     parser = argparse.ArgumentParser(
         description=(
             "Genera reporte detallado de Deployments en GKE "
@@ -559,6 +584,10 @@ def main():
     )
     args = parser.parse_args()
 
+    output_dir_path = args.output_dir or "outcome"
+    logger = setup_logger(output_dir_path)
+    logger.info("Iniciando generación de reporte de deployments en GKE")
+
     print("=" * 80)
     print("🔍 GENERANDO REPORTE DE DEPLOYMENTS EN GKE")
     print("=" * 80)
@@ -568,8 +597,10 @@ def main():
         generated_at = datetime.now(timezone.utc).isoformat()
 
         print("[INFO] Consultando deployments en el cluster...")
+        logger.info("Consultando deployments en el cluster")
         report_data = get_deployments_report()
         print(f"[INFO] Se encontraron {len(report_data)} deployments")
+        logger.info(f"Se encontraron {len(report_data)} deployments")
         print()
 
         for row in report_data:
@@ -584,17 +615,17 @@ def main():
         print(summary_status)
         print(summary_limits)
 
-        output_dir = get_output_dir(args.output_dir or "outcome")
+        output_dir = get_output_dir(output_dir_path)
         ts_for_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         txt_path = os.path.join(
-            args.output_dir, f"gke_deployments_report_{ts_for_filename}.txt"
+            output_dir_path, f"gke_deployments_report_{ts_for_filename}.txt"
         )
         csv_path = os.path.join(
-            args.output_dir, f"gke_deployments_report_{ts_for_filename}.csv"
+            output_dir_path, f"gke_deployments_report_{ts_for_filename}.csv"
         )
         json_path = os.path.join(
-            args.output_dir, f"gke_deployments_report_{ts_for_filename}.json"
+            output_dir_path, f"gke_deployments_report_{ts_for_filename}.json"
         )
 
         with open(txt_path, "w", encoding="utf-8") as f:
@@ -615,8 +646,15 @@ def main():
         print(f"📁 Reporte TXT guardado en: {txt_path}")
         print(f"📁 Reporte CSV guardado en: {csv_path}")
         print(f"📁 Reporte JSON guardado en: {json_path}")
+        logger.info(f"Archivos generados: TXT, CSV, JSON")
+
+        end_time = time.time()
+        duration = end_time - start_time
+        print(f"\n⏱️ Tiempo de ejecución: {duration:.2f}s")
+        logger.info(f"Tiempo de ejecución: {duration:.2f}s")
 
     except Exception as e:
+        logger.error(f"Error generando el reporte: {e}")
         print(f"❌ Error generando el reporte: {e}")
         import traceback
         traceback.print_exc()

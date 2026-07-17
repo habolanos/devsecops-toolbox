@@ -46,6 +46,8 @@ import argparse
 import csv
 import json
 import os
+import logging
+import time
 import warnings
 from datetime import datetime, timezone
 from collections import defaultdict, Counter
@@ -91,6 +93,27 @@ try:
     EXPORT_MANAGER_AVAILABLE = True
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
+
+
+def setup_logger(output_dir: str = "outcome") -> logging.Logger:
+    """Configura el logger para registrar comandos ejecutados."""
+    from pathlib import Path
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = output_path / f"gcp_iam_roles_report_{timestamp}.log"
+    
+    logger = logging.getLogger("gcp_iam_roles_report")
+    logger.setLevel(logging.INFO)
+    
+    handler = logging.FileHandler(log_file, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    
+    return logger
+
 
 def log(msg: str):
     """Guarda mensaje en memoria para el archivo .log y lo imprime en consola."""
@@ -525,6 +548,8 @@ def compute_and_print_summary(full_report):
 # ---------------------------------------------------------------------------
 
 def main():
+    start_time = time.time()
+    
     parser = argparse.ArgumentParser(
         description=(
             "Genera un reporte de roles y permisos IAM asignados a un proyecto GCP "
@@ -543,11 +568,15 @@ def main():
     )
     args = parser.parse_args()
 
+    output_dir_path = args.output_dir or "outcome"
+    logger = setup_logger(output_dir_path)
+    logger.info(f"Iniciando generación de reporte de roles IAM para proyecto: {args.project_id}")
+
     print("=" * 80)
     print("🔍 GENERANDO REPORTE DE ROLES Y PERMISOS IAM DEL PROYECTO")
     print("=" * 80)
     print(f"Proyecto: {args.project_id}")
-    print(f"Directorio de salida: {args.output_dir}")
+    print(f"Directorio de salida: {output_dir_path}")
     print()
 
     exit_code = 0
@@ -635,9 +664,16 @@ def main():
         print(f"  - CSV permisos:     {csv_perms_path}")
         print(f"  - JSON detallado:   {json_path}")
         print(f"  - LOG de warnings:  {log_path}")
+        logger.info(f"Archivos generados: TXT, CSV (2), JSON, LOG")
         print()
 
+        end_time = time.time()
+        duration = end_time - start_time
+        print(f"⏱️ Tiempo de ejecución: {duration:.2f}s")
+        logger.info(f"Tiempo de ejecución: {duration:.2f}s")
+
     except Exception as e:
+        logger.error(f"Error generando el reporte: {e}")
         print()
         print("=" * 80)
         print("❌ ERROR GENERANDO EL REPORTE")
