@@ -38,6 +38,8 @@ try:
     from rich.console import Console
     from rich.table import Table
     from rich.panel import Panel
+    from rich.spinner import Spinner
+    from rich.live import Live
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
@@ -91,6 +93,27 @@ def setup_logger(output_dir: str = "outcome") -> logging.Logger:
     logger.addHandler(handler)
     
     return logger
+
+
+def tabulate_to_rich_table(tabulate_output, title="Datos"):
+    """Convierte salida de tabulate a tabla Rich."""
+    lines = tabulate_output.strip().split('\n')
+    if len(lines) < 2:
+        return None
+    
+    headers = [h.strip() for h in lines[0].split('|') if h.strip()]
+    table = Table(title=title, show_header=True, header_style="bold cyan")
+    
+    for header in headers:
+        table.add_column(header, style="white")
+    
+    for line in lines[2:]:
+        if '|' in line:
+            cells = [c.strip() for c in line.split('|') if c.strip()]
+            if len(cells) == len(headers):
+                table.add_row(*cells)
+    
+    return table
 
 
 def print_execution_summary(start_time, end_time, log_file, console):
@@ -635,12 +658,18 @@ def main():
     try:
         generated_at = datetime.now(timezone.utc).isoformat()
 
-        print("[INFO] Consultando deployments en el cluster...")
-        logger.info("Consultando deployments en el cluster")
-        report_data = get_deployments_report()
-        print(f"[INFO] Se encontraron {len(report_data)} deployments")
+        if RICH_AVAILABLE and console:
+            with console.status("[bold cyan]🔍 Consultando deployments en el cluster...", spinner="dots"):
+                logger.info("Consultando deployments en el cluster")
+                report_data = get_deployments_report()
+            console.print(f"[green]✓[/green] Se encontraron [bold]{len(report_data)}[/bold] deployments")
+        else:
+            print("[INFO] Consultando deployments en el cluster...")
+            logger.info("Consultando deployments en el cluster")
+            report_data = get_deployments_report()
+            print(f"[INFO] Se encontraron {len(report_data)} deployments")
+        
         logger.info(f"Se encontraron {len(report_data)} deployments")
-        print()
 
         for row in report_data:
             row["generated_at"] = generated_at
@@ -649,10 +678,26 @@ def main():
         summary_status = format_status_summary(report_data)
         summary_limits = format_limits_status_summary(report_data)
 
-        print(detailed)
-        print()
-        print(summary_status)
-        print(summary_limits)
+        if RICH_AVAILABLE and console:
+            console.print()
+            detailed_table = tabulate_to_rich_table(detailed, "📊 Reporte Detallado de Deployments")
+            if detailed_table:
+                console.print(detailed_table)
+            
+            console.print()
+            status_table = tabulate_to_rich_table(summary_status, "📈 Resumen por Status")
+            if status_table:
+                console.print(status_table)
+            
+            console.print()
+            limits_table = tabulate_to_rich_table(summary_limits, "💾 Resumen por Status + Limits")
+            if limits_table:
+                console.print(limits_table)
+        else:
+            print(detailed)
+            print()
+            print(summary_status)
+            print(summary_limits)
 
         output_dir = get_output_dir(output_dir_path)
         ts_for_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -667,20 +712,38 @@ def main():
             output_dir_path, f"gke_deployments_report_{ts_for_filename}.json"
         )
 
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write("=" * 80 + "\n")
-            f.write("REPORTE DE DEPLOYMENTS EN GKE\n")
-            f.write(f"Generado (UTC): {generated_at}\n")
-            f.write("=" * 80 + "\n\n")
-            f.write(detailed)
-            f.write("\n\n")
-            f.write(f"[RESÚMENES GENERADOS (UTC): {generated_at}]\n\n")
-            f.write(summary_status)
-            f.write("\n\n")
-            f.write(summary_limits)
+        if RICH_AVAILABLE and console:
+            with console.status("[bold cyan]💾 Guardando archivos...", spinner="dots"):
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write("=" * 80 + "\n")
+                    f.write("REPORTE DE DEPLOYMENTS EN GKE\n")
+                    f.write(f"Generado (UTC): {generated_at}\n")
+                    f.write("=" * 80 + "\n\n")
+                    f.write(detailed)
+                    f.write("\n\n")
+                    f.write(f"[RESÚMENES GENERADOS (UTC): {generated_at}]\n\n")
+                    f.write(summary_status)
+                    f.write("\n\n")
+                    f.write(summary_limits)
 
-        write_csv(report_data, csv_path)
-        write_json(report_data, json_path)
+                write_csv(report_data, csv_path)
+                write_json(report_data, json_path)
+            console.print("[green]✓[/green] Archivos guardados exitosamente")
+        else:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write("=" * 80 + "\n")
+                f.write("REPORTE DE DEPLOYMENTS EN GKE\n")
+                f.write(f"Generado (UTC): {generated_at}\n")
+                f.write("=" * 80 + "\n\n")
+                f.write(detailed)
+                f.write("\n\n")
+                f.write(f"[RESÚMENES GENERADOS (UTC): {generated_at}]\n\n")
+                f.write(summary_status)
+                f.write("\n\n")
+                f.write(summary_limits)
+
+            write_csv(report_data, csv_path)
+            write_json(report_data, json_path)
 
         if RICH_AVAILABLE and console:
             files_table = Table(title="📁 Archivos Generados", box=None)
