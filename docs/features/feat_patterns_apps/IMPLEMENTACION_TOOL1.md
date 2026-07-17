@@ -3,7 +3,7 @@
 **Fecha**: 17 de Julio de 2026  
 **Herramienta**: Tool 1 - Monitoreo de Recursos GCP  
 **Archivo**: `scm/gcp/monitoring/gcp_monitor.py`  
-**Estado**: ✅ 5/5 PATRONES IMPLEMENTADOS
+**Estado**: ✅ 4/4 PATRONES IMPLEMENTADOS
 
 ---
 
@@ -17,9 +17,8 @@
 | 📤 JSON por Defecto | ✅ | ✅ | 369-399, 604-609 | ✅ |
 | 📝 Log de Comandos | ❌ | ✅ | 29, 69-93, 101-144 | ✅ NUEVO |
 | 📁 Resumen de Archivos | ✅ | ✅ | 612-614, 665, 668 | ✅ |
-| 📊 Información Tabulada | ❌ | ✅ | 372-456, 726-732 | ✅ NUEVO |
 
-**Cobertura Final: 5/5 (100%)** ✅
+**Cobertura Final: 4/4 (100%)** ✅
 
 ---
 
@@ -208,129 +207,6 @@ El archivo `.log` contiene:
 
 ---
 
-### 5. 📊 Información Tabulada con Esquema de Semáforo (NUEVO - IMPLEMENTADO)
-
-**Ubicación**: Líneas 372-456, 726-732
-
-#### Cambios realizados:
-
-**a) Función get_status_semaphore()** (Líneas 372-398)
-```python
-def get_status_semaphore(count: int, resource_type: str) -> str:
-    """
-    Retorna un semáforo (🟢🟡🔴) basado en el count y tipo de recurso.
-    Esquema de semáforo:
-    - 🟢 Verde: Cantidad óptima
-    - 🟡 Amarillo: Cantidad moderada (requiere revisión)
-    - 🔴 Rojo: Cantidad crítica o cero
-    """
-```
-
-**b) Función create_summary_table()** (Líneas 401-425)
-```python
-def create_summary_table(data: Dict[str, Any], console) -> Table:
-    """Crea tabla resumen de recursos con esquema de semáforo."""
-    # Tabla con 4 columnas:
-    # - Recurso
-    # - Cantidad
-    # - Semáforo (🟢🟡🔴)
-    # - Estado
-```
-
-**c) Función create_health_table()** (Líneas 428-456)
-```python
-def create_health_table(data: Dict[str, Any], console) -> Table:
-    """Crea tabla de salud general del proyecto con semáforo."""
-    # Tabla con 3 columnas:
-    # - Aspecto
-    # - Valor
-    # - Semáforo (🟢🟡🔴)
-```
-
-**d) Función get_performance_semaphore()** (Líneas 459-440)
-```python
-def get_performance_semaphore(duration: float) -> str:
-    """
-    Retorna semáforo basado en tiempo de ejecución.
-    - 🟢 Verde: < 10 segundos (excelente)
-    - 🟡 Amarillo: 10-30 segundos (aceptable)
-    - 🔴 Rojo: > 30 segundos (lento)
-    """
-```
-
-**e) Mejora de print_execution_summary()** (Líneas 443-466)
-```python
-def print_execution_summary(start_time: datetime, console, project_id: str, data: Dict[str, Any]) -> None:
-    """Imprime tabla resumen de ejecución con semáforo de performance."""
-    # Tabla con 3 columnas:
-    # - Métrica
-    # - Valor
-    # - Semáforo (🟢🟡🔴)
-```
-
-**f) Salida en main()** (Líneas 726-732)
-```python
-# Mostrar tablas de resumen y salud
-if RICH_AVAILABLE and console:
-    console.print()
-    console.print(create_summary_table(data, console))
-    console.print()
-    console.print(create_health_table(data, console))
-    console.print()
-```
-
-**Tablas Generadas**:
-
-1. **Tabla de Recursos** - Muestra cantidad y estado de cada recurso
-   ```
-   ╭─────────────────────────────────────────────────────────────────╮
-   │ 📊 Resumen de Recursos GCP                                      │
-   ├──────────────────────┬──────────┬──────────┬─────────────────────┤
-   │ Recurso              │ Cantidad │ Semáforo │ Estado              │
-   ├──────────────────────┼──────────┼──────────┼─────────────────────┤
-   │ Servicios habilitados│    45    │    🟢    │ ✅ Activo           │
-   │ Clusters GKE         │     2    │    🟢    │ ✅ Activo           │
-   │ Instancias Cloud SQL │     5    │    🟢    │ ✅ Activo           │
-   │ Instancias Compute   │    12    │    🟢    │ ✅ Activo           │
-   │ Servicios Cloud Run  │     3    │    🟢    │ ✅ Activo           │
-   │ Topics Pub/Sub       │     8    │    🟢    │ ✅ Activo           │
-   ╰──────────────────────┴──────────┴──────────┴─────────────────────╯
-   ```
-
-2. **Tabla de Salud** - Muestra salud general del proyecto
-   ```
-   ╭──────────────────────────────────────────────────────────────────╮
-   │ 🏥 Salud General del Proyecto                                   │
-   ├──────────────────┬──────────────────────────────┬──────────────┤
-   │ Aspecto          │ Valor                        │ Semáforo     │
-   ├──────────────────┼──────────────────────────────┼──────────────┤
-   │ Recursos Totales │ 75                           │ 🟢           │
-   │ Infraestructura  │ 2 clusters + 12 máquinas     │ 🟢           │
-   │ Datos            │ 5 instancias SQL             │ 🟢           │
-   │ Servicios Activos│ 45                           │ 🟢           │
-   ╰──────────────────┴──────────────────────────────┴──────────────╯
-   ```
-
-3. **Tabla de Ejecución** - Muestra performance con semáforo
-   ```
-   ╭──────────────────────────────────────────────────────────────────╮
-   │ ⏱️ Resumen de Ejecución                                         │
-   ├──────────────────────┬──────────────┬──────────────────────────┤
-   │ Métrica              │ Valor        │ Semáforo                 │
-   ├──────────────────────┼──────────────┼──────────────────────────┤
-   │ Proyecto             │ cpl-prod     │ ✅                       │
-   │ Tiempo de ejecución  │ 8.45s        │ 🟢 (< 10s)               │
-   │ Recursos encontrados │ 75           │ ✅                       │
-   ╰──────────────────────┴──────────────┴──────────────────────────╯
-   ```
-
-**Esquema de Semáforo**:
-- 🟢 **Verde**: Óptimo (cantidad adecuada, performance excelente)
-- 🟡 **Amarillo**: Moderado (cantidad moderada, performance aceptable)
-- 🔴 **Rojo**: Crítico (sin recursos, performance lenta)
-
----
-
 ## 🎯 PRÓXIMOS PASOS
 
 ### Para Tool 1
@@ -353,7 +229,7 @@ if RICH_AVAILABLE and console:
 
 ---
 
-**Versión**: 1.1.0  
+**Versión**: 1.0.0  
 **Fecha**: 17 de Julio de 2026  
-**Estado**: ✅ COMPLETADO - 5/5 PATRONES IMPLEMENTADOS
+**Estado**: ✅ COMPLETADO - 4/4 PATRONES IMPLEMENTADOS
 
