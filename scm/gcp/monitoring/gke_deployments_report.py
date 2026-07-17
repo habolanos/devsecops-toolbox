@@ -34,6 +34,15 @@ from kubernetes import client, config
 from kubernetes.client import ApiException
 from tabulate import tabulate
 
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+    Console = None
+
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
     from utils import get_output_dir
@@ -82,6 +91,25 @@ def setup_logger(output_dir: str = "outcome") -> logging.Logger:
     logger.addHandler(handler)
     
     return logger
+
+
+def print_execution_summary(start_time, end_time, log_file, console):
+    """Imprime resumen de ejecución con Rich."""
+    duration = end_time - start_time
+    
+    if RICH_AVAILABLE and console:
+        table = Table(title="⏱️ Resumen de Ejecución", box=None)
+        table.add_column("Métrica", style="cyan")
+        table.add_column("Valor", style="green")
+        
+        table.add_row("Tiempo de ejecución", f"{duration:.2f}s")
+        table.add_row("Archivo de log", str(log_file))
+        
+        console.print()
+        console.print(Panel(table, border_style="blue"))
+    else:
+        print(f"\n⏱️ Tiempo de ejecución: {duration:.2f}s")
+        print(f"📝 Archivo de log: {log_file}")
 
 
 def parse_cpu_to_cores(cpu_str):
@@ -596,6 +624,8 @@ def main():
     output_dir_path = args.output_dir or "outcome"
     logger = setup_logger(output_dir_path)
     logger.info("Iniciando generación de reporte de deployments en GKE")
+    
+    console = Console() if RICH_AVAILABLE else None
 
     print("=" * 80)
     print("🔍 GENERANDO REPORTE DE DEPLOYMENTS EN GKE")
@@ -652,15 +682,26 @@ def main():
         write_csv(report_data, csv_path)
         write_json(report_data, json_path)
 
-        print(f"📁 Reporte TXT guardado en: {txt_path}")
-        print(f"📁 Reporte CSV guardado en: {csv_path}")
-        print(f"📁 Reporte JSON guardado en: {json_path}")
+        if RICH_AVAILABLE and console:
+            files_table = Table(title="📁 Archivos Generados", box=None)
+            files_table.add_column("Tipo", style="cyan")
+            files_table.add_column("Ruta", style="green")
+            files_table.add_row("TXT", txt_path)
+            files_table.add_row("CSV", csv_path)
+            files_table.add_row("JSON", json_path)
+            console.print()
+            console.print(Panel(files_table, border_style="blue"))
+        else:
+            print(f"📁 Reporte TXT guardado en: {txt_path}")
+            print(f"📁 Reporte CSV guardado en: {csv_path}")
+            print(f"📁 Reporte JSON guardado en: {json_path}")
+        
         logger.info(f"Archivos generados: TXT, CSV, JSON")
 
         end_time = time.time()
-        duration = end_time - start_time
-        print(f"\n⏱️ Tiempo de ejecución: {duration:.2f}s")
-        logger.info(f"Tiempo de ejecución: {duration:.2f}s")
+        log_file = logger.handlers[0].baseFilename if logger.handlers else "N/A"
+        print_execution_summary(start_time, end_time, log_file, console)
+        logger.info(f"Tiempo de ejecución: {end_time - start_time:.2f}s")
 
     except Exception as e:
         logger.error(f"Error generando el reporte: {e}")
