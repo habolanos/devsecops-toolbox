@@ -217,14 +217,22 @@ def get_deployments_report():
     core_v1 = client.CoreV1Api()
     custom_api = client.CustomObjectsApi()
 
-    ns_list = core_v1.list_namespace()
-    namespaces = [ns.metadata.name for ns in ns_list.items]
+    try:
+        ns_list = core_v1.list_namespace(_request_timeout=10)
+        namespaces = [ns.metadata.name for ns in ns_list.items]
+    except Exception as e:
+        print(f"[ERROR] No se pudo conectar al cluster de Kubernetes: {e}")
+        print("[INFO] Asegúrate de que:")
+        print("  1. Tienes kubeconfig configurado (~/.kube/config)")
+        print("  2. El cluster está disponible y accesible")
+        print("  3. Tienes credenciales válidas")
+        raise
 
     report_rows = []
 
     for ns in namespaces:
         try:
-            deployments = apps_v1.list_namespaced_deployment(namespace=ns)
+            deployments = apps_v1.list_namespaced_deployment(namespace=ns, _request_timeout=10)
         except ApiException as e:
             print(f"[WARN] No se pudieron listar deployments en namespace {ns}: {e}")
             continue
@@ -241,7 +249,7 @@ def get_deployments_report():
 
             try:
                 pods = core_v1.list_namespaced_pod(
-                    namespace=ns, label_selector=label_selector
+                    namespace=ns, label_selector=label_selector, _request_timeout=10
                 )
             except ApiException as e:
                 print(f"[WARN] No se pudieron listar pods para {dep_name} en {ns}: {e}")
@@ -279,6 +287,7 @@ def get_deployments_report():
                     version="v1beta1",
                     namespace=ns,
                     plural="pods",
+                    _request_timeout=10
                 )
             except ApiException as e:
                 pod_metrics = None
