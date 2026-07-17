@@ -369,43 +369,132 @@ def generate_report(project_id: str, data: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def get_status_semaphore(count: int, resource_type: str) -> str:
+    """
+    Retorna un semáforo (🟢🟡🔴) basado en el count y tipo de recurso.
+    Esquema de semáforo:
+    - 🟢 Verde: Cantidad óptima
+    - 🟡 Amarillo: Cantidad moderada (requiere revisión)
+    - 🔴 Rojo: Cantidad crítica o cero
+    """
+    thresholds = {
+        'services': {'green': (1, float('inf')), 'yellow': (1, 50), 'red': (0, 0)},
+        'gke_clusters': {'green': (1, float('inf')), 'yellow': (1, 5), 'red': (0, 0)},
+        'sql_instances': {'green': (1, float('inf')), 'yellow': (1, 10), 'red': (0, 0)},
+        'compute_instances': {'green': (1, float('inf')), 'yellow': (1, 20), 'red': (0, 0)},
+        'cloud_run': {'green': (1, float('inf')), 'yellow': (1, 10), 'red': (0, 0)},
+        'pubsub_topics': {'green': (1, float('inf')), 'yellow': (1, 50), 'red': (0, 0)},
+    }
+    
+    thresholds_config = thresholds.get(resource_type, {'green': (1, float('inf')), 'yellow': (1, 100), 'red': (0, 0)})
+    
+    if count == 0:
+        return "🔴"  # Rojo: sin recursos
+    elif count >= thresholds_config['green'][0]:
+        return "🟢"  # Verde: cantidad óptima
+    elif count >= thresholds_config['yellow'][0]:
+        return "🟡"  # Amarillo: cantidad moderada
+    else:
+        return "🔴"  # Rojo: crítico
+
+
 def create_summary_table(data: Dict[str, Any], console) -> Table:
-    """Crea tabla resumen de recursos."""
+    """Crea tabla resumen de recursos con esquema de semáforo."""
     table = Table(title="📊 Resumen de Recursos GCP", box=box.ROUNDED)
     table.add_column("Recurso", style="cyan")
     table.add_column("Cantidad", style="green", justify="right")
+    table.add_column("Semáforo", justify="center")
     table.add_column("Estado", style="yellow")
     
-    table.add_row("Servicios habilitados", str(len(data.get('services', []))), "✅")
-    table.add_row("Clusters GKE", str(len(data.get('gke_clusters', []))), "✅" if data.get('gke_clusters') else "—")
-    table.add_row("Instancias Cloud SQL", str(len(data.get('sql_instances', []))), "✅" if data.get('sql_instances') else "—")
-    table.add_row("Instancias Compute", str(len(data.get('compute_instances', []))), "✅" if data.get('compute_instances') else "—")
-    table.add_row("Servicios Cloud Run", str(len(data.get('cloud_run', []))), "✅" if data.get('cloud_run') else "—")
-    table.add_row("Topics Pub/Sub", str(len(data.get('pubsub_topics', []))), "✅" if data.get('pubsub_topics') else "—")
+    # Datos de recursos
+    resources = [
+        ("Servicios habilitados", 'services', "Servicios activos"),
+        ("Clusters GKE", 'gke_clusters', "Orquestación"),
+        ("Instancias Cloud SQL", 'sql_instances', "Bases de datos"),
+        ("Instancias Compute", 'compute_instances', "Máquinas virtuales"),
+        ("Servicios Cloud Run", 'cloud_run', "Serverless"),
+        ("Topics Pub/Sub", 'pubsub_topics', "Mensajería"),
+    ]
+    
+    for label, key, description in resources:
+        count = len(data.get(key, []))
+        semaphore = get_status_semaphore(count, key)
+        status = "✅ Activo" if count > 0 else "⚠️ Inactivo"
+        table.add_row(label, str(count), semaphore, status)
     
     return table
 
 
+def create_health_table(data: Dict[str, Any], console) -> Table:
+    """Crea tabla de salud general del proyecto con semáforo."""
+    table = Table(title="🏥 Salud General del Proyecto", box=box.ROUNDED)
+    table.add_column("Aspecto", style="cyan")
+    table.add_column("Valor", style="green", justify="right")
+    table.add_column("Semáforo", justify="center")
+    
+    # Calcular métricas de salud
+    total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
+    services_count = len(data.get('services', []))
+    clusters_count = len(data.get('gke_clusters', []))
+    sql_count = len(data.get('sql_instances', []))
+    compute_count = len(data.get('compute_instances', []))
+    
+    # Semáforo para infraestructura
+    infra_health = "🟢" if clusters_count > 0 or compute_count > 0 else "🔴"
+    
+    # Semáforo para datos
+    data_health = "🟢" if sql_count > 0 else "🟡"
+    
+    # Semáforo para servicios
+    services_health = "🟢" if services_count > 50 else "🟡" if services_count > 10 else "🔴"
+    
+    table.add_row("Recursos Totales", str(total_resources), "🟢" if total_resources > 0 else "🔴")
+    table.add_row("Infraestructura", f"{clusters_count} clusters + {compute_count} máquinas", infra_health)
+    table.add_row("Datos", f"{sql_count} instancias SQL", data_health)
+    table.add_row("Servicios Activos", str(services_count), services_health)
+    
+    return table
+
+
+def get_performance_semaphore(duration: float) -> str:
+    """
+    Retorna semáforo basado en tiempo de ejecución.
+    - 🟢 Verde: < 10 segundos (excelente)
+    - 🟡 Amarillo: 10-30 segundos (aceptable)
+    - 🔴 Rojo: > 30 segundos (lento)
+    """
+    if duration < 10:
+        return "🟢"  # Excelente
+    elif duration < 30:
+        return "🟡"  # Aceptable
+    else:
+        return "🔴"  # Lento
+
+
 def print_execution_summary(start_time: datetime, console, project_id: str, data: Dict[str, Any]) -> None:
-    """Imprime tabla resumen de ejecución."""
+    """Imprime tabla resumen de ejecución con semáforo de performance."""
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
+    total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
+    perf_semaphore = get_performance_semaphore(duration)
     
     if RICH_AVAILABLE and console:
         table = Table(title="⏱️ Resumen de Ejecución", box=box.ROUNDED)
         table.add_column("Métrica", style="cyan")
         table.add_column("Valor", style="green")
+        table.add_column("Semáforo", justify="center")
         
-        table.add_row("Proyecto", project_id)
-        table.add_row("Tiempo de ejecución", f"{duration:.2f}s")
-        table.add_row("Recursos encontrados", str(sum(len(v) for v in data.values() if isinstance(v, list))))
+        table.add_row("Proyecto", project_id, "✅")
+        table.add_row("Tiempo de ejecución", f"{duration:.2f}s", perf_semaphore)
+        table.add_row("Recursos encontrados", str(total_resources), "✅" if total_resources > 0 else "⚠️")
         
         console.print()
         console.print(Panel(table, border_style="blue"))
     else:
         print(f"\n⏱️ Resumen de Ejecución")
         print(f"  Proyecto: {project_id}")
-        print(f"  Tiempo: {duration:.2f}s")
+        print(f"  Tiempo: {duration:.2f}s {perf_semaphore}")
+        print(f"  Recursos: {total_resources}")
 
 
 def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan") -> str:
@@ -634,10 +723,12 @@ def main() -> int:
             data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
             data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
         
-        # Mostrar tabla resumen
+        # Mostrar tablas de resumen y salud
         if RICH_AVAILABLE and console:
             console.print()
             console.print(create_summary_table(data, console))
+            console.print()
+            console.print(create_health_table(data, console))
             console.print()
         
         # Generar reporte
