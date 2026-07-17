@@ -42,13 +42,10 @@ Se analizan 4 patrones críticos que deben estar en todos los programas:
 
 | # | Herramienta | Archivo | ⏱️ Tiempo | 📤 JSON | 📝 Log | 📁 Archivos | Estado |
 |---|-------------|---------|----------|--------|--------|-------------|--------|
-| 1 | Cloud Storage Analyzer | gcp_cloud_storage_analyzer.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
-| 2 | Compute Engine Analyzer | gcp_compute_engine_analyzer.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
-| 3 | Cloud SQL Analyzer | gcp_cloud_sql_analyzer.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
-| 4 | Firestore Analyzer | gcp_firestore_analyzer.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
-| 5 | Cloud Functions Analyzer | gcp_cloud_functions_analyzer.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
-| 6 | Cloud Run Analyzer | cloudrun_base.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
-| 7 | Pub/Sub Monitor | pubsub_monitor/pubsub_monitor.py | ✅ | ✅ | ❌ | ✅ | 🟡 3/4 |
+| 1 | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ✅ | ✅ | ✅ | ✅ | � 4/4 |
+| 2 | Reporte de Despliegues GKE | monitoring/gke_deployments_report.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
+| 3 | Reporte de Roles y Permisos IAM | rolesypermisos/gcp_iam_roles_report.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
+| 41 | Pub/Sub Monitor | pubsub_monitor/pubsub_monitor.py | ✅ | ✅ | ❌ | ✅ | 🟡 3/4 |
 | ... | ... | ... | ... | ... | ... | ... | ... |
 
 ---
@@ -59,16 +56,17 @@ Se analizan 4 patrones críticos que deben estar en todos los programas:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PLATAFORMA: GCP (Google Cloud Platform)                                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ Total de Herramientas: 40                                                   │
-│ Patrones Implementados: 3/160 (1.9%)                                        │
-│ Herramientas Completas: 1/40 (2.5%)                                         │
+│ Total de Herramientas: 41 (Tools 1-40 + Tool 41 Pub/Sub Monitor)            │
+│ Patrones Implementados: 7/164 (4.3%)                                        │
+│ Herramientas Completas (4/4): 1/41 (2.4%)                                   │
+│ Herramientas Parciales (3/4): 1/41 (2.4%)                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 Desglose por Patrón:
-  ⏱️  Tiempo de Ejecución:    3/40 (7.5%)    ████░░░░░░░░░░░░░░░░
-  📤 JSON por Defecto:        3/40 (7.5%)    ████░░░░░░░░░░░░░░░░
-  📝 Log de Comandos:         0/40 (0%)      ░░░░░░░░░░░░░░░░░░░░
-  📁 Resumen de Archivos:     3/40 (7.5%)    ████░░░░░░░░░░░░░░░░
+  ⏱️  Tiempo de Ejecución:    2/41 (4.9%)    ██░░░░░░░░░░░░░░░░░░
+  📤 JSON por Defecto:        2/41 (4.9%)    ██░░░░░░░░░░░░░░░░░░
+  📝 Log de Comandos:         1/41 (2.4%)    █░░░░░░░░░░░░░░░░░░░
+  📁 Resumen de Archivos:     2/41 (4.9%)    ██░░░░░░░░░░░░░░░░░░
 ```
 
 ---
@@ -161,44 +159,49 @@ Desglose por Patrón:
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ Total de Herramientas: 128                                                  │
 │ Total de Patrones Posibles: 512 (128 × 4)                                   │
-│ Patrones Implementados: 3/512 (0.6%)                                        │
-│ Herramientas Completas: 1/128 (0.8%)                                        │
+│ Patrones Implementados: 7/512 (1.4%)                                        │
+│ Herramientas Completas (4/4): 1/128 (0.8%)                                  │
+│ Herramientas Parciales (3/4): 1/128 (0.8%)                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 Desglose por Patrón (TODAS LAS PLATAFORMAS):
-  ⏱️  Tiempo de Ejecución:    3/128 (2.3%)   █░░░░░░░░░░░░░░░░░░░
-  📤 JSON por Defecto:        3/128 (2.3%)   █░░░░░░░░░░░░░░░░░░░
-  📝 Log de Comandos:         0/128 (0%)     ░░░░░░░░░░░░░░░░░░░░
-  📁 Resumen de Archivos:     3/128 (2.3%)   █░░░░░░░░░░░░░░░░░░░
+  ⏱️  Tiempo de Ejecución:    2/128 (1.6%)   █░░░░░░░░░░░░░░░░░░░
+  📤 JSON por Defecto:        2/128 (1.6%)   █░░░░░░░░░░░░░░░░░░░
+  📝 Log de Comandos:         1/128 (0.8%)   ░░░░░░░░░░░░░░░░░░░░
+  📁 Resumen de Archivos:     2/128 (1.6%)   █░░░░░░░░░░░░░░░░░░░
 ```
 
 ---
 
 ## 🎯 PRIORIDADES DE IMPLEMENTACIÓN
 
-### Prioridad 1: Log de Comandos (0% - CRÍTICO)
+### Prioridad 1: Log de Comandos (0.8% - CRÍTICO)
 - **Impacto**: Alto
 - **Dificultad**: Media
 - **Esfuerzo**: 20-30 horas
 - **Beneficio**: Auditoría y debugging
+- **Estado**: ✅ Implementado en Tool 1 (GCP Monitor)
 
-### Prioridad 2: Resumen de Tiempo (2.3% - ALTO)
+### Prioridad 2: Resumen de Tiempo (1.6% - ALTO)
 - **Impacto**: Alto
 - **Dificultad**: Baja
 - **Esfuerzo**: 10-15 horas
 - **Beneficio**: Performance monitoring
+- **Estado**: ✅ Implementado en 2 herramientas
 
-### Prioridad 3: JSON por Defecto (2.3% - ALTO)
+### Prioridad 3: JSON por Defecto (1.6% - ALTO)
 - **Impacto**: Alto
 - **Dificultad**: Media
 - **Esfuerzo**: 15-20 horas
 - **Beneficio**: Integración y automatización
+- **Estado**: ✅ Implementado en 2 herramientas
 
-### Prioridad 4: Resumen de Archivos (2.3% - MEDIO)
+### Prioridad 4: Resumen de Archivos (1.6% - MEDIO)
 - **Impacto**: Medio
 - **Dificultad**: Baja
 - **Esfuerzo**: 10-15 horas
 - **Beneficio**: UX mejorada
+- **Estado**: ✅ Implementado en 2 herramientas
 
 ---
 
@@ -240,7 +243,8 @@ Desglose por Patrón (TODAS LAS PLATAFORMAS):
 
 ---
 
-**Versión**: 1.0.0  
+**Versión**: 1.1.0  
 **Fecha**: 17 de Julio de 2026  
-**Estado**: 🔄 EN PROGRESO - Análisis Inicial Completado
+**Estado**: 🔄 EN PROGRESO - Tool 1 Completado (4/4 patrones)
+**Próximo Objetivo**: Implementar Log de Comandos en Pub/Sub Monitor (Tool 41)
 
