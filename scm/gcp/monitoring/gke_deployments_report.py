@@ -101,7 +101,17 @@ def tabulate_to_rich_table(tabulate_output, title="Datos"):
     if len(lines) < 2:
         return None
     
-    headers = [h.strip() for h in lines[0].split('|') if h.strip()]
+    # Encontrar la línea de headers (primera línea con |)
+    header_idx = -1
+    for i, line in enumerate(lines):
+        if '|' in line and not any(c in line for c in ['-', '=']):
+            header_idx = i
+            break
+    
+    if header_idx == -1:
+        return None
+    
+    headers = [h.strip() for h in lines[header_idx].split('|') if h.strip()]
     if not headers:
         return None
     
@@ -110,13 +120,17 @@ def tabulate_to_rich_table(tabulate_output, title="Datos"):
     for header in headers:
         table.add_column(header, style="white")
     
-    for line in lines[2:]:
-        if '|' in line and not any(c in line for c in ['---', '===', '---']):
+    # Procesar líneas de datos (después de la línea de separación que sigue a headers)
+    data_start = header_idx + 2
+    for line in lines[data_start:]:
+        if '|' in line and not any(c in line for c in ['-', '=']):
             cells = [c.strip() for c in line.split('|')]
             cells = [c for c in cells if c]
             if len(cells) >= len(headers):
                 table.add_row(*cells[:len(headers)])
             elif len(cells) > 0:
+                # Rellenar con espacios si faltan columnas
+                cells.extend([''] * (len(headers) - len(cells)))
                 table.add_row(*cells)
     
     return table
