@@ -257,6 +257,124 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     return True
 
 
+def create_detailed_tables(data: Dict[str, Any], console) -> None:
+    """Crea y muestra tablas detalladas de recursos con Rich."""
+    if not RICH_AVAILABLE or not console:
+        return
+    
+    # Tabla de Servicios
+    services = data.get('services', [])
+    if services:
+        table = Table(title="📌 Servicios Habilitados", box=box.ROUNDED)
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        for svc in services[:15]:
+            name = svc.get('config', {}).get('title', svc.get('name', 'N/A'))[:40]
+            table.add_row(name, "✅ Activo")
+        if len(services) > 15:
+            table.add_row(f"... y {len(services) - 15} más", "")
+        console.print(table)
+        console.print()
+    
+    # Tabla de Clusters GKE
+    clusters = data.get('gke_clusters', [])
+    if clusters:
+        table = Table(title="☸️  Clusters GKE", box=box.ROUNDED)
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Ubicación", style="yellow")
+        table.add_column("Estado", style="green")
+        table.add_column("Versión", style="magenta")
+        table.add_column("Nodos", style="blue", justify="right")
+        for cluster in clusters:
+            table.add_row(
+                cluster.get('name', 'N/A')[:30],
+                cluster.get('location', 'N/A'),
+                cluster.get('status', 'N/A'),
+                cluster.get('currentMasterVersion', 'N/A')[:15],
+                str(cluster.get('currentNodeCount', 0))
+            )
+        console.print(table)
+        console.print()
+    
+    # Tabla de Cloud SQL
+    sql_instances = data.get('sql_instances', [])
+    if sql_instances:
+        table = Table(title="🗄️  Instancias Cloud SQL", box=box.ROUNDED)
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        table.add_column("Versión", style="yellow")
+        table.add_column("Tier", style="magenta")
+        table.add_column("Disco (GB)", style="blue", justify="right")
+        for instance in sql_instances[:10]:
+            disk = instance.get('settings', {}).get('dataDiskSizeGb', 'N/A')
+            table.add_row(
+                instance.get('name', 'N/A')[:30],
+                instance.get('state', 'N/A'),
+                instance.get('databaseVersion', 'N/A')[:20],
+                instance.get('settings', {}).get('tier', 'N/A')[:20],
+                str(disk)
+            )
+        if len(sql_instances) > 10:
+            table.add_row(f"... y {len(sql_instances) - 10} más", "", "", "", "")
+        console.print(table)
+        console.print()
+    
+    # Tabla de Compute Engine
+    compute_instances = data.get('compute_instances', [])
+    if compute_instances:
+        table = Table(title="💻 Instancias Compute Engine", box=box.ROUNDED)
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        table.add_column("Tipo", style="yellow")
+        table.add_column("Zona", style="magenta")
+        for vm in compute_instances[:15]:
+            machine = vm.get('machineType', '').split('/')[-1] if vm.get('machineType') else 'N/A'
+            zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
+            table.add_row(
+                vm.get('name', 'N/A')[:30],
+                vm.get('status', 'N/A'),
+                machine[:20],
+                zone
+            )
+        if len(compute_instances) > 15:
+            table.add_row(f"... y {len(compute_instances) - 15} más", "", "", "")
+        console.print(table)
+        console.print()
+    
+    # Tabla de Cloud Run
+    run_services = data.get('cloud_run', [])
+    if run_services:
+        table = Table(title="🚀 Servicios Cloud Run", box=box.ROUNDED)
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Región", style="yellow")
+        table.add_column("Estado", style="green")
+        for svc in run_services[:10]:
+            metadata = svc.get('metadata', {})
+            table.add_row(
+                metadata.get('name', 'N/A')[:40],
+                metadata.get('namespace', 'N/A')[:20],
+                "✅ Activo"
+            )
+        if len(run_services) > 10:
+            table.add_row(f"... y {len(run_services) - 10} más", "", "")
+        console.print(table)
+        console.print()
+    
+    # Tabla de Pub/Sub
+    topics = data.get('pubsub_topics', [])
+    if topics:
+        table = Table(title="📬 Topics Pub/Sub", box=box.ROUNDED)
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        for topic in topics[:15]:
+            name = topic.get('name', '').split('/')[-1] if topic.get('name') else 'N/A'
+            table.add_row(name[:50], "✅ Activo")
+        if len(topics) > 15:
+            table.add_row(f"... y {len(topics) - 15} más", "")
+        console.print(table)
+        console.print()
+
+
 def generate_report(project_id: str, data: Dict[str, Any]) -> str:
     """Genera el reporte como string."""
     lines = []
@@ -730,6 +848,13 @@ def main() -> int:
             console.print()
             console.print(create_health_table(data, console))
             console.print()
+            
+            # Mostrar tablas detalladas de recursos
+            console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
+            console.print("[bold cyan]📊 DETALLES DE RECURSOS[/]")
+            console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
+            console.print()
+            create_detailed_tables(data, console)
         
         # Generar reporte
         report = generate_report(project_id, data)
