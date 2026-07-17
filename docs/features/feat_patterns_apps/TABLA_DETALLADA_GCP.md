@@ -29,9 +29,9 @@
 
 ## 📊 TABLA COMPLETA - GCP
 
-| Tool ID | Herramienta | Archivo | ⏱️ Tiempo | 📤 JSON | 📝 Log | 📁 Archivos | 📊 Semáforo | Cobertura | Estado |
-|---------|-------------|---------|----------|--------|--------|-------------|-------------|-----------|--------|
-| **1** | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ✅ | ✅ | ✅ | ✅ | ✅ | 5/5 | 🟢 |
+| Tool ID | Herramienta | Archivo | ⏱️ Tiempo | 📤 JSON | 📝 Log | 📁 Archivos | Cobertura | Estado |
+|---------|-------------|---------|----------|--------|--------|-------------|-----------|--------|
+| **1** | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ✅ | ✅ | ✅ | ✅ | 5/5 | 🟢 |
 | **2** | Reporte de Despliegues GKE | monitoring/gke_deployments_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **3** | Reporte de Roles y Permisos IAM | rolesypermisos/gcp_iam_roles_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **4** | Service Account Checker | service-account/gcp_service_account_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
@@ -44,7 +44,7 @@
 | **11** | Gateway Services Checker | gateway-services/gcp_gateway_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **12** | Load Balancer Checker | load-balancer/gcp_load_balancer_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **13** | IP Addresses Checker | vpc-networks/gcp_ip_addresses_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| **14** | GKE Cluster Checker | cluster-gke/gcp_cluster_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | � |
+| **14** | GKE Cluster Checker | cluster-gke/gcp_cluster_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **15** | Secrets & ConfigMaps Checker | secrets-configmaps/gcp_secrets_configmaps_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **16** | Pod Connectivity Checker | connectivity/pod_connectivity_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **17** | Deploy Dependency Checker | connectivity/deploy_dependency_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
@@ -68,7 +68,7 @@
 | **38** | Service Accounts Multi-Project Reporter | service-accounts/gcp_sa_multi_project_reporter.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **39** | Event Tracker | event-tracker/event_tracker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **40** | Deployments Off Analyzer | deployments_off/gcp_deployments_off_analyzer.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| **41** | **Pub/Sub Monitor** | pubsub_monitor/pubsub_monitor.py | ✅ | ✅ | ❌ | ✅ | 3/4 | � |
+| **41** | **Pub/Sub Monitor** | pubsub_monitor/pubsub_monitor.py | ✅ | ✅ | ❌ | ✅ | 3/4 | 🟡 |
 
 ---
 
