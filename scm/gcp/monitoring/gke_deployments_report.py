@@ -666,15 +666,13 @@ def main():
     print("=" * 80)
     print()
     
-    project_id = args.project_id
-    if not args.project_id or args.project_id == "default-gke-project":
-        print("📋 Ingrese el ID del proyecto GCP")
-        print("   (Presione Enter para usar el valor por defecto: 'default-gke-project')")
-        user_input = input("Proyecto GCP: ").strip()
-        if user_input:
-            project_id = user_input
-        else:
-            project_id = "default-gke-project"
+    print("📋 Ingrese el ID del proyecto GCP")
+    print("   (Presione Enter para usar el valor por defecto: 'default-gke-project')")
+    user_input = input("Proyecto GCP: ").strip()
+    if user_input:
+        project_id = user_input
+    else:
+        project_id = args.project_id or "default-gke-project"
     
     print(f"✓ Proyecto GCP: {project_id}")
     logger.info(f"Proyecto GCP: {project_id}")
