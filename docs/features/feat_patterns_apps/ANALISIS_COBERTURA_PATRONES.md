@@ -42,7 +42,7 @@ Se analizan 4 patrones críticos que deben estar en todos los programas:
 
 | # | Herramienta | Archivo | ⏱️ Tiempo | 📤 JSON | 📝 Log | 📁 Archivos | Estado |
 |---|-------------|---------|----------|--------|--------|-------------|--------|
-| 1 | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ✅ | ✅ | ✅ | ✅ | � 4/4 |
+| 1 | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ✅ | ✅ | ✅ | ✅ | 🟢 4/4 |
 | 2 | Reporte de Despliegues GKE | monitoring/gke_deployments_report.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
 | 3 | Reporte de Roles y Permisos IAM | rolesypermisos/gcp_iam_roles_report.py | ❌ | ❌ | ❌ | ❌ | 🔴 0/4 |
 | 41 | Pub/Sub Monitor | pubsub_monitor/pubsub_monitor.py | ✅ | ✅ | ❌ | ✅ | 🟡 3/4 |
