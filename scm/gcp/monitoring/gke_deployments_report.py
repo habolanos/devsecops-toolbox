@@ -102,15 +102,21 @@ def tabulate_to_rich_table(tabulate_output, title="Datos"):
         return None
     
     headers = [h.strip() for h in lines[0].split('|') if h.strip()]
+    if not headers:
+        return None
+    
     table = Table(title=title, show_header=True, header_style="bold cyan")
     
     for header in headers:
         table.add_column(header, style="white")
     
     for line in lines[2:]:
-        if '|' in line:
-            cells = [c.strip() for c in line.split('|') if c.strip()]
-            if len(cells) == len(headers):
+        if '|' in line and not any(c in line for c in ['---', '===', '---']):
+            cells = [c.strip() for c in line.split('|')]
+            cells = [c for c in cells if c]
+            if len(cells) >= len(headers):
+                table.add_row(*cells[:len(headers)])
+            elif len(cells) > 0:
                 table.add_row(*cells)
     
     return table
@@ -638,6 +644,11 @@ def main():
         )
     )
     parser.add_argument(
+        "--project-id",
+        default=None,
+        help="ID del proyecto GCP (opcional, para referencia en el reporte)",
+    )
+    parser.add_argument(
         "--output-dir",
         default=None,
         help="Directorio donde guardar el reporte (default: outcome)",
@@ -647,12 +658,16 @@ def main():
     output_dir_path = args.output_dir or "outcome"
     logger = setup_logger(output_dir_path)
     logger.info("Iniciando generación de reporte de deployments en GKE")
+    if args.project_id:
+        logger.info(f"Proyecto GCP: {args.project_id}")
     
     console = Console() if RICH_AVAILABLE else None
 
     print("=" * 80)
     print("🔍 GENERANDO REPORTE DE DEPLOYMENTS EN GKE")
     print("=" * 80)
+    if args.project_id:
+        print(f"Proyecto GCP: {args.project_id}")
     print()
 
     try:
