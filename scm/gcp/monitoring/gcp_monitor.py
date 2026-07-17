@@ -26,6 +26,7 @@ import json
 import os
 import subprocess
 import sys
+import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -61,7 +62,35 @@ except ImportError:
 
 __version__ = "3.0.0"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURACIÓN DE LOGGING
+# ═══════════════════════════════════════════════════════════════════════════════
 
+def setup_logger(project_id: str, output_dir: str = "outcome") -> logging.Logger:
+    """Configura el logger para registrar comandos ejecutados."""
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(output_dir, f"gcp_monitor_{project_id}_{timestamp}.log")
+    
+    logger = logging.getLogger("gcp_monitor")
+    logger.setLevel(logging.INFO)
+    
+    # Handler para archivo
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    
+    # Formato del log
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(formatter)
+    
+    # Evitar duplicados
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+    
+    return logger, log_file
 
 try:
     from export_manager import ExportManager
@@ -69,9 +98,13 @@ try:
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
 
-def run_gcloud_command(cmd: str, debug: bool = False, console=None) -> Optional[Any]:
+def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None) -> Optional[Any]:
     """Ejecuta un comando gcloud y retorna el resultado como JSON."""
     try:
+        # Registrar comando en log
+        if logger:
+            logger.info(f"Ejecutando: {cmd}")
+        
         if debug and console and RICH_AVAILABLE:
             console.print(f"[dim]DEBUG: {cmd}[/dim]")
         elif debug:
@@ -80,6 +113,8 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None) -> Optional[
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         
         if result.returncode != 0:
+            if logger:
+                logger.error(f"Error en comando: {cmd} - {result.stderr[:200]}")
             if debug:
                 if console and RICH_AVAILABLE:
                     console.print(f"[dim]Error: {result.stderr[:200]}[/dim]")
@@ -87,13 +122,20 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None) -> Optional[
                     print(f"DEBUG Error: {result.stderr[:200]}")
             return None
         
+        if logger:
+            logger.info(f"Comando exitoso: {cmd[:80]}...")
+        
         if not result.stdout.strip():
             return []
         
         return json.loads(result.stdout)
     except json.JSONDecodeError:
+        if logger:
+            logger.warning(f"No se pudo parsear JSON en: {cmd[:80]}...")
         return result.stdout.strip() if result.stdout else None
     except Exception as e:
+        if logger:
+            logger.error(f"Excepción en comando: {cmd} - {str(e)}")
         if debug:
             if console and RICH_AVAILABLE:
                 console.print(f"[dim]Exception: {e}[/dim]")
@@ -102,52 +144,52 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None) -> Optional[
         return None
 
 
-def get_enabled_services(project_id: str, debug: bool, console) -> List[Dict]:
+def get_enabled_services(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene servicios habilitados en el proyecto."""
     cmd = f'gcloud services list --project={project_id} --format=json'
-    result = run_gcloud_command(cmd, debug, console)
+    result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
-def get_gke_clusters(project_id: str, debug: bool, console) -> List[Dict]:
+def get_gke_clusters(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene clusters GKE del proyecto."""
     cmd = f'gcloud container clusters list --project={project_id} --format=json'
-    result = run_gcloud_command(cmd, debug, console)
+    result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
-def get_cloud_sql_instances(project_id: str, debug: bool, console) -> List[Dict]:
+def get_cloud_sql_instances(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene instancias Cloud SQL del proyecto."""
     cmd = f'gcloud sql instances list --project={project_id} --format=json'
-    result = run_gcloud_command(cmd, debug, console)
+    result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
-def get_compute_instances(project_id: str, debug: bool, console) -> List[Dict]:
+def get_compute_instances(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene instancias Compute Engine del proyecto."""
     cmd = f'gcloud compute instances list --project={project_id} --format=json'
-    result = run_gcloud_command(cmd, debug, console)
+    result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
-def get_pubsub_topics(project_id: str, debug: bool, console) -> List[Dict]:
+def get_pubsub_topics(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene topics de Pub/Sub del proyecto."""
     cmd = f'gcloud pubsub topics list --project={project_id} --format=json'
-    result = run_gcloud_command(cmd, debug, console)
+    result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
-def get_cloud_functions(project_id: str, debug: bool, console) -> List[Dict]:
+def get_cloud_functions(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene Cloud Functions del proyecto."""
     cmd = f'gcloud functions list --project={project_id} --format=json 2>/dev/null'
-    result = run_gcloud_command(cmd, debug, console)
+    result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
-def get_cloud_run_services(project_id: str, debug: bool, console) -> List[Dict]:
+def get_cloud_run_services(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene servicios Cloud Run del proyecto."""
     cmd = f'gcloud run services list --project={project_id} --format=json 2>/dev/null'
-    result = run_gcloud_command(cmd, debug, console)
+    result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
@@ -526,6 +568,16 @@ def main() -> int:
     use_parallel = args.parallel and not args.no_parallel
     max_workers = args.max_workers
     
+    # Inicializar logger
+    outcome_dir = str(get_output_dir("outcome"))
+    logger, log_file = setup_logger(project_id, outcome_dir)
+    logger.info(f"═══════════════════════════════════════════════════════════════")
+    logger.info(f"GCP Monitor v{__version__} - Inicio de ejecución")
+    logger.info(f"Proyecto: {project_id}")
+    logger.info(f"Modo debug: {debug}")
+    logger.info(f"Ejecución paralela: {use_parallel}")
+    logger.info(f"═══════════════════════════════════════════════════════════════")
+    
     if RICH_AVAILABLE and console:
         console.print(Panel(
             f"[bold cyan]GCP Monitor v{__version__}[/bold cyan]\n"
@@ -549,12 +601,12 @@ def main() -> int:
                 if use_parallel:
                     with ThreadPoolExecutor(max_workers=max_workers) as executor:
                         futures = {
-                            executor.submit(get_enabled_services, project_id, debug, console): 'services',
-                            executor.submit(get_gke_clusters, project_id, debug, console): 'gke_clusters',
-                            executor.submit(get_cloud_sql_instances, project_id, debug, console): 'sql_instances',
-                            executor.submit(get_compute_instances, project_id, debug, console): 'compute_instances',
-                            executor.submit(get_cloud_run_services, project_id, debug, console): 'cloud_run',
-                            executor.submit(get_pubsub_topics, project_id, debug, console): 'pubsub_topics',
+                            executor.submit(get_enabled_services, project_id, debug, console, logger): 'services',
+                            executor.submit(get_gke_clusters, project_id, debug, console, logger): 'gke_clusters',
+                            executor.submit(get_cloud_sql_instances, project_id, debug, console, logger): 'sql_instances',
+                            executor.submit(get_compute_instances, project_id, debug, console, logger): 'compute_instances',
+                            executor.submit(get_cloud_run_services, project_id, debug, console, logger): 'cloud_run',
+                            executor.submit(get_pubsub_topics, project_id, debug, console, logger): 'pubsub_topics',
                         }
                         
                         for future in as_completed(futures):
@@ -565,22 +617,22 @@ def main() -> int:
                                 console.print(f"[yellow]⚠ Error en {key}: {e}[/]")
                                 data[key] = []
                 else:
-                    data['services'] = get_enabled_services(project_id, debug, console)
-                    data['gke_clusters'] = get_gke_clusters(project_id, debug, console)
-                    data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console)
-                    data['compute_instances'] = get_compute_instances(project_id, debug, console)
-                    data['cloud_run'] = get_cloud_run_services(project_id, debug, console)
-                    data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console)
+                    data['services'] = get_enabled_services(project_id, debug, console, logger)
+                    data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
+                    data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
+                    data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
+                    data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
+                    data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
                 
                 progress.update(task, description="[green]✓ Recursos recopilados")
         else:
             print("Recopilando recursos GCP...")
-            data['services'] = get_enabled_services(project_id, debug, console)
-            data['gke_clusters'] = get_gke_clusters(project_id, debug, console)
-            data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console)
-            data['compute_instances'] = get_compute_instances(project_id, debug, console)
-            data['cloud_run'] = get_cloud_run_services(project_id, debug, console)
-            data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console)
+            data['services'] = get_enabled_services(project_id, debug, console, logger)
+            data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
+            data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
+            data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
+            data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
+            data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
         
         # Mostrar tabla resumen
         if RICH_AVAILABLE and console:
@@ -610,8 +662,15 @@ def main() -> int:
 
         if RICH_AVAILABLE and console:
             console.print(f"\n[green]📁 Reporte guardado en:[/] {filepath}")
+            console.print(f"[green]📋 Log de comandos:[/] {log_file}")
         else:
             print(f"\n📁 Reporte guardado en: {filepath}")
+            print(f"📋 Log de comandos: {log_file}")
+        
+        logger.info(f"═══════════════════════════════════════════════════════════════")
+        logger.info(f"Ejecución completada exitosamente")
+        logger.info(f"Reporte guardado en: {filepath}")
+        logger.info(f"═══════════════════════════════════════════════════════════════")
         
         print_execution_summary(start_time, console, project_id, data)
 
