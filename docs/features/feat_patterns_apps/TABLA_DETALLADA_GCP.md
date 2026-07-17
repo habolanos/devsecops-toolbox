@@ -31,8 +31,8 @@
 | Tool ID | Herramienta | Archivo | ⏱️ Tiempo | 📤 JSON | 📝 Log | 📁 Archivos | Cobertura | Estado |
 |---------|-------------|---------|----------|--------|--------|-------------|-----------|--------|
 | **1** | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ✅ | ✅ | ✅ | ✅ | 4/4 | 🟢 |
-| **2** | Reporte de Despliegues GKE | monitoring/gke_deployments_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| **3** | Reporte de Roles y Permisos IAM | rolesypermisos/gcp_iam_roles_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **2** | Reporte de Despliegues GKE | monitoring/gke_deployments_report.py | ✅ | ✅ | ✅ | ❌ | 3/4 | � |
+| **3** | Reporte de Roles y Permisos IAM | rolesypermisos/gcp_iam_roles_report.py | ✅ | ✅ | ✅ | ❌ | 3/4 | � |
 | **4** | Service Account Checker | service-account/gcp_service_account_checker.py | ✅ | ✅ | ❌ | ❌ | 2/4 | � |
 | **5** | Certificate Manager Checker | certificate-manager/gcp_certificate_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **6** | Cloud Armor Checker | cloud-armor/gcp_cloud_armor_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
@@ -75,16 +75,16 @@
 
 ```
 Total de Herramientas: 41 (Tools 1-40 + Tool 41 Pub/Sub Monitor)
-Patrones Implementados: 11/164 (6.7%)
+Patrones Implementados: 15/164 (9.1%)
 Herramientas Completas (4/4): 1/41 (2.4%)
+Herramientas Parciales (3/4): 3/41 (7.3%)
 Herramientas Parciales (2/4): 3/41 (7.3%)
-Herramientas Parciales (3/4): 1/41 (2.4%)
-Herramientas Sin Patrones (0/4): 36/41 (87.8%)
+Herramientas Sin Patrones (0/4): 34/41 (82.9%)
 
 Desglose por Patrón (4 patrones totales):
-  ⏱️  Tiempo de Ejecución:    5/41 (12.2%)   ██████░░░░░░░░░░░░░░
-  📤 JSON por Defecto:        5/41 (12.2%)   ██████░░░░░░░░░░░░░░
-  📝 Log de Comandos:         1/41 (2.4%)    █░░░░░░░░░░░░░░░░░░░
+  ⏱️  Tiempo de Ejecución:    7/41 (17.1%)   ████████░░░░░░░░░░░░
+  📤 JSON por Defecto:        7/41 (17.1%)   ████████░░░░░░░░░░░░
+  📝 Log de Comandos:         3/41 (7.3%)    ███░░░░░░░░░░░░░░░░░
   📁 Resumen de Archivos:     0/41 (0%)      ░░░░░░░░░░░░░░░░░░░░
 ```
 
