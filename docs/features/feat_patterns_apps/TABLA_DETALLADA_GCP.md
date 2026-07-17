@@ -33,16 +33,16 @@
 | **1** | Monitoreo de Recursos GCP | monitoring/gcp_monitor.py | ✅ | ✅ | ✅ | ✅ | 4/4 | 🟢 |
 | **2** | Reporte de Despliegues GKE | monitoring/gke_deployments_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **3** | Reporte de Roles y Permisos IAM | rolesypermisos/gcp_iam_roles_report.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| **4** | Service Account Checker | service-account/gcp_service_account_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **4** | Service Account Checker | service-account/gcp_service_account_checker.py | ✅ | ✅ | ❌ | ❌ | 2/4 | � |
 | **5** | Certificate Manager Checker | certificate-manager/gcp_certificate_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **6** | Cloud Armor Checker | cloud-armor/gcp_cloud_armor_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **7** | Cloud SQL Disk Monitor | cloud-sql/gcp_disk_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **8** | Cloud SQL Database Checker | cloud-sql/gcp_database_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **9** | Cloud SQL Comparator | cloud-sql/gcp_sql_comparator.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| **10** | VPC Networks Checker | vpc-networks/gcp_vpc_networks_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **10** | VPC Networks Checker | vpc-networks/gcp_vpc_networks_checker.py | ✅ | ✅ | ❌ | ❌ | 2/4 | � |
 | **11** | Gateway Services Checker | gateway-services/gcp_gateway_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **12** | Load Balancer Checker | load-balancer/gcp_load_balancer_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
-| **13** | IP Addresses Checker | vpc-networks/gcp_ip_addresses_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
+| **13** | IP Addresses Checker | vpc-networks/gcp_ip_addresses_checker.py | ✅ | ✅ | ❌ | ❌ | 2/4 | � |
 | **14** | GKE Cluster Checker | cluster-gke/gcp_cluster_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **15** | Secrets & ConfigMaps Checker | secrets-configmaps/gcp_secrets_configmaps_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
 | **16** | Pod Connectivity Checker | connectivity/pod_connectivity_checker.py | ❌ | ❌ | ❌ | ❌ | 0/4 | 🔴 |
@@ -75,16 +75,17 @@
 
 ```
 Total de Herramientas: 41 (Tools 1-40 + Tool 41 Pub/Sub Monitor)
-Patrones Implementados: 7/164 (4.3%)
+Patrones Implementados: 11/164 (6.7%)
 Herramientas Completas (4/4): 1/41 (2.4%)
+Herramientas Parciales (2/4): 3/41 (7.3%)
 Herramientas Parciales (3/4): 1/41 (2.4%)
-Herramientas Sin Patrones (0/4): 39/41 (95.1%)
+Herramientas Sin Patrones (0/4): 36/41 (87.8%)
 
 Desglose por Patrón (4 patrones totales):
-  ⏱️  Tiempo de Ejecución:    2/41 (4.9%)    ██░░░░░░░░░░░░░░░░░░
-  📤 JSON por Defecto:        2/41 (4.9%)    ██░░░░░░░░░░░░░░░░░░
+  ⏱️  Tiempo de Ejecución:    5/41 (12.2%)   ██████░░░░░░░░░░░░░░
+  📤 JSON por Defecto:        5/41 (12.2%)   ██████░░░░░░░░░░░░░░
   📝 Log de Comandos:         1/41 (2.4%)    █░░░░░░░░░░░░░░░░░░░
-  📁 Resumen de Archivos:     2/41 (4.9%)    ██░░░░░░░░░░░░░░░░░░
+  📁 Resumen de Archivos:     0/41 (0%)      ░░░░░░░░░░░░░░░░░░░░
 ```
 
 ---
