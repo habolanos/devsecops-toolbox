@@ -1488,6 +1488,13 @@ def main() -> int:
         
         # Mostrar resumen consolidado de ejecución
         print_consolidated_execution_summary(start_time, console, all_data)
+        
+        # Mensaje final
+        if RICH_AVAILABLE and console:
+            console.print("\n[bold cyan]Presione Enter para continuar...[/]")
+        else:
+            print("\nPresione Enter para continuar...")
+        input()
 
     except Exception as e:
         if RICH_AVAILABLE and console:
@@ -1497,6 +1504,13 @@ def main() -> int:
         if debug:
             import traceback
             traceback.print_exc()
+        
+        # Mensaje final incluso en error
+        if RICH_AVAILABLE and console:
+            console.print("\n[bold cyan]Presione Enter para continuar...[/]")
+        else:
+            print("\nPresione Enter para continuar...")
+        input()
         return 1
 
     return 0
