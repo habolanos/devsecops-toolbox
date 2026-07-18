@@ -1253,6 +1253,42 @@ def export_to_txt(report: str, project_id: str, output_dir: str) -> str:
     return filepath
 
 
+def generate_html_dashboard_file(json_filepath: str, output_dir: str, logger=None) -> str:
+    """Genera un dashboard HTML a partir del JSON exportado."""
+    try:
+        # Importar el módulo de generación de dashboard
+        from generate_gcp_dashboard import generate_html_dashboard, load_json_file
+        
+        # Cargar JSON
+        json_data = load_json_file(json_filepath)
+        if not json_data:
+            raise Exception("No se pudo cargar el archivo JSON")
+        
+        # Generar HTML
+        html_content = generate_html_dashboard(json_data, "")
+        
+        # Guardar HTML
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        html_filepath = os.path.join(output_dir, f"gcp_infrastructure_dashboard_{timestamp}.html")
+        
+        with open(html_filepath, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        if logger:
+            logger.info(f"Dashboard HTML generado: {html_filepath}")
+        
+        return html_filepath
+    
+    except ImportError:
+        if logger:
+            logger.warning("Módulo generate_gcp_dashboard no disponible. Saltando generación de HTML.")
+        raise
+    except Exception as e:
+        if logger:
+            logger.error(f"Error generando dashboard HTML: {e}")
+        raise
+
+
 def get_args():
     """Parsea argumentos de línea de comandos."""
     parser = argparse.ArgumentParser(
@@ -1475,18 +1511,37 @@ def main() -> int:
         outcome_dir = str(get_output_dir("outcome"))
         os.makedirs(outcome_dir, exist_ok=True)
         
-        if args.output == "json":
-            filepath = export_to_json(data, project_id, outcome_dir, "America/Mazatlan", all_data, logger)
-        elif args.output == "csv":
-            filepath = export_to_csv(data, project_id, outcome_dir)
-        else:
-            filepath = export_to_txt(report, project_id, outcome_dir)
+        filepaths = []
+        
+        # Generar JSON (siempre)
+        json_filepath = export_to_json(data, project_id, outcome_dir, "America/Mazatlan", all_data, logger)
+        filepaths.append(json_filepath)
+        
+        # Generar formato adicional si se especifica
+        if args.output == "csv":
+            csv_filepath = export_to_csv(data, project_id, outcome_dir)
+            filepaths.append(csv_filepath)
+        elif args.output == "txt":
+            txt_filepath = export_to_txt(report, project_id, outcome_dir)
+            filepaths.append(txt_filepath)
+        
+        # Generar HTML (siempre)
+        try:
+            html_filepath = generate_html_dashboard_file(json_filepath, outcome_dir, logger)
+            filepaths.append(html_filepath)
+        except Exception as e:
+            if logger:
+                logger.warning(f"No se pudo generar dashboard HTML: {e}")
 
         if RICH_AVAILABLE and console:
-            console.print(f"\n[green]📁 Reporte guardado en:[/] {filepath}")
+            console.print(f"\n[green]📁 Reportes guardados en:[/]")
+            for fp in filepaths:
+                console.print(f"  [green]✓[/] {fp}")
             console.print(f"[green]📋 Log de comandos:[/] {log_file}")
         else:
-            print(f"\n📁 Reporte guardado en: {filepath}")
+            print(f"\n📁 Reportes guardados en:")
+            for fp in filepaths:
+                print(f"  ✓ {fp}")
             print(f"📋 Log de comandos: {log_file}")
         
         logger.info(f"═══════════════════════════════════════════════════════════════")
