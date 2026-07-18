@@ -666,6 +666,56 @@ def get_status_semaphore(count: int, resource_type: str) -> str:
         return "🔴"  # Rojo: crítico
 
 
+def create_consolidated_summary_table(all_data: Dict[str, Dict[str, Any]], console) -> Table:
+    """Crea tabla consolidada de resumen de recursos para múltiples proyectos."""
+    table = Table(title="📊 Resumen de Recursos GCP (CONSOLIDADO)", box=box.ROUNDED)
+    table.add_column("Proyecto", style="magenta")
+    table.add_column("Recurso", style="cyan")
+    table.add_column("Cantidad", style="green", justify="right")
+    table.add_column("Estado", style="yellow")
+    
+    # Datos de recursos
+    resources = [
+        ("Servicios habilitados", 'services', "Servicios activos"),
+        ("Clusters GKE", 'gke_clusters', "Orquestación"),
+        ("Instancias Cloud SQL", 'sql_instances', "Bases de datos"),
+        ("Instancias Compute", 'compute_instances', "Máquinas virtuales"),
+        ("Servicios Cloud Run", 'cloud_run', "Serverless"),
+        ("Topics Pub/Sub", 'pubsub_topics', "Mensajería"),
+    ]
+    
+    for project_id, data in all_data.items():
+        for label, key, description in resources:
+            count = len(data.get(key, []))
+            status = "✅ Activo" if count > 0 else "⚠️ Inactivo"
+            table.add_row(project_id, label, str(count), status)
+    
+    return table
+
+
+def create_consolidated_health_table(all_data: Dict[str, Dict[str, Any]], console) -> Table:
+    """Crea tabla consolidada de salud general para múltiples proyectos."""
+    table = Table(title="🏥 Salud General del Proyecto (CONSOLIDADO)", box=box.ROUNDED)
+    table.add_column("Proyecto", style="magenta")
+    table.add_column("Aspecto", style="cyan")
+    table.add_column("Valor", style="green", justify="right")
+    
+    for project_id, data in all_data.items():
+        # Calcular métricas de salud
+        total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
+        services_count = len(data.get('services', []))
+        clusters_count = len(data.get('gke_clusters', []))
+        sql_count = len(data.get('sql_instances', []))
+        compute_count = len(data.get('compute_instances', []))
+        
+        table.add_row(project_id, "Recursos Totales", str(total_resources))
+        table.add_row(project_id, "Infraestructura", f"{clusters_count} clusters + {compute_count} máquinas")
+        table.add_row(project_id, "Datos", f"{sql_count} instancias SQL")
+        table.add_row(project_id, "Servicios Activos", str(services_count))
+    
+    return table
+
+
 def create_summary_table(data: Dict[str, Any], console, project_id: str = None) -> Table:
     """Crea tabla resumen de recursos."""
     table = Table(title="📊 Resumen de Recursos GCP", box=box.ROUNDED)
@@ -991,17 +1041,13 @@ def main() -> int:
             
             all_data[project_id] = data
         
-        # Mostrar tablas de resumen y salud para cada proyecto
+        # Mostrar tablas consolidadas de resumen y salud
         if RICH_AVAILABLE and console:
             console.print()
-            for project_id, data in all_data.items():
-                console.print(create_summary_table(data, console, project_id))
-                console.print()
-            
+            console.print(create_consolidated_summary_table(all_data, console))
             console.print()
-            for project_id, data in all_data.items():
-                console.print(create_health_table(data, console))
-                console.print()
+            console.print(create_consolidated_health_table(all_data, console))
+            console.print()
             
             # Mostrar tablas detalladas de recursos consolidadas
             console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
