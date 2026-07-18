@@ -512,9 +512,11 @@ def get_status_semaphore(count: int, resource_type: str) -> str:
         return "🔴"  # Rojo: crítico
 
 
-def create_summary_table(data: Dict[str, Any], console) -> Table:
+def create_summary_table(data: Dict[str, Any], console, project_id: str = None) -> Table:
     """Crea tabla resumen de recursos."""
     table = Table(title="📊 Resumen de Recursos GCP", box=box.ROUNDED)
+    if project_id:
+        table.add_column("Proyecto", style="magenta")
     table.add_column("Recurso", style="cyan")
     table.add_column("Cantidad", style="green", justify="right")
     table.add_column("Estado", style="yellow")
@@ -532,7 +534,10 @@ def create_summary_table(data: Dict[str, Any], console) -> Table:
     for label, key, description in resources:
         count = len(data.get(key, []))
         status = "✅ Activo" if count > 0 else "⚠️ Inactivo"
-        table.add_row(label, str(count), status)
+        if project_id:
+            table.add_row(project_id, label, str(count), status)
+        else:
+            table.add_row(label, str(count), status)
     
     return table
 
@@ -671,8 +676,8 @@ def get_args():
     parser.add_argument(
         "--project", "-p",
         type=str,
-        default="cpl-corp-cial-prod-17042024",
-        help="ID del proyecto GCP (Default: cpl-corp-cial-prod-17042024)"
+        default="cpl-cs-wms-dev-30112023",
+        help="ID(s) del proyecto GCP, separados por comas (Default: cpl-cs-wms-dev-30112023)"
     )
     parser.add_argument(
         "--debug",
@@ -752,17 +757,18 @@ def main() -> int:
         return 0
     
     start_time = datetime.now()
-    project_id = args.project
+    # Procesar múltiples proyectos separados por comas
+    project_ids = [p.strip() for p in args.project.split(',')]
     debug = args.debug
     use_parallel = args.parallel and not args.no_parallel
     max_workers = args.max_workers
     
     # Inicializar logger
     outcome_dir = str(get_output_dir("outcome"))
-    logger, log_file = setup_logger(project_id, outcome_dir)
+    logger, log_file = setup_logger(project_ids[0], outcome_dir)
     logger.info(f"═══════════════════════════════════════════════════════════════")
     logger.info(f"GCP Monitor v{__version__} - Inicio de ejecución")
-    logger.info(f"Proyecto: {project_id}")
+    logger.info(f"Proyectos: {', '.join(project_ids)}")
     logger.info(f"Modo debug: {debug}")
     logger.info(f"Ejecución paralela: {use_parallel}")
     logger.info(f"═══════════════════════════════════════════════════════════════")
@@ -770,75 +776,90 @@ def main() -> int:
     if RICH_AVAILABLE and console:
         console.print(Panel(
             f"[bold cyan]GCP Monitor v{__version__}[/bold cyan]\n"
-            f"Proyecto: [yellow]{project_id}[/yellow]",
+            f"Proyectos: [yellow]{', '.join(project_ids)}[/yellow]",
             border_style="blue"
         ))
     else:
         print(f"GCP Monitor v{__version__}")
-        print(f"Proyecto: {project_id}")
+        print(f"Proyectos: {', '.join(project_ids)}")
     
-    if not check_gcp_connection(project_id, console, debug):
-        return 1
+    # Verificar conexión para cada proyecto
+    for project_id in project_ids:
+        if not check_gcp_connection(project_id, console, debug):
+            return 1
 
-    data: Dict[str, Any] = {}
+    all_data: Dict[str, Dict[str, Any]] = {}
 
     try:
-        if RICH_AVAILABLE and console:
-            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
-                task = progress.add_task("[cyan]Recopilando recursos GCP...", total=None)
-                
-                if use_parallel:
-                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                        futures = {
-                            executor.submit(get_enabled_services, project_id, debug, console, logger): 'services',
-                            executor.submit(get_gke_clusters, project_id, debug, console, logger): 'gke_clusters',
-                            executor.submit(get_cloud_sql_instances, project_id, debug, console, logger): 'sql_instances',
-                            executor.submit(get_compute_instances, project_id, debug, console, logger): 'compute_instances',
-                            executor.submit(get_cloud_run_services, project_id, debug, console, logger): 'cloud_run',
-                            executor.submit(get_pubsub_topics, project_id, debug, console, logger): 'pubsub_topics',
-                        }
-                        
-                        for future in as_completed(futures):
-                            key = futures[future]
-                            try:
-                                data[key] = future.result()
-                            except Exception as e:
-                                console.print(f"[yellow]⚠ Error en {key}: {e}[/]")
-                                data[key] = []
-                else:
-                    data['services'] = get_enabled_services(project_id, debug, console, logger)
-                    data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
-                    data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
-                    data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
-                    data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
-                    data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
-                
-                progress.update(task, description="[green]✓ Recursos recopilados")
-        else:
-            print("Recopilando recursos GCP...")
-            data['services'] = get_enabled_services(project_id, debug, console, logger)
-            data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
-            data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
-            data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
-            data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
-            data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
+        # Procesar cada proyecto
+        for project_id in project_ids:
+            if RICH_AVAILABLE and console:
+                with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                    task = progress.add_task(f"[cyan]Recopilando recursos de {project_id}...", total=None)
+                    
+                    data: Dict[str, Any] = {}
+                    if use_parallel:
+                        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                            futures = {
+                                executor.submit(get_enabled_services, project_id, debug, console, logger): 'services',
+                                executor.submit(get_gke_clusters, project_id, debug, console, logger): 'gke_clusters',
+                                executor.submit(get_cloud_sql_instances, project_id, debug, console, logger): 'sql_instances',
+                                executor.submit(get_compute_instances, project_id, debug, console, logger): 'compute_instances',
+                                executor.submit(get_cloud_run_services, project_id, debug, console, logger): 'cloud_run',
+                                executor.submit(get_pubsub_topics, project_id, debug, console, logger): 'pubsub_topics',
+                            }
+                            
+                            for future in as_completed(futures):
+                                key = futures[future]
+                                try:
+                                    data[key] = future.result()
+                                except Exception as e:
+                                    console.print(f"[yellow]⚠ Error en {key}: {e}[/]")
+                                    data[key] = []
+                    else:
+                        data['services'] = get_enabled_services(project_id, debug, console, logger)
+                        data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
+                        data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
+                        data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
+                        data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
+                        data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
+                    
+                    progress.update(task, description=f"[green]✓ Recursos recopilados de {project_id}")
+            else:
+                print(f"Recopilando recursos de {project_id}...")
+                data: Dict[str, Any] = {}
+                data['services'] = get_enabled_services(project_id, debug, console, logger)
+                data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
+                data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
+                data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
+                data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
+                data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
+            
+            all_data[project_id] = data
         
-        # Mostrar tablas de resumen y salud
+        # Mostrar tablas de resumen y salud para cada proyecto
         if RICH_AVAILABLE and console:
             console.print()
-            console.print(create_summary_table(data, console))
+            for project_id, data in all_data.items():
+                console.print(create_summary_table(data, console, project_id))
+                console.print()
+            
             console.print()
-            console.print(create_health_table(data, console))
-            console.print()
+            for project_id, data in all_data.items():
+                console.print(create_health_table(data, console))
+                console.print()
             
             # Mostrar tablas detalladas de recursos
             console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
             console.print("[bold cyan]📊 DETALLES DE RECURSOS[/]")
             console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
             console.print()
-            create_detailed_tables(data, console)
+            for project_id, data in all_data.items():
+                create_detailed_tables(data, console)
         
-        # Generar reporte
+        # Generar reporte para el primer proyecto (o consolidado)
+        project_id = project_ids[0]
+        data = all_data.get(project_id, {})
         report = generate_report(project_id, data)
         
         if RICH_AVAILABLE and console:
