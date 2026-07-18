@@ -783,7 +783,7 @@ def get_performance_semaphore(duration: float) -> str:
 
 
 def print_execution_summary(start_time: datetime, console, project_id: str, data: Dict[str, Any]) -> None:
-    """Imprime tabla resumen de ejecución."""
+    """Imprime tabla resumen de ejecución para un proyecto."""
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
     total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
@@ -804,6 +804,43 @@ def print_execution_summary(start_time: datetime, console, project_id: str, data
         print(f"  Proyecto: {project_id}")
         print(f"  Tiempo: {duration:.2f}s")
         print(f"  Recursos: {total_resources}")
+
+
+def print_consolidated_execution_summary(start_time: datetime, console, all_data: Dict[str, Dict[str, Any]]) -> None:
+    """Imprime tabla resumen consolidado de ejecución para múltiples proyectos."""
+    end_time = datetime.now()
+    total_duration = (end_time - start_time).total_seconds()
+    
+    if RICH_AVAILABLE and console:
+        table = Table(title="⏱️ Resumen de Ejecución (CONSOLIDADO)", box=box.ROUNDED)
+        table.add_column("Métrica", style="cyan")
+        table.add_column("Valor", style="green")
+        
+        # Información general
+        table.add_row("Proyectos procesados", str(len(all_data)))
+        table.add_row("Tiempo total de ejecución", f"{total_duration:.2f}s")
+        
+        # Información por proyecto
+        total_resources_all = 0
+        for project_id, data in all_data.items():
+            total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
+            total_resources_all += total_resources
+            table.add_row(f"Recursos en {project_id[:30]}", str(total_resources))
+        
+        table.add_row("Recursos totales encontrados", str(total_resources_all))
+        
+        console.print()
+        console.print(Panel(table, border_style="blue"))
+    else:
+        print(f"\n⏱️ Resumen de Ejecución (CONSOLIDADO)")
+        print(f"  Proyectos procesados: {len(all_data)}")
+        print(f"  Tiempo total: {total_duration:.2f}s")
+        total_resources_all = 0
+        for project_id, data in all_data.items():
+            total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
+            total_resources_all += total_resources
+            print(f"  Recursos en {project_id}: {total_resources}")
+        print(f"  Recursos totales: {total_resources_all}")
 
 
 def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan") -> str:
@@ -1090,7 +1127,8 @@ def main() -> int:
         logger.info(f"Reporte guardado en: {filepath}")
         logger.info(f"═══════════════════════════════════════════════════════════════")
         
-        print_execution_summary(start_time, console, project_id, data)
+        # Mostrar resumen consolidado de ejecución
+        print_consolidated_execution_summary(start_time, console, all_data)
 
     except Exception as e:
         if RICH_AVAILABLE and console:
