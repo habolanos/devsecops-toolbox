@@ -268,11 +268,9 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
         table = Table(title="📌 Servicios Habilitados", box=box.ROUNDED)
         table.add_column("Nombre", style="cyan")
         table.add_column("Estado", style="green")
-        for svc in services[:15]:
-            name = svc.get('config', {}).get('title', svc.get('name', 'N/A'))[:40]
+        for svc in services:
+            name = svc.get('config', {}).get('title', svc.get('name', 'N/A'))
             table.add_row(name, "✅ Activo")
-        if len(services) > 15:
-            table.add_row(f"... y {len(services) - 15} más", "")
         console.print(table)
         console.print()
     
@@ -366,11 +364,9 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
         table = Table(title="📬 Topics Pub/Sub", box=box.ROUNDED)
         table.add_column("Nombre", style="cyan")
         table.add_column("Estado", style="green")
-        for topic in topics[:15]:
+        for topic in topics:
             name = topic.get('name', '').split('/')[-1] if topic.get('name') else 'N/A'
-            table.add_row(name[:50], "✅ Activo")
-        if len(topics) > 15:
-            table.add_row(f"... y {len(topics) - 15} más", "")
+            table.add_row(name, "✅ Activo")
         console.print(table)
         console.print()
 
@@ -517,11 +513,10 @@ def get_status_semaphore(count: int, resource_type: str) -> str:
 
 
 def create_summary_table(data: Dict[str, Any], console) -> Table:
-    """Crea tabla resumen de recursos con esquema de semáforo."""
+    """Crea tabla resumen de recursos."""
     table = Table(title="📊 Resumen de Recursos GCP", box=box.ROUNDED)
     table.add_column("Recurso", style="cyan")
     table.add_column("Cantidad", style="green", justify="right")
-    table.add_column("Semáforo", justify="center")
     table.add_column("Estado", style="yellow")
     
     # Datos de recursos
@@ -536,19 +531,17 @@ def create_summary_table(data: Dict[str, Any], console) -> Table:
     
     for label, key, description in resources:
         count = len(data.get(key, []))
-        semaphore = get_status_semaphore(count, key)
         status = "✅ Activo" if count > 0 else "⚠️ Inactivo"
-        table.add_row(label, str(count), semaphore, status)
+        table.add_row(label, str(count), status)
     
     return table
 
 
 def create_health_table(data: Dict[str, Any], console) -> Table:
-    """Crea tabla de salud general del proyecto con semáforo."""
+    """Crea tabla de salud general del proyecto."""
     table = Table(title="🏥 Salud General del Proyecto", box=box.ROUNDED)
     table.add_column("Aspecto", style="cyan")
     table.add_column("Valor", style="green", justify="right")
-    table.add_column("Semáforo", justify="center")
     
     # Calcular métricas de salud
     total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
@@ -557,19 +550,10 @@ def create_health_table(data: Dict[str, Any], console) -> Table:
     sql_count = len(data.get('sql_instances', []))
     compute_count = len(data.get('compute_instances', []))
     
-    # Semáforo para infraestructura
-    infra_health = "🟢" if clusters_count > 0 or compute_count > 0 else "🔴"
-    
-    # Semáforo para datos
-    data_health = "🟢" if sql_count > 0 else "🟡"
-    
-    # Semáforo para servicios
-    services_health = "🟢" if services_count > 50 else "🟡" if services_count > 10 else "🔴"
-    
-    table.add_row("Recursos Totales", str(total_resources), "🟢" if total_resources > 0 else "🔴")
-    table.add_row("Infraestructura", f"{clusters_count} clusters + {compute_count} máquinas", infra_health)
-    table.add_row("Datos", f"{sql_count} instancias SQL", data_health)
-    table.add_row("Servicios Activos", str(services_count), services_health)
+    table.add_row("Recursos Totales", str(total_resources))
+    table.add_row("Infraestructura", f"{clusters_count} clusters + {compute_count} máquinas")
+    table.add_row("Datos", f"{sql_count} instancias SQL")
+    table.add_row("Servicios Activos", str(services_count))
     
     return table
 
@@ -590,28 +574,26 @@ def get_performance_semaphore(duration: float) -> str:
 
 
 def print_execution_summary(start_time: datetime, console, project_id: str, data: Dict[str, Any]) -> None:
-    """Imprime tabla resumen de ejecución con semáforo de performance."""
+    """Imprime tabla resumen de ejecución."""
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
     total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
-    perf_semaphore = get_performance_semaphore(duration)
     
     if RICH_AVAILABLE and console:
         table = Table(title="⏱️ Resumen de Ejecución", box=box.ROUNDED)
         table.add_column("Métrica", style="cyan")
         table.add_column("Valor", style="green")
-        table.add_column("Semáforo", justify="center")
         
-        table.add_row("Proyecto", project_id, "✅")
-        table.add_row("Tiempo de ejecución", f"{duration:.2f}s", perf_semaphore)
-        table.add_row("Recursos encontrados", str(total_resources), "✅" if total_resources > 0 else "⚠️")
+        table.add_row("Proyecto", project_id)
+        table.add_row("Tiempo de ejecución", f"{duration:.2f}s")
+        table.add_row("Recursos encontrados", str(total_resources))
         
         console.print()
         console.print(Panel(table, border_style="blue"))
     else:
         print(f"\n⏱️ Resumen de Ejecución")
         print(f"  Proyecto: {project_id}")
-        print(f"  Tiempo: {duration:.2f}s {perf_semaphore}")
+        print(f"  Tiempo: {duration:.2f}s")
         print(f"  Recursos: {total_resources}")
 
 
