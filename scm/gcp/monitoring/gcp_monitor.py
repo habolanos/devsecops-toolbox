@@ -490,9 +490,6 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 project_id,
                 cluster_name[:30],
                 cluster.get('location', 'N/A'),
-                cluster.get('status', 'N/A'),
-                cluster.get('currentMasterVersion', 'N/A')[:15],
-                str(node_count),
                 cpu_str,
                 memory_str,
                 cpu_used,
@@ -502,17 +499,14 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     
     if all_clusters:
         table = Table(title="☸️  Clusters GKE", box=box.ROUNDED)
-        table.add_column("Proyecto", style="magenta")
-        table.add_column("Nombre", style="cyan")
-        table.add_column("Ubicación", style="yellow")
-        table.add_column("Estado", style="green")
-        table.add_column("Versión", style="magenta")
-        table.add_column("Nodos", style="blue", justify="right")
-        table.add_column("CPU Total", style="cyan", justify="right")
-        table.add_column("Memoria Total", style="cyan", justify="right")
-        table.add_column("CPU Usado (%)", style="yellow", justify="right")
-        table.add_column("Memoria Usada (%)", style="yellow", justify="right")
-        table.add_column("Salud", style="white", justify="center")
+        table.add_column("PROYECTO", style="magenta")
+        table.add_column("CLUSTER", style="cyan")
+        table.add_column("UBICACION", style="yellow")
+        table.add_column("CPU TOTAL", style="cyan", justify="right")
+        table.add_column("MEMORIA TOTAL", style="cyan", justify="right")
+        table.add_column("CPU PROM.", style="yellow", justify="right")
+        table.add_column("MEMORIA PROM.", style="yellow", justify="right")
+        table.add_column("ESTADO", style="white", justify="center")
         for row in all_clusters:
             table.add_row(*row)
         console.print(table)
