@@ -98,7 +98,7 @@ try:
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
 
-def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None) -> Optional[Any]:
+def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None, timeout: int = 60) -> Optional[Any]:
     """Ejecuta un comando gcloud y retorna el resultado como JSON."""
     try:
         # Registrar comando en log
@@ -110,7 +110,7 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None)
         elif debug:
             print(f"DEBUG: {cmd}")
         
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
         
         if result.returncode != 0:
             if logger:
@@ -133,6 +133,12 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None)
         if logger:
             logger.warning(f"No se pudo parsear JSON en: {cmd[:80]}...")
         return result.stdout.strip() if result.stdout else None
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.error(f"Timeout (>{timeout}s) en comando: {cmd[:80]}...")
+        if console and RICH_AVAILABLE:
+            console.print(f"[yellow]⚠ Timeout en: {cmd[:60]}...[/yellow]")
+        return None
     except Exception as e:
         if logger:
             logger.error(f"Excepción en comando: {cmd} - {str(e)}")
@@ -809,10 +815,10 @@ def main() -> int:
                                 executor.submit(get_pubsub_topics, project_id, debug, console, logger): 'pubsub_topics',
                             }
                             
-                            for future in as_completed(futures):
+                            for future in as_completed(futures, timeout=120):
                                 key = futures[future]
                                 try:
-                                    data[key] = future.result()
+                                    data[key] = future.result(timeout=120)
                                 except Exception as e:
                                     console.print(f"[yellow]⚠ Error en {key}: {e}[/]")
                                     data[key] = []
