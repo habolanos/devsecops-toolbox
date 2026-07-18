@@ -1185,43 +1185,29 @@ def main() -> int:
     all_data: Dict[str, Dict[str, Any]] = {}
 
     try:
-        # Procesar cada proyecto
-        for project_id in project_ids:
-            if RICH_AVAILABLE and console:
-                with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
-                    task = progress.add_task(f"[cyan]Recopilando recursos de {project_id}...", total=None)
+        # Función auxiliar para procesar un proyecto
+        def process_project(project_id: str) -> tuple[str, Dict[str, Any]]:
+            """Procesa un proyecto y retorna (project_id, data)."""
+            data: Dict[str, Any] = {}
+            if use_parallel:
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {
+                        executor.submit(get_enabled_services, project_id, debug, console, logger): 'services',
+                        executor.submit(get_gke_clusters, project_id, debug, console, logger): 'gke_clusters',
+                        executor.submit(get_cloud_sql_instances, project_id, debug, console, logger): 'sql_instances',
+                        executor.submit(get_compute_instances, project_id, debug, console, logger): 'compute_instances',
+                        executor.submit(get_cloud_run_services, project_id, debug, console, logger): 'cloud_run',
+                        executor.submit(get_pubsub_topics, project_id, debug, console, logger): 'pubsub_topics',
+                    }
                     
-                    data: Dict[str, Any] = {}
-                    if use_parallel:
-                        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                            futures = {
-                                executor.submit(get_enabled_services, project_id, debug, console, logger): 'services',
-                                executor.submit(get_gke_clusters, project_id, debug, console, logger): 'gke_clusters',
-                                executor.submit(get_cloud_sql_instances, project_id, debug, console, logger): 'sql_instances',
-                                executor.submit(get_compute_instances, project_id, debug, console, logger): 'compute_instances',
-                                executor.submit(get_cloud_run_services, project_id, debug, console, logger): 'cloud_run',
-                                executor.submit(get_pubsub_topics, project_id, debug, console, logger): 'pubsub_topics',
-                            }
-                            
-                            for future in as_completed(futures, timeout=120):
-                                key = futures[future]
-                                try:
-                                    data[key] = future.result(timeout=120)
-                                except Exception as e:
-                                    console.print(f"[yellow]⚠ Error en {key}: {e}[/]")
-                                    data[key] = []
-                    else:
-                        data['services'] = get_enabled_services(project_id, debug, console, logger)
-                        data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
-                        data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
-                        data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
-                        data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
-                        data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
-                    
-                    progress.update(task, description=f"[green]✓ Recursos recopilados de {project_id}")
+                    for future in as_completed(futures, timeout=120):
+                        key = futures[future]
+                        try:
+                            data[key] = future.result(timeout=120)
+                        except Exception as e:
+                            logger.error(f"Error en {key} para {project_id}: {e}")
+                            data[key] = []
             else:
-                print(f"Recopilando recursos de {project_id}...")
-                data: Dict[str, Any] = {}
                 data['services'] = get_enabled_services(project_id, debug, console, logger)
                 data['gke_clusters'] = get_gke_clusters(project_id, debug, console, logger)
                 data['sql_instances'] = get_cloud_sql_instances(project_id, debug, console, logger)
@@ -1229,7 +1215,43 @@ def main() -> int:
                 data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
                 data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
             
-            all_data[project_id] = data
+            return project_id, data
+        
+        # Procesar proyectos en paralelo si hay múltiples
+        if len(project_ids) > 1 and use_parallel:
+            if RICH_AVAILABLE and console:
+                with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                    task = progress.add_task(f"[cyan]Procesando {len(project_ids)} proyectos en paralelo...", total=len(project_ids))
+                    
+                    with ThreadPoolExecutor(max_workers=min(len(project_ids), max_workers)) as executor:
+                        futures = {executor.submit(process_project, pid): pid for pid in project_ids}
+                        
+                        for future in as_completed(futures, timeout=300):
+                            project_id, data = future.result(timeout=300)
+                            all_data[project_id] = data
+                            progress.update(task, advance=1, description=f"[green]✓ {len(all_data)}/{len(project_ids)} proyectos procesados")
+            else:
+                print(f"Procesando {len(project_ids)} proyectos en paralelo...")
+                with ThreadPoolExecutor(max_workers=min(len(project_ids), max_workers)) as executor:
+                    futures = {executor.submit(process_project, pid): pid for pid in project_ids}
+                    
+                    for future in as_completed(futures, timeout=300):
+                        project_id, data = future.result(timeout=300)
+                        all_data[project_id] = data
+                        print(f"✓ {len(all_data)}/{len(project_ids)} proyectos procesados")
+        else:
+            # Procesar proyectos secuencialmente
+            for project_id in project_ids:
+                if RICH_AVAILABLE and console:
+                    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                        task = progress.add_task(f"[cyan]Recopilando recursos de {project_id}...", total=None)
+                        _, data = process_project(project_id)
+                        all_data[project_id] = data
+                        progress.update(task, description=f"[green]✓ Recursos recopilados de {project_id}")
+                else:
+                    print(f"Recopilando recursos de {project_id}...")
+                    _, data = process_project(project_id)
+                    all_data[project_id] = data
         
         # Mostrar tablas consolidadas de resumen y salud
         if RICH_AVAILABLE and console:
