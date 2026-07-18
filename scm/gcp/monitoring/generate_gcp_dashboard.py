@@ -673,6 +673,18 @@ def generate_html_dashboard(json_data: Dict[str, Any], output_file: str) -> str:
             </div>
         </div>
         
+        <!-- MODAL DE HALLAZGOS -->
+        <div id="findingsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto;">
+            <div style="background-color: {COLORS['bg_card']}; margin: 50px auto; padding: 30px; border-radius: 8px; max-width: 600px; border: 1px solid {COLORS['border']};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="color: {COLORS['info']}; margin: 0;">📋 Detalles de Hallazgos</h2>
+                    <button onclick="closeModal()" style="background-color: {COLORS['danger']}; padding: 8px 16px; cursor: pointer;">✕ Cerrar</button>
+                </div>
+                <div id="modalContent" style="color: {COLORS['text_primary']};">
+                </div>
+            </div>
+        </div>
+        
         <footer class="footer">
             <p>GCP Infrastructure Dashboard v1.7.2 | Generado automáticamente por GCP Monitor</p>
         </footer>
@@ -705,10 +717,11 @@ def generate_html_dashboard(json_data: Dict[str, Any], output_file: str) -> str:
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
             
-            resources.forEach(resource => {{
+            resources.forEach((resource, index) => {{
                 const row = document.createElement('tr');
                 const statusClass = getStatusClass(resource.status);
                 const postureClass = getPostureClass(resource.posture);
+                const findingsCount = resource.findings ? resource.findings.length : 0;
                 
                 row.innerHTML = `
                     <td>${{resource.resource_type}}</td>
@@ -718,10 +731,50 @@ def generate_html_dashboard(json_data: Dict[str, Any], output_file: str) -> str:
                     <td>${{resource.region_or_zone}}</td>
                     <td><span class="status-badge ${{statusClass}}">${{resource.status}}</span></td>
                     <td><span class="status-badge ${{postureClass}}">${{resource.posture}}</span></td>
-                    <td>${{resource.findings.length}} hallazgo(s)</td>
+                    <td><a href="javascript:void(0)" onclick="showFindings(${{index}}, '${{resource.resource_name}}')" style="color: {COLORS['info']}; text-decoration: underline; cursor: pointer;">${{findingsCount}} hallazgo(s)</a></td>
                 `;
                 tbody.appendChild(row);
             }});
+        }}
+        
+        function showFindings(index, resourceName) {{
+            const resource = allResources[index];
+            const findings = resource.findings || [];
+            
+            let html = `<div style="margin-bottom: 20px;">`;
+            html += `<h3 style="color: {COLORS['info']}; margin-top: 0;">🔍 ${{resourceName}}</h3>`;
+            html += `<p style="color: {COLORS['text_secondary']}; margin: 10px 0;">Tipo: <strong>${{resource.resource_type}}</strong></p>`;
+            html += `<p style="color: {COLORS['text_secondary']}; margin: 10px 0;">Proyecto: <strong>${{resource.project_id}}</strong></p>`;
+            html += `<p style="color: {COLORS['text_secondary']}; margin: 10px 0;">Postura: <strong>${{resource.posture}}</strong></p>`;
+            html += `</div>`;
+            
+            if (findings.length === 0) {{
+                html += `<div style="background-color: rgba(72, 187, 120, 0.1); border-left: 4px solid {COLORS['success']}; padding: 15px; border-radius: 4px;">`;
+                html += `<p style="color: {COLORS['success']}; margin: 0;">✅ No se detectaron hallazgos</p>`;
+                html += `</div>`;
+            }} else {{
+                html += `<div style="margin-top: 20px;">`;
+                findings.forEach(finding => {{
+                    const severityColor = finding.severity === 'Crítico' ? '{COLORS['danger']}' : 
+                                         finding.severity === 'Advertencia' ? '{COLORS['warning']}' : 
+                                         '{COLORS['gray']}';
+                    const severityBg = finding.severity === 'Crítico' ? 'rgba(245, 101, 101, 0.1)' : 
+                                      finding.severity === 'Advertencia' ? 'rgba(237, 137, 54, 0.1)' : 
+                                      'rgba(113, 128, 150, 0.1)';
+                    
+                    html += `<div style="background-color: ${{severityBg}}; border-left: 4px solid ${{severityColor}}; padding: 15px; margin-bottom: 10px; border-radius: 4px;">`;
+                    html += `<p style="color: ${{severityColor}}; margin: 0 0 5px 0; font-weight: bold;">[${{finding.severity}}] ${{finding.finding}}</p>`;
+                    html += `</div>`;
+                }});
+                html += `</div>`;
+            }}
+            
+            document.getElementById('modalContent').innerHTML = html;
+            document.getElementById('findingsModal').style.display = 'block';
+        }}
+        
+        function closeModal() {{
+            document.getElementById('findingsModal').style.display = 'none';
         }}
         
         function getStatusClass(status) {{
