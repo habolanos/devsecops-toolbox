@@ -996,32 +996,88 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
         print(f"  Recursos totales: {total_resources_all}")
 
 
-def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan") -> str:
-    """Exporta datos a archivo JSON con metadatos completos."""
+def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan", all_data: Dict[str, Dict[str, Any]] = None) -> str:
+    """Exporta datos a archivo JSON con metadatos completos.
+    
+    Si all_data es proporcionado, exporta todos los proyectos consolidados.
+    Si no, exporta solo un proyecto.
+    """
     tz = ZoneInfo(tz_name)
     now = datetime.now(tz)
     timestamp = now.strftime("%Y%m%d_%H%M%S")
-    filepath = os.path.join(output_dir, f"gcp_report_{project_id}_{timestamp}.json")
     
-    export_data = {
-        "report_metadata": {
-            "tool_name": "GCP Monitor",
-            "version": __version__,
-            "project_id": project_id,
-            "generated_at": now.isoformat(),
-            "timezone": tz_name,
-            "timestamp_utc": datetime.now(timezone.utc).isoformat()
-        },
-        "summary": {
-            "total_services": len(data.get('enabled_services', [])),
-            "total_gke_clusters": len(data.get('gke_clusters', [])),
-            "total_sql_instances": len(data.get('sql_instances', [])),
-            "total_compute_instances": len(data.get('compute_instances', [])),
-            "total_cloud_run_services": len(data.get('cloud_run_services', [])),
-            "total_pubsub_topics": len(data.get('pubsub_topics', []))
-        },
-        "data": data
-    }
+    # Si tenemos múltiples proyectos, exportar consolidado
+    if all_data and len(all_data) > 1:
+        filepath = os.path.join(output_dir, f"gcp_report_consolidated_{timestamp}.json")
+        
+        # Calcular resumen consolidado
+        consolidated_summary = {
+            "total_projects": len(all_data),
+            "total_services": 0,
+            "total_gke_clusters": 0,
+            "total_sql_instances": 0,
+            "total_compute_instances": 0,
+            "total_cloud_run_services": 0,
+            "total_pubsub_topics": 0,
+            "projects": {}
+        }
+        
+        # Procesar cada proyecto
+        for proj_id, proj_data in all_data.items():
+            proj_summary = {
+                "total_services": len(proj_data.get('enabled_services', [])),
+                "total_gke_clusters": len(proj_data.get('gke_clusters', [])),
+                "total_sql_instances": len(proj_data.get('sql_instances', [])),
+                "total_compute_instances": len(proj_data.get('compute_instances', [])),
+                "total_cloud_run_services": len(proj_data.get('cloud_run', [])),
+                "total_pubsub_topics": len(proj_data.get('pubsub_topics', []))
+            }
+            consolidated_summary["projects"][proj_id] = proj_summary
+            
+            # Sumar totales
+            consolidated_summary["total_services"] += proj_summary["total_services"]
+            consolidated_summary["total_gke_clusters"] += proj_summary["total_gke_clusters"]
+            consolidated_summary["total_sql_instances"] += proj_summary["total_sql_instances"]
+            consolidated_summary["total_compute_instances"] += proj_summary["total_compute_instances"]
+            consolidated_summary["total_cloud_run_services"] += proj_summary["total_cloud_run_services"]
+            consolidated_summary["total_pubsub_topics"] += proj_summary["total_pubsub_topics"]
+        
+        export_data = {
+            "report_metadata": {
+                "tool_name": "GCP Monitor",
+                "version": __version__,
+                "report_type": "consolidated",
+                "generated_at": now.isoformat(),
+                "timezone": tz_name,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat()
+            },
+            "summary": consolidated_summary,
+            "data": all_data
+        }
+    else:
+        # Exportar un solo proyecto
+        filepath = os.path.join(output_dir, f"gcp_report_{project_id}_{timestamp}.json")
+        
+        export_data = {
+            "report_metadata": {
+                "tool_name": "GCP Monitor",
+                "version": __version__,
+                "report_type": "single_project",
+                "project_id": project_id,
+                "generated_at": now.isoformat(),
+                "timezone": tz_name,
+                "timestamp_utc": datetime.now(timezone.utc).isoformat()
+            },
+            "summary": {
+                "total_services": len(data.get('enabled_services', [])),
+                "total_gke_clusters": len(data.get('gke_clusters', [])),
+                "total_sql_instances": len(data.get('sql_instances', [])),
+                "total_compute_instances": len(data.get('compute_instances', [])),
+                "total_cloud_run_services": len(data.get('cloud_run', [])),
+                "total_pubsub_topics": len(data.get('pubsub_topics', []))
+            },
+            "data": {project_id: data}
+        }
     
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(export_data, f, indent=2, ensure_ascii=False, default=str)
@@ -1284,7 +1340,7 @@ def main() -> int:
         os.makedirs(outcome_dir, exist_ok=True)
         
         if args.output == "json":
-            filepath = export_to_json(data, project_id, outcome_dir, "America/Mazatlan")
+            filepath = export_to_json(data, project_id, outcome_dir, "America/Mazatlan", all_data)
         elif args.output == "csv":
             filepath = export_to_csv(data, project_id, outcome_dir)
         else:
