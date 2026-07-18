@@ -108,10 +108,10 @@ VENV_DIR = BASE_DIR / ".venv"
 INSTALLED_MARKER = VENV_DIR / ".installed_requirements"
 
 # Proyecto GCP por defecto
-DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"
+DEFAULT_PROJECT_ID = "cpl-cs-wms-qa-30112023"
 
 # Cluster por defecto
-DEFAULT_CLUSTER_ID = "gke-corp-cial-prod-01"
+DEFAULT_CLUSTER_ID = "gke-cs-wms-qa-01"
 
 # Deployment por defecto para checkers de conectividad
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
@@ -861,12 +861,16 @@ def install_requirements(requirements_path: str, python_exec: str, force: bool =
         return False
 
 def get_project_id() -> Optional[str]:
-    """Solicita al usuario el ID del proyecto GCP con valor por defecto."""
-    print(f"\n{Colors.BOLD}Proyecto GCP [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+    """Solicita al usuario el ID del proyecto GCP con valor por defecto.
+    Soporta múltiples proyectos separados por comas."""
+    print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
     project_id = input().strip()
     if not project_id:
         project_id = DEFAULT_PROJECT_ID
         print(f"{Colors.GREEN}Usando proyecto: {project_id}{Colors.ENDC}")
+    else:
+        projects = [p.strip() for p in project_id.split(',')]
+        print(f"{Colors.GREEN}Usando proyectos: {', '.join(projects)}{Colors.ENDC}")
     return project_id
 
 _PLATFORM = "GCP"
@@ -951,11 +955,14 @@ def run_tool(tool_key: str):
     tool_args = tool.get("args", [])
 
     if "--project" in tool_args:
-        print(f"\n{Colors.BOLD}Proyecto GCP [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         project = input().strip()
         if not project:
             project = DEFAULT_PROJECT_ID
             print(f"{Colors.GREEN}Usando proyecto: {project}{Colors.ENDC}")
+        else:
+            projects = [p.strip() for p in project.split(',')]
+            print(f"{Colors.GREEN}Usando proyectos: {', '.join(projects)}{Colors.ENDC}")
         args.extend(["--project", project])
 
     if "--cluster" in tool_args:
@@ -1253,11 +1260,14 @@ def run_all_checkers():
         print(f"\n{Colors.WARNING}{tool_config.get('excluded_reason', '')}{Colors.ENDC}")
     
     # Solicitar proyecto una sola vez
-    print(f"\n{Colors.BOLD}Proyecto GCP [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+    print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
     project = input().strip()
     if not project:
         project = DEFAULT_PROJECT_ID
         print(f"{Colors.GREEN}Usando proyecto: {project}{Colors.ENDC}")
+    else:
+        projects = [p.strip() for p in project.split(',')]
+        print(f"{Colors.GREEN}Usando proyectos: {', '.join(projects)}{Colors.ENDC}")
     
     print(f"\n{Colors.BOLD}¿Continuar? (s/n) [s]:{Colors.ENDC} ", end="")
     confirm = input().strip().lower()
