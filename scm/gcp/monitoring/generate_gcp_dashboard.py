@@ -32,7 +32,7 @@ try:
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
-    print("⚠️ Advertencia: plotly no disponible. Las visualizaciones serán limitadas.")
+    # No imprimir advertencia aquí, se maneja en la función principal
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -330,7 +330,6 @@ def generate_html_dashboard(json_data: Dict[str, Any], output_file: str) -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GCP Infrastructure Overview</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         * {{
             margin: 0;
