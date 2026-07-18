@@ -120,6 +120,72 @@ def _extract_latest_value(response: Dict) -> Optional[float]:
         return None
 
 
+def get_gke_capacity_metrics(
+    project_id: str,
+    cluster_name: str,
+    location: str,
+    logger: Optional[logging.Logger] = None
+) -> Dict[str, Any]:
+    """Obtiene CPU Total y Memoria Total de un cluster GKE usando REST API.
+    
+    Basado en: gcp-project-cluster-health.sh
+    
+    Args:
+        project_id: ID del proyecto GCP
+        cluster_name: Nombre del cluster
+        location: Ubicación del cluster
+        logger: Logger
+        
+    Returns:
+        {
+            'cpu_total': 12.0,
+            'memory_total_gb': 48.0,
+            'status': 'success' | 'error' | 'unavailable'
+        }
+    """
+    if not MONITORING_AVAILABLE:
+        return {
+            'cpu_total': None,
+            'memory_total_gb': None,
+            'status': 'unavailable'
+        }
+    
+    try:
+        # Query MQL para CPU Total (allocatable cores)
+        cpu_total_query = f"""fetch k8s_node | metric 'kubernetes.io/node/cpu/allocatable_cores' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], sum(val())"""
+        
+        # Query MQL para Memoria Total (allocatable bytes)
+        memory_total_query = f"""fetch k8s_node | metric 'kubernetes.io/node/memory/allocatable_bytes' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], sum(val())"""
+        
+        # Obtener CPU Total
+        cpu_response = _query_monitoring_rest(project_id, cpu_total_query, logger)
+        cpu_total = _extract_latest_value(cpu_response) if cpu_response else None
+        
+        # Obtener Memoria Total
+        memory_response = _query_monitoring_rest(project_id, memory_total_query, logger)
+        memory_total_bytes = _extract_latest_value(memory_response) if memory_response else None
+        
+        # Convertir memoria de bytes a GB
+        memory_total_gb = None
+        if memory_total_bytes is not None:
+            memory_total_gb = memory_total_bytes / (1024 ** 3)
+        
+        return {
+            'cpu_total': round(cpu_total, 1) if cpu_total is not None else None,
+            'memory_total_gb': round(memory_total_gb, 1) if memory_total_gb is not None else None,
+            'status': 'success' if (cpu_total is not None or memory_total_gb is not None) else 'unavailable'
+        }
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Error obteniendo capacidad para cluster {cluster_name}: {e}")
+        return {
+            'cpu_total': None,
+            'memory_total_gb': None,
+            'status': 'error'
+        }
+
+
 def get_gke_usage_metrics(
     project_id: str,
     cluster_name: str,
@@ -146,6 +212,8 @@ def get_gke_usage_metrics(
         {
             'cpu_used_percent': 45.2,
             'memory_used_percent': 62.1,
+            'cpu_total': 12.0,
+            'memory_total_gb': 48.0,
             'status': 'success' | 'error' | 'unavailable'
         }
     """
@@ -153,23 +221,37 @@ def get_gke_usage_metrics(
         return {
             'cpu_used_percent': None,
             'memory_used_percent': None,
+            'cpu_total': None,
+            'memory_total_gb': None,
             'status': 'unavailable'
         }
     
     try:
-        # Query MQL para CPU (idéntica al script bash)
+        # Query MQL para CPU Utilization (idéntica al script bash)
         cpu_query = f"""fetch k8s_node | metric 'kubernetes.io/node/cpu/allocatable_utilization' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], mean(val())"""
         
-        # Query MQL para Memoria (idéntica al script bash)
+        # Query MQL para Memoria Utilization (idéntica al script bash)
         memory_query = f"""fetch k8s_node | metric 'kubernetes.io/node/memory/allocatable_utilization' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], mean(val())"""
         
-        # Obtener CPU
+        # Query MQL para CPU Total
+        cpu_total_query = f"""fetch k8s_node | metric 'kubernetes.io/node/cpu/allocatable_cores' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], sum(val())"""
+        
+        # Query MQL para Memoria Total
+        memory_total_query = f"""fetch k8s_node | metric 'kubernetes.io/node/memory/allocatable_bytes' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], sum(val())"""
+        
+        # Obtener Utilización
         cpu_response = _query_monitoring_rest(project_id, cpu_query, logger)
         cpu_used = _extract_latest_value(cpu_response) if cpu_response else None
         
-        # Obtener Memoria
         memory_response = _query_monitoring_rest(project_id, memory_query, logger)
         memory_used = _extract_latest_value(memory_response) if memory_response else None
+        
+        # Obtener Capacidad
+        cpu_total_response = _query_monitoring_rest(project_id, cpu_total_query, logger)
+        cpu_total = _extract_latest_value(cpu_total_response) if cpu_total_response else None
+        
+        memory_total_response = _query_monitoring_rest(project_id, memory_total_query, logger)
+        memory_total_bytes = _extract_latest_value(memory_total_response) if memory_total_response else None
         
         # Convertir a porcentaje si es necesario
         if cpu_used is not None and cpu_used <= 1:
@@ -177,9 +259,16 @@ def get_gke_usage_metrics(
         if memory_used is not None and memory_used <= 1:
             memory_used = memory_used * 100
         
+        # Convertir memoria de bytes a GB
+        memory_total_gb = None
+        if memory_total_bytes is not None:
+            memory_total_gb = memory_total_bytes / (1024 ** 3)
+        
         return {
             'cpu_used_percent': round(cpu_used, 1) if cpu_used is not None else None,
             'memory_used_percent': round(memory_used, 1) if memory_used is not None else None,
+            'cpu_total': round(cpu_total, 1) if cpu_total is not None else None,
+            'memory_total_gb': round(memory_total_gb, 1) if memory_total_gb is not None else None,
             'status': 'success' if (cpu_used is not None or memory_used is not None) else 'unavailable'
         }
         
@@ -189,6 +278,8 @@ def get_gke_usage_metrics(
         return {
             'cpu_used_percent': None,
             'memory_used_percent': None,
+            'cpu_total': None,
+            'memory_total_gb': None,
             'status': 'error'
         }
 

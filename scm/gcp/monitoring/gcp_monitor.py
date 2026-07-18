@@ -465,30 +465,21 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     for project_id, data in all_data.items():
         clusters = data.get('gke_clusters', [])
         for cluster in clusters:
-            # Calcular CPU y Memoria Total
             node_count = cluster.get('currentNodeCount', 0)
-            node_pools = cluster.get('nodePools', [])
-            
-            total_cpu = 0
-            total_memory = 0
-            
-            if node_pools:
-                for pool in node_pools:
-                    machine_type = pool.get('config', {}).get('machineType', '')
-                    # Usar currentNodeCount del pool si está disponible, sino usar initialNodeCount
-                    pool_node_count = pool.get('currentNodeCount', pool.get('initialNodeCount', 0))
-                    specs = get_machine_specs(machine_type)
-                    total_cpu += specs.get('cpu', 0) * pool_node_count
-                    total_memory += specs.get('memory', 0) * pool_node_count
-            
-            cpu_str = f"{int(total_cpu)} vCPU" if total_cpu > 0 else "N/A"
-            memory_str = f"{int(total_memory)} GB" if total_memory > 0 else "N/A"
-            
-            # Obtener métricas de uso (Fase 2)
             cluster_name = cluster.get('name', 'N/A')
+            
+            # Obtener métricas de uso Y capacidad (Fase 2)
             metrics = gke_metrics_all.get(cluster_name, {})
             cpu_used_percent = metrics.get('cpu_used_percent')
             memory_used_percent = metrics.get('memory_used_percent')
+            cpu_total = metrics.get('cpu_total')
+            memory_total_gb = metrics.get('memory_total_gb')
+            
+            # Formatear CPU y Memoria Total desde métricas
+            cpu_str = f"{int(cpu_total)} vCPU" if cpu_total and cpu_total > 0 else "N/A"
+            memory_str = f"{int(memory_total_gb)} GB" if memory_total_gb and memory_total_gb > 0 else "N/A"
+            
+            # Formatear uso
             cpu_used = format_percentage(cpu_used_percent)
             memory_used = format_percentage(memory_used_percent)
             
