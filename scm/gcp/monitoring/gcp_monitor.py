@@ -263,6 +263,154 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     return True
 
 
+def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], console) -> None:
+    """Crea y muestra tablas detalladas consolidadas de múltiples proyectos con columna de proyecto."""
+    if not RICH_AVAILABLE or not console:
+        return
+    
+    # Tabla consolidada de Servicios
+    all_services = []
+    for project_id, data in all_data.items():
+        services = data.get('services', [])
+        for svc in services:
+            name = svc.get('config', {}).get('title', svc.get('name', 'N/A'))
+            all_services.append((project_id, name, "✅ Activo"))
+    
+    if all_services:
+        table = Table(title="📌 Servicios Habilitados", box=box.ROUNDED)
+        table.add_column("Proyecto", style="magenta")
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        for project, name, status in all_services:
+            table.add_row(project, name, status)
+        console.print(table)
+        console.print()
+    
+    # Tabla consolidada de Clusters GKE
+    all_clusters = []
+    for project_id, data in all_data.items():
+        clusters = data.get('gke_clusters', [])
+        for cluster in clusters:
+            all_clusters.append((
+                project_id,
+                cluster.get('name', 'N/A')[:30],
+                cluster.get('location', 'N/A'),
+                cluster.get('status', 'N/A'),
+                cluster.get('currentMasterVersion', 'N/A')[:15],
+                str(cluster.get('currentNodeCount', 0))
+            ))
+    
+    if all_clusters:
+        table = Table(title="☸️  Clusters GKE", box=box.ROUNDED)
+        table.add_column("Proyecto", style="magenta")
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Ubicación", style="yellow")
+        table.add_column("Estado", style="green")
+        table.add_column("Versión", style="magenta")
+        table.add_column("Nodos", style="blue", justify="right")
+        for row in all_clusters:
+            table.add_row(*row)
+        console.print(table)
+        console.print()
+    
+    # Tabla consolidada de Cloud SQL
+    all_sql = []
+    for project_id, data in all_data.items():
+        sql_instances = data.get('sql_instances', [])
+        for instance in sql_instances[:10]:
+            disk = instance.get('settings', {}).get('dataDiskSizeGb', 'N/A')
+            all_sql.append((
+                project_id,
+                instance.get('name', 'N/A')[:30],
+                instance.get('state', 'N/A'),
+                instance.get('databaseVersion', 'N/A')[:20],
+                instance.get('settings', {}).get('tier', 'N/A')[:20],
+                str(disk)
+            ))
+    
+    if all_sql:
+        table = Table(title="🗄️  Instancias Cloud SQL", box=box.ROUNDED)
+        table.add_column("Proyecto", style="magenta")
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        table.add_column("Versión", style="yellow")
+        table.add_column("Tier", style="magenta")
+        table.add_column("Disco (GB)", style="blue", justify="right")
+        for row in all_sql:
+            table.add_row(*row)
+        console.print(table)
+        console.print()
+    
+    # Tabla consolidada de Compute Engine
+    all_compute = []
+    for project_id, data in all_data.items():
+        compute_instances = data.get('compute_instances', [])
+        for vm in compute_instances[:15]:
+            machine = vm.get('machineType', '').split('/')[-1] if vm.get('machineType') else 'N/A'
+            zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
+            all_compute.append((
+                project_id,
+                vm.get('name', 'N/A')[:30],
+                vm.get('status', 'N/A'),
+                machine[:20],
+                zone
+            ))
+    
+    if all_compute:
+        table = Table(title="💻 Instancias Compute Engine", box=box.ROUNDED)
+        table.add_column("Proyecto", style="magenta")
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        table.add_column("Tipo", style="yellow")
+        table.add_column("Zona", style="magenta")
+        for row in all_compute:
+            table.add_row(*row)
+        console.print(table)
+        console.print()
+    
+    # Tabla consolidada de Cloud Run
+    all_run = []
+    for project_id, data in all_data.items():
+        run_services = data.get('cloud_run', [])
+        for svc in run_services[:10]:
+            metadata = svc.get('metadata', {})
+            all_run.append((
+                project_id,
+                metadata.get('name', 'N/A')[:40],
+                metadata.get('namespace', 'N/A')[:20],
+                "✅ Activo"
+            ))
+    
+    if all_run:
+        table = Table(title="🚀 Servicios Cloud Run", box=box.ROUNDED)
+        table.add_column("Proyecto", style="magenta")
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Región", style="yellow")
+        table.add_column("Estado", style="green")
+        for row in all_run:
+            table.add_row(*row)
+        console.print(table)
+        console.print()
+    
+    # Tabla consolidada de Pub/Sub
+    all_topics = []
+    for project_id, data in all_data.items():
+        topics = data.get('pubsub_topics', [])
+        for topic in topics:
+            name = topic.get('name', '').split('/')[-1] if topic.get('name') else 'N/A'
+            all_topics.append((project_id, name, "✅ Activo"))
+    
+    if all_topics:
+        table = Table(title="📬 Topics Pub/Sub", box=box.ROUNDED)
+        table.add_column("Proyecto", style="magenta")
+        table.add_column("Nombre", style="cyan")
+        table.add_column("Estado", style="green")
+        for row in all_topics:
+            table.add_row(*row)
+        console.print(table)
+        console.print()
+
+
 def create_detailed_tables(data: Dict[str, Any], console) -> None:
     """Crea y muestra tablas detalladas de recursos con Rich."""
     if not RICH_AVAILABLE or not console:
@@ -855,13 +1003,12 @@ def main() -> int:
                 console.print(create_health_table(data, console))
                 console.print()
             
-            # Mostrar tablas detalladas de recursos
+            # Mostrar tablas detalladas de recursos consolidadas
             console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
-            console.print("[bold cyan]📊 DETALLES DE RECURSOS[/]")
+            console.print("[bold cyan]📊 DETALLES DE RECURSOS (CONSOLIDADOS)[/]")
             console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
             console.print()
-            for project_id, data in all_data.items():
-                create_detailed_tables(data, console)
+            create_consolidated_detailed_tables(all_data, console)
         
         # Generar reporte para el primer proyecto (o consolidado)
         project_id = project_ids[0]
