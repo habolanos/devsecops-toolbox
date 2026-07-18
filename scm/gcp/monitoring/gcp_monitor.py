@@ -1502,7 +1502,12 @@ def main() -> int:
             console.print("\n[bold cyan]Presione Enter para continuar...[/]")
         else:
             print("\nPresione Enter para continuar...")
-        input()
+        try:
+            input()
+        except (EOFError, KeyboardInterrupt):
+            pass
+        
+        return 0
 
     except Exception as e:
         if RICH_AVAILABLE and console:
@@ -1518,10 +1523,12 @@ def main() -> int:
             console.print("\n[bold cyan]Presione Enter para continuar...[/]")
         else:
             print("\nPresione Enter para continuar...")
-        input()
+        try:
+            input()
+        except (EOFError, KeyboardInterrupt):
+            pass
+        
         return 1
-
-    return 0
 
 
 if __name__ == "__main__":
