@@ -1078,39 +1078,47 @@ def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) 
     
     Obtiene métricas de Cloud Monitoring API y las agrega a los datos.
     """
+    import copy
     enriched_data = {}
     
     for project_id, proj_data in all_data.items():
-        enriched_proj = proj_data.copy()
+        # Hacer copia profunda para no modificar datos originales
+        enriched_proj = copy.deepcopy(proj_data)
         
         # Enriquecer GKE clusters con métricas de uso
         if MONITORING_AVAILABLE and 'gke_clusters' in enriched_proj:
             clusters = enriched_proj.get('gke_clusters', [])
-            gke_metrics = get_gke_metrics_parallel(project_id, clusters, max_workers=6, logger=logger)
-            
-            for cluster in enriched_proj['gke_clusters']:
-                cluster_name = cluster.get('name')
-                metrics = gke_metrics.get(cluster_name, {})
-                cluster['usage_metrics'] = {
-                    'cpu_used_percent': metrics.get('cpu_used_percent'),
-                    'memory_used_percent': metrics.get('memory_used_percent'),
-                    'status': metrics.get('status', 'unavailable')
-                }
+            if clusters:
+                if logger:
+                    logger.info(f"Obteniendo métricas de {len(clusters)} clusters GKE en {project_id}...")
+                gke_metrics = get_gke_metrics_parallel(project_id, clusters, max_workers=6, logger=logger)
+                
+                for cluster in enriched_proj['gke_clusters']:
+                    cluster_name = cluster.get('name')
+                    metrics = gke_metrics.get(cluster_name, {})
+                    cluster['usage_metrics'] = {
+                        'cpu_used_percent': metrics.get('cpu_used_percent'),
+                        'memory_used_percent': metrics.get('memory_used_percent'),
+                        'status': metrics.get('status', 'unavailable')
+                    }
         
         # Enriquecer Compute instances con métricas de uso
         if MONITORING_AVAILABLE and 'compute_instances' in enriched_proj:
             instances = enriched_proj.get('compute_instances', [])
-            compute_metrics = get_compute_metrics_parallel(project_id, instances, max_workers=6, logger=logger)
-            
-            for instance in enriched_proj['compute_instances']:
-                instance_name = instance.get('name')
-                metrics = compute_metrics.get(instance_name, {})
-                instance['usage_metrics'] = {
-                    'cpu_used_percent': metrics.get('cpu_used_percent'),
-                    'memory_used_percent': metrics.get('memory_used_percent'),
-                    'disk_used_percent': metrics.get('disk_used_percent'),
-                    'status': metrics.get('status', 'unavailable')
-                }
+            if instances:
+                if logger:
+                    logger.info(f"Obteniendo métricas de {len(instances)} instancias Compute en {project_id}...")
+                compute_metrics = get_compute_metrics_parallel(project_id, instances, max_workers=6, logger=logger)
+                
+                for instance in enriched_proj['compute_instances']:
+                    instance_name = instance.get('name')
+                    metrics = compute_metrics.get(instance_name, {})
+                    instance['usage_metrics'] = {
+                        'cpu_used_percent': metrics.get('cpu_used_percent'),
+                        'memory_used_percent': metrics.get('memory_used_percent'),
+                        'disk_used_percent': metrics.get('disk_used_percent'),
+                        'status': metrics.get('status', 'unavailable')
+                    }
         
         enriched_data[project_id] = enriched_proj
     
@@ -1271,8 +1279,8 @@ def get_args():
         "--output", "-o",
         type=str,
         choices=["csv", "json", "txt"],
-        default="txt",
-        help="Formato de exportación (default: txt)"
+        default="json",
+        help="Formato de exportación (default: json)"
     )
     parser.add_argument(
         "--parallel",
