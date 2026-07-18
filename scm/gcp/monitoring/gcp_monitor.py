@@ -1073,8 +1073,52 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
         print(f"  Recursos totales: {total_resources_all}")
 
 
-def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan", all_data: Dict[str, Dict[str, Any]] = None) -> str:
-    """Exporta datos a archivo JSON con metadatos completos.
+def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) -> Dict[str, Dict[str, Any]]:
+    """Enriquece los datos con métricas de uso (CPU, Memoria, Disco).
+    
+    Obtiene métricas de Cloud Monitoring API y las agrega a los datos.
+    """
+    enriched_data = {}
+    
+    for project_id, proj_data in all_data.items():
+        enriched_proj = proj_data.copy()
+        
+        # Enriquecer GKE clusters con métricas de uso
+        if MONITORING_AVAILABLE and 'gke_clusters' in enriched_proj:
+            clusters = enriched_proj.get('gke_clusters', [])
+            gke_metrics = get_gke_metrics_parallel(project_id, clusters, max_workers=6, logger=logger)
+            
+            for cluster in enriched_proj['gke_clusters']:
+                cluster_name = cluster.get('name')
+                metrics = gke_metrics.get(cluster_name, {})
+                cluster['usage_metrics'] = {
+                    'cpu_used_percent': metrics.get('cpu_used_percent'),
+                    'memory_used_percent': metrics.get('memory_used_percent'),
+                    'status': metrics.get('status', 'unavailable')
+                }
+        
+        # Enriquecer Compute instances con métricas de uso
+        if MONITORING_AVAILABLE and 'compute_instances' in enriched_proj:
+            instances = enriched_proj.get('compute_instances', [])
+            compute_metrics = get_compute_metrics_parallel(project_id, instances, max_workers=6, logger=logger)
+            
+            for instance in enriched_proj['compute_instances']:
+                instance_name = instance.get('name')
+                metrics = compute_metrics.get(instance_name, {})
+                instance['usage_metrics'] = {
+                    'cpu_used_percent': metrics.get('cpu_used_percent'),
+                    'memory_used_percent': metrics.get('memory_used_percent'),
+                    'disk_used_percent': metrics.get('disk_used_percent'),
+                    'status': metrics.get('status', 'unavailable')
+                }
+        
+        enriched_data[project_id] = enriched_proj
+    
+    return enriched_data
+
+
+def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan", all_data: Dict[str, Dict[str, Any]] = None, logger=None) -> str:
+    """Exporta datos a archivo JSON con metadatos completos y métricas de uso.
     
     Si all_data es proporcionado, exporta todos los proyectos consolidados.
     Si no, exporta solo un proyecto.
@@ -1083,13 +1127,19 @@ def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_na
     now = datetime.now(tz)
     timestamp = now.strftime("%Y%m%d_%H%M%S")
     
+    # Enriquecer datos con métricas de uso
+    if all_data:
+        enriched_all_data = _enrich_data_with_metrics(all_data, logger)
+    else:
+        enriched_all_data = _enrich_data_with_metrics({project_id: data}, logger)
+    
     # Si tenemos múltiples proyectos, exportar consolidado
     if all_data and len(all_data) > 1:
         filepath = os.path.join(output_dir, f"gcp_report_consolidated_{timestamp}.json")
         
         # Calcular resumen consolidado
         consolidated_summary = {
-            "total_projects": len(all_data),
+            "total_projects": len(enriched_all_data),
             "total_services": 0,
             "total_gke_clusters": 0,
             "total_sql_instances": 0,
@@ -1100,7 +1150,7 @@ def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_na
         }
         
         # Procesar cada proyecto
-        for proj_id, proj_data in all_data.items():
+        for proj_id, proj_data in enriched_all_data.items():
             proj_summary = {
                 "total_services": len(proj_data.get('enabled_services', [])),
                 "total_gke_clusters": len(proj_data.get('gke_clusters', [])),
@@ -1129,11 +1179,12 @@ def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_na
                 "timestamp_utc": datetime.now(timezone.utc).isoformat()
             },
             "summary": consolidated_summary,
-            "data": all_data
+            "data": enriched_all_data
         }
     else:
         # Exportar un solo proyecto
         filepath = os.path.join(output_dir, f"gcp_report_{project_id}_{timestamp}.json")
+        enriched_data = enriched_all_data.get(project_id, data)
         
         export_data = {
             "report_metadata": {
@@ -1146,14 +1197,14 @@ def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_na
                 "timestamp_utc": datetime.now(timezone.utc).isoformat()
             },
             "summary": {
-                "total_services": len(data.get('enabled_services', [])),
-                "total_gke_clusters": len(data.get('gke_clusters', [])),
-                "total_sql_instances": len(data.get('sql_instances', [])),
-                "total_compute_instances": len(data.get('compute_instances', [])),
-                "total_cloud_run_services": len(data.get('cloud_run', [])),
-                "total_pubsub_topics": len(data.get('pubsub_topics', []))
+                "total_services": len(enriched_data.get('enabled_services', [])),
+                "total_gke_clusters": len(enriched_data.get('gke_clusters', [])),
+                "total_sql_instances": len(enriched_data.get('sql_instances', [])),
+                "total_compute_instances": len(enriched_data.get('compute_instances', [])),
+                "total_cloud_run_services": len(enriched_data.get('cloud_run', [])),
+                "total_pubsub_topics": len(enriched_data.get('pubsub_topics', []))
             },
-            "data": {project_id: data}
+            "data": {project_id: enriched_data}
         }
     
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -1417,7 +1468,7 @@ def main() -> int:
         os.makedirs(outcome_dir, exist_ok=True)
         
         if args.output == "json":
-            filepath = export_to_json(data, project_id, outcome_dir, "America/Mazatlan", all_data)
+            filepath = export_to_json(data, project_id, outcome_dir, "America/Mazatlan", all_data, logger)
         elif args.output == "csv":
             filepath = export_to_csv(data, project_id, outcome_dir)
         else:
