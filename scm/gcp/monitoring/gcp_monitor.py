@@ -395,13 +395,16 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             if node_pools:
                 for pool in node_pools:
                     machine_type = pool.get('config', {}).get('machineType', '')
-                    pool_node_count = pool.get('initialNodeCount', 0)
+                    # Usar currentNodeCount del pool si está disponible, sino usar initialNodeCount
+                    pool_node_count = pool.get('currentNodeCount', pool.get('initialNodeCount', 0))
                     specs = get_machine_specs(machine_type)
                     total_cpu += specs.get('cpu', 0) * pool_node_count
                     total_memory += specs.get('memory', 0) * pool_node_count
             
             cpu_str = f"{int(total_cpu)} vCPU" if total_cpu > 0 else "N/A"
             memory_str = f"{int(total_memory)} GB" if total_memory > 0 else "N/A"
+            cpu_used = "N/A"
+            memory_used = "N/A"
             
             all_clusters.append((
                 project_id,
@@ -411,7 +414,9 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 cluster.get('currentMasterVersion', 'N/A')[:15],
                 str(node_count),
                 cpu_str,
-                memory_str
+                memory_str,
+                cpu_used,
+                memory_used
             ))
     
     if all_clusters:
@@ -424,6 +429,8 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("Nodos", style="blue", justify="right")
         table.add_column("CPU Total", style="cyan", justify="right")
         table.add_column("Memoria Total", style="cyan", justify="right")
+        table.add_column("CPU Usado (%)", style="yellow", justify="right")
+        table.add_column("Memoria Usada (%)", style="yellow", justify="right")
         for row in all_clusters:
             table.add_row(*row)
         console.print(table)
@@ -478,6 +485,10 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 disk_gb = boot_disk.get('sizeGb', 'N/A')
                 disk_size = f"{disk_gb} GB" if disk_gb != 'N/A' else "N/A"
             
+            cpu_used = "N/A"
+            memory_used = "N/A"
+            disk_used = "N/A"
+            
             all_compute.append((
                 project_id,
                 vm.get('name', 'N/A')[:30],
@@ -486,7 +497,10 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 zone,
                 cpu_str,
                 memory_str,
-                disk_size
+                disk_size,
+                cpu_used,
+                memory_used,
+                disk_used
             ))
     
     if all_compute:
@@ -499,6 +513,9 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("CPUs", style="cyan", justify="right")
         table.add_column("Memoria", style="cyan", justify="right")
         table.add_column("Disco Raíz", style="cyan", justify="right")
+        table.add_column("CPU Usado (%)", style="yellow", justify="right")
+        table.add_column("Memoria Usada (%)", style="yellow", justify="right")
+        table.add_column("Disco Usado (%)", style="yellow", justify="right")
         for row in all_compute:
             table.add_row(*row)
         console.print(table)
