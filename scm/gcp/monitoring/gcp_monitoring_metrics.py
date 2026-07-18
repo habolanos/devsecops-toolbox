@@ -1,23 +1,123 @@
 #!/usr/bin/env python3
 """
 GCP Monitoring Metrics Module - Fase 2
-Obtiene métricas de uso actual (CPU, Memoria, Disco) de Cloud Monitoring API.
+Obtiene métricas de uso actual (CPU, Memoria, Disco) de Cloud Monitoring REST API.
 
 Versión: 1.7.2
 Fecha: 18 de Julio de 2026
+Basado en: gcp-project-cluster-health.sh
 """
 
 import json
 import logging
+import subprocess
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
-    from google.cloud import monitoring_v3
-    MONITORING_AVAILABLE = True
+    import requests
+    REQUESTS_AVAILABLE = True
 except ImportError:
-    MONITORING_AVAILABLE = False
+    REQUESTS_AVAILABLE = False
+
+MONITORING_AVAILABLE = REQUESTS_AVAILABLE
+MONITORING_API = "https://monitoring.googleapis.com/v3"
+WINDOW = "24h"
+
+
+def _get_gcloud_token() -> Optional[str]:
+    """Obtiene token de acceso de gcloud (como en el script bash).
+    
+    Returns:
+        Token de acceso o None si falla
+    """
+    try:
+        result = subprocess.run(
+            ['gcloud', 'auth', 'print-access-token'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _query_monitoring_rest(project_id: str, mql_query: str, logger=None) -> Optional[Dict]:
+    """Consulta Monitoring API REST directamente (como en el script bash).
+    
+    Args:
+        project_id: ID del proyecto GCP
+        mql_query: Query MQL
+        logger: Logger
+        
+    Returns:
+        Respuesta JSON o None si falla
+    """
+    if not REQUESTS_AVAILABLE:
+        return None
+    
+    try:
+        token = _get_gcloud_token()
+        if not token:
+            if logger:
+                logger.warning("No se pudo obtener token de gcloud")
+            return None
+        
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+        }
+        
+        url = f"{MONITORING_API}/projects/{project_id}/timeSeries:query"
+        payload = {'query': mql_query}
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            if logger:
+                logger.warning(f"Error en Monitoring API: {response.status_code} - {response.text[:200]}")
+            return None
+            
+    except Exception as e:
+        if logger:
+            logger.warning(f"Error consultando Monitoring API: {e}")
+        return None
+
+
+def _extract_latest_value(response: Dict) -> Optional[float]:
+    """Extrae el valor más reciente de la respuesta JSON.
+    
+    Basado en la lógica del script bash: get_latest_value()
+    
+    Args:
+        response: Respuesta JSON de Monitoring API
+        
+    Returns:
+        Valor numérico o None
+    """
+    try:
+        if not response or 'timeSeriesData' not in response:
+            return None
+        
+        for ts_data in response.get('timeSeriesData', []):
+            if 'pointData' in ts_data:
+                for point_data in ts_data['pointData']:
+                    if 'values' in point_data:
+                        for value in point_data['values']:
+                            if 'doubleValue' in value:
+                                return float(value['doubleValue'])
+                            elif 'int64Value' in value:
+                                return float(value['int64Value'])
+        
+        return None
+    except Exception:
+        return None
 
 
 def get_gke_usage_metrics(
@@ -29,7 +129,9 @@ def get_gke_usage_metrics(
     logger: Optional[logging.Logger] = None,
     timeout: int = 30
 ) -> Dict[str, Any]:
-    """Obtiene métricas de uso actual de un cluster GKE.
+    """Obtiene métricas de uso actual de un cluster GKE usando REST API.
+    
+    Basado en: gcp-project-cluster-health.sh
     
     Args:
         project_id: ID del proyecto GCP
@@ -55,62 +157,25 @@ def get_gke_usage_metrics(
         }
     
     try:
-        # Inicializar cliente de Monitoring
-        client = monitoring_v3.MetricServiceClient()
-        project_name = f"projects/{project_id}"
+        # Query MQL para CPU (idéntica al script bash)
+        cpu_query = f"""fetch k8s_node | metric 'kubernetes.io/node/cpu/allocatable_utilization' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], mean(val())"""
         
-        # Construir query MQL para CPU
-        end_time = datetime.utcnow()
-        start_time = end_time - timedelta(minutes=5)
+        # Query MQL para Memoria (idéntica al script bash)
+        memory_query = f"""fetch k8s_node | metric 'kubernetes.io/node/memory/allocatable_utilization' | filter resource.cluster_name == '{cluster_name}' && resource.location == '{location}' | within {WINDOW} | group_by [], mean(val())"""
         
-        interval = monitoring_v3.TimeInterval(
-            {
-                "end_time": {"seconds": int(end_time.timestamp())},
-                "start_time": {"seconds": int(start_time.timestamp())},
-            }
-        )
+        # Obtener CPU
+        cpu_response = _query_monitoring_rest(project_id, cpu_query, logger)
+        cpu_used = _extract_latest_value(cpu_response) if cpu_response else None
         
-        # Query para CPU del cluster
-        cpu_query = f"""
-        fetch k8s_cluster
-        | metric 'kubernetes.io/container/cpu/core_usage_time'
-        | filter resource.project_id == '{project_id}'
-        | filter resource.cluster_name == '{cluster_name}'
-        | filter resource.location == '{location}'
-        | group_by [value_cpu: mean(value.cpu_usage)]
-        """
+        # Obtener Memoria
+        memory_response = _query_monitoring_rest(project_id, memory_query, logger)
+        memory_used = _extract_latest_value(memory_response) if memory_response else None
         
-        try:
-            results_cpu = client.query_time_series(
-                name=project_name,
-                query=cpu_query
-            )
-            cpu_used = _extract_metric_value(results_cpu)
-        except Exception as e:
-            if logger:
-                logger.warning(f"No se pudo obtener CPU para {cluster_name}: {e}")
-            cpu_used = None
-        
-        # Query para Memoria del cluster
-        memory_query = f"""
-        fetch k8s_cluster
-        | metric 'kubernetes.io/container/memory/used_bytes'
-        | filter resource.project_id == '{project_id}'
-        | filter resource.cluster_name == '{cluster_name}'
-        | filter resource.location == '{location}'
-        | group_by [value_mem: mean(value.memory_used)]
-        """
-        
-        try:
-            results_memory = client.query_time_series(
-                name=project_name,
-                query=memory_query
-            )
-            memory_used = _extract_metric_value(results_memory)
-        except Exception as e:
-            if logger:
-                logger.warning(f"No se pudo obtener Memoria para {cluster_name}: {e}")
-            memory_used = None
+        # Convertir a porcentaje si es necesario
+        if cpu_used is not None and cpu_used <= 1:
+            cpu_used = cpu_used * 100
+        if memory_used is not None and memory_used <= 1:
+            memory_used = memory_used * 100
         
         return {
             'cpu_used_percent': round(cpu_used, 1) if cpu_used is not None else None,
