@@ -1,7 +1,7 @@
-# Análisis de Columnas de Capacidad de Cómputo
+# Análisis de Columnas: Capacidad + Uso Actual de Cómputo
 ## GCP Monitor - Tool 1
 
-Documento de análisis para agregar columnas que muestren la capacidad de cómputo en las tablas de **Clusters GKE** e **Instancias Compute Engine**.
+Documento de análisis para agregar columnas que muestren tanto la **capacidad disponible** como el **uso actual** de recursos en las tablas de **Clusters GKE** e **Instancias Compute Engine**.
 
 ---
 
@@ -55,6 +55,31 @@ Documento de análisis para agregar columnas que muestren la capacidad de cómpu
 - **Ejemplo**: `100 GB`
 - **Utilidad**: Capacidad de almacenamiento local
 - **Implementación**: Lectura directa del campo
+
+### Columnas Recomendadas - USO ACTUAL ⭐⭐⭐ NUEVA PRIORIDAD
+
+#### 1. **CPU Usado (%)** ⭐⭐⭐ ALTA PRIORIDAD
+- **Descripción**: Porcentaje de CPU utilizado en el cluster
+- **Campo GCP**: Cloud Monitoring API - `kubernetes.io/container/cpu/core_usage_time`
+- **Ejemplo**: `45%`
+- **Utilidad**: Ver carga actual de procesamiento
+- **Implementación**: Consultar Monitoring API para últimas 5 minutos
+- **Nota**: Requiere Monitoring API habilitada
+
+#### 2. **Memoria Usada (%)** ⭐⭐⭐ ALTA PRIORIDAD
+- **Descripción**: Porcentaje de memoria utilizada
+- **Campo GCP**: Cloud Monitoring API - `kubernetes.io/container/memory/used_bytes`
+- **Ejemplo**: `62%`
+- **Utilidad**: Ver presión de memoria
+- **Implementación**: Consultar Monitoring API para últimas 5 minutos
+- **Nota**: Requiere Monitoring API habilitada
+
+#### 3. **Pods Activos** ⭐⭐ MEDIA PRIORIDAD
+- **Descripción**: Cantidad de pods corriendo en el cluster
+- **Campo GCP**: Cloud Monitoring API o `kubectl get pods`
+- **Ejemplo**: `45 pods`
+- **Utilidad**: Carga de trabajo actual
+- **Implementación**: Contar pods en ejecución
 
 ---
 
@@ -113,6 +138,32 @@ Documento de análisis para agregar columnas que muestren la capacidad de cómpu
 - **Utilidad**: Tipo de instancia y costo
 - **Implementación**: Lectura booleana
 
+### Columnas Recomendadas - USO ACTUAL ⭐⭐⭐ NUEVA PRIORIDAD
+
+#### 1. **CPU Usado (%)** ⭐⭐⭐ ALTA PRIORIDAD
+- **Descripción**: Porcentaje de CPU utilizado
+- **Campo GCP**: Cloud Monitoring API - `compute.googleapis.com/instance/cpu/utilization`
+- **Ejemplo**: `35%`
+- **Utilidad**: Ver carga de procesamiento actual
+- **Implementación**: Consultar Monitoring API para últimas 5 minutos
+- **Nota**: Requiere Monitoring API habilitada
+
+#### 2. **Memoria Usada (%)** ⭐⭐⭐ ALTA PRIORIDAD
+- **Descripción**: Porcentaje de memoria utilizada
+- **Campo GCP**: Cloud Monitoring API - `agent.googleapis.com/memory/percent_used`
+- **Ejemplo**: `58%`
+- **Utilidad**: Ver presión de memoria
+- **Implementación**: Consultar Monitoring API para últimas 5 minutos
+- **Nota**: Requiere Google Cloud Ops Agent instalado en la VM
+
+#### 3. **Disco Usado (%)** ⭐⭐⭐ ALTA PRIORIDAD
+- **Descripción**: Porcentaje de disco utilizado
+- **Campo GCP**: Cloud Monitoring API - `agent.googleapis.com/disk/percent_used`
+- **Ejemplo**: `72%`
+- **Utilidad**: Ver espacio disponible en el disco
+- **Implementación**: Consultar Monitoring API para últimas 5 minutos
+- **Nota**: Requiere Google Cloud Ops Agent instalado en la VM
+
 ---
 
 ## 🔧 Especificaciones de Máquinas GCP
@@ -162,27 +213,83 @@ Documento de análisis para agregar columnas que muestren la capacidad de cómpu
 
 ---
 
-## 📋 Plan de Implementación
+## 📋 Plan de Implementación Actualizado
 
-### Fase 1: Implementación Básica (RECOMENDADO)
+### Fase 1: Capacidad Básica (INMEDIATO - 2-3 horas)
 1. **Crear diccionario de mapeo** de tipos de máquina a especificaciones
 2. **GKE**: Agregar columnas `CPU Total` y `Memoria Total`
-3. **Compute**: Agregar columnas `CPUs` y `Memoria (GB)`
+3. **Compute**: Agregar columnas `CPUs`, `Memoria (GB)` y `Disco Raíz (GB)`
 4. **Pruebas**: Validar con datos reales de GCP
 
-### Fase 2: Mejoras Adicionales
-1. **GKE**: Agregar `Tipo de Máquina del Node Pool`
-2. **Compute**: Agregar `Disco Raíz (GB)` y `GPU`
-3. **Optimización**: Mejorar formato y presentación
+### Fase 2: Uso Actual (SIGUIENTE - 4-6 horas)
+1. **Integración con Cloud Monitoring API**
+   - Crear función para consultar métricas
+   - Configurar autenticación y permisos
+   
+2. **GKE**: Agregar columnas `CPU Usado (%)` y `Memoria Usada (%)`
+   - Consultar últimas 5 minutos de datos
+   - Mostrar promedio de utilización
+   
+3. **Compute**: Agregar columnas `CPU Usado (%)`, `Memoria Usada (%)` y `Disco Usado (%)`
+   - Consultar últimas 5 minutos de datos
+   - Mostrar promedio de utilización
 
-### Fase 3: Características Avanzadas
-1. **GKE**: Agregar `Número de Node Pools` y `Disco por Nodo`
-2. **Compute**: Agregar `Discos Adicionales` y `Preemptible`
-3. **Análisis**: Crear reportes de capacidad total
+4. **Manejo de errores**: Si Monitoring API no está disponible, mostrar "N/A"
+
+### Fase 3: Características Avanzadas (FUTURO)
+1. **GKE**: Agregar `Pods Activos`, `Tipo de Máquina del Node Pool`
+2. **Compute**: Agregar `GPU`, `Discos Adicionales`, `Preemptible`
+3. **Análisis**: Crear reportes de capacidad vs uso
+4. **Alertas**: Identificar recursos con alta utilización
 
 ---
 
-## 🔍 Ejemplo de Datos JSON
+## � Integración con Cloud Monitoring API
+
+### Requisitos Previos
+1. **API habilitada**: `monitoring.googleapis.com`
+2. **Permisos**: `monitoring.timeSeries.list`
+3. **Autenticación**: Usar credenciales de GCP (gcloud auth)
+
+### Ejemplo de Consulta para GKE CPU
+
+```bash
+gcloud monitoring time-series list \
+  --filter='resource.type="k8s_cluster" AND metric.type="kubernetes.io/container/cpu/core_usage_time"' \
+  --format=json \
+  --project=PROJECT_ID
+```
+
+### Ejemplo de Consulta para Compute Engine CPU
+
+```bash
+gcloud monitoring time-series list \
+  --filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
+  --format=json \
+  --project=PROJECT_ID
+```
+
+### Ejemplo de Consulta para Compute Engine Memoria (requiere Ops Agent)
+
+```bash
+gcloud monitoring time-series list \
+  --filter='resource.type="gce_instance" AND metric.type="agent.googleapis.com/memory/percent_used"' \
+  --format=json \
+  --project=PROJECT_ID
+```
+
+### Ejemplo de Consulta para Compute Engine Disco (requiere Ops Agent)
+
+```bash
+gcloud monitoring time-series list \
+  --filter='resource.type="gce_instance" AND metric.type="agent.googleapis.com/disk/percent_used"' \
+  --format=json \
+  --project=PROJECT_ID
+```
+
+---
+
+## �🔍 Ejemplo de Datos JSON
 
 ### GKE Cluster
 ```json
@@ -232,18 +339,43 @@ Documento de análisis para agregar columnas que muestren la capacidad de cómpu
 
 ## 💡 Recomendaciones Finales
 
-### Para Clusters GKE:
-- **Prioridad**: CPU Total + Memoria Total
-- **Razón**: Permite ver capacidad total del cluster de un vistazo
-- **Impacto**: Alto - información crítica para planificación
+### Columnas Prioritarias por Tabla
 
-### Para Compute Engine:
-- **Prioridad**: CPUs + Memoria (GB)
-- **Razón**: Información esencial de cada instancia
-- **Impacto**: Alto - datos fundamentales
+#### Clusters GKE (☸️)
+**Fase 1 (Capacidad)**:
+- CPU Total (vCPUs)
+- Memoria Total (GB)
 
-### Consideraciones:
-- El mapeo de tipos de máquina debe ser mantenible
-- Considerar usar API de GCP para obtener especificaciones dinámicamente
-- Validar que los datos estén disponibles en todas las regiones
+**Fase 2 (Uso Actual)**:
+- CPU Usado (%)
+- Memoria Usada (%)
+
+**Resultado**: Visión completa de capacidad vs uso del cluster
+
+#### Instancias Compute Engine (💻)
+**Fase 1 (Capacidad)**:
+- CPUs
+- Memoria (GB)
+- Disco Raíz (GB)
+
+**Fase 2 (Uso Actual)**:
+- CPU Usado (%)
+- Memoria Usada (%)
+- Disco Usado (%)
+
+**Resultado**: Visión completa de capacidad vs uso de cada VM
+
+### Consideraciones Técnicas
+1. **Mapeo de tipos de máquina**: Debe ser mantenible y actualizable
+2. **Cloud Monitoring API**: Requiere permisos y API habilitada
+3. **Google Cloud Ops Agent**: Necesario para métricas de memoria y disco en Compute
+4. **Manejo de errores**: Si las métricas no están disponibles, mostrar "N/A"
+5. **Performance**: Cachear datos de capacidad (estáticos), actualizar uso cada 5 min
+
+### Beneficios Esperados
+- **Planificación**: Saber capacidad disponible
+- **Optimización**: Identificar recursos subutilizados
+- **Alertas**: Detectar recursos con alta utilización
+- **Reportes**: Análisis de capacidad vs demanda
+- **Decisiones**: Información para escalado y ajustes
 
