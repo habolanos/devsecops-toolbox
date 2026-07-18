@@ -27,10 +27,14 @@ import os
 import subprocess
 import sys
 import logging
+import warnings
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any
+
+# Suprimir warning de Google Cloud SDK sobre quota project
+warnings.filterwarnings('ignore', message='.*quota project.*')
 
 # Importar módulo de métricas (Fase 2)
 try:
