@@ -1546,7 +1546,8 @@ def main() -> int:
         
         logger.info(f"═══════════════════════════════════════════════════════════════")
         logger.info(f"Ejecución completada exitosamente")
-        logger.info(f"Reporte guardado en: {filepath}")
+        for fp in filepaths:
+            logger.info(f"Reporte guardado en: {fp}")
         logger.info(f"═══════════════════════════════════════════════════════════════")
         
         # Mostrar resumen consolidado de ejecución
