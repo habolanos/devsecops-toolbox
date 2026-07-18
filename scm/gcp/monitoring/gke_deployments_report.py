@@ -560,9 +560,8 @@ def format_status_summary(report_data):
 
 def format_limits_status_summary(report_data):
     """
-    Resumen por STATUS + LIMIT_CPU + LIMIT_MEM:
-
-    STATUS   LIMIT_CPU   LIMIT_MEM   DEPLOYMENTS   PODS_READY   RESTARTS
+    Resumen por DEPLOYMENTS + LIMIT_CPU + LIMIT_MEM + STATUS:
+    Ordenado descendentemente por DEPLOYMENTS
     """
     groups = defaultdict(lambda: {"deployments": 0, "pods_ready": 0, "restarts": 0})
 
@@ -586,16 +585,16 @@ def format_limits_status_summary(report_data):
 
     rows = []
     for (status, lim_cpu, lim_mem), agg in sorted(
-        groups.items(), key=lambda x: (x[0][0], x[0][1], x[0][2])
+        groups.items(), key=lambda x: (-x[1]["deployments"], x[0][0], x[0][1], x[0][2])
     ):
         rows.append(
             [
-                status,
+                agg["deployments"],
                 lim_cpu,
                 lim_mem,
-                agg["deployments"],
                 agg["pods_ready"],
                 agg["restarts"],
+                status,
             ]
         )
 
@@ -606,12 +605,12 @@ def format_limits_status_summary(report_data):
     table = tabulate(
         rows,
         headers=[
-            "STATUS",
+            "DEPLOYMENTS",
             "LIMIT_CPU",
             "LIMIT_MEM",
-            "DEPLOYMENTS",
             "PODS_READY",
             "RESTARTS",
+            "STATUS",
         ],
         tablefmt="github",
     )
