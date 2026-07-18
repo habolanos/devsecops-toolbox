@@ -101,17 +101,20 @@ def tabulate_to_rich_table(tabulate_output, title="Datos"):
     if len(lines) < 2:
         return None
     
-    # Encontrar la línea de headers (primera línea con |)
+    # Encontrar la línea de headers (primera línea con | que contiene texto, no solo separadores)
     header_idx = -1
     for i, line in enumerate(lines):
-        if '|' in line and not any(c in line for c in ['-', '=']):
-            header_idx = i
-            break
+        if '|' in line:
+            # Verificar si tiene contenido (no es solo separadores)
+            content = [c.strip() for c in line.split('|') if c.strip() and c.strip() not in ['-', '=']]
+            if content:
+                header_idx = i
+                break
     
     if header_idx == -1:
         return None
     
-    headers = [h.strip() for h in lines[header_idx].split('|') if h.strip()]
+    headers = [h.strip() for h in lines[header_idx].split('|') if h.strip() and h.strip() not in ['-', '=']]
     if not headers:
         return None
     
@@ -123,14 +126,21 @@ def tabulate_to_rich_table(tabulate_output, title="Datos"):
     # Procesar líneas de datos (después de la línea de separación que sigue a headers)
     data_start = header_idx + 2
     for line in lines[data_start:]:
-        if '|' in line and not any(c in line for c in ['-', '=']):
+        if '|' in line:
+            # Verificar si es una línea de separador (solo contiene -, =, |)
+            if all(c in '|-=┃┏┓┗┛┣┫┳┻━' for c in line):
+                continue
+            
             cells = [c.strip() for c in line.split('|')]
             cells = [c for c in cells if c]
-            if len(cells) >= len(headers):
-                table.add_row(*cells[:len(headers)])
-            elif len(cells) > 0:
-                # Rellenar con espacios si faltan columnas
-                cells.extend([''] * (len(headers) - len(cells)))
+            
+            if len(cells) > 0:
+                # Rellenar o truncar para que coincida con el número de headers
+                if len(cells) < len(headers):
+                    cells.extend([''] * (len(headers) - len(cells)))
+                elif len(cells) > len(headers):
+                    cells = cells[:len(headers)]
+                
                 table.add_row(*cells)
     
     return table
