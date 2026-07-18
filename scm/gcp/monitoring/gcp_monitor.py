@@ -177,6 +177,41 @@ def get_machine_specs(machine_type: str) -> Dict[str, float]:
     # Si no se encuentra, retornar valores por defecto
     return {'cpu': 0, 'memory': 0}
 
+
+def get_health_status(cpu_percent: Optional[float], memory_percent: Optional[float], 
+                     warning_threshold: float = 75.0, critical_threshold: float = 90.0) -> str:
+    """Calcula el estado de salud basado en CPU y memoria.
+    
+    Basado en la lógica del script gcp-project-cluster-health.sh
+    
+    Args:
+        cpu_percent: Porcentaje de CPU utilizado (0-1 o None)
+        memory_percent: Porcentaje de memoria utilizado (0-1 o None)
+        warning_threshold: Umbral de advertencia (default: 75%)
+        critical_threshold: Umbral crítico (default: 90%)
+    
+    Returns:
+        String con emoji y estado: '🟢 OK', '🟡 ADVERTENCIA', '🔴 CRÍTICO', '⚪ SIN DATOS'
+    """
+    # Si no hay datos
+    if cpu_percent is None or memory_percent is None:
+        return '⚪ SIN DATOS'
+    
+    # Convertir a porcentaje si están en rango 0-1
+    cpu_pct = cpu_percent * 100 if cpu_percent <= 1 else cpu_percent
+    mem_pct = memory_percent * 100 if memory_percent <= 1 else memory_percent
+    
+    # Obtener el máximo de ambas métricas
+    max_util = max(cpu_pct, mem_pct)
+    
+    # Determinar estado
+    if max_util >= critical_threshold:
+        return '🔴 CRÍTICO'
+    elif max_util >= warning_threshold:
+        return '🟡 ADVERTENCIA'
+    else:
+        return '🟢 OK'
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN DE LOGGING
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -452,8 +487,13 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             # Obtener métricas de uso (Fase 2)
             cluster_name = cluster.get('name', 'N/A')
             metrics = gke_metrics_all.get(cluster_name, {})
-            cpu_used = format_percentage(metrics.get('cpu_used_percent'))
-            memory_used = format_percentage(metrics.get('memory_used_percent'))
+            cpu_used_percent = metrics.get('cpu_used_percent')
+            memory_used_percent = metrics.get('memory_used_percent')
+            cpu_used = format_percentage(cpu_used_percent)
+            memory_used = format_percentage(memory_used_percent)
+            
+            # Calcular estado de salud basado en umbrales
+            health_status = get_health_status(cpu_used_percent, memory_used_percent)
             
             all_clusters.append((
                 project_id,
@@ -465,7 +505,8 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 cpu_str,
                 memory_str,
                 cpu_used,
-                memory_used
+                memory_used,
+                health_status
             ))
     
     if all_clusters:
@@ -480,6 +521,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("Memoria Total", style="cyan", justify="right")
         table.add_column("CPU Usado (%)", style="yellow", justify="right")
         table.add_column("Memoria Usada (%)", style="yellow", justify="right")
+        table.add_column("Salud", style="white", justify="center")
         for row in all_clusters:
             table.add_row(*row)
         console.print(table)
