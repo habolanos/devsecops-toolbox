@@ -32,6 +32,23 @@ from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any
 
+# Importar módulo de métricas (Fase 2)
+try:
+    from gcp_monitoring_metrics import (
+        get_gke_metrics_parallel,
+        get_compute_metrics_parallel,
+        format_percentage,
+        MONITORING_AVAILABLE
+    )
+except ImportError:
+    MONITORING_AVAILABLE = False
+    def get_gke_metrics_parallel(*args, **kwargs):
+        return {}
+    def get_compute_metrics_parallel(*args, **kwargs):
+        return {}
+    def format_percentage(value):
+        return "N/A"
+
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
     from utils import get_output_dir
@@ -357,7 +374,7 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     return True
 
 
-def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], console) -> None:
+def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], console, logger=None) -> None:
     """Crea y muestra tablas detalladas consolidadas de múltiples proyectos con columna de proyecto."""
     if not RICH_AVAILABLE or not console:
         return
@@ -380,8 +397,32 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         console.print(table)
         console.print()
     
-    # Tabla consolidada de Clusters GKE
+    # Tabla consolidada de Clusters GKE con métricas de uso (Fase 2)
     all_clusters = []
+    gke_metrics_all = {}
+    
+    # Obtener métricas de uso para todos los clusters en paralelo (Fase 2)
+    if MONITORING_AVAILABLE:
+        all_clusters_list = []
+        for project_id, data in all_data.items():
+            clusters = data.get('gke_clusters', [])
+            for cluster in clusters:
+                all_clusters_list.append({
+                    'project_id': project_id,
+                    'name': cluster.get('name'),
+                    'location': cluster.get('location')
+                })
+        
+        if all_clusters_list:
+            for cluster_info in all_clusters_list:
+                metrics = get_gke_metrics_parallel(
+                    cluster_info['project_id'],
+                    [{'name': cluster_info['name'], 'location': cluster_info['location']}],
+                    max_workers=1,
+                    logger=logger
+                )
+                gke_metrics_all.update(metrics)
+    
     for project_id, data in all_data.items():
         clusters = data.get('gke_clusters', [])
         for cluster in clusters:
@@ -403,12 +444,16 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             
             cpu_str = f"{int(total_cpu)} vCPU" if total_cpu > 0 else "N/A"
             memory_str = f"{int(total_memory)} GB" if total_memory > 0 else "N/A"
-            cpu_used = "N/A"
-            memory_used = "N/A"
+            
+            # Obtener métricas de uso (Fase 2)
+            cluster_name = cluster.get('name', 'N/A')
+            metrics = gke_metrics_all.get(cluster_name, {})
+            cpu_used = format_percentage(metrics.get('cpu_used_percent'))
+            memory_used = format_percentage(metrics.get('memory_used_percent'))
             
             all_clusters.append((
                 project_id,
-                cluster.get('name', 'N/A')[:30],
+                cluster_name[:30],
                 cluster.get('location', 'N/A'),
                 cluster.get('status', 'N/A'),
                 cluster.get('currentMasterVersion', 'N/A')[:15],
@@ -464,8 +509,33 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         console.print(table)
         console.print()
     
-    # Tabla consolidada de Compute Engine
+    # Tabla consolidada de Compute Engine con métricas de uso (Fase 2)
     all_compute = []
+    compute_metrics_all = {}
+    
+    # Obtener métricas de uso para todas las instancias en paralelo (Fase 2)
+    if MONITORING_AVAILABLE:
+        all_instances_list = []
+        for project_id, data in all_data.items():
+            compute_instances = data.get('compute_instances', [])
+            for vm in compute_instances[:15]:
+                zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
+                all_instances_list.append({
+                    'project_id': project_id,
+                    'name': vm.get('name'),
+                    'zone': zone
+                })
+        
+        if all_instances_list:
+            for instance_info in all_instances_list:
+                metrics = get_compute_metrics_parallel(
+                    instance_info['project_id'],
+                    [{'name': instance_info['name'], 'zone': instance_info['zone']}],
+                    max_workers=1,
+                    logger=logger
+                )
+                compute_metrics_all.update(metrics)
+    
     for project_id, data in all_data.items():
         compute_instances = data.get('compute_instances', [])
         for vm in compute_instances[:15]:
@@ -485,13 +555,16 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 disk_gb = boot_disk.get('sizeGb', 'N/A')
                 disk_size = f"{disk_gb} GB" if disk_gb != 'N/A' else "N/A"
             
-            cpu_used = "N/A"
-            memory_used = "N/A"
-            disk_used = "N/A"
+            # Obtener métricas de uso (Fase 2)
+            instance_name = vm.get('name', 'N/A')
+            metrics = compute_metrics_all.get(instance_name, {})
+            cpu_used = format_percentage(metrics.get('cpu_used_percent'))
+            memory_used = format_percentage(metrics.get('memory_used_percent'))
+            disk_used = format_percentage(metrics.get('disk_used_percent'))
             
             all_compute.append((
                 project_id,
-                vm.get('name', 'N/A')[:30],
+                instance_name[:30],
                 vm.get('status', 'N/A'),
                 machine[:20],
                 zone,
@@ -1322,7 +1395,7 @@ def main() -> int:
             console.print("[bold cyan]📊 DETALLES DE RECURSOS (CONSOLIDADOS)[/]")
             console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
             console.print()
-            create_consolidated_detailed_tables(all_data, console)
+            create_consolidated_detailed_tables(all_data, console, logger)
         
         # Generar reporte para el primer proyecto (o consolidado)
         project_id = project_ids[0]
