@@ -63,6 +63,100 @@ except ImportError:
 __version__ = "3.0.0"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# MAPEO DE TIPOS DE MÁQUINA A ESPECIFICACIONES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+MACHINE_SPECS = {
+    # Familia N1 (General Purpose)
+    'n1-standard-1': {'cpu': 1, 'memory': 3.75},
+    'n1-standard-2': {'cpu': 2, 'memory': 7.5},
+    'n1-standard-4': {'cpu': 4, 'memory': 15},
+    'n1-standard-8': {'cpu': 8, 'memory': 30},
+    'n1-standard-16': {'cpu': 16, 'memory': 60},
+    'n1-standard-32': {'cpu': 32, 'memory': 120},
+    'n1-standard-64': {'cpu': 64, 'memory': 240},
+    'n1-standard-96': {'cpu': 96, 'memory': 360},
+    'n1-highmem-2': {'cpu': 2, 'memory': 13},
+    'n1-highmem-4': {'cpu': 4, 'memory': 26},
+    'n1-highmem-8': {'cpu': 8, 'memory': 52},
+    'n1-highmem-16': {'cpu': 16, 'memory': 104},
+    'n1-highmem-32': {'cpu': 32, 'memory': 208},
+    'n1-highmem-64': {'cpu': 64, 'memory': 416},
+    'n1-highmem-96': {'cpu': 96, 'memory': 624},
+    'n1-highcpu-2': {'cpu': 2, 'memory': 1.8},
+    'n1-highcpu-4': {'cpu': 4, 'memory': 3.6},
+    'n1-highcpu-8': {'cpu': 8, 'memory': 7.2},
+    'n1-highcpu-16': {'cpu': 16, 'memory': 14.4},
+    'n1-highcpu-32': {'cpu': 32, 'memory': 28.8},
+    'n1-highcpu-64': {'cpu': 64, 'memory': 57.6},
+    'n1-highcpu-96': {'cpu': 96, 'memory': 86.4},
+    
+    # Familia E2 (Cost-Optimized)
+    'e2-micro': {'cpu': 0.25, 'memory': 1},
+    'e2-small': {'cpu': 0.5, 'memory': 2},
+    'e2-medium': {'cpu': 1, 'memory': 4},
+    'e2-standard-2': {'cpu': 2, 'memory': 8},
+    'e2-standard-4': {'cpu': 4, 'memory': 16},
+    'e2-standard-8': {'cpu': 8, 'memory': 32},
+    'e2-standard-16': {'cpu': 16, 'memory': 64},
+    'e2-standard-32': {'cpu': 32, 'memory': 128},
+    'e2-highmem-2': {'cpu': 2, 'memory': 16},
+    'e2-highmem-4': {'cpu': 4, 'memory': 32},
+    'e2-highmem-8': {'cpu': 8, 'memory': 64},
+    'e2-highmem-16': {'cpu': 16, 'memory': 128},
+    'e2-highcpu-2': {'cpu': 2, 'memory': 2},
+    'e2-highcpu-4': {'cpu': 4, 'memory': 4},
+    'e2-highcpu-8': {'cpu': 8, 'memory': 8},
+    'e2-highcpu-16': {'cpu': 16, 'memory': 16},
+    'e2-highcpu-32': {'cpu': 32, 'memory': 32},
+    
+    # Familia C2 (Compute-Optimized)
+    'c2-standard-4': {'cpu': 4, 'memory': 16},
+    'c2-standard-8': {'cpu': 8, 'memory': 32},
+    'c2-standard-16': {'cpu': 16, 'memory': 64},
+    'c2-standard-30': {'cpu': 30, 'memory': 120},
+    'c2-standard-60': {'cpu': 60, 'memory': 240},
+    
+    # Familia M1 (Memory-Optimized)
+    'm1-megamem-96': {'cpu': 96, 'memory': 1433.6},
+    'm1-ultramem-40': {'cpu': 40, 'memory': 961},
+    'm1-ultramem-80': {'cpu': 80, 'memory': 1922},
+    'm1-ultramem-160': {'cpu': 160, 'memory': 3844},
+    
+    # Familia T2D (AMD-based)
+    't2d-standard-1': {'cpu': 1, 'memory': 4},
+    't2d-standard-2': {'cpu': 2, 'memory': 8},
+    't2d-standard-4': {'cpu': 4, 'memory': 16},
+    't2d-standard-8': {'cpu': 8, 'memory': 32},
+    't2d-standard-16': {'cpu': 16, 'memory': 64},
+    't2d-standard-32': {'cpu': 32, 'memory': 128},
+    't2d-standard-48': {'cpu': 48, 'memory': 192},
+    't2d-standard-60': {'cpu': 60, 'memory': 240},
+}
+
+def get_machine_specs(machine_type: str) -> Dict[str, float]:
+    """Obtiene especificaciones de CPU y memoria para un tipo de máquina.
+    
+    Args:
+        machine_type: Tipo de máquina (ej: 'n1-standard-4' o 'zones/us-central1-a/machineTypes/n1-standard-4')
+    
+    Returns:
+        Dict con 'cpu' y 'memory' en GB, o valores por defecto si no se encuentra
+    """
+    # Extraer solo el nombre de la máquina si viene con path completo
+    if '/' in machine_type:
+        machine_type = machine_type.split('/')[-1]
+    
+    machine_type = machine_type.strip()
+    
+    # Buscar en el diccionario
+    if machine_type in MACHINE_SPECS:
+        return MACHINE_SPECS[machine_type]
+    
+    # Si no se encuentra, retornar valores por defecto
+    return {'cpu': 0, 'memory': 0}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN DE LOGGING
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -291,13 +385,33 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     for project_id, data in all_data.items():
         clusters = data.get('gke_clusters', [])
         for cluster in clusters:
+            # Calcular CPU y Memoria Total
+            node_count = cluster.get('currentNodeCount', 0)
+            node_pools = cluster.get('nodePools', [])
+            
+            total_cpu = 0
+            total_memory = 0
+            
+            if node_pools:
+                for pool in node_pools:
+                    machine_type = pool.get('config', {}).get('machineType', '')
+                    pool_node_count = pool.get('initialNodeCount', 0)
+                    specs = get_machine_specs(machine_type)
+                    total_cpu += specs.get('cpu', 0) * pool_node_count
+                    total_memory += specs.get('memory', 0) * pool_node_count
+            
+            cpu_str = f"{int(total_cpu)} vCPU" if total_cpu > 0 else "N/A"
+            memory_str = f"{int(total_memory)} GB" if total_memory > 0 else "N/A"
+            
             all_clusters.append((
                 project_id,
                 cluster.get('name', 'N/A')[:30],
                 cluster.get('location', 'N/A'),
                 cluster.get('status', 'N/A'),
                 cluster.get('currentMasterVersion', 'N/A')[:15],
-                str(cluster.get('currentNodeCount', 0))
+                str(node_count),
+                cpu_str,
+                memory_str
             ))
     
     if all_clusters:
@@ -308,6 +422,8 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("Estado", style="green")
         table.add_column("Versión", style="magenta")
         table.add_column("Nodos", style="blue", justify="right")
+        table.add_column("CPU Total", style="cyan", justify="right")
+        table.add_column("Memoria Total", style="cyan", justify="right")
         for row in all_clusters:
             table.add_row(*row)
         console.print(table)
@@ -348,12 +464,29 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         for vm in compute_instances[:15]:
             machine = vm.get('machineType', '').split('/')[-1] if vm.get('machineType') else 'N/A'
             zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
+            
+            # Obtener especificaciones de CPU y Memoria
+            specs = get_machine_specs(machine)
+            cpu_str = str(int(specs.get('cpu', 0))) if specs.get('cpu', 0) > 0 else "N/A"
+            memory_str = f"{int(specs.get('memory', 0))} GB" if specs.get('memory', 0) > 0 else "N/A"
+            
+            # Obtener disco raíz
+            disks = vm.get('disks', [])
+            disk_size = "N/A"
+            if disks:
+                boot_disk = next((d for d in disks if d.get('boot', False)), disks[0])
+                disk_gb = boot_disk.get('sizeGb', 'N/A')
+                disk_size = f"{disk_gb} GB" if disk_gb != 'N/A' else "N/A"
+            
             all_compute.append((
                 project_id,
                 vm.get('name', 'N/A')[:30],
                 vm.get('status', 'N/A'),
                 machine[:20],
-                zone
+                zone,
+                cpu_str,
+                memory_str,
+                disk_size
             ))
     
     if all_compute:
@@ -363,6 +496,9 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("Estado", style="green")
         table.add_column("Tipo", style="yellow")
         table.add_column("Zona", style="magenta")
+        table.add_column("CPUs", style="cyan", justify="right")
+        table.add_column("Memoria", style="cyan", justify="right")
+        table.add_column("Disco Raíz", style="cyan", justify="right")
         for row in all_compute:
             table.add_row(*row)
         console.print(table)
