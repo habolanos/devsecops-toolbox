@@ -63,12 +63,12 @@ for CLUSTER in "${CLUSTERS[@]}"; do
 
   # Ejecutar análisis con timeout de 10 minutos
   log_info "  Iniciando análisis de límites (esto puede tomar 3-5 minutos)..."
-  if timeout 600 python3 history_limits_v3.py "$PROJECT_ID" "$CLUSTER_NAME" 2>&1 | tee -a "$LOG_FILE"; then
+  if timeout 48000 python3 history_limits_v3.py "$PROJECT_ID" "$CLUSTER_NAME" 2>&1 | tee -a "$LOG_FILE"; then
     log_info "  ✅ Análisis completado para $CLUSTER_NAME"
   else
     EXIT_CODE=$?
     if [[ $EXIT_CODE -eq 124 ]]; then
-      log_error "  ⏱️ Timeout: análisis excedió 10 minutos para $CLUSTER_NAME"
+      log_error "  ⏱️ Timeout: análisis excedió 60 minutos para $CLUSTER_NAME"
     else
       log_error "  ❌ Análisis falló con código $EXIT_CODE para $CLUSTER_NAME"
     fi
