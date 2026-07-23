@@ -173,6 +173,14 @@ SCRIPTS = {
         "args": ["deployment", "namespace", "flags"],
         "status": "ready"
     },
+    "7": {
+        "name": "GKE Cluster Memory & CPU Limits Analyzer",
+        "description": "Analiza y recomienda límites de CPU y memoria en clústeres GKE basado en métricas de 90 días. Genera reporte Excel con recomendaciones. IMPORTANTE: Configurar clústeres en check_cluster_memory_cpu_limits/config.env antes de ejecutar.",
+        "path": "check_cluster_memory_cpu_limits/deployments_info.sh",
+        "args": [],
+        "status": "ready",
+        "type": "shell"
+    },
     "_system_options": {
         "Q": {
             "name": "Volver al menú principal",
