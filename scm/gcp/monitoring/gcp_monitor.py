@@ -28,7 +28,6 @@ import subprocess
 import sys
 import logging
 import warnings
-import signal
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -83,39 +82,6 @@ except ImportError:
     RICH_AVAILABLE = False
 
 __version__ = "3.0.0"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FUNCIÓN DE INPUT CON TIMEOUT
-# ═══════════════════════════════════════════════════════════════════════════════
-def input_with_timeout(prompt="", timeout=5):
-    """
-    Lee entrada del usuario con timeout automático.
-    Si no hay entrada en 'timeout' segundos, retorna vacío y continúa.
-    """
-    def timeout_handler(signum, frame):
-        raise TimeoutError()
-    
-    # En Windows, signal.SIGALRM no está disponible, así que usamos try/except
-    try:
-        # Configurar el manejador de timeout (solo en Unix/Linux)
-        if hasattr(signal, 'SIGALRM'):
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(timeout)
-        
-        try:
-            return input(prompt)
-        except TimeoutError:
-            print()  # Nueva línea después del timeout
-            return ""
-        finally:
-            if hasattr(signal, 'SIGALRM'):
-                signal.alarm(0)  # Cancelar el timeout
-    except:
-        # Fallback para Windows o si hay error
-        try:
-            return input(prompt)
-        except (EOFError, KeyboardInterrupt):
-            return ""
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAPEO DE TIPOS DE MÁQUINA A ESPECIFICACIONES
@@ -1614,12 +1580,11 @@ def main() -> int:
         # Mostrar resumen consolidado de ejecución
         print_consolidated_execution_summary(start_time, console, all_data)
         
-        # Mensaje final
+        # Mensaje final - Terminar automáticamente sin esperar entrada
         if RICH_AVAILABLE and console:
-            console.print("\n[bold cyan]Presione Enter para continuar (timeout: 5s)...[/]")
+            console.print("\n[bold green]✓ Análisis completado. Retornando al menú...[/]")
         else:
-            print("\nPresione Enter para continuar (timeout: 5s)...")
-        input_with_timeout(timeout=5)
+            print("\n✓ Análisis completado. Retornando al menú...")
         
         return 0
 
@@ -1632,12 +1597,11 @@ def main() -> int:
             import traceback
             traceback.print_exc()
         
-        # Mensaje final incluso en error
+        # Mensaje final incluso en error - Terminar automáticamente
         if RICH_AVAILABLE and console:
-            console.print("\n[bold cyan]Presione Enter para continuar (timeout: 5s)...[/]")
+            console.print("\n[bold yellow]⚠️ Error detectado. Retornando al menú...[/]")
         else:
-            print("\nPresione Enter para continuar (timeout: 5s)...")
-        input_with_timeout(timeout=5)
+            print("\n⚠️ Error detectado. Retornando al menú...")
         
         return 1
 
