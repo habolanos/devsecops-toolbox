@@ -270,15 +270,23 @@ class SearchEngine:
         if not search_stages:
             return True
         
+        # Extraer nombres de stages (pueden ser strings o dicts)
+        search_stage_names = []
+        for stage in search_stages:
+            if isinstance(stage, dict):
+                search_stage_names.append(stage.get('name', ''))
+            else:
+                search_stage_names.append(stage)
+        
         # Obtener stages del pipeline
         pipeline_stages = [stage.get('name', '') for stage in self.definition.get('environments', [])]
         
         # Verificar que el pipeline tiene EXACTAMENTE los stages buscados
-        if len(pipeline_stages) != len(search_stages):
+        if len(pipeline_stages) != len(search_stage_names):
             return False
         
         # Verificar que todos los stages buscados existen en el pipeline
-        for search_stage in search_stages:
+        for search_stage in search_stage_names:
             found = False
             for pipeline_stage in pipeline_stages:
                 if self._matches_pattern(pipeline_stage, search_stage):
@@ -290,7 +298,7 @@ class SearchEngine:
         # Verificar que NO hay stages adicionales
         for pipeline_stage in pipeline_stages:
             found = False
-            for search_stage in search_stages:
+            for search_stage in search_stage_names:
                 if self._matches_pattern(pipeline_stage, search_stage):
                     found = True
                     break
