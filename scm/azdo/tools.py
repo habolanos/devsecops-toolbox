@@ -601,8 +601,9 @@ def ask_common_params(cfg: dict, tool_key: str = "") -> dict:
         cfg_org = cfg_org.split('/')[-1]
     
     org = prompt("Organización", default=cfg_org)
-    if not org.startswith("https://"):
-        org = f"https://dev.azure.com/{org}"
+    # Asegurar que org es solo el nombre, sin URL
+    if org.startswith("https://"):
+        org = org.split('/')[-1]
     
     # Proyecto
     project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
