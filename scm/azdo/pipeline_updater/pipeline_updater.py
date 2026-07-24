@@ -305,11 +305,19 @@ def main():
         print("Error: definition-ids debe contener números separados por coma")
         sys.exit(1)
     
+    # Resolver ruta del template desde la raíz del proyecto
+    # Si la ruta es relativa, resolverla desde la raíz (2 niveles arriba de scm/azdo)
+    template_path = Path(args.template)
+    if not template_path.is_absolute():
+        # Obtener la raíz del proyecto (2 niveles arriba de este script)
+        script_dir = Path(__file__).parent.parent.parent  # scm/azdo/pipeline_updater -> raíz
+        template_path = script_dir / args.template
+    
     # Ejecutar actualización
     updater = PipelineUpdater(args.pat, args.org, args.project)
     result = updater.update_pipelines(
         definition_ids,
-        args.template,
+        str(template_path),
         dry_run=args.dry_run,
         max_workers=args.workers
     )
