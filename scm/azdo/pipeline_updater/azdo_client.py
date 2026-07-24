@@ -103,7 +103,9 @@ class AzureDevOpsClient:
             
             # Incrementar revisión para que Azure DevOps acepte el cambio
             if 'revision' in definition_copy:
+                old_revision = definition_copy['revision']
                 definition_copy['revision'] = definition_copy.get('revision', 0) + 1
+                print(f"    [DEBUG] Revisión incrementada: {old_revision} → {definition_copy['revision']}")
             
             # Remover campos que no deben enviarse en PUT
             # Azure DevOps es estricto con los campos que acepta
@@ -116,6 +118,9 @@ class AzureDevOpsClient:
             for field in fields_to_remove:
                 definition_copy.pop(field, None)
             
+            print(f"    [DEBUG] Campos principales en JSON: {list(definition_copy.keys())}")
+            print(f"    [DEBUG] Tamaño del JSON: {len(json.dumps(definition_copy))} bytes")
+            
             response = requests.put(
                 url,
                 json=definition_copy,
@@ -123,6 +128,8 @@ class AzureDevOpsClient:
                 headers=self.headers,
                 timeout=30
             )
+            
+            print(f"    [DEBUG] Response status: {response.status_code}")
             
             if response.status_code == 403:
                 raise PermissionDeniedError(f"Permiso denegado para actualizar pipeline {definition_id}")
