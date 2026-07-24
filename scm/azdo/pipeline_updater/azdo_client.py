@@ -101,9 +101,23 @@ class AzureDevOpsClient:
             if 'revision' in definition:
                 definition['revision'] = definition.get('revision', 0) + 1
             
+            # Limpiar campos que no deben enviarse en PUT
+            # Azure DevOps es estricto con los campos que acepta
+            definition_copy = definition.copy()
+            
+            # Remover campos de solo lectura
+            fields_to_remove = [
+                '_links', 'url', 'projectReference', 'createdBy', 'createdOn',
+                'modifiedBy', 'modifiedOn', 'isDeleted', 'isDisabled',
+                'currentRelease', 'badgeUrl'
+            ]
+            
+            for field in fields_to_remove:
+                definition_copy.pop(field, None)
+            
             response = requests.put(
                 url,
-                json=definition,
+                json=definition_copy,
                 params=params,
                 headers=self.headers,
                 timeout=30
