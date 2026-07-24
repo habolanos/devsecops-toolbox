@@ -306,11 +306,16 @@ def main():
         sys.exit(1)
     
     # Resolver ruta del template desde la raíz del proyecto
-    # Si la ruta es relativa, resolverla desde la raíz (2 niveles arriba de scm/azdo)
+    # El script se ejecuta desde scm/azdo (cwd=BASE_DIR), así que necesitamos subir 2 niveles
     template_path = Path(args.template)
     if not template_path.is_absolute():
-        # Obtener la raíz del proyecto (2 niveles arriba de este script)
-        script_dir = Path(__file__).parent.parent.parent  # scm/azdo/pipeline_updater -> raíz
+        # Obtener la raíz del proyecto (2 niveles arriba de scm/azdo)
+        # __file__ = /ruta/scm/azdo/pipeline_updater/pipeline_updater.py
+        # .parent = /ruta/scm/azdo/pipeline_updater/
+        # .parent = /ruta/scm/azdo/
+        # .parent = /ruta/scm/
+        # .parent = /ruta/ (raíz)
+        script_dir = Path(__file__).parent.parent.parent.parent  # scm/azdo/pipeline_updater -> raíz
         template_path = script_dir / args.template
     
     # Ejecutar actualización
