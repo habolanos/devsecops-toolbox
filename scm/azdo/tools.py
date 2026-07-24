@@ -1610,7 +1610,9 @@ def run_tool(tool_key: str):
                 
                 print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
                 try:
-                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    # Ejecutar desde la raíz del proyecto para que los imports funcionen
+                    project_root = BASE_DIR.parent.parent
+                    result = subprocess.run(cmd, cwd=project_root)
                     
                     if result.returncode == 0:
                         print(f"\n{Colors.GREEN}✅ Actualización completada exitosamente.{Colors.ENDC}")
