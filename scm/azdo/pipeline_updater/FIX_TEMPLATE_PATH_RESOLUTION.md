@@ -1,7 +1,7 @@
 # 🔧 Fix: Resolución Correcta de Ruta del Template
 
 **Fecha:** 24 de Julio de 2026  
-**Versión:** 1.0  
+**Versión:** 2.0  
 **Status:** ✅ COMPLETADO
 
 ---
@@ -15,38 +15,53 @@ Cuando se ejecutaba la herramienta 41 (Pipeline Updater) con una ruta de templat
                                                                                           ↑ DUPLICADO
 ```
 
-**Causa:** El script se ejecutaba desde `BASE_DIR` (que es `scm/azdo`), pero la ruta del template se pasaba como relativa desde la raíz del proyecto, sin resolver correctamente.
+**Causa Raíz:** El script se ejecuta con `cwd=BASE_DIR` (que es `scm/azdo`), así que cuando se pasaba una ruta relativa como `scm/templates/...`, se interpretaba como relativa a `scm/azdo`, resultando en `scm/azdo/scm/templates/...`.
 
 ---
 
-## ✅ Solución
+## ✅ Solución (v2.0)
 
-Se agregó lógica en `pipeline_updater.py` para resolver correctamente la ruta del template desde la raíz del proyecto:
+Se cambió la estrategia: **resolver la ruta en `tools.py` (antes de ejecutar el script) y pasar la ruta absoluta**.
+
+### En `tools.py`:
 
 ```python
 # Resolver ruta del template desde la raíz del proyecto
-# El script se ejecuta desde scm/azdo (cwd=BASE_DIR), así que necesitamos subir 2 niveles
-template_path = Path(args.template)
-if not template_path.is_absolute():
-    # Obtener la raíz del proyecto (2 niveles arriba de scm/azdo)
-    # __file__ = /ruta/scm/azdo/pipeline_updater/pipeline_updater.py
-    # .parent = /ruta/scm/azdo/pipeline_updater/
-    # .parent = /ruta/scm/azdo/
-    # .parent = /ruta/scm/
-    # .parent = /ruta/ (raíz)
-    script_dir = Path(__file__).parent.parent.parent.parent  # scm/azdo/pipeline_updater -> raíz
-    template_path = script_dir / args.template
+template_path_obj = Path(template_path_input)
+if template_path_obj.is_absolute():
+    template_full_path = template_path_obj
+else:
+    # BASE_DIR es scm/azdo, necesitamos subir 2 niveles para llegar a la raíz
+    project_root = BASE_DIR.parent.parent
+    template_full_path = project_root / template_path_input
+
+# Verificar que el template existe
+if not template_full_path.exists():
+    print(f"❌ Template no encontrado: {template_full_path}")
+    continue
+
+# Pasar la ruta absoluta al script
+template_path = str(template_full_path)
 ```
 
-**Explicación:**
+### En `pipeline_updater.py`:
 
-1. **`Path(__file__)`** - Obtiene la ruta del script actual (`pipeline_updater.py`)
-2. **`.parent.parent.parent.parent`** - Sube 4 niveles:
-   - `.parent` → `scm/azdo/pipeline_updater/` → `scm/azdo/`
-   - `.parent` → `scm/azdo/` → `scm/`
-   - `.parent` → `scm/` → raíz del proyecto
-   - `.parent` → raíz del proyecto (confirmación)
-3. **`script_dir / args.template`** - Resuelve la ruta relativa desde la raíz
+```python
+# La ruta del template se pasa como absoluta desde tools.py
+updater = PipelineUpdater(args.pat, args.org, args.project)
+result = updater.update_pipelines(
+    definition_ids,
+    args.template,  # Ya es absoluta
+    dry_run=args.dry_run,
+    max_workers=args.workers
+)
+```
+
+**Ventajas:**
+
+1. **Validación temprana:** Se verifica que el template existe antes de ejecutar el script
+2. **Ruta absoluta:** El script recibe una ruta absoluta, sin ambigüedades
+3. **Más simple:** No hay lógica de resolución en el script
 
 ---
 
@@ -56,18 +71,21 @@ if not template_path.is_absolute():
 
 ```
 Entrada: scm/templates/pipe_cd_reorder_stages_exact_match_20260724-T0-0.yaml
-Ejecución desde: scm/azdo/
-Ruta resultante: scm/azdo/scm/templates/pipe_cd_reorder_stages_exact_match_20260724-T0-0.yaml
-                 ↑ DUPLICADO
+tools.py: Pasa como relativa
+cwd: scm/azdo/
+Interpretación: scm/azdo/ + scm/templates/... = scm/azdo/scm/templates/...
+                                                 ↑ DUPLICADO
 ```
 
-### ✅ DESPUÉS (Solución)
+### ✅ DESPUÉS (Solución v2.0)
 
 ```
 Entrada: scm/templates/pipe_cd_reorder_stages_exact_match_20260724-T0-0.yaml
-Ejecución desde: scm/azdo/
-Ruta resuelta: /ruta/completa/devsecops-toolbox/scm/templates/pipe_cd_reorder_stages_exact_match_20260724-T0-0.yaml
-               ✅ CORRECTA
+tools.py: Resuelve a absoluta
+         project_root = scm/azdo/../.. = /ruta/devsecops-toolbox/
+         template_path = /ruta/devsecops-toolbox/scm/templates/...
+Pasa al script: /ruta/completa/devsecops-toolbox/scm/templates/pipe_cd_reorder_stages_exact_match_20260724-T0-0.yaml
+                ✅ CORRECTO (absoluta, sin ambigüedades)
 ```
 
 ---
