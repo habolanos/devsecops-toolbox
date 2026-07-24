@@ -5,6 +5,7 @@ Cliente de Azure DevOps para Pipeline Updater
 import requests
 import json
 import base64
+import copy
 from pathlib import Path
 from typing import Dict, Optional
 from .config import AZDO_API_VERSION, AZDO_BASE_URL, SNAPSHOT_DIR
@@ -97,15 +98,15 @@ class AzureDevOpsClient:
         params = {'api-version': self.api_version}
         
         try:
+            # Hacer copia profunda para no modificar el original
+            definition_copy = copy.deepcopy(definition)
+            
             # Incrementar revisión para que Azure DevOps acepte el cambio
-            if 'revision' in definition:
-                definition['revision'] = definition.get('revision', 0) + 1
+            if 'revision' in definition_copy:
+                definition_copy['revision'] = definition_copy.get('revision', 0) + 1
             
-            # Limpiar campos que no deben enviarse en PUT
+            # Remover campos que no deben enviarse en PUT
             # Azure DevOps es estricto con los campos que acepta
-            definition_copy = definition.copy()
-            
-            # Remover campos de solo lectura
             fields_to_remove = [
                 '_links', 'url', 'projectReference', 'createdBy', 'createdOn',
                 'modifiedBy', 'modifiedOn', 'isDeleted', 'isDisabled',
