@@ -363,6 +363,57 @@ Para preguntas o sugerencias sobre esta guía:
 
 ---
 
-**Guía de Actualización de Pipelines CD v1.0.0**  
-**Última actualización:** 8 de Julio de 2026  
-**Próxima revisión:** 8 de Octubre de 2026
+---
+
+## 🆕 Nuevas Características (v1.1.0)
+
+### Parámetro `exact_match` para Validación Exacta de Stages
+
+**Fecha:** 24 de Julio de 2026
+
+Se ha agregado el parámetro `exact_match` en los templates para garantizar que SOLO se actualicen pipelines con EXACTAMENTE los stages especificados.
+
+#### Uso
+
+```yaml
+search:
+  exact_match: true  # Validar que el pipeline tenga EXACTAMENTE estos stages
+  stages:
+    - name: "Build"
+    - name: "Test"
+    - name: "Deploy"
+    - name: "Validate"
+```
+
+#### Comportamiento
+
+| Parámetro | Pipeline con 4 stages | Pipeline con 5 stages | Pipeline con 3 stages |
+|-----------|----------------------|----------------------|----------------------|
+| `exact_match: true` | ✅ Se actualiza | ❌ Se ignora | ❌ Se ignora |
+| `exact_match: false` (default) | ✅ Se actualiza | ✅ Se actualiza | ❌ Se ignora |
+
+#### Documentación
+
+- `scm/templates/VALIDACION_EXACTA_STAGES.md` - Especificación completa
+- `scm/templates/pipe_cd_reorder_stages_exact_match.yaml` - Template de ejemplo
+- `scm/azdo/pipeline_updater/IMPLEMENTACION_EXACT_MATCH.md` - Detalles técnicos
+
+#### Casos de Uso
+
+**Usar `exact_match: true` cuando:**
+- ✅ Migración crítica de infraestructura
+- ✅ Cambios en estructura de stages
+- ✅ Reordenamiento de stages
+- ✅ Necesitas garantizar integridad
+
+**Usar `exact_match: false` cuando:**
+- ✅ Actualización de imagen Docker
+- ✅ Cambio de variables de entorno
+- ✅ Actualización de conexiones
+- ✅ Cambios que aplican a cualquier pipeline
+
+---
+
+**Guía de Actualización de Pipelines CD v1.1.0**  
+**Última actualización:** 24 de Julio de 2026  
+**Próxima revisión:** 24 de Octubre de 2026

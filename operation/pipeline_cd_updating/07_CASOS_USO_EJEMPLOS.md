@@ -423,5 +423,95 @@ Solución:
 
 ---
 
-**Casos de Uso y Ejemplos v1.0.0**  
-**Última actualización:** 8 de Julio de 2026
+## 🆕 CASO 6: Reordenar Stages con Validación Exacta
+
+### Escenario
+Necesitas reordenar stages en pipelines que tengan EXACTAMENTE 4 stages (Build, Test, Deploy, Validate), sin tocar pipelines que tengan stages adicionales.
+
+### Paso a Paso
+
+#### Paso 1: Crear Template con `exact_match: true`
+
+```yaml
+metadata:
+  name: "Reordenar stages - Validación exacta"
+  version: "1.0"
+  comment: |
+    Reordena stages en pipelines con EXACTAMENTE 4 stages
+    Ignora pipelines con stages adicionales
+
+search:
+  exact_match: true  # ← Validación exacta
+  stages:
+    - name: "Build"
+    - name: "Test"
+    - name: "Deploy"
+    - name: "Validate"
+
+update:
+  stages:
+    - name: "Build"
+      rank: 1
+    - name: "Deploy"
+      rank: 2
+    - name: "Test"
+      rank: 3
+    - name: "Validate"
+      rank: 4
+```
+
+#### Paso 2: Ejecutar Template
+
+```bash
+python scm/main.py
+# → Seleccionar 3 (Azure DevOps)
+# → Seleccionar 21 (Pipeline Updater)
+# → Ingresar definition-ids
+# → Ingresar: scm/templates/pipe_cd_reorder_stages_exact_match.yaml
+# → Confirmar
+```
+
+#### Paso 3: Validar Resultados
+
+```
+Pipeline A: Build, Test, Deploy, Validate
+            ✅ ACTUALIZADO (4 stages exactos)
+
+Pipeline B: Build, Test, Deploy, Validate, Security
+            ❌ IGNORADO (5 stages, no exacto)
+
+Pipeline C: Build, Test, Deploy
+            ❌ IGNORADO (3 stages, no exacto)
+```
+
+#### Paso 4: Revisar Reporte
+
+```json
+{
+  "summary": {
+    "total_pipelines": 3,
+    "matched": 1,
+    "ignored_exact_mismatch": 2,
+    "success": 1
+  }
+}
+```
+
+### Ventajas
+
+✅ **Garantiza integridad:** Solo toca pipelines con estructura exacta  
+✅ **Previene errores:** No actualiza pipelines con variantes  
+✅ **Auditable:** Fácil de rastrear qué se actualizó  
+✅ **Seguro:** Parámetro opcional (default=false)  
+
+### Cuándo Usar
+
+- ✅ Migración crítica de infraestructura
+- ✅ Cambios en estructura de stages
+- ✅ Reordenamiento de stages
+- ✅ Necesitas garantizar integridad
+
+---
+
+**Casos de Uso y Ejemplos v1.1.0**  
+**Última actualización:** 24 de Julio de 2026

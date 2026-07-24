@@ -345,5 +345,75 @@ Acción:
 
 ---
 
-**Guía de Actualización Masiva v1.0.0**  
-**Última actualización:** 8 de Julio de 2026
+## 🆕 Validación Exacta de Stages con `exact_match`
+
+### Descripción
+
+El parámetro `exact_match` permite garantizar que SOLO se actualicen pipelines que tengan EXACTAMENTE los stages especificados, sin stages adicionales.
+
+### Cuándo Usar
+
+**Usar `exact_match: true` cuando:**
+- ✅ Migración crítica de infraestructura
+- ✅ Cambios en estructura de stages
+- ✅ Reordenamiento de stages
+- ✅ Necesitas garantizar integridad de pipelines
+
+**Usar `exact_match: false` cuando:**
+- ✅ Actualización de imagen Docker
+- ✅ Cambio de variables de entorno
+- ✅ Actualización de conexiones
+- ✅ Cambios que aplican a cualquier pipeline
+
+### Ejemplo de Template
+
+```yaml
+metadata:
+  name: "Reordenar stages - Validación exacta"
+  version: "1.0"
+
+search:
+  exact_match: true  # ← Validación exacta
+  stages:
+    - name: "Build"
+    - name: "Test"
+    - name: "Deploy"
+    - name: "Validate"
+
+update:
+  stages:
+    - name: "Build"
+      rank: 1
+    - name: "Deploy"
+      rank: 2
+    - name: "Test"
+      rank: 3
+    - name: "Validate"
+      rank: 4
+```
+
+### Comportamiento
+
+| Escenario | `exact_match: true` | `exact_match: false` |
+|-----------|-------------------|-------------------|
+| Pipeline con 4 stages (Build, Test, Deploy, Validate) | ✅ Se actualiza | ✅ Se actualiza |
+| Pipeline con 5 stages (+ Security) | ❌ Se ignora | ✅ Se actualiza |
+| Pipeline con 3 stages (falta Validate) | ❌ Se ignora | ❌ Se ignora |
+
+### Ventajas
+
+✅ **Garantiza integridad:** Solo actualiza pipelines con estructura exacta  
+✅ **Previene errores:** No toca pipelines con variantes  
+✅ **Auditable:** Fácil de rastrear qué se actualizó  
+✅ **Flexible:** Parámetro opcional (default=false)  
+
+### Documentación Completa
+
+- `scm/templates/VALIDACION_EXACTA_STAGES.md` - Especificación detallada
+- `scm/templates/pipe_cd_reorder_stages_exact_match.yaml` - Template de ejemplo
+- `scm/azdo/pipeline_updater/IMPLEMENTACION_EXACT_MATCH.md` - Detalles técnicos
+
+---
+
+**Guía de Actualización Masiva v1.1.0**  
+**Última actualización:** 24 de Julio de 2026
