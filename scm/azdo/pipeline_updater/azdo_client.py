@@ -112,7 +112,7 @@ class AzureDevOpsClient:
             fields_to_remove = [
                 '_links', 'url', 'projectReference', 'createdBy', 'createdOn',
                 'modifiedBy', 'modifiedOn', 'isDeleted', 'isDisabled',
-                'currentRelease', 'badgeUrl'
+                'currentRelease', 'badgeUrl', 'lastRelease'
             ]
             
             for field in fields_to_remove:
