@@ -101,11 +101,10 @@ class AzureDevOpsClient:
             # Hacer copia profunda para no modificar el original
             definition_copy = copy.deepcopy(definition)
             
-            # Incrementar revisión para que Azure DevOps acepte el cambio
-            if 'revision' in definition_copy:
-                old_revision = definition_copy['revision']
-                definition_copy['revision'] = definition_copy.get('revision', 0) + 1
-                print(f"    [DEBUG] Revisión incrementada: {old_revision} → {definition_copy['revision']}")
+            # NO incrementar la revisión: Azure DevOps usa 'revision' para control
+            # de concurrencia optimista. Debe enviarse la MISMA revisión descargada;
+            # el servidor la incrementa internamente. Enviar una revisión distinta
+            # produce el error "You are using an old copy of the release pipeline".
             
             # Remover campos que no deben enviarse en PUT
             # Azure DevOps es estricto con los campos que acepta
