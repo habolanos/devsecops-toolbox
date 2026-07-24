@@ -285,24 +285,38 @@ class SearchEngine:
         if not search_stages:
             return True
         
-        # Extraer nombres de stages (pueden ser strings o dicts)
-        search_stage_names = set()
+        # Extraer patrones de búsqueda (pueden ser strings o dicts)
+        search_patterns = []
         for stage in search_stages:
             if isinstance(stage, dict):
                 name = stage.get('name', '')
                 if name:
-                    search_stage_names.add(name)
+                    search_patterns.append(name)
             else:
                 if stage:
-                    search_stage_names.add(stage)
+                    search_patterns.append(stage)
         
-        # Obtener stages del pipeline
-        pipeline_stages = set()
-        for stage in self.definition.get('environments', []):
-            name = stage.get('name', '')
-            if name:
-                pipeline_stages.add(name)
+        # Obtener nombres de stages del pipeline
+        pipeline_stage_names = [
+            stage.get('name', '')
+            for stage in self.definition.get('environments', [])
+            if stage.get('name', '')
+        ]
         
-        # Verificar que el pipeline tiene EXACTAMENTE los stages buscados
-        # (mismo número y mismos nombres, sin importar orden)
-        return pipeline_stages == search_stage_names
+        # Verificar que el pipeline tiene EXACTAMENTE los stages buscados:
+        # (1) mismo número de stages y patrones,
+        # (2) cada stage del pipeline coincide con al menos un patrón,
+        # (3) cada patrón coincide con al menos un stage del pipeline.
+        # Se usa _matches_pattern para soportar comodines (ej: "Build*", "*Deploy*").
+        if len(pipeline_stage_names) != len(search_patterns):
+            return False
+        
+        for stage_name in pipeline_stage_names:
+            if not any(self._matches_pattern(stage_name, p) for p in search_patterns):
+                return False
+        
+        for pattern in search_patterns:
+            if not any(self._matches_pattern(s, pattern) for s in pipeline_stage_names):
+                return False
+        
+        return True
