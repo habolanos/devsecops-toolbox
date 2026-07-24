@@ -124,7 +124,6 @@ class ParallelExecutor:
             # 3. Buscar coincidencias
             print(f"  [Pipeline {definition_id}] 3/5 Buscando coincidencias...")
             search_rules = template_parser.get_search_rules()
-            print(f"  [Pipeline {definition_id}]   Reglas de búsqueda: {search_rules}")
             
             search_engine = SearchEngine(
                 definition,
@@ -132,13 +131,10 @@ class ParallelExecutor:
             )
             matches = search_engine.search_all()
             print(f"  [Pipeline {definition_id}]   ✓ Coincidencias encontradas: {len(matches)}")
-            for match in matches:
-                print(f"  [Pipeline {definition_id}]     - {match.type}: {match.name}")
             
             # 4. Aplicar actualizaciones
             print(f"  [Pipeline {definition_id}] 4/5 Aplicando actualizaciones...")
             update_rules = template_parser.get_update_rules()
-            print(f"  [Pipeline {definition_id}]   Reglas de actualización: {update_rules}")
             
             update_engine = UpdateEngine(
                 definition,
@@ -148,12 +144,9 @@ class ParallelExecutor:
             update_engine.apply_updates()
             changes_count = update_engine.get_changes_count()
             print(f"  [Pipeline {definition_id}]   ✓ Cambios aplicados: {changes_count}")
-            for change in update_engine.get_changes():
-                print(f"  [Pipeline {definition_id}]     - {change}")
             
             # 5. Guardar cambios
             print(f"  [Pipeline {definition_id}] 5/5 Guardando cambios en Azure DevOps...")
-            print(f"  [Pipeline {definition_id}]   Enviando PUT con revision: {definition.get('revision', 'N/A')}")
             success = azdo_client.update_release_definition(definition_id, definition)
             print(f"  [Pipeline {definition_id}]   ✓ Cambios guardados exitosamente")
             
@@ -173,8 +166,6 @@ class ParallelExecutor:
         except Exception as e:
             duration = time.time() - start_time
             print(f"  [Pipeline {definition_id}] ✗ ERROR: {str(e)}")
-            import traceback
-            traceback.print_exc()
             
             return UpdateResult(
                 definition_id=definition_id,

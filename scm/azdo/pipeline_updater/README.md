@@ -305,6 +305,20 @@ print(defs)
 ### Error: "Permiso denegado"
 Verificar que el PAT tiene permisos para editar Release Pipelines
 
+### Error: "You are using an old copy of the release pipeline" (HTTP 400)
+Azure DevOps usa el campo `revision` de la definición como mecanismo de
+**concurrencia optimista**. Al hacer `PUT` se debe enviar la **misma** revisión
+que devolvió el `GET`; el servidor la incrementa internamente. **No** se debe
+incrementar la revisión manualmente ni enviar una copia desactualizada. Si otro
+usuario modifica el pipeline entre el `GET` y el `PUT`, vuelve a descargar la
+definición y reintenta.
+
+### Error: HTTP 400 al guardar (campos de solo lectura)
+La API rechaza definiciones que incluyan campos de solo lectura a nivel raíz.
+El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
+`createdBy`, `createdOn`, `modifiedBy`, `modifiedOn`, `isDeleted`, `isDisabled`,
+`currentRelease`, `badgeUrl` y `lastRelease` antes del `PUT`.
+
 ## Documentación
 
 - [Plan de Implementación](../../../docs/features/feature_actualizacion_pipeline_cd_with_template/03_PLAN_IMPLEMENTACION.md)
@@ -313,6 +327,13 @@ Verificar que el PAT tiene permisos para editar Release Pipelines
 
 ## Versión
 
-- **Versión**: 1.0.0
+- **Versión**: 1.0.1
 - **Autor**: Harold Adrian
-- **Fecha**: 2026-07-13
+- **Fecha**: 2026-07-24
+
+## Historial de Cambios
+
+| Versión | Fecha | Cambios |
+|---------|-------|---------|
+| 1.0.1 | 2026-07-24 | Corregida la persistencia del `PUT` a Azure DevOps: se dejó de incrementar `revision` manualmente (causa del error HTTP 400 "You are using an old copy"); se usa `deepcopy` para no mutar la definición original; se agregó `lastRelease` a los campos de solo lectura removidos; el cuerpo del error de la API ahora se incluye en la excepción; logging de progreso simplificado. |
+| 1.0.0 | 2026-07-13 | Versión inicial: actualización masiva de pipelines CD con templates YAML, búsqueda con `exact_match`, snapshots automáticos, ejecución paralela y reportería JSON/CSV/HTML. |

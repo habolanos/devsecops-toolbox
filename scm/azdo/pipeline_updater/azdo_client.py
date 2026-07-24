@@ -117,9 +117,6 @@ class AzureDevOpsClient:
             for field in fields_to_remove:
                 definition_copy.pop(field, None)
             
-            print(f"    [DEBUG] Campos principales en JSON: {list(definition_copy.keys())}")
-            print(f"    [DEBUG] Tamaño del JSON: {len(json.dumps(definition_copy))} bytes")
-            
             response = requests.put(
                 url,
                 json=definition_copy,
@@ -128,14 +125,11 @@ class AzureDevOpsClient:
                 timeout=30
             )
             
-            print(f"    [DEBUG] Response status: {response.status_code}")
-            
             if response.status_code == 403:
                 raise PermissionDeniedError(f"Permiso denegado para actualizar pipeline {definition_id}")
             
             if response.status_code >= 400:
                 error_body = response.text[:2000]
-                print(f"    [DEBUG] Response body: {error_body}")
                 raise AzureDevOpsError(
                     f"Error al actualizar definición {definition_id} "
                     f"(HTTP {response.status_code}): {error_body}"
