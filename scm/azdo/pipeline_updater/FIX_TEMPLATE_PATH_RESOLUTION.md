@@ -25,21 +25,27 @@ Se agregó lógica en `pipeline_updater.py` para resolver correctamente la ruta 
 
 ```python
 # Resolver ruta del template desde la raíz del proyecto
-# Si la ruta es relativa, resolverla desde la raíz (2 niveles arriba de scm/azdo)
+# El script se ejecuta desde scm/azdo (cwd=BASE_DIR), así que necesitamos subir 2 niveles
 template_path = Path(args.template)
 if not template_path.is_absolute():
-    # Obtener la raíz del proyecto (2 niveles arriba de este script)
-    script_dir = Path(__file__).parent.parent.parent  # scm/azdo/pipeline_updater -> raíz
+    # Obtener la raíz del proyecto (2 niveles arriba de scm/azdo)
+    # __file__ = /ruta/scm/azdo/pipeline_updater/pipeline_updater.py
+    # .parent = /ruta/scm/azdo/pipeline_updater/
+    # .parent = /ruta/scm/azdo/
+    # .parent = /ruta/scm/
+    # .parent = /ruta/ (raíz)
+    script_dir = Path(__file__).parent.parent.parent.parent  # scm/azdo/pipeline_updater -> raíz
     template_path = script_dir / args.template
 ```
 
 **Explicación:**
 
 1. **`Path(__file__)`** - Obtiene la ruta del script actual (`pipeline_updater.py`)
-2. **`.parent.parent.parent`** - Sube 3 niveles:
+2. **`.parent.parent.parent.parent`** - Sube 4 niveles:
    - `.parent` → `scm/azdo/pipeline_updater/` → `scm/azdo/`
    - `.parent` → `scm/azdo/` → `scm/`
    - `.parent` → `scm/` → raíz del proyecto
+   - `.parent` → raíz del proyecto (confirmación)
 3. **`script_dir / args.template`** - Resuelve la ruta relativa desde la raíz
 
 ---
