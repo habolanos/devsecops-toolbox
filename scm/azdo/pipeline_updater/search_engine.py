@@ -30,6 +30,11 @@ class SearchEngine:
         """
         self.matches = []
         
+        # Validar exact_match si está habilitado
+        if self.search_rules.get('exact_match', False):
+            if not self._validate_exact_match():
+                return []  # No hay coincidencias si exact_match falla
+        
         self.matches.extend(self.search_stages(self.search_rules.get('stages', [])))
         self.matches.extend(self.search_tasks(self.search_rules.get('tasks', [])))
         self.matches.extend(self.search_variables(self.search_rules.get('variables', [])))
@@ -251,3 +256,45 @@ class SearchEngine:
             Lista de coincidencias del tipo especificado
         """
         return [m for m in self.matches if m.type == match_type]
+    
+    def _validate_exact_match(self) -> bool:
+        """
+        Validar que el pipeline tenga EXACTAMENTE los stages especificados
+        
+        Returns:
+            True si el pipeline tiene exactamente los stages, False si no
+        """
+        search_stages = self.search_rules.get('stages', [])
+        
+        # Si no hay stages en search, no validar exact_match
+        if not search_stages:
+            return True
+        
+        # Obtener stages del pipeline
+        pipeline_stages = [stage.get('name', '') for stage in self.definition.get('environments', [])]
+        
+        # Verificar que el pipeline tiene EXACTAMENTE los stages buscados
+        if len(pipeline_stages) != len(search_stages):
+            return False
+        
+        # Verificar que todos los stages buscados existen en el pipeline
+        for search_stage in search_stages:
+            found = False
+            for pipeline_stage in pipeline_stages:
+                if self._matches_pattern(pipeline_stage, search_stage):
+                    found = True
+                    break
+            if not found:
+                return False
+        
+        # Verificar que NO hay stages adicionales
+        for pipeline_stage in pipeline_stages:
+            found = False
+            for search_stage in search_stages:
+                if self._matches_pattern(pipeline_stage, search_stage):
+                    found = True
+                    break
+            if not found:
+                return False
+        
+        return True

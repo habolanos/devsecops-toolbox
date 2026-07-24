@@ -14,6 +14,7 @@ class SearchRule:
     tasks: List[Dict] = field(default_factory=list)
     variables: List[str] = field(default_factory=list)
     artifacts: List[Dict] = field(default_factory=list)
+    exact_match: bool = False  # Validar que pipeline tenga EXACTAMENTE los stages especificados
 
 
 @dataclass
