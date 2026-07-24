@@ -186,7 +186,7 @@ def vsrm_base(org_url: str) -> str:
 def get_release_defs_list(org: str, project: str, headers: Dict, debug: bool) -> List[Dict]:
     base = vsrm_base(org)
     data = api_get(f"{base}/{quote(project, safe='')}/_apis/release/definitions",
-                   headers, {"api-version": API_VERSION_DEFS, "$top": 500}, debug)
+                   headers, {"api-version": API_VERSION_DEFS, "$top": 3000}, debug)
     return data.get("value", []) if data else []
 
 
