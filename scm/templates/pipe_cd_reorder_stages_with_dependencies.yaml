@@ -1,0 +1,49 @@
+metadata:
+  name: "Reordenar stages con cambio de dependencias"
+  version: "1.0"
+  description: "Reordenar stages y actualizar sus dependencias automáticamente"
+  comment: |
+    Reorganización de stages con actualización de dependencias
+    
+    Cambios realizados:
+    1. Nuevo orden: Staging → QA → Producción
+    2. Staging es ahora el primer ambiente de prueba
+    3. Producción depende de QA en lugar de Staging
+    
+    Razón: QA debe validar después de Staging antes de producción
+    Aprobado por: QA Lead + DevOps Team
+    Fecha: 2026-07-23
+    Contacto: qa@company.com, devops@company.com
+
+search:
+  stages:
+    - name: "QA"
+    - name: "Staging"
+    - name: "Producción"
+
+update:
+  stages:
+    # Mover Staging a primer lugar
+    - name: "Staging"
+      rank: 1
+    
+    # Mover QA a segundo lugar
+    - name: "QA"
+      rank: 2
+    
+    # Producción en tercer lugar
+    - name: "Producción"
+      rank: 3
+      # Actualizar dependencias
+      fields:
+        - path: "preDeployApprovals.approvals[0].approver.displayName"
+          old_value: "Staging"
+          new_value: "QA"
+        
+        - path: "preDeployApprovals.approvals[0].timeoutInMinutes"
+          old_value: "60"
+          new_value: "120"
+
+options:
+  dry_run: false
+  rollback_on_error: true

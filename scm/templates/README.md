@@ -78,6 +78,61 @@ python scm/main.py
 
 ---
 
+### **pipe_cd_reorder_stages_basic.yaml** 🆕
+Reordenar stages usando `rank` - Cambio de orden básico.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 21
+# Ingresar: scm/templates/pipe_cd_reorder_stages_basic.yaml
+```
+
+**Ejemplo**:
+```
+Antes:  Build → Test → Deploy → Validate
+Después: Build → Deploy → Test → Validate
+```
+
+---
+
+### **pipe_cd_reorder_stages_with_dependencies.yaml** 🆕
+Reordenar stages Y actualizar dependencias automáticamente.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 21
+# Ingresar: scm/templates/pipe_cd_reorder_stages_with_dependencies.yaml
+```
+
+**Ejemplo**:
+```
+Antes:  QA → Staging → Producción
+Después: Staging → QA → Producción
+(Producción ahora depende de QA)
+```
+
+---
+
+### **pipe_cd_insert_security_stage.yaml** 🆕
+Insertar nuevo stage de seguridad en posición específica.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 21
+# Ingresar: scm/templates/pipe_cd_insert_security_stage.yaml
+```
+
+**Ejemplo**:
+```
+Antes:  Build → Deploy → Producción
+Después: Build → Security Check → Deploy → Producción
+```
+
+---
+
 ## 🚀 Cómo Usar
 
 ### **Paso 1: Personalizar Template**

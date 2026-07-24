@@ -1,0 +1,79 @@
+metadata:
+  name: "Insertar stage de seguridad en el pipeline"
+  version: "1.0"
+  description: "Agregar stage de validación de seguridad entre Build y Deploy"
+  comment: |
+    Inserción de nuevo stage de Security Check
+    
+    Cambios realizados:
+    1. Nuevo stage: Security Check (posición 2)
+    2. Nuevo orden: Build → Security Check → Deploy → Producción
+    3. Duración estimada: 10-15 minutos
+    
+    Razón: Validar seguridad antes de deploy para cumplir políticas de compliance
+    Requerido por: Security Team
+    Aprobado por: CISO
+    Fecha: 2026-07-23
+    Contacto: security@company.com
+
+search:
+  stages:
+    - name: "Build"
+    - name: "Deploy"
+    - name: "Producción"
+
+update:
+  stages:
+    # Insertar Security Check entre Build y Deploy
+    - name: "Security Check"
+      action: "add"
+      position: "between"
+      after_stage: "Build"
+      before_stage: "Deploy"
+      definition:
+        id: 2
+        name: "Security Check"
+        rank: 2
+        deployPhases:
+          - id: 1
+            name: "Security Validation"
+            deploymentInput:
+              tasks:
+                - displayName: "Run Security Scan"
+                  enabled: true
+                  task:
+                    id: "6C731787-BC2C-4436-8290-A81493FFEA35"
+                    versionSpec: "3.*"
+                  inputs:
+                    script: |
+                      #!/bin/bash
+                      echo "Running security scan..."
+                      echo "Checking Docker image vulnerabilities..."
+                      echo "Validating Kubernetes policies..."
+                      echo "Scanning code for secrets..."
+                      echo "Security scan completed!"
+        
+        # Pre-deployment: Aprobación automática de Build
+        preDeployApprovals:
+          approvals:
+            - rank: 1
+              isAutomated: true
+              isNotificationOn: false
+              approver:
+                displayName: "Automated"
+        
+        # Post-deployment: Sin aprobaciones adicionales
+        postDeployApprovals:
+          approvals: []
+    
+    # Deploy se reordena automáticamente
+    - name: "Deploy"
+      rank: 3
+    
+    # Producción se reordena automáticamente
+    - name: "Producción"
+      rank: 4
+
+options:
+  dry_run: false
+  rollback_on_error: true

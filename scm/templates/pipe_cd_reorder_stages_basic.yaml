@@ -1,0 +1,43 @@
+metadata:
+  name: "Reordenar stages - Orden básico"
+  version: "1.0"
+  description: "Cambiar el orden de ejecución de stages usando rank"
+  comment: |
+    Reorganización de stages en el pipeline
+    
+    Nuevo orden de ejecución:
+    1. Build (compilación)
+    2. Deploy (despliegue a staging)
+    3. Test (pruebas post-deploy)
+    4. Validate (validación final)
+    
+    Razón: Validar deployment antes de pruebas para detectar errores temprano
+    Aprobado por: DevOps Team
+    Fecha: 2026-07-23
+    Contacto: devops@company.com
+
+search:
+  stages:
+    - name: "Build"
+    - name: "Test"
+    - name: "Deploy"
+    - name: "Validate"
+
+update:
+  stages:
+    # Nuevo orden: Build → Deploy → Test → Validate
+    - name: "Build"
+      rank: 1
+    
+    - name: "Deploy"
+      rank: 2
+    
+    - name: "Test"
+      rank: 3
+    
+    - name: "Validate"
+      rank: 4
+
+options:
+  dry_run: false
+  rollback_on_error: true
