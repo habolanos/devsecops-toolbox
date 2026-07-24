@@ -1,0 +1,41 @@
+metadata:
+  name: "Copiar stage e insertarlo con otro nombre"
+  version: "1.0"
+  description: "Clona un stage existente, lo inserta con un nombre nuevo y modifica un atributo de una task"
+  comment: |
+    Copia de stage con renombrado y modificación de task.
+
+    Cambios realizados:
+    1. Se clona el stage "QA" y se inserta como "QA-Copia" justo después de "QA".
+    2. En la copia, la task "Deploy to QA" cambia el atributo inputs.namespace a "qa-copia".
+    3. Los ranks se reasignan automáticamente (el orden en Azure DevOps lo define 'rank').
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-07-24
+
+search:
+  # Incluir el stage origen para que el análisis lo detecte
+  stages:
+    - name: "QA"
+
+update:
+  stages:
+    - action: "copy"
+      # Stage existente a clonar
+      source_stage: "QA"
+      # Nombre del nuevo stage insertado
+      new_name: "QA-Copia"
+      # Posición: after | before | start | end (default: after)
+      position: "after"
+      # Stage ancla para after/before (default: source_stage)
+      reference_stage: "QA"
+      # Modificaciones de atributos de tasks dentro del stage copiado
+      task_updates:
+        - task_name: "Deploy to QA"      # displayName (soporta comodines, ej: "Deploy*")
+          fields:
+            - path: "inputs.namespace"
+              new_value: "qa-copia"
+
+options:
+  dry_run: false
+  rollback_on_error: true

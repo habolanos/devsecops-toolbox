@@ -118,6 +118,59 @@ update:
           new_value: 123
 ```
 
+#### Acciones de Stage: `copy` y `add`
+
+El Pipeline Updater soporta dos acciones especiales para insertar nuevos stages:
+
+**`action: copy`** - Clona un stage existente y lo inserta con un nuevo nombre:
+
+```yaml
+update:
+  stages:
+    - action: "copy"
+      source_stage: "QA"          # Stage existente a clonar
+      new_name: "QA-Copia"        # Nombre del nuevo stage
+      position: "after"            # after | before | start | end
+      reference_stage: "QA"       # Stage ancla (default: source_stage)
+      task_updates:               # Opcional: modificar tasks del stage copiado
+        - task_name: "Deploy to QA"
+          fields:
+            - path: "inputs.namespace"
+              new_value: "qa-copia"
+```
+
+**`action: add`** - Inserta un stage nuevo desde una definición embebida:
+
+```yaml
+update:
+  stages:
+    - action: "add"
+      name: "Security Check"
+      definition:                  # Definición completa del stage
+        id: 99
+        name: "Security Check"
+        rank: 2
+        deployPhases:
+          - deploymentInput:
+              tasks:
+                - displayName: "Run Security Scan"
+                  enabled: true
+      position: "between"          # after | before | between | start | end
+      after_stage: "Build"
+      before_stage: "Deploy"
+```
+
+**Posiciones de inserción**:
+- `after`: después del stage de referencia (default)
+- `before`: antes del stage de referencia
+- `between`: entre `after_stage` y `before_stage` (requiere ambos)
+- `start`: al inicio del pipeline
+- `end`: al final del pipeline
+
+**Notas**:
+- Al insertar stages, los `rank` se reasignan automáticamente (1, 2, 3...) según el orden del array, ya que Azure DevOps ordena por `rank`.
+- Los IDs de los nuevos stages se asignan automáticamente (max existente + 1).
+
 ### Options (Opciones)
 
 ```yaml
@@ -332,7 +385,7 @@ El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
 
 ## Versión
 
-- **Versión**: 1.0.3
+- **Versión**: 1.0.4
 - **Autor**: Harold Adrian
 - **Fecha**: 2026-07-24
 
@@ -340,6 +393,7 @@ El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.0.4 | 2026-07-24 | **Acciones de Stage: copy y add**: Implementación completa para insertar nuevos stages en pipelines. (1) **action: copy**: clona un stage existente (`source_stage`) y lo inserta con un nuevo nombre (`new_name`). Soporta modificación de atributos de tasks dentro del stage copiado (`task_updates`). (2) **action: add**: inserta un stage nuevo desde una definición embebida (`definition`). (3) **Posiciones de inserción**: `after`, `before`, `between`, `start`, `end`. `between` requiere `after_stage` y `before_stage`. (4) **Ranks automáticos**: al insertar stages, los `rank` se reasignan secuencialmente (1, 2, 3...) según el orden del array, ya que Azure DevOps ordena por `rank`. (5) **IDs automáticos**: los IDs de nuevos stages se asignan como max existente + 1. (6) **Pruebas**: `test_copy_stage.py` con 10 tests (copy, add, task_updates, between, validaciones). Documentación actualizada en README. |
 | 1.0.3 | 2026-07-24 | El campo `metadata.comment` del template ahora se envía como comentario de la revisión del release en Azure DevOps (visible en el historial). Se agregó `comment` a `TemplateMetadata` y al parser; `update_release_definition()` acepta el parámetro opcional `comment`. Pruebas añadidas en `test_update_release_definition.py`. |
 | 1.0.2 | 2026-07-24 | Corregido el reordenamiento de stages: ahora se asigna el campo `rank` a cada environment. En Azure DevOps el orden de los stages lo determina `rank`, no la posición en el array; antes solo se reordenaba el array y el cambio no se reflejaba. Validado contra el pipeline `2016` (Develop→QA→Staging→Production). Se añadieron pruebas de unidad en `test_reorder_stages.py`. |
 | 1.0.1 | 2026-07-24 | Corregida la persistencia del `PUT` a Azure DevOps: se dejó de incrementar `revision` manualmente (causa del error HTTP 400 "You are using an old copy"); se usa `deepcopy` para no mutar la definición original; se agregó `lastRelease` a los campos de solo lectura removidos; el cuerpo del error de la API ahora se incluye en la excepción; logging de progreso simplificado. |
