@@ -47,17 +47,25 @@ class SearchEngine:
         Buscar stages por nombre
         
         Args:
-            stage_names: Lista de nombres de stages a buscar
+            stage_names: Lista de nombres de stages a buscar (pueden ser strings o dicts)
             
         Returns:
             Lista de coincidencias
         """
         matches = []
         
+        # Normalizar stage_names (pueden ser strings o dicts)
+        normalized_names = []
+        for item in stage_names:
+            if isinstance(item, dict):
+                normalized_names.append(item.get('name', ''))
+            else:
+                normalized_names.append(item)
+        
         for stage in self.definition.get('environments', []):
             stage_name = stage.get('name', '')
             
-            for search_name in stage_names:
+            for search_name in normalized_names:
                 if self._matches_pattern(stage_name, search_name):
                     matches.append(Match(
                         type='stage',
