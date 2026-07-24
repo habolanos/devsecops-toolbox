@@ -1594,8 +1594,9 @@ def run_tool(tool_key: str):
                 dry_run = input().strip().lower() == "s"
                 
                 # Construir comando
+                # Ejecutar como módulo para evitar problemas con imports relativos
                 cmd = [
-                    str(venv_python), str(script_path),
+                    str(venv_python), "-m", "scm.azdo.pipeline_updater.pipeline_updater",
                     "--definition-ids", definition_ids_str,
                     "--template", template_path,
                     "--org", params["org"],
