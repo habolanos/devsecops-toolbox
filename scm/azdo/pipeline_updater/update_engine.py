@@ -81,25 +81,29 @@ class UpdateEngine:
         
         # Reordenar en la definición
         if stages_to_reorder:
-            # Obtener índices de stages que NO están siendo reordenados
-            reorder_names = {name for _, _, name in stages_to_reorder}
-            other_stages = [s for s in environments if s.get('name', '') not in reorder_names]
-            
-            # Reconstruir lista de environments
-            new_environments = []
+            # IMPORTANTE: En Azure DevOps el orden de los stages lo determina el
+            # campo 'rank' de cada environment, NO la posición en el array. Por eso
+            # se DEBE asignar el nuevo rank a cada stage; reordenar solo el array no
+            # tiene efecto porque el servidor reordena por 'rank'.
             for stage, rank, name in stages_to_reorder:
-                new_environments.append(stage)
-            new_environments.extend(other_stages)
-            
-            self.definition['environments'] = new_environments
-            
-            # Registrar cambios
-            for stage, rank, name in stages_to_reorder:
+                old_rank = stage.get('rank')
+                stage['rank'] = rank
+                
                 self.changes.append({
                     'type': 'stage_reorder',
                     'stage': name,
+                    'old_rank': old_rank,
                     'new_rank': rank
                 })
+            
+            # Reordenar también el array por rank (por consistencia/legibilidad)
+            reorder_names = {name for _, _, name in stages_to_reorder}
+            other_stages = [s for s in environments if s.get('name', '') not in reorder_names]
+            
+            new_environments = [stage for stage, _, _ in stages_to_reorder]
+            new_environments.extend(other_stages)
+            
+            self.definition['environments'] = new_environments
     
     def _update_task(self, match: Match):
         """
