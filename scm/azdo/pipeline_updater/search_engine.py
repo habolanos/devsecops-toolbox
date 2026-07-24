@@ -31,14 +31,21 @@ class SearchEngine:
         self.matches = []
         
         # Validar exact_match si está habilitado
+        # Si exact_match falla, no buscar coincidencias
         if self.search_rules.get('exact_match', False):
             if not self._validate_exact_match():
-                return []  # No hay coincidencias si exact_match falla
+                # Pipeline no coincide con exact_match, retornar lista vacía
+                return []
         
+        # Buscar stages
         self.matches.extend(self.search_stages(self.search_rules.get('stages', [])))
-        self.matches.extend(self.search_tasks(self.search_rules.get('tasks', [])))
-        self.matches.extend(self.search_variables(self.search_rules.get('variables', [])))
-        self.matches.extend(self.search_artifacts(self.search_rules.get('artifacts', [])))
+        
+        # Buscar tasks, variables y artifacts solo si hay coincidencias de stages
+        # o si no se especificó exact_match
+        if self.matches or not self.search_rules.get('exact_match', False):
+            self.matches.extend(self.search_tasks(self.search_rules.get('tasks', [])))
+            self.matches.extend(self.search_variables(self.search_rules.get('variables', [])))
+            self.matches.extend(self.search_artifacts(self.search_rules.get('artifacts', [])))
         
         return self.matches
     
@@ -279,38 +286,23 @@ class SearchEngine:
             return True
         
         # Extraer nombres de stages (pueden ser strings o dicts)
-        search_stage_names = []
+        search_stage_names = set()
         for stage in search_stages:
             if isinstance(stage, dict):
-                search_stage_names.append(stage.get('name', ''))
+                name = stage.get('name', '')
+                if name:
+                    search_stage_names.add(name)
             else:
-                search_stage_names.append(stage)
+                if stage:
+                    search_stage_names.add(stage)
         
         # Obtener stages del pipeline
-        pipeline_stages = [stage.get('name', '') for stage in self.definition.get('environments', [])]
+        pipeline_stages = set()
+        for stage in self.definition.get('environments', []):
+            name = stage.get('name', '')
+            if name:
+                pipeline_stages.add(name)
         
         # Verificar que el pipeline tiene EXACTAMENTE los stages buscados
-        if len(pipeline_stages) != len(search_stage_names):
-            return False
-        
-        # Verificar que todos los stages buscados existen en el pipeline
-        for search_stage in search_stage_names:
-            found = False
-            for pipeline_stage in pipeline_stages:
-                if self._matches_pattern(pipeline_stage, search_stage):
-                    found = True
-                    break
-            if not found:
-                return False
-        
-        # Verificar que NO hay stages adicionales
-        for pipeline_stage in pipeline_stages:
-            found = False
-            for search_stage in search_stage_names:
-                if self._matches_pattern(pipeline_stage, search_stage):
-                    found = True
-                    break
-            if not found:
-                return False
-        
-        return True
+        # (mismo número y mismos nombres, sin importar orden)
+        return pipeline_stages == search_stage_names
