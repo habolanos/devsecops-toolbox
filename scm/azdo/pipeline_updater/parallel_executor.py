@@ -109,29 +109,53 @@ class ParallelExecutor:
         start_time = time.time()
         
         try:
+            print(f"\n  [Pipeline {definition_id}] Iniciando procesamiento...")
+            
             # 1. Descargar definición
+            print(f"  [Pipeline {definition_id}] 1/5 Descargando definición...")
             definition = azdo_client.get_release_definition(definition_id)
+            print(f"  [Pipeline {definition_id}]   ✓ Definición descargada (revision: {definition.get('revision', 'N/A')})")
             
             # 2. Crear snapshot
+            print(f"  [Pipeline {definition_id}] 2/5 Creando snapshot...")
             snapshot_id = azdo_client.create_snapshot(definition_id, definition)
+            print(f"  [Pipeline {definition_id}]   ✓ Snapshot creado: {snapshot_id}")
             
             # 3. Buscar coincidencias
+            print(f"  [Pipeline {definition_id}] 3/5 Buscando coincidencias...")
+            search_rules = template_parser.get_search_rules()
+            print(f"  [Pipeline {definition_id}]   Reglas de búsqueda: {search_rules}")
+            
             search_engine = SearchEngine(
                 definition,
-                template_parser.get_search_rules()
+                search_rules
             )
             matches = search_engine.search_all()
+            print(f"  [Pipeline {definition_id}]   ✓ Coincidencias encontradas: {len(matches)}")
+            for match in matches:
+                print(f"  [Pipeline {definition_id}]     - {match.type}: {match.name}")
             
             # 4. Aplicar actualizaciones
+            print(f"  [Pipeline {definition_id}] 4/5 Aplicando actualizaciones...")
+            update_rules = template_parser.get_update_rules()
+            print(f"  [Pipeline {definition_id}]   Reglas de actualización: {update_rules}")
+            
             update_engine = UpdateEngine(
                 definition,
                 matches,
-                template_parser.get_update_rules()
+                update_rules
             )
             update_engine.apply_updates()
+            changes_count = update_engine.get_changes_count()
+            print(f"  [Pipeline {definition_id}]   ✓ Cambios aplicados: {changes_count}")
+            for change in update_engine.get_changes():
+                print(f"  [Pipeline {definition_id}]     - {change}")
             
             # 5. Guardar cambios
+            print(f"  [Pipeline {definition_id}] 5/5 Guardando cambios en Azure DevOps...")
+            print(f"  [Pipeline {definition_id}]   Enviando PUT con revision: {definition.get('revision', 'N/A')}")
             success = azdo_client.update_release_definition(definition_id, definition)
+            print(f"  [Pipeline {definition_id}]   ✓ Cambios guardados exitosamente")
             
             duration = time.time() - start_time
             
@@ -148,6 +172,9 @@ class ParallelExecutor:
         
         except Exception as e:
             duration = time.time() - start_time
+            print(f"  [Pipeline {definition_id}] ✗ ERROR: {str(e)}")
+            import traceback
+            traceback.print_exc()
             
             return UpdateResult(
                 definition_id=definition_id,
