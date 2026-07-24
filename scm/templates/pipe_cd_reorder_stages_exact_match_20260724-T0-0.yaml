@@ -1,0 +1,43 @@
+metadata:
+  name: "Reordenar stages - Validación exacta"
+  version: "1.0"
+  description: "Reordenamiento, Grupo T0-0, QA → Staging → Production → Develop"
+  comment: |
+    Reordenamiento de stages con validación exacta, Grupo T1
+    PATRON "QA → Staging → Production → Develop"
+
+    Nuevo orden de ejecución:
+    1. Develop
+    2. QA
+    3. Staging
+    4. Production
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-07-24
+
+search:
+  # Validación exacta: Pipeline debe tener EXACTAMENTE estos 4 stages
+  exact_match: true
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - name: "Staging"
+    - name: "Production"
+
+update:
+  stages:
+    # Nuevo orden: Develop → QA → Staging → Production
+    - name: "Develop"
+      rank: 1
+    
+    - name: "QA"
+      rank: 2
+    
+    - name: "Staging"
+      rank: 3
+
+    - name: "Production"
+      rank: 4
+options:
+  dry_run: false
+  rollback_on_error: true
