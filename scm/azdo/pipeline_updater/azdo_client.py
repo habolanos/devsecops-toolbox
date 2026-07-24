@@ -83,13 +83,14 @@ class AzureDevOpsClient:
         except requests.RequestException as e:
             raise AzureDevOpsError(f"Error al obtener definición: {str(e)}")
     
-    def update_release_definition(self, definition_id: int, definition: Dict) -> bool:
+    def update_release_definition(self, definition_id: int, definition: Dict, comment: Optional[str] = None) -> bool:
         """
         Guardar cambios en definición de release
         
         Args:
             definition_id: ID de la definición
             definition: Diccionario con la definición actualizada
+            comment: Comentario de la revisión (aparece en el historial de Azure DevOps)
             
         Returns:
             True si la actualización fue exitosa
@@ -105,6 +106,10 @@ class AzureDevOpsClient:
             # de concurrencia optimista. Debe enviarse la MISMA revisión descargada;
             # el servidor la incrementa internamente. Enviar una revisión distinta
             # produce el error "You are using an old copy of the release pipeline".
+            
+            # Asignar el comentario de la revisión (visible en el historial de AzDO)
+            if comment is not None:
+                definition_copy['comment'] = comment
             
             # Remover campos que no deben enviarse en PUT
             # Azure DevOps es estricto con los campos que acepta

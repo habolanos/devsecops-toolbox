@@ -147,7 +147,10 @@ class ParallelExecutor:
             
             # 5. Guardar cambios
             print(f"  [Pipeline {definition_id}] 5/5 Guardando cambios en Azure DevOps...")
-            success = azdo_client.update_release_definition(definition_id, definition)
+            metadata = template_parser.get_metadata()
+            success = azdo_client.update_release_definition(
+                definition_id, definition, comment=metadata.comment
+            )
             print(f"  [Pipeline {definition_id}]   ✓ Cambios guardados exitosamente")
             
             duration = time.time() - start_time

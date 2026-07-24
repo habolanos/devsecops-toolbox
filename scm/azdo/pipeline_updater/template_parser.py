@@ -52,6 +52,7 @@ class TemplateParser:
             name=meta.get('name', 'Unknown'),
             version=meta.get('version', '1.0'),
             description=meta.get('description'),
+            comment=meta.get('comment'),
             author=meta.get('author'),
             created_at=meta.get('created_at'),
             updated_at=meta.get('updated_at')

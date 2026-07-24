@@ -31,6 +31,7 @@ class TemplateMetadata:
     name: str
     version: str
     description: Optional[str] = None
+    comment: Optional[str] = None
     author: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

@@ -64,8 +64,13 @@ metadata:
   name: "Nombre del template"
   version: "1.0"
   description: "Descripción"
+  comment: |
+    Comentario multilínea que se registra como comentario de la revisión
+    en el historial de Azure DevOps al guardar la definición.
   author: "Autor"
 ```
+
+**Nota**: El campo `metadata.comment` se envía como el `comment` de la revisión del release en Azure DevOps, por lo que aparece en el historial de cambios de la definición. Si se omite, no se modifica el comentario.
 
 ### Search (Búsqueda)
 
@@ -327,7 +332,7 @@ El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
 
 ## Versión
 
-- **Versión**: 1.0.2
+- **Versión**: 1.0.3
 - **Autor**: Harold Adrian
 - **Fecha**: 2026-07-24
 
@@ -335,6 +340,7 @@ El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.0.3 | 2026-07-24 | El campo `metadata.comment` del template ahora se envía como comentario de la revisión del release en Azure DevOps (visible en el historial). Se agregó `comment` a `TemplateMetadata` y al parser; `update_release_definition()` acepta el parámetro opcional `comment`. Pruebas añadidas en `test_update_release_definition.py`. |
 | 1.0.2 | 2026-07-24 | Corregido el reordenamiento de stages: ahora se asigna el campo `rank` a cada environment. En Azure DevOps el orden de los stages lo determina `rank`, no la posición en el array; antes solo se reordenaba el array y el cambio no se reflejaba. Validado contra el pipeline `2016` (Develop→QA→Staging→Production). Se añadieron pruebas de unidad en `test_reorder_stages.py`. |
 | 1.0.1 | 2026-07-24 | Corregida la persistencia del `PUT` a Azure DevOps: se dejó de incrementar `revision` manualmente (causa del error HTTP 400 "You are using an old copy"); se usa `deepcopy` para no mutar la definición original; se agregó `lastRelease` a los campos de solo lectura removidos; el cuerpo del error de la API ahora se incluye en la excepción; logging de progreso simplificado. |
 | 1.0.0 | 2026-07-13 | Versión inicial: actualización masiva de pipelines CD con templates YAML, búsqueda con `exact_match`, snapshots automáticos, ejecución paralela y reportería JSON/CSV/HTML. |

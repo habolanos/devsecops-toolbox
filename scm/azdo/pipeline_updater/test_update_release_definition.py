@@ -104,6 +104,27 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         self.assertTrue(result)
 
     @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    def test_comment_sent_when_provided(self, mock_put):
+        """El comentario del template debe enviarse en el campo 'comment'."""
+        mock_put.return_value = self._mock_response(status_code=200)
+
+        comment = "Reordenamiento de stages\nDevelop -> QA -> Staging -> Production"
+        self.client.update_release_definition(2016, self.definition, comment=comment)
+
+        sent_body = mock_put.call_args.kwargs['json']
+        self.assertEqual(sent_body['comment'], comment)
+
+    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    def test_comment_omitted_when_none(self, mock_put):
+        """Si no se pasa comentario, no se debe forzar un 'comment' vacío."""
+        mock_put.return_value = self._mock_response(status_code=200)
+
+        self.client.update_release_definition(2016, self.definition)
+
+        sent_body = mock_put.call_args.kwargs['json']
+        self.assertNotIn('comment', sent_body)
+
+    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
     def test_http_400_includes_error_body(self, mock_put):
         """HTTP 400 debe lanzar AzureDevOpsError incluyendo el cuerpo del error."""
         error_body = '{"message":"You are using an old copy of the release pipeline."}'
