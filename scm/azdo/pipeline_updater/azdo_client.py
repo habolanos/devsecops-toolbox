@@ -97,6 +97,10 @@ class AzureDevOpsClient:
         params = {'api-version': self.api_version}
         
         try:
+            # Incrementar revisión para que Azure DevOps acepte el cambio
+            if 'revision' in definition:
+                definition['revision'] = definition.get('revision', 0) + 1
+            
             response = requests.put(
                 url,
                 json=definition,
