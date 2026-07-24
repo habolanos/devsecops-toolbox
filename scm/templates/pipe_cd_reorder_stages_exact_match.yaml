@@ -1,0 +1,52 @@
+metadata:
+  name: "Reordenar stages - Validación exacta"
+  version: "1.0"
+  description: "Reordenar stages con validación de que el pipeline tenga EXACTAMENTE los stages especificados"
+  comment: |
+    Reordenamiento de stages con validación exacta
+    
+    IMPORTANTE: Este template SOLO actualiza pipelines que tengan
+    EXACTAMENTE 4 stages (Build, Test, Deploy, Validate).
+    
+    Si un pipeline tiene stages adicionales (ej: Security, Approval),
+    será IGNORADO y NO se actualizará.
+    
+    Nuevo orden de ejecución:
+    1. Build (compilación)
+    2. Deploy (despliegue a staging)
+    3. Test (pruebas post-deploy)
+    4. Validate (validación final)
+    
+    Razón: Validar deployment antes de pruebas para detectar errores temprano
+    Garantía: Integridad del pipeline garantizada con exact_match: true
+    Aprobado por: DevOps Team
+    Fecha: 2026-07-24
+    Contacto: devops@company.com
+
+search:
+  # Validación exacta: Pipeline debe tener EXACTAMENTE estos 4 stages
+  exact_match: true
+  stages:
+    - name: "Build"
+    - name: "Test"
+    - name: "Deploy"
+    - name: "Validate"
+
+update:
+  stages:
+    # Nuevo orden: Build → Deploy → Test → Validate
+    - name: "Build"
+      rank: 1
+    
+    - name: "Deploy"
+      rank: 2
+    
+    - name: "Test"
+      rank: 3
+    
+    - name: "Validate"
+      rank: 4
+
+options:
+  dry_run: false
+  rollback_on_error: true
