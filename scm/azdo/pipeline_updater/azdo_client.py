@@ -134,6 +134,14 @@ class AzureDevOpsClient:
             if response.status_code == 403:
                 raise PermissionDeniedError(f"Permiso denegado para actualizar pipeline {definition_id}")
             
+            if response.status_code >= 400:
+                error_body = response.text[:2000]
+                print(f"    [DEBUG] Response body: {error_body}")
+                raise AzureDevOpsError(
+                    f"Error al actualizar definición {definition_id} "
+                    f"(HTTP {response.status_code}): {error_body}"
+                )
+            
             response.raise_for_status()
             return response.status_code == 200
         except requests.RequestException as e:
