@@ -1549,20 +1549,31 @@ def run_tool(tool_key: str):
                     continue
                 
                 # Solicitar ruta del template
-                print(f"{Colors.BOLD}Ruta del template YAML (ej: scm/azdo/pipeline_updater/example_template.yaml):{Colors.ENDC} ", end="")
-                template_path = input().strip()
+                print(f"{Colors.BOLD}Ruta del template YAML (ej: scm/templates/example_template.yaml):{Colors.ENDC} ", end="")
+                template_path_input = input().strip()
                 
-                if not template_path:
+                if not template_path_input:
                     print(f"{Colors.RED}❌ Ruta del template requerida.{Colors.ENDC}")
                     input("\nPresione Enter para continuar...")
                     continue
                 
+                # Resolver ruta del template desde la raíz del proyecto
+                template_path_obj = Path(template_path_input)
+                if template_path_obj.is_absolute():
+                    template_full_path = template_path_obj
+                else:
+                    # BASE_DIR es scm/azdo, necesitamos subir 2 niveles para llegar a la raíz
+                    project_root = BASE_DIR.parent.parent
+                    template_full_path = project_root / template_path_input
+                
                 # Verificar que el template existe
-                template_full_path = BASE_DIR / template_path
                 if not template_full_path.exists():
                     print(f"{Colors.RED}❌ Template no encontrado: {template_full_path}{Colors.ENDC}")
                     input("\nPresione Enter para continuar...")
                     continue
+                
+                # Pasar la ruta absoluta al script
+                template_path = str(template_full_path)
                 
                 # Solicitar parámetros comunes
                 params = ask_common_params(cfg, tool_key=tool_key)
