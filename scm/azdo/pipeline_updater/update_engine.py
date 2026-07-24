@@ -31,6 +31,12 @@ class UpdateEngine:
             True si todas las actualizaciones fueron exitosas
         """
         try:
+            # Primero aplicar reordenamiento de stages si existe
+            stage_rules = self.update_rules.get('stages', [])
+            if stage_rules and any(rule.get('rank') for rule in stage_rules):
+                self._reorder_stages(stage_rules)
+            
+            # Luego aplicar otras actualizaciones
             for match in self.matches:
                 if match.type == 'task':
                     self._update_task(match)
@@ -45,6 +51,55 @@ class UpdateEngine:
         except Exception as e:
             print(f"Error al aplicar actualizaciones: {e}")
             return False
+    
+    def _reorder_stages(self, stage_rules: List[Dict]):
+        """
+        Reordenar stages según las reglas
+        
+        Args:
+            stage_rules: Reglas de actualización de stages con rank
+        """
+        environments = self.definition.get('environments', [])
+        
+        # Crear mapeo de nombre -> stage y rank
+        stage_map = {}
+        for rule in stage_rules:
+            stage_name = rule.get('name', '')
+            rank = rule.get('rank')
+            if stage_name and rank is not None:
+                stage_map[stage_name] = rank
+        
+        # Encontrar stages que necesitan reordenamiento
+        stages_to_reorder = []
+        for stage in environments:
+            stage_name = stage.get('name', '')
+            if stage_name in stage_map:
+                stages_to_reorder.append((stage, stage_map[stage_name], stage_name))
+        
+        # Ordenar por rank
+        stages_to_reorder.sort(key=lambda x: x[1])
+        
+        # Reordenar en la definición
+        if stages_to_reorder:
+            # Obtener índices de stages que NO están siendo reordenados
+            reorder_names = {name for _, _, name in stages_to_reorder}
+            other_stages = [s for s in environments if s.get('name', '') not in reorder_names]
+            
+            # Reconstruir lista de environments
+            new_environments = []
+            for stage, rank, name in stages_to_reorder:
+                new_environments.append(stage)
+            new_environments.extend(other_stages)
+            
+            self.definition['environments'] = new_environments
+            
+            # Registrar cambios
+            for stage, rank, name in stages_to_reorder:
+                self.changes.append({
+                    'type': 'stage_reorder',
+                    'stage': name,
+                    'new_rank': rank
+                })
     
     def _update_task(self, match: Match):
         """
