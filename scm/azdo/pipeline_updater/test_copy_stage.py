@@ -257,6 +257,107 @@ class TestAddStage(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestRenameStage(unittest.TestCase):
+    """Tests para action: rename en stages"""
+    
+    def setUp(self):
+        """Definición base para tests"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'Build', 'rank': 1},
+                {'id': 2, 'name': 'QA', 'rank': 2},
+                {'id': 3, 'name': 'Production', 'rank': 3}
+            ]
+        }
+        self.matches = []
+    
+    def test_rename_stage_changes_name(self):
+        """action: rename debe cambiar el nombre del stage"""
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'QA',
+                    'new_name': 'QA-Testing'
+                }
+            ]
+        }
+        
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+        
+        stage_names = [s['name'] for s in self.definition['environments']]
+        self.assertIn('QA-Testing', stage_names)
+        self.assertNotIn('QA', stage_names)
+    
+    def test_rename_stage_preserves_id_and_rank(self):
+        """action: rename debe preservar ID y rank del stage"""
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'QA',
+                    'new_name': 'QA-Testing'
+                }
+            ]
+        }
+        
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+        
+        renamed_stage = None
+        for stage in self.definition['environments']:
+            if stage['name'] == 'QA-Testing':
+                renamed_stage = stage
+                break
+        
+        self.assertIsNotNone(renamed_stage)
+        self.assertEqual(renamed_stage['id'], 2)
+        self.assertEqual(renamed_stage['rank'], 2)
+    
+    def test_rename_stage_invalid_source_returns_false(self):
+        """action: rename con source_stage inexistente debe retornar False"""
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'Inexistente',
+                    'new_name': 'Nuevo'
+                }
+            ]
+        }
+        
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        result = engine.apply_updates()
+        
+        self.assertFalse(result)
+    
+    def test_rename_stage_records_change(self):
+        """action: rename debe registrar el cambio en self.changes"""
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'QA',
+                    'new_name': 'QA-Testing'
+                }
+            ]
+        }
+        
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+        
+        rename_change = None
+        for change in engine.changes:
+            if change.get('type') == 'stage_rename':
+                rename_change = change
+                break
+        
+        self.assertIsNotNone(rename_change)
+        self.assertEqual(rename_change['old_name'], 'QA')
+        self.assertEqual(rename_change['new_name'], 'QA-Testing')
+
+
 class TestPositionBetween(unittest.TestCase):
     """Tests específicos para position: between"""
     

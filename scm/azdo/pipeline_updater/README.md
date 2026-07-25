@@ -118,9 +118,9 @@ update:
           new_value: 123
 ```
 
-#### Acciones de Stage: `copy` y `add`
+#### Acciones de Stage: `copy`, `add` y `rename`
 
-El Pipeline Updater soporta dos acciones especiales para insertar nuevos stages:
+El Pipeline Updater soporta tres acciones especiales para modificar stages:
 
 **`action: copy`** - Clona un stage existente y lo inserta con un nuevo nombre:
 
@@ -158,6 +158,16 @@ update:
       position: "between"          # after | before | between | start | end
       after_stage: "Build"
       before_stage: "Deploy"
+```
+
+**`action: rename`** - Renombra un stage existente:
+
+```yaml
+update:
+  stages:
+    - action: "rename"
+      source_stage: "QA"          # Stage existente a renombrar
+      new_name: "QA-Testing"       # Nuevo nombre del stage
 ```
 
 **Posiciones de inserción**:
@@ -385,14 +395,15 @@ El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
 
 ## Versión
 
-- **Versión**: 1.0.4
+- **Versión**: 1.0.5
 - **Autor**: Harold Adrian
-- **Fecha**: 2026-07-24
+- **Fecha**: 2026-07-25
 
 ## Historial de Cambios
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.0.5 | 2026-07-25 | **Acción de Stage: rename**: Implementación para renombrar stages existentes. (1) **action: rename**: cambia el nombre de un stage existente (`source_stage`) a un nuevo nombre (`new_name`). (2) **Preservación**: mantiene el ID, rank y configuración del stage original; solo modifica el campo `name`. (3) **Pruebas**: 4 tests nuevos en `test_copy_stage.py` (cambio de nombre, preservación de ID/rank, validación de source_stage, registro de cambios). (4) **Template**: `pipe_cd_rename_stage.yaml` como ejemplo de uso. (5) **Documentación**: README actualizado con ejemplo de `action: rename`. Suite del módulo: 34 tests en verde (14 nuevos + 20 existentes). |
 | 1.0.4 | 2026-07-24 | **Acciones de Stage: copy y add**: Implementación completa para insertar nuevos stages en pipelines. (1) **action: copy**: clona un stage existente (`source_stage`) y lo inserta con un nuevo nombre (`new_name`). Soporta modificación de atributos de tasks dentro del stage copiado (`task_updates`). (2) **action: add**: inserta un stage nuevo desde una definición embebida (`definition`). (3) **Posiciones de inserción**: `after`, `before`, `between`, `start`, `end`. `between` requiere `after_stage` y `before_stage`. (4) **Ranks automáticos**: al insertar stages, los `rank` se reasignan secuencialmente (1, 2, 3...) según el orden del array, ya que Azure DevOps ordena por `rank`. (5) **IDs automáticos**: los IDs de nuevos stages se asignan como max existente + 1. (6) **Pruebas**: `test_copy_stage.py` con 10 tests (copy, add, task_updates, between, validaciones). Documentación actualizada en README. |
 | 1.0.3 | 2026-07-24 | El campo `metadata.comment` del template ahora se envía como comentario de la revisión del release en Azure DevOps (visible en el historial). Se agregó `comment` a `TemplateMetadata` y al parser; `update_release_definition()` acepta el parámetro opcional `comment`. Pruebas añadidas en `test_update_release_definition.py`. |
 | 1.0.2 | 2026-07-24 | Corregido el reordenamiento de stages: ahora se asigna el campo `rank` a cada environment. En Azure DevOps el orden de los stages lo determina `rank`, no la posición en el array; antes solo se reordenaba el array y el cambio no se reflejaba. Validado contra el pipeline `2016` (Develop→QA→Staging→Production). Se añadieron pruebas de unidad en `test_reorder_stages.py`. |

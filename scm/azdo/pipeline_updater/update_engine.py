@@ -35,8 +35,8 @@ class UpdateEngine:
         try:
             stage_rules = self.update_rules.get('stages', [])
             
-            # Primero procesar acciones de stage (copy/add) que insertan nuevos stages
-            if stage_rules and any(rule.get('action') in ('copy', 'add') for rule in stage_rules):
+            # Primero procesar acciones de stage (copy/add/rename) que modifican stages
+            if stage_rules and any(rule.get('action') in ('copy', 'add', 'rename') for rule in stage_rules):
                 self._process_stage_actions(stage_rules)
             
             # Luego aplicar reordenamiento de stages si existe
@@ -114,11 +114,13 @@ class UpdateEngine:
     
     def _process_stage_actions(self, stage_rules: List[Dict]):
         """
-        Procesar acciones de stage que insertan nuevos environments.
+        Procesar acciones de stage que modifican o insertan environments.
         
         Soporta:
           - action: "copy"  -> Copia un stage existente (source_stage) y lo inserta
                                con un nuevo nombre (new_name).
+          - action: "add"   -> Inserta un stage nuevo desde una definición embebida.
+          - action: "rename" -> Renombra un stage existente (source_stage) a new_name.
         
         Parámetros de la regla:
           - action: "copy"
@@ -132,6 +134,16 @@ class UpdateEngine:
                     - path: "inputs.namespace"
                       new_value: "..."
         
+          - action: "add"
+          - name: nombre del nuevo stage (obligatorio)
+          - definition: definición completa del stage (obligatorio)
+          - position: "after" | "before" | "between" | "start" | "end"
+          - after_stage / before_stage: para position "between"
+        
+          - action: "rename"
+          - source_stage: nombre del stage a renombrar (obligatorio)
+          - new_name: nuevo nombre del stage (obligatorio)
+        
         Args:
             stage_rules: Reglas de actualización de stages
         """
@@ -141,6 +153,8 @@ class UpdateEngine:
                 self._copy_stage(rule)
             elif action == 'add':
                 self._add_stage(rule)
+            elif action == 'rename':
+                self._rename_stage(rule)
     
     def _copy_stage(self, rule: Dict):
         """Copiar un stage existente e insertarlo con un nuevo nombre."""
@@ -217,6 +231,36 @@ class UpdateEngine:
             'position_index': insert_index,
             'new_rank': new_stage.get('rank')
         })
+    
+    def _rename_stage(self, rule: Dict):
+        """Renombrar un stage existente."""
+        environments = self.definition.get('environments', [])
+        
+        source_name = rule.get('source_stage')
+        new_name = rule.get('new_name')
+        
+        if not source_name or not new_name:
+            raise ValueError("action 'rename' requiere 'source_stage' y 'new_name'")
+        
+        # Localizar el stage a renombrar
+        stage_found = False
+        for stage in environments:
+            if stage.get('name', '') == source_name:
+                old_name = stage['name']
+                stage['name'] = new_name
+                stage_found = True
+                
+                self.changes.append({
+                    'type': 'stage_rename',
+                    'old_name': old_name,
+                    'new_name': new_name
+                })
+                break
+        
+        if not stage_found:
+            raise ValueError(f"source_stage '{source_name}' no encontrado en el pipeline")
+        
+        self.definition['environments'] = environments
     
     def _resolve_insert_index(self, environments: List[Dict], rule: Dict, default_ref: str) -> int:
         """

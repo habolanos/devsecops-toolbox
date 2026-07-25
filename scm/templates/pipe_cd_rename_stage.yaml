@@ -1,0 +1,31 @@
+metadata:
+  name: "Renombrar stage"
+  version: "1.0"
+  description: "Renombra un stage existente a un nuevo nombre"
+  comment: |
+    Renombrado de stage en pipeline CD.
+
+    Cambios realizados:
+    1. El stage "QA" se renombra a "QA-Testing".
+    2. Se mantiene el mismo ID, rank y configuración del stage original.
+    3. Solo se modifica el campo 'name' del environment.
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-07-25
+
+search:
+  # Incluir el stage a renombrar para que el análisis lo detecte
+  stages:
+    - name: "QA"
+
+update:
+  stages:
+    - action: "rename"
+      # Stage existente a renombrar
+      source_stage: "QA"
+      # Nuevo nombre del stage
+      new_name: "QA-Testing"
+
+options:
+  dry_run: false
+  rollback_on_error: true
