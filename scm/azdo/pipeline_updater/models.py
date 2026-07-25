@@ -3,7 +3,7 @@ Modelos de datos para Pipeline Updater
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
 
@@ -55,11 +55,21 @@ class IgnoreVariableGroups:
 
 
 @dataclass
+class ReplaceAgentPools:
+    """Mapeo de agent pool IDs viejos a nuevos para reemplazo"""
+    mappings: Dict[int, int] = field(default_factory=dict)
+
+    def has_any(self) -> bool:
+        return bool(self.mappings)
+
+
+@dataclass
 class TemplateOptions:
     """Opciones de ejecucion del template"""
     dry_run: bool = False
     rollback_on_error: bool = True
     ignore_variable_groups: IgnoreVariableGroups = field(default_factory=IgnoreVariableGroups)
+    replace_agent_pools: ReplaceAgentPools = field(default_factory=ReplaceAgentPools)
 
 
 @dataclass

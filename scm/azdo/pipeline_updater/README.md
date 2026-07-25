@@ -195,6 +195,7 @@ options:
 - **`dry_run`** (bool, default: false): Si es true, no aplica cambios reales, solo simula.
 - **`rollback_on_error`** (bool, default: true): Si es true, crea snapshot antes de actualizar y hace rollback si hay error.
 - **`ignore_variable_groups`** (list[int] | dict, default: []): IDs de variable groups a remover antes de actualizar. Acepta formato lista simple o diferenciado por scope (ver abajo).
+- **`replace_agent_pools`** (dict, default: {}): Mapeo de agent pool IDs viejos a nuevos. Formato: `{old_id: new_id}`.
 
 **Variable Groups Faltantes:**
 
@@ -231,6 +232,27 @@ options:
 | `all` | Ambos niveles | Ambos campos |
 
 Los grupos removidos se registran en el reporte de cambios con tipo `variable_groups_removed`, indicando el `scope` (`global` o `environment`) y el `environment` afetado cuando aplica.
+
+**Agent Pools Inexistentes:**
+
+Cuando un pipeline referencia agent pools (colas de agentes) que fueron eliminados, la actualizacion falla con HTTP 400 y el mensaje `No agent pool found with identifier X`. Use `replace_agent_pools` para mapear los IDs viejos a IDs validos:
+
+```yaml
+options:
+  replace_agent_pools:
+    1751: 100    # Reemplazar pool 1751 (inexistente) con pool 100 (valido)
+    2722: 200    # Reemplazar pool 2722 (inexistente) con pool 200 (valido)
+```
+
+Azure DevOps almacena el agent pool en `deployPhases[].deploymentInput.queueId` de cada environment. El reemplazo actualiza tanto `queueId` como el objeto `queue` si existe.
+
+Los reemplazos se registran en el reporte de cambios con tipo `agent_pool_replaced`, indicando el `environment`, `old_queue_id` y `new_queue_id`.
+
+**Como identificar el agent pool valido:**
+
+1. En Azure DevOps: Project Settings > Pipelines > Agent pools
+2. Cada pool tiene un ID numerico visible en la URL
+3. Usar la API: `GET https://dev.azure.com/{org}/{project}/_apis/distributedtask/queues`
 
 ## Ejemplos
 

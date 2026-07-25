@@ -6,7 +6,7 @@ import yaml
 import json
 from pathlib import Path
 from typing import Dict, Optional
-from .models import TemplateMetadata, SearchRule, UpdateRule, TemplateOptions, IgnoreVariableGroups
+from .models import TemplateMetadata, SearchRule, UpdateRule, TemplateOptions, IgnoreVariableGroups, ReplaceAgentPools
 
 
 class TemplateParser:
@@ -82,10 +82,13 @@ class TemplateParser:
         """Obtener opciones como objeto TemplateOptions"""
         raw_ignore = self.options.get('ignore_variable_groups', [])
         ignore_vg = self._parse_ignore_variable_groups(raw_ignore)
+        raw_replace_pools = self.options.get('replace_agent_pools', {})
+        replace_pools = self._parse_replace_agent_pools(raw_replace_pools)
         return TemplateOptions(
             dry_run=self.options.get('dry_run', False),
             rollback_on_error=self.options.get('rollback_on_error', True),
-            ignore_variable_groups=ignore_vg
+            ignore_variable_groups=ignore_vg,
+            replace_agent_pools=replace_pools
         )
 
     @staticmethod
@@ -118,7 +121,29 @@ class TemplateParser:
             )
         
         return IgnoreVariableGroups()
-    
+
+    @staticmethod
+    def _parse_replace_agent_pools(raw) -> ReplaceAgentPools:
+        """
+        Parsear replace_agent_pools desde el template.
+
+        Formato:
+          replace_agent_pools:
+            1751: 100    # Reemplazar pool 1751 con pool 100
+            2722: 200    # Reemplazar pool 2722 con pool 200
+        """
+        if not raw or not isinstance(raw, dict):
+            return ReplaceAgentPools()
+
+        mappings = {}
+        for old_id, new_id in raw.items():
+            try:
+                mappings[int(old_id)] = int(new_id)
+            except (ValueError, TypeError):
+                continue
+
+        return ReplaceAgentPools(mappings=mappings)
+
     def to_dict(self) -> Dict:
         """Convertir template a diccionario"""
         return self.template

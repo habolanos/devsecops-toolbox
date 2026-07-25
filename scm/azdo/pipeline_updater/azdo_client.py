@@ -236,3 +236,23 @@ class AzureDevOpsClient:
             return response.status_code == 200
         except:
             return False
+
+    def agent_pool_exists(self, pool_id: int) -> bool:
+        """
+        Verifica si un agent pool (queue) existe en el proyecto.
+
+        Args:
+            pool_id: ID del agent pool (queueId en la definicion)
+
+        Returns:
+            True si existe, False si no
+        """
+        base_url = self.base_url.replace("vsrm.dev.azure.com", "dev.azure.com")
+        url = f"{base_url}/_apis/distributedtask/queues/{pool_id}"
+        params = {'api-version': self.api_version}
+
+        try:
+            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+            return response.status_code == 200
+        except:
+            return False

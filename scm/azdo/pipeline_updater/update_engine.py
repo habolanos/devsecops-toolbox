@@ -39,6 +39,10 @@ class UpdateEngine:
             if self.template_options.ignore_variable_groups:
                 self._remove_ignored_variable_groups()
             
+            # Reemplazar agent pools si están configurados
+            if self.template_options.replace_agent_pools:
+                self._replace_agent_pools()
+            
             stage_rules = self.update_rules.get('stages', [])
             
             # Primero procesar acciones de stage (copy/add/rename) que modifican stages
@@ -335,6 +339,42 @@ class UpdateEngine:
                         'removed_ids': removed
                     })
     
+    def _replace_agent_pools(self):
+        """
+        Reemplazar agent pool IDs (queueId) segun el mapeo configurado.
+
+        Busca queueId en deployPhases[].deploymentInput de cada environment
+        y reemplaza los IDs viejos por los nuevos especificados.
+        """
+        replace_pools = self.template_options.replace_agent_pools
+        if not replace_pools.has_any():
+            return
+
+        mappings = replace_pools.mappings
+
+        for env in self.definition.get('environments', []):
+            env_name = env.get('name', 'Unknown')
+
+            for phase in env.get('deployPhases', []):
+                deployment_input = phase.get('deploymentInput', {})
+                current_queue_id = deployment_input.get('queueId')
+
+                if current_queue_id is not None and current_queue_id in mappings:
+                    new_queue_id = mappings[current_queue_id]
+                    deployment_input['queueId'] = new_queue_id
+
+                    # Actualizar tambien el objeto queue si existe
+                    queue_obj = deployment_input.get('queue', {})
+                    if queue_obj:
+                        queue_obj['id'] = new_queue_id
+
+                    self.changes.append({
+                        'type': 'agent_pool_replaced',
+                        'environment': env_name,
+                        'old_queue_id': current_queue_id,
+                        'new_queue_id': new_queue_id
+                    })
+
     def _resolve_insert_index(self, environments: List[Dict], rule: Dict, default_ref: str) -> int:
         """
         Resolver el índice de inserción en el array de environments.
