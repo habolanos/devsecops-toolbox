@@ -38,6 +38,14 @@ class TemplateMetadata:
 
 
 @dataclass
+class TemplateOptions:
+    """Opciones de ejecución del template"""
+    dry_run: bool = False
+    rollback_on_error: bool = True
+    ignore_variable_groups: List[int] = field(default_factory=list)  # IDs de variable groups a ignorar/remover
+
+
+@dataclass
 class UpdateResult:
     """Resultado de actualización de un pipeline"""
     definition_id: int

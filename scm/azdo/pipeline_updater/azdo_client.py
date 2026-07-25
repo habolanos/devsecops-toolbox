@@ -215,3 +215,24 @@ class AzureDevOpsClient:
             return response.json()
         except requests.RequestException as e:
             raise AzureDevOpsError(f"Error al listar definiciones: {str(e)}")
+    
+    def variable_group_exists(self, group_id: int) -> bool:
+        """
+        Verifica si un variable group existe en el proyecto.
+        
+        Args:
+            group_id: ID del variable group
+            
+        Returns:
+            True si existe, False si no
+        """
+        # Variable groups usan la API regular (no vsrm)
+        base_url = self.base_url.replace("vsrm.dev.azure.com", "dev.azure.com")
+        url = f"{base_url}/_apis/distributedtask/variablegroups/{group_id}"
+        params = {'api-version': self.api_version}
+        
+        try:
+            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+            return response.status_code == 200
+        except:
+            return False

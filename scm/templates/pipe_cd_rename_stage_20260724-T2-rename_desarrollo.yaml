@@ -29,3 +29,5 @@ update:
 options:
   dry_run: false
   rollback_on_error: true
+  # IDs de variable groups a ignorar/remover (grupos que no existen en Azure DevOps)
+  ignore_variable_groups: [186, 196]

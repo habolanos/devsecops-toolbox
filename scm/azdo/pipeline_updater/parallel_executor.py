@@ -138,11 +138,13 @@ class ParallelExecutor:
             # 4. Aplicar actualizaciones
             print(f"  [Pipeline {definition_id}] 4/5 Aplicando actualizaciones...")
             update_rules = template_parser.get_update_rules()
+            template_options = template_parser.get_template_options()
             
             update_engine = UpdateEngine(
                 definition,
                 matches,
-                update_rules
+                update_rules,
+                template_options
             )
             update_engine.apply_updates()
             changes_count = update_engine.get_changes_count()

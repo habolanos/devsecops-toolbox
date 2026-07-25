@@ -5,13 +5,13 @@ Motor de actualización para Pipeline Updater
 import copy
 import fnmatch
 from typing import Dict, List, Any
-from .models import Match
+from .models import Match, TemplateOptions
 
 
 class UpdateEngine:
     """Motor de actualización de definiciones de release"""
     
-    def __init__(self, definition: Dict, matches: List[Match], update_rules: Dict):
+    def __init__(self, definition: Dict, matches: List[Match], update_rules: Dict, template_options: TemplateOptions = None):
         """
         Inicializar motor de actualización
         
@@ -19,10 +19,12 @@ class UpdateEngine:
             definition: Definición de release
             matches: Coincidencias encontradas
             update_rules: Reglas de actualización
+            template_options: Opciones del template
         """
         self.definition = definition
         self.matches = matches
         self.update_rules = update_rules
+        self.template_options = template_options or TemplateOptions()
         self.changes: List[Dict] = []
     
     def apply_updates(self) -> bool:
@@ -33,6 +35,10 @@ class UpdateEngine:
             True si todas las actualizaciones fueron exitosas
         """
         try:
+            # Primero remover variable groups ignorados si están configurados
+            if self.template_options.ignore_variable_groups:
+                self._remove_ignored_variable_groups()
+            
             stage_rules = self.update_rules.get('stages', [])
             
             # Primero procesar acciones de stage (copy/add/rename) que modifican stages
@@ -282,6 +288,43 @@ class UpdateEngine:
             raise ValueError(f"source_stage '{source_name}' no encontrado en el pipeline")
 
         self.definition['environments'] = environments
+    
+    def _remove_ignored_variable_groups(self):
+        """
+        Remover referencias a variable groups en la lista de ignorados.
+        
+        Esta función remueve los IDs de variable groups especificados en
+        ignore_variable_groups de cada environment del pipeline.
+        """
+        ignore_list = self.template_options.ignore_variable_groups
+        if not ignore_list:
+            return
+        
+        removed_groups = []
+        
+        for env in self.definition.get('environments', []):
+            current_groups = env.get('variableGroups', [])
+            if not current_groups:
+                continue
+            
+            # Filtrar grupos que no están en la lista de ignorados
+            valid_groups = [g for g in current_groups if g not in ignore_list]
+            
+            # Identificar grupos removidos
+            removed = [g for g in current_groups if g in ignore_list]
+            if removed:
+                removed_groups.extend(removed)
+                env['variableGroups'] = valid_groups
+                
+                # Registrar el cambio
+                self.changes.append({
+                    'type': 'variable_groups_removed',
+                    'environment': env.get('name', 'Unknown'),
+                    'removed_ids': removed
+                })
+        
+        if removed_groups:
+            self.definition['environments'] = self.definition.get('environments', [])
     
     def _resolve_insert_index(self, environments: List[Dict], rule: Dict, default_ref: str) -> int:
         """

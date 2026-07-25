@@ -6,7 +6,7 @@ import yaml
 import json
 from pathlib import Path
 from typing import Dict, Optional
-from .models import TemplateMetadata, SearchRule, UpdateRule
+from .models import TemplateMetadata, SearchRule, UpdateRule, TemplateOptions
 
 
 class TemplateParser:
@@ -77,6 +77,14 @@ class TemplateParser:
     def get_rollback_on_error(self) -> bool:
         """Obtener opción rollback_on_error"""
         return self.options.get('rollback_on_error', True)
+    
+    def get_template_options(self) -> TemplateOptions:
+        """Obtener opciones como objeto TemplateOptions"""
+        return TemplateOptions(
+            dry_run=self.options.get('dry_run', False),
+            rollback_on_error=self.options.get('rollback_on_error', True),
+            ignore_variable_groups=self.options.get('ignore_variable_groups', [])
+        )
     
     def to_dict(self) -> Dict:
         """Convertir template a diccionario"""
