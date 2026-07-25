@@ -1,12 +1,12 @@
 metadata:
   name: "Renombrar stage"
   version: "1.0"
-  description: "Renombra un stage Producción a Production"
+  description: "Renombra Dev, Stage a Develop, Staging"
   comment: |
     Renombrado de stage en pipeline CD.
 
     Cambios realizados:
-    1. El stage "Producción" se renombra a "Production".
+    1. Renombra Dev → QA → Stage a Develop QA Staging.
     2. Se mantiene el mismo ID, rank y configuración del stage original.
     3. Solo se modifica el campo 'name' del environment.
 
@@ -16,15 +16,21 @@ metadata:
 search:
   # Incluir el stage a renombrar para que el análisis lo detecte
   stages:
-    - name: "Producción"
+    - name: "Dev"
+    - name: "Stage"
 
 update:
   stages:
     - action: "rename"
       # Stage existente a renombrar
-      source_stage: "Producción"
+      source_stage: "Dev"
       # Nuevo nombre del stage
-      new_name: "Production"
+      new_name: "Develop"
+    - action: "rename"
+      # Stage existente a renombrar
+      source_stage: "Stage"
+      # Nuevo nombre del stage
+      new_name: "Staging"
 
 options:
   dry_run: false
