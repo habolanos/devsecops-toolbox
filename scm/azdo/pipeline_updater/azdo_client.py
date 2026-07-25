@@ -32,10 +32,10 @@ class AzureDevOpsClient:
     def __init__(self, pat: str, org: str, project: str, api_version: str = AZDO_API_VERSION):
         """
         Inicializar cliente
-        
+
         Args:
             pat: Personal Access Token
-            org: Organización
+            org: Organización (URL completa o nombre)
             project: Proyecto
             api_version: Versión de API
         """
@@ -43,7 +43,17 @@ class AzureDevOpsClient:
         self.org = org
         self.project = project
         self.api_version = api_version
-        self.base_url = f"{AZDO_BASE_URL}/{org}/{project}"
+
+        # Extraer nombre de org si es URL completa
+        if org.startswith("https://"):
+            org_name = org.split('/')[-1]
+            # Transformar dev.azure.com → vsrm.dev.azure.com
+            org_base = org.replace("dev.azure.com", "vsrm.dev.azure.com")
+            self.base_url = f"{org_base}/{project}"
+        else:
+            # Si es solo nombre, usar AZDO_BASE_URL
+            self.base_url = f"{AZDO_BASE_URL}/{org}/{project}"
+
         self.headers = self._get_headers()
         
         # Crear directorio de snapshots
