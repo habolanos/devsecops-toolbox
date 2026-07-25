@@ -155,8 +155,7 @@ TOOLS: Dict = {
         "name":        "Release CD Health",
         "description": "Score de salud de Release Pipelines CD: recencia + estabilidad + consistencia",
         "path":        "azdo_release_cd_health.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--sort",
-                        "--diagram", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--sort", "--diagram", "--output"],
         "group":       "release",
         "status":      "ready",
     },
@@ -164,8 +163,7 @@ TOOLS: Dict = {
         "name":        "Pipeline Drift Analyzer",
         "description": "Detecta drift entre pipeline actual y snapshot del último release (stages/vars/approvals/tasks)",
         "path":        "azdo_pipeline_drift.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--severity",
-                        "--sort", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--severity", "--sort", "--output"],
         "group":       "drift",
         "status":      "ready",
     },
@@ -173,8 +171,7 @@ TOOLS: Dict = {
         "name":        "Release Deep Dive",
         "description": "Análisis profundo de un Release Definition por ID: PRs + Políticas + CD Health + Drift",
         "path":        "azdo_release_deep_dive.py",
-        "args":        ["--pat", "--org", "--project", "--release-id", "--branch",
-                        "--stage-name", "--output"],
+        "args":        ["--pat", "--org", "--project", "--release-id", "--branch", "--stage-name", "--output"],
         "group":       "release",
         "status":      "ready",
     },
@@ -1735,7 +1732,7 @@ def run_tool(tool_key: str):
             extra.append("--diagram")
 
     if "--output" in tool_args:
-        cfg_fmt = config_get(cfg, "defaults", "output_format", default="")
+        cfg_fmt = config_get(cfg, "defaults", "output_format", default="excel")
         print(f"{Colors.BOLD}¿Exportar resultado? (json/csv/excel/ninguno) "
               f"[{Colors.CYAN}{cfg_fmt or 'ninguno'}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         val = input().strip().lower()
