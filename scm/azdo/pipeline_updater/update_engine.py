@@ -294,7 +294,9 @@ class UpdateEngine:
         Remover referencias a variable groups en la lista de ignorados.
         
         Esta función remueve los IDs de variable groups especificados en
-        ignore_variable_groups de cada environment del pipeline.
+        ignore_variable_groups de:
+        1. Nivel global del pipeline (definition.variableGroups)
+        2. Cada environment del pipeline (environments[].variableGroups)
         """
         ignore_list = self.template_options.ignore_variable_groups
         if not ignore_list:
@@ -302,6 +304,23 @@ class UpdateEngine:
         
         removed_groups = []
         
+        # 1. Remover grupos a nivel global del pipeline
+        global_groups = self.definition.get('variableGroups', [])
+        if global_groups:
+            valid_global_groups = [g for g in global_groups if g not in ignore_list]
+            removed_global = [g for g in global_groups if g in ignore_list]
+            if removed_global:
+                removed_groups.extend(removed_global)
+                self.definition['variableGroups'] = valid_global_groups
+                
+                # Registrar el cambio
+                self.changes.append({
+                    'type': 'variable_groups_removed',
+                    'environment': 'Global (Pipeline)',
+                    'removed_ids': removed_global
+                })
+        
+        # 2. Remover grupos a nivel de environments
         for env in self.definition.get('environments', []):
             current_groups = env.get('variableGroups', [])
             if not current_groups:
