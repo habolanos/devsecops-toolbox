@@ -81,8 +81,11 @@ class ParallelExecutor:
                     if on_progress:
                         on_progress(completed, total, None)
         
+        # Contar solo resultados exitosos
+        successful_count = sum(1 for r in self.results if r.success)
+        
         return {
-            'success': len(self.results),
+            'success': successful_count,
             'failed': len(self.errors),
             'total': len(definition_ids),
             'results': self.results,
@@ -194,10 +197,11 @@ class ParallelExecutor:
         total_duration = sum(r.duration for r in self.results)
         total_matches = sum(r.matches_found for r in self.results)
         total_changes = sum(r.changes_applied for r in self.results)
+        successful_count = sum(1 for r in self.results if r.success)
         
         return {
             'total_pipelines': len(self.results) + len(self.errors),
-            'successful': len(self.results),
+            'successful': successful_count,
             'failed': len(self.errors),
             'total_matches': total_matches,
             'total_changes': total_changes,

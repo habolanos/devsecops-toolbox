@@ -235,13 +235,34 @@ class UpdateEngine:
     def _rename_stage(self, rule: Dict):
         """Renombrar un stage existente."""
         environments = self.definition.get('environments', [])
-        
+
         source_name = rule.get('source_stage')
         new_name = rule.get('new_name')
-        
+
         if not source_name or not new_name:
             raise ValueError("action 'rename' requiere 'source_stage' y 'new_name'")
-        
+
+        # Validar que el nuevo nombre no exista ya
+        existing_names = [stage.get('name', '') for stage in environments]
+        if new_name in existing_names:
+            raise ValueError(f"El nombre '{new_name}' ya existe en el pipeline")
+
+        # Validar dependencias: verificar si otros stages dependen de este stage
+        for stage in environments:
+            deploy_phases = stage.get('deployPhases', [])
+            for phase in deploy_phases:
+                deployment_input = phase.get('deploymentInput', {})
+                conditions = deployment_input.get('conditions', [])
+                for condition in conditions:
+                    if condition.get('conditionType') == '2':  # 2 = succeeded condition
+                        value = condition.get('value', '')
+                        if source_name in value:
+                            raise ValueError(
+                                f"El stage '{stage.get('name')}' depende de '{source_name}'. "
+                                f"Renombrarlo romperá la dependencia. "
+                                f"Primero actualice la dependencia en '{stage.get('name')}' para usar '{new_name}'."
+                            )
+
         # Localizar el stage a renombrar
         stage_found = False
         for stage in environments:
@@ -249,17 +270,17 @@ class UpdateEngine:
                 old_name = stage['name']
                 stage['name'] = new_name
                 stage_found = True
-                
+
                 self.changes.append({
                     'type': 'stage_rename',
                     'old_name': old_name,
                     'new_name': new_name
                 })
                 break
-        
+
         if not stage_found:
             raise ValueError(f"source_stage '{source_name}' no encontrado en el pipeline")
-        
+
         self.definition['environments'] = environments
     
     def _resolve_insert_index(self, environments: List[Dict], rule: Dict, default_ref: str) -> int:
