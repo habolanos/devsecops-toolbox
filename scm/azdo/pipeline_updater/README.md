@@ -187,7 +187,25 @@ update:
 options:
   dry_run: false
   rollback_on_error: true
+  ignore_variable_groups: [186, 196]  # IDs de variable groups a ignorar/remover
 ```
+
+**Opciones disponibles:**
+
+- **`dry_run`** (bool, default: false): Si es true, no aplica cambios reales, solo simula.
+- **`rollback_on_error`** (bool, default: true): Si es true, crea snapshot antes de actualizar y hace rollback si hay error.
+- **`ignore_variable_groups`** (list[int], default: []): Lista de IDs de variable groups que deben removirse antes de actualizar. Útil cuando los pipelines referencian grupos que ya no existen en Azure DevOps.
+
+**Variable Groups Faltantes:**
+
+Cuando un pipeline tiene referencias a variable groups que fueron eliminados o movidos, la actualización falla con HTTP 400. Use `ignore_variable_groups` para especificar qué IDs remover automáticamente:
+
+```yaml
+options:
+  ignore_variable_groups: [186, 196]  # Estos grupos se removerán de todos los stages
+```
+
+Los grupos removidos se registran en el reporte de cambios con tipo `variable_groups_removed`.
 
 ## Ejemplos
 
