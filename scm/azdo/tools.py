@@ -1596,7 +1596,6 @@ def run_tool(tool_key: str):
                 # Construir comando
                 # Ejecutar como módulo para evitar problemas con imports relativos
                 # Usar python global en lugar del venv para acceso a dependencias
-                import sys
                 cmd = [
                     sys.executable, "-m", "scm.azdo.pipeline_updater.pipeline_updater",
                     "--definition-ids", definition_ids_str,
