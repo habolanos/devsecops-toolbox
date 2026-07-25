@@ -29,5 +29,10 @@ update:
 options:
   dry_run: false
   rollback_on_error: true
-  # IDs de variable groups a ignorar/remover (grupos que no existen en Azure DevOps)
-  ignore_variable_groups: [186, 196]
+  # Variable groups a remover antes de actualizar.
+  # Formato diferenciado por scope:
+  #   global:       Solo del nivel global del pipeline (definition.variableGroups)
+  #   environments:  Solo de cada stage (environments[].variableGroups)
+  #   all:           De ambos niveles
+  ignore_variable_groups:
+    all: [186, 196]

@@ -291,59 +291,49 @@ class UpdateEngine:
     
     def _remove_ignored_variable_groups(self):
         """
-        Remover referencias a variable groups en la lista de ignorados.
+        Remover referencias a variable groups segun el scope configurado.
         
-        Esta función remueve los IDs de variable groups especificados en
-        ignore_variable_groups de:
-        1. Nivel global del pipeline (definition.variableGroups)
-        2. Cada environment del pipeline (environments[].variableGroups)
+        Scope 'global' o 'all': remueve de definition.variableGroups
+        Scope 'environments' o 'all': remueve de environments[].variableGroups
         """
-        ignore_list = self.template_options.ignore_variable_groups
-        if not ignore_list:
+        ignore_vg = self.template_options.ignore_variable_groups
+        if not ignore_vg.has_any():
             return
         
-        removed_groups = []
+        global_ignore = ignore_vg.ids_for_global()
+        env_ignore = ignore_vg.ids_for_environments()
         
         # 1. Remover grupos a nivel global del pipeline
-        global_groups = self.definition.get('variableGroups', [])
-        if global_groups:
-            valid_global_groups = [g for g in global_groups if g not in ignore_list]
-            removed_global = [g for g in global_groups if g in ignore_list]
-            if removed_global:
-                removed_groups.extend(removed_global)
-                self.definition['variableGroups'] = valid_global_groups
-                
-                # Registrar el cambio
-                self.changes.append({
-                    'type': 'variable_groups_removed',
-                    'environment': 'Global (Pipeline)',
-                    'removed_ids': removed_global
-                })
+        if global_ignore:
+            global_groups = self.definition.get('variableGroups', [])
+            if global_groups:
+                valid_global = [g for g in global_groups if g not in global_ignore]
+                removed_global = [g for g in global_groups if g in global_ignore]
+                if removed_global:
+                    self.definition['variableGroups'] = valid_global
+                    self.changes.append({
+                        'type': 'variable_groups_removed',
+                        'scope': 'global',
+                        'removed_ids': removed_global
+                    })
         
         # 2. Remover grupos a nivel de environments
-        for env in self.definition.get('environments', []):
-            current_groups = env.get('variableGroups', [])
-            if not current_groups:
-                continue
-            
-            # Filtrar grupos que no están en la lista de ignorados
-            valid_groups = [g for g in current_groups if g not in ignore_list]
-            
-            # Identificar grupos removidos
-            removed = [g for g in current_groups if g in ignore_list]
-            if removed:
-                removed_groups.extend(removed)
-                env['variableGroups'] = valid_groups
+        if env_ignore:
+            for env in self.definition.get('environments', []):
+                current_groups = env.get('variableGroups', [])
+                if not current_groups:
+                    continue
                 
-                # Registrar el cambio
-                self.changes.append({
-                    'type': 'variable_groups_removed',
-                    'environment': env.get('name', 'Unknown'),
-                    'removed_ids': removed
-                })
-        
-        if removed_groups:
-            self.definition['environments'] = self.definition.get('environments', [])
+                valid_groups = [g for g in current_groups if g not in env_ignore]
+                removed = [g for g in current_groups if g in env_ignore]
+                if removed:
+                    env['variableGroups'] = valid_groups
+                    self.changes.append({
+                        'type': 'variable_groups_removed',
+                        'scope': 'environment',
+                        'environment': env.get('name', 'Unknown'),
+                        'removed_ids': removed
+                    })
     
     def _resolve_insert_index(self, environments: List[Dict], rule: Dict, default_ref: str) -> int:
         """

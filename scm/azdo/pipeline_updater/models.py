@@ -38,11 +38,28 @@ class TemplateMetadata:
 
 
 @dataclass
+class IgnoreVariableGroups:
+    """Configuracion de variable groups a remover por scope"""
+    global_ids: List[int] = field(default_factory=list)
+    environment_ids: List[int] = field(default_factory=list)
+    all_ids: List[int] = field(default_factory=list)
+
+    def has_any(self) -> bool:
+        return bool(self.global_ids or self.environment_ids or self.all_ids)
+
+    def ids_for_global(self) -> List[int]:
+        return list(set(self.global_ids + self.all_ids))
+
+    def ids_for_environments(self) -> List[int]:
+        return list(set(self.environment_ids + self.all_ids))
+
+
+@dataclass
 class TemplateOptions:
-    """Opciones de ejecución del template"""
+    """Opciones de ejecucion del template"""
     dry_run: bool = False
     rollback_on_error: bool = True
-    ignore_variable_groups: List[int] = field(default_factory=list)  # IDs de variable groups a ignorar/remover
+    ignore_variable_groups: IgnoreVariableGroups = field(default_factory=IgnoreVariableGroups)
 
 
 @dataclass

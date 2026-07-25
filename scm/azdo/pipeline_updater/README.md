@@ -194,25 +194,43 @@ options:
 
 - **`dry_run`** (bool, default: false): Si es true, no aplica cambios reales, solo simula.
 - **`rollback_on_error`** (bool, default: true): Si es true, crea snapshot antes de actualizar y hace rollback si hay error.
-- **`ignore_variable_groups`** (list[int], default: []): Lista de IDs de variable groups que deben removirse antes de actualizar. Útil cuando los pipelines referencian grupos que ya no existen en Azure DevOps.
+- **`ignore_variable_groups`** (list[int] | dict, default: []): IDs de variable groups a remover antes de actualizar. Acepta formato lista simple o diferenciado por scope (ver abajo).
 
 **Variable Groups Faltantes:**
 
-Cuando un pipeline tiene referencias a variable groups que fueron eliminados o movidos, la actualización falla con HTTP 400. Use `ignore_variable_groups` para especificar qué IDs remover automáticamente:
+Cuando un pipeline tiene referencias a variable groups que fueron eliminados o movidos, la actualización falla con HTTP 400. Use `ignore_variable_groups` para especificar qué IDs remover automáticamente.
+
+Azure DevOps almacena las referencias a variable groups en dos niveles distintos dentro de la definición del release pipeline:
+
+- **Global** (`definition.variableGroups`): Grupos vinculados al pipeline completo, visibles para todos los stages.
+- **Environments** (`environments[].variableGroups`): Grupos vinculados a un stage especifico, solo visibles dentro de ese stage.
+
+**Formato 1 - Lista simple (remueve de ambos niveles):**
 
 ```yaml
 options:
-  ignore_variable_groups: [186, 196]  # Estos grupos se removerán
+  ignore_variable_groups: [186, 196]
 ```
 
-**Niveles de Remoción:**
+Equivalente a usar `all: [186, 196]`.
 
-Los variable groups se remueven de dos niveles en la definición del pipeline:
+**Formato 2 - Diferenciado por scope:**
 
-1. **Nivel Global** (`definition.variableGroups`): Referencias a nivel del pipeline completo
-2. **Nivel de Environments** (`environments[].variableGroups`): Referencias específicas a cada stage
+```yaml
+options:
+  ignore_variable_groups:
+    global: [186]          # Solo remueve del nivel global del pipeline
+    environments: [196]    # Solo remueve de cada stage
+    all: [200]             # Remueve de ambos niveles
+```
 
-Los grupos removidos se registran en el reporte de cambios con tipo `variable_groups_removed`, indicando el nivel (Global o nombre del environment).
+| Scope | Donde remueve | Campo en la definicion |
+|-------|--------------|----------------------|
+| `global` | Nivel global del pipeline | `definition.variableGroups` |
+| `environments` | Cada stage individual | `environments[].variableGroups` |
+| `all` | Ambos niveles | Ambos campos |
+
+Los grupos removidos se registran en el reporte de cambios con tipo `variable_groups_removed`, indicando el `scope` (`global` o `environment`) y el `environment` afetado cuando aplica.
 
 ## Ejemplos
 

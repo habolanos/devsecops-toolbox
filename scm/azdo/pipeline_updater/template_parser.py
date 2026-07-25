@@ -6,7 +6,7 @@ import yaml
 import json
 from pathlib import Path
 from typing import Dict, Optional
-from .models import TemplateMetadata, SearchRule, UpdateRule, TemplateOptions
+from .models import TemplateMetadata, SearchRule, UpdateRule, TemplateOptions, IgnoreVariableGroups
 
 
 class TemplateParser:
@@ -80,11 +80,44 @@ class TemplateParser:
     
     def get_template_options(self) -> TemplateOptions:
         """Obtener opciones como objeto TemplateOptions"""
+        raw_ignore = self.options.get('ignore_variable_groups', [])
+        ignore_vg = self._parse_ignore_variable_groups(raw_ignore)
         return TemplateOptions(
             dry_run=self.options.get('dry_run', False),
             rollback_on_error=self.options.get('rollback_on_error', True),
-            ignore_variable_groups=self.options.get('ignore_variable_groups', [])
+            ignore_variable_groups=ignore_vg
         )
+
+    @staticmethod
+    def _parse_ignore_variable_groups(raw) -> IgnoreVariableGroups:
+        """
+        Parsear ignore_variable_groups desde el template.
+        
+        Acepta dos formatos:
+        
+        1. Lista simple (remueve de ambos niveles):
+           ignore_variable_groups: [186, 196]
+        
+        2. Diferenciado por scope:
+           ignore_variable_groups:
+             global: [186]         # Solo nivel global del pipeline
+             environments: [196]   # Solo nivel de environments/stages
+             all: [200]            # Ambos niveles
+        """
+        if not raw:
+            return IgnoreVariableGroups()
+        
+        if isinstance(raw, list):
+            return IgnoreVariableGroups(all_ids=raw)
+        
+        if isinstance(raw, dict):
+            return IgnoreVariableGroups(
+                global_ids=raw.get('global', []),
+                environment_ids=raw.get('environments', []),
+                all_ids=raw.get('all', [])
+            )
+        
+        return IgnoreVariableGroups()
     
     def to_dict(self) -> Dict:
         """Convertir template a diccionario"""
