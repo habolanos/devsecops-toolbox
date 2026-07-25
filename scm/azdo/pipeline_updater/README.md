@@ -202,10 +202,17 @@ Cuando un pipeline tiene referencias a variable groups que fueron eliminados o m
 
 ```yaml
 options:
-  ignore_variable_groups: [186, 196]  # Estos grupos se removerán de todos los stages
+  ignore_variable_groups: [186, 196]  # Estos grupos se removerán
 ```
 
-Los grupos removidos se registran en el reporte de cambios con tipo `variable_groups_removed`.
+**Niveles de Remoción:**
+
+Los variable groups se remueven de dos niveles en la definición del pipeline:
+
+1. **Nivel Global** (`definition.variableGroups`): Referencias a nivel del pipeline completo
+2. **Nivel de Environments** (`environments[].variableGroups`): Referencias específicas a cada stage
+
+Los grupos removidos se registran en el reporte de cambios con tipo `variable_groups_removed`, indicando el nivel (Global o nombre del environment).
 
 ## Ejemplos
 
