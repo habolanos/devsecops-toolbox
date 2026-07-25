@@ -595,22 +595,21 @@ def ask_common_params(cfg: dict, tool_key: str = "") -> dict:
     print(f"{Colors.BOLD}  Parámetros Comunes{Colors.ENDC}")
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
     
-    # Organización
+    # Organización - Retornar URL completa
     cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
-    if cfg_org.startswith("https://"):
-        cfg_org = cfg_org.split('/')[-1]
     
     org = prompt("Organización", default=cfg_org)
-    # Asegurar que org es solo el nombre, sin URL
-    if org.startswith("https://"):
-        org = org.split('/')[-1]
+    # Asegurar que org es la URL completa
+    if not org.startswith("https://"):
+        # Si el usuario ingresó solo el nombre, construir la URL
+        org = f"https://dev.azure.com/{org}"
     
     # Proyecto
     project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
     
     # PAT
-    pat = prompt("Personal Access Token (PAT)", 
-                default=config_get(cfg, "azdo", "pat", default=""), 
+    pat = prompt("Personal Access Token (PAT)",
+                default=config_get(cfg, "azdo", "pat", default=""),
                 secret=True)
     if not pat:
         print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
