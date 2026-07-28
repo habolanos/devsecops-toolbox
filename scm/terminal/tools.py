@@ -249,19 +249,16 @@ def print_menu_rich():
     )
     
     table.add_column("#", justify="center", width=4)
-    table.add_column("Estado", justify="center", width=4)
     table.add_column("Nombre", style="white", min_width=25)
-    table.add_column("Descripción", style="dim", min_width=40)
+    table.add_column("Descripción", style="dim", min_width=60)
     
     for key, script in SCRIPTS.items():
         if key.startswith("_"):
             continue
-        emoji = STATUS_EMOJI.get(script.get("status", "ready"), "⚪")
         name_style = "bold white" if key != "Q" else "bold yellow"
         
         table.add_row(
             f"[cyan]{key}[/cyan]",
-            emoji,
             f"[{name_style}]{script['name']}[/{name_style}]",
             script.get('description', '')
         )
@@ -280,9 +277,8 @@ def print_menu_fallback():
     for key, script in SCRIPTS.items():
         if key.startswith("_"):
             continue
-        emoji = STATUS_EMOJI.get(script.get("status", "ready"), "⚪")
         color = Colors.WARNING if key == "Q" else Colors.BLUE
-        print(f"  {color}[{key}]{Colors.ENDC} {emoji} {Colors.BOLD}{script['name']}{Colors.ENDC}")
+        print(f"  {color}[{key}]{Colors.ENDC} {Colors.BOLD}{script['name']}{Colors.ENDC}")
         print(f"      {script.get('description', '')}")
     print()
 
