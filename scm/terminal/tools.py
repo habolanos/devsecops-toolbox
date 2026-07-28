@@ -254,6 +254,8 @@ def print_menu_rich():
     table.add_column("Descripción", style="dim", min_width=40)
     
     for key, script in SCRIPTS.items():
+        if key.startswith("_"):
+            continue
         emoji = STATUS_EMOJI.get(script.get("status", "ready"), "⚪")
         name_style = "bold white" if key != "Q" else "bold yellow"
         
@@ -276,6 +278,8 @@ def print_menu_fallback():
     print()
     
     for key, script in SCRIPTS.items():
+        if key.startswith("_"):
+            continue
         emoji = STATUS_EMOJI.get(script.get("status", "ready"), "⚪")
         color = Colors.WARNING if key == "Q" else Colors.BLUE
         print(f"  {color}[{key}]{Colors.ENDC} {emoji} {Colors.BOLD}{script['name']}{Colors.ENDC}")
@@ -301,7 +305,7 @@ def check_windows_compatibility():
 
 def run_script(script_key: str):
     """Ejecuta el script seleccionado."""
-    if script_key not in SCRIPTS:
+    if script_key not in SCRIPTS or script_key.startswith("_"):
         print(f"{Colors.FAIL}Opción no válida.{Colors.ENDC}")
         return
     
