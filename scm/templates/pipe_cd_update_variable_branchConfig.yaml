@@ -1,0 +1,18 @@
+metadata:
+  name: "Cambiar variables de entorno"
+  version: "1.0"
+  comment: |
+    Cambios: variable branchConfig config-cadenaSuministro → master
+    Razón: Promoción a producción
+    Aprobado por: DevOps Lead
+    Fecha: 2026-07-13
+
+search:
+  variables:
+    - name: "branchConfig"
+
+update:
+  variables:
+    - name: "branchConfig"
+      old_value: "config-cadenaSuministro"
+      new_value: "master"
