@@ -64,16 +64,19 @@ class TestDashboardGenerator(unittest.TestCase):
             'duplicates': [
                 {'severity': 'CRITICAL', 'gateway': 'default/gw-1', 'listener': 'http',
                  'hostname': 'api.example.com', 'path': '/api', 'method': 'GET',
+                 'headers': 'X-Service=A', 'query_params': '*',
                  'route_1': 'default/route-1', 'route_2': 'default/route-3',
                  'conflict_type': 'Duplicidad exacta', 'cluster': 'cluster-a',
                  'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'severity': 'HIGH', 'gateway': 'default/gw-1', 'listener': 'http',
                  'hostname': 'api.example.com', 'path': '/api ~ /api/v1', 'method': '*',
+                 'headers': '*', 'query_params': 'debug=true',
                  'route_1': 'default/route-1', 'route_2': 'default/route-2',
                  'conflict_type': 'Paths solapados', 'cluster': 'cluster-a',
                  'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'severity': 'MEDIUM', 'gateway': 'prod/gw-2', 'listener': '*',
                  'hostname': 'svc.example.com', 'path': '*', 'method': '*',
+                 'headers': '*', 'query_params': '*',
                  'route_1': 'prod/route-2', 'route_2': 'prod/route-4',
                  'conflict_type': 'Mismo hostname sin sectionName', 'cluster': 'cluster-b',
                  'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
@@ -250,6 +253,23 @@ class TestDashboardGenerator(unittest.TestCase):
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
         self.assertIn('detectResourceType', content)
+
+    def test_html_contains_headers_and_query_params_columns(self):
+        results = self._sample_results()
+        path = generate_dashboard(results, self.project_id, self.revision_time, self.output_path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        self.assertIn('Headers', content)
+        self.assertIn('Query Params', content)
+        self.assertIn('X-Service=A', content)
+        self.assertIn('debug=true', content)
+
+    def test_html_duplicate_empty_colspan_13(self):
+        results = self._sample_results(overrides={'duplicates': []})
+        path = generate_dashboard(results, self.project_id, self.revision_time, self.output_path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        self.assertIn('colspan="13"', content)
 
 
 if __name__ == '__main__':

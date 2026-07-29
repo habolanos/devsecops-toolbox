@@ -296,10 +296,12 @@ tbody tr:hover{{background:#1e293b;}}
         <th onclick="sortTable('dup-table',4)">Hostname<span class="sort-arrow"></span></th>
         <th onclick="sortTable('dup-table',5)">Path<span class="sort-arrow"></span></th>
         <th onclick="sortTable('dup-table',6)">Method<span class="sort-arrow"></span></th>
-        <th onclick="sortTable('dup-table',7)">Route 1<span class="sort-arrow"></span></th>
-        <th onclick="sortTable('dup-table',8)">Route 2<span class="sort-arrow"></span></th>
-        <th onclick="sortTable('dup-table',9)">Conflict Type<span class="sort-arrow"></span></th>
-        <th onclick="sortTable('dup-table',10)">Revisión<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('dup-table',7)">Headers<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('dup-table',8)">Query Params<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('dup-table',9)">Route 1<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('dup-table',10)">Route 2<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('dup-table',11)">Conflict Type<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('dup-table',12)">Revisión<span class="sort-arrow"></span></th>
       </tr></thead><tbody>
 {_render_duplicate_rows(duplicates)}
       </tbody></table>
@@ -376,14 +378,15 @@ function renderPolicies(data){{
 
 function renderDuplicates(data){{
   const tbody=document.querySelector('#dup-table tbody');
-  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="11" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>';return;}}
+  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="13" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>';return;}}
   const sc={{CRITICAL:'pill-critical',HIGH:'pill-high',MEDIUM:'pill-medium'}};
   tbody.innerHTML=data.map(d=>{{
     const sev=d.severity||'MEDIUM';
     const p=`<span class="pill ${{sc[sev]||'pill-gray'}}">${{esc(sev)}}</span>`;
     return `<tr><td>${{p}}</td><td>${{esc(d.cluster)}}</td><td>${{esc(d.gateway)}}</td>
       <td>${{esc(d.listener)}}</td><td>${{esc(d.hostname)}}</td><td>${{esc(d.path)}}</td>
-      <td>${{esc(d.method)}}</td><td>${{esc(d.route_1)}}</td><td>${{esc(d.route_2)}}</td>
+      <td>${{esc(d.method)}}</td><td>${{esc(d.headers||'*')}}</td><td>${{esc(d.query_params||'*')}}</td>
+      <td>${{esc(d.route_1)}}</td><td>${{esc(d.route_2)}}</td>
       <td>${{esc(d.conflict_type)}}</td><td>${{esc(d.revision_time)}}</td></tr>`;
   }}).join('');
 }}
@@ -594,7 +597,7 @@ def _render_policy_rows(policies):
 
 def _render_duplicate_rows(duplicates):
     if not duplicates:
-        return '        <tr><td colspan="11" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>'
+        return '        <tr><td colspan="13" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>'
     sev_class = {'CRITICAL': 'pill-critical', 'HIGH': 'pill-high', 'MEDIUM': 'pill-medium'}
     rows = []
     for d in duplicates:
@@ -608,6 +611,8 @@ def _render_duplicate_rows(duplicates):
           <td>{escape(d.get('hostname',''))}</td>
           <td>{escape(d.get('path',''))}</td>
           <td>{escape(d.get('method',''))}</td>
+          <td>{escape(d.get('headers','*'))}</td>
+          <td>{escape(d.get('query_params','*'))}</td>
           <td>{escape(d.get('route_1',''))}</td>
           <td>{escape(d.get('route_2',''))}</td>
           <td>{escape(d.get('conflict_type',''))}</td>
