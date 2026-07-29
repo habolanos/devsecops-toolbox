@@ -85,6 +85,9 @@ El dashboard HTML se genera **por defecto** en cada ejecución y incluye:
 - **Busqueda en vivo**: Filtra resultados por texto en cada tabla
 - **Pills de estado**: Colores semaforicos (verde=healthy, rojo=unhealthy, amarillo=degraded)
 - **Deteccion de duplicados**: Conflictos CRITICAL/HIGH/MEDIUM con detalles de rutas conflictivas
+- **Columna Revisión**: Fecha/hora de revision en cada fila de todas las tablas
+- **Fecha de generacion**: Timestamp de cuando se genero el dashboard (en header y footer)
+- **Carga de JSON**: Boton "Cargar JSON" para importar archivos JSON exportados y actualizar el dashboard dinamicamente
 - **Diseño responsive**: Funciona en desktop y movil
 - **Tema oscuro**: Interfaz moderna con colores oscuros
 
@@ -263,7 +266,7 @@ kubectl describe gateway mi-gateway -n mi-namespace
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
-| 2026-07-29 | 2.3.0 | Dashboard HTML interactivo por defecto (tabs, sort, search, cards), export html, descripcion mejorada en tools.py |
+| 2026-07-29 | 2.3.1 | Columna Revisión en todas las tablas, fecha de generacion del dashboard, boton Cargar JSON para importar archivos JSON exportados |
 | 2026-07-29 | 2.2.2 | Soporte para multiples proyectos separados por coma en --project |
 | 2026-07-29 | 2.2.1 | Ajuste: prompt de cluster en tools.py ahora usa TODOS por defecto (vacio = todos) |
 | 2026-07-29 | 2.2.0 | Nueva vista `--view duplicates`: deteccion de HTTPRoutes duplicadas/conflictivas por Gateway con 3 niveles de severidad (CRITICAL/HIGH/MEDIUM) |

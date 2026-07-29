@@ -22,6 +22,7 @@ def generate_dashboard(all_results, project_id, revision_time, output_path, clus
         output_path: ruta completa del archivo HTML a generar
         clusters_scanned: lista de nombres de clusters escaneados
     """
+    generated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     gateways = all_results.get('gateways', [])
     routes = all_results.get('routes', [])
     services = all_results.get('services', [])
@@ -54,9 +55,18 @@ def generate_dashboard(all_results, project_id, revision_time, output_path, clus
         if s.get('cluster')
     ))
 
+    # Serializar datos para embeber en el HTML (para carga dinamica de JSON)
+    # Escapar <, >, & para evitar inyeccion via </script>
+    embedded_data = json.dumps({
+        'gateways': gateways, 'routes': routes, 'services': services,
+        'policies': policies, 'duplicates': duplicates
+    }, ensure_ascii=False, default=str).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+
     html = _build_html(
         project_id=project_id,
         revision_time=revision_time,
+        generated_at=generated_at,
+        embedded_data=embedded_data,
         gateways=gateways, routes=routes, services=services, policies=policies, duplicates=duplicates,
         gw_healthy=gw_healthy, gw_unhealthy=gw_unhealthy, gw_other=gw_other,
         rt_healthy=rt_healthy, rt_no_gw=rt_no_gw,
@@ -75,6 +85,8 @@ def generate_dashboard(all_results, project_id, revision_time, output_path, clus
 def _build_html(**ctx):
     project_id = ctx['project_id']
     revision_time = ctx['revision_time']
+    generated_at = ctx['generated_at']
+    embedded_data = ctx['embedded_data']
     gateways = ctx['gateways']
     routes = ctx['routes']
     services = ctx['services']
@@ -96,6 +108,9 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubun
 .header .meta{{display:flex;gap:24px;margin-top:12px;flex-wrap:wrap;font-size:.875rem;color:#94a3b8;}}
 .header .meta span{{display:flex;align-items:center;gap:6px;}}
 .header .badge{{background:#1e293b;border:1px solid #475569;padding:4px 12px;border-radius:20px;font-size:.75rem;color:#38bdf8;}}
+.load-btn{{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;background:#0ea5e9;color:#0f172a;border:none;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .15s;}}
+.load-btn:hover{{background:#38bdf8;}}
+.load-info{{font-size:.75rem;color:#64748b;margin-top:8px;}}
 .container{{max-width:1400px;margin:0 auto;padding:24px;}}
 .section{{margin-bottom:32px;}}
 .section-title{{font-size:1.25rem;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px;color:#f1f5f9;}}
@@ -164,8 +179,14 @@ tbody tr:hover{{background:#1e293b;}}
   <div class="meta">
     <span>📦 <strong>Proyecto:</strong> {escape(project_id)}</span>
     <span>🕐 <strong>Revisión:</strong> {escape(revision_time)}</span>
+    <span>📅 <strong>Generado:</strong> {escape(generated_at)}</span>
     <span>☸️ <strong>Clusters:</strong> {len(clusters_list)}</span>
-    <span class="badge">v2.3.0</span>
+    <span class="badge">v2.3.1</span>
+  </div>
+  <div style="margin-top:12px;">
+    <label class="load-btn" for="json-input">📂 Cargar JSON</label>
+    <input type="file" id="json-input" multiple accept=".json" style="display:none">
+    <span class="load-info" id="load-info">Selecciona archivos JSON exportados (gateway_gateways_*.json, gateway_routes_*.json, etc.)</span>
   </div>
 </div>
 
@@ -200,6 +221,7 @@ tbody tr:hover{{background:#1e293b;}}
         <th onclick="sortTable('gw-table',6)">Load Balancer<span class="sort-arrow"></span></th>
         <th onclick="sortTable('gw-table',7)">IP Addresses<span class="sort-arrow"></span></th>
         <th onclick="sortTable('gw-table',8)">Ports<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('gw-table',9)">Revisión<span class="sort-arrow"></span></th>
       </tr></thead><tbody>
 {_render_gateway_rows(gateways)}
       </tbody></table>
@@ -218,6 +240,7 @@ tbody tr:hover{{background:#1e293b;}}
         <th onclick="sortTable('rt-table',5)">Rules<span class="sort-arrow"></span></th>
         <th onclick="sortTable('rt-table',6)">Attached Gateways<span class="sort-arrow"></span></th>
         <th onclick="sortTable('rt-table',7)">Status<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',8)">Revisión<span class="sort-arrow"></span></th>
       </tr></thead><tbody>
 {_render_route_rows(routes)}
       </tbody></table>
@@ -235,6 +258,7 @@ tbody tr:hover{{background:#1e293b;}}
         <th onclick="sortTable('svc-table',4)">Type<span class="sort-arrow"></span></th>
         <th onclick="sortTable('svc-table',5)">Endpoints<span class="sort-arrow"></span></th>
         <th onclick="sortTable('svc-table',6)">Pods<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('svc-table',7)">Revisión<span class="sort-arrow"></span></th>
       </tr></thead><tbody>
 {_render_service_rows(services)}
       </tbody></table>
@@ -254,6 +278,7 @@ tbody tr:hover{{background:#1e293b;}}
         <th onclick="sortTable('pol-table',6)">Target Name<span class="sort-arrow"></span></th>
         <th onclick="sortTable('pol-table',7)">Status<span class="sort-arrow"></span></th>
         <th onclick="sortTable('pol-table',8)">Date Created<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('pol-table',9)">Revisión<span class="sort-arrow"></span></th>
       </tr></thead><tbody>
 {_render_policy_rows(policies)}
       </tbody></table>
@@ -274,6 +299,7 @@ tbody tr:hover{{background:#1e293b;}}
         <th onclick="sortTable('dup-table',7)">Route 1<span class="sort-arrow"></span></th>
         <th onclick="sortTable('dup-table',8)">Route 2<span class="sort-arrow"></span></th>
         <th onclick="sortTable('dup-table',9)">Conflict Type<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('dup-table',10)">Revisión<span class="sort-arrow"></span></th>
       </tr></thead><tbody>
 {_render_duplicate_rows(duplicates)}
       </tbody></table>
@@ -283,10 +309,147 @@ tbody tr:hover{{background:#1e293b;}}
 </div>
 
 <div class="footer">
-  Generated by GCP Gateway Services Checker v2.3.0 · {escape(revision_time)}
+  Generated by GCP Gateway Services Checker v2.3.1 · {escape(revision_time)} · Dashboard: {escape(generated_at)}
 </div>
 
+<script type="application/json" id="dashboard-data">{embedded_data}</script>
+
 <script>
+let dashboardData = JSON.parse(document.getElementById('dashboard-data').textContent);
+
+function esc(s){{return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}
+function pill(status){{
+  const s=(status||'').toLowerCase();
+  if(s==='healthy'||s==='ok')return '<span class="pill pill-green">Healthy</span>';
+  if(s==='unhealthy'||s==='error')return '<span class="pill pill-red">Unhealthy</span>';
+  if(s==='pending'||s==='degraded')return '<span class="pill pill-yellow">Pending</span>';
+  return '<span class="pill pill-gray">'+esc(status||'N/A')+'</span>';
+}}
+
+function renderGateways(data){{
+  const tbody=document.querySelector('#gw-table tbody');
+  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="10" class="empty">No se detectaron Gateways</td></tr>';return;}}
+  tbody.innerHTML=data.map(g=>`<tr>
+    <td>${{esc(g.cluster)}}</td><td>${{esc(g.name)}}</td><td>${{esc(g.namespace)}}</td>
+    <td>${{pill(g.status)}}</td><td>${{esc(g.gateway_class)}}</td><td>${{esc(g.type)}}</td>
+    <td>${{esc(g.load_balancer)}}</td><td>${{esc(g.ip_addresses)}}</td><td>${{esc(g.ports)}}</td>
+    <td>${{esc(g.revision_time)}}</td></tr>`).join('');
+}}
+
+function renderRoutes(data){{
+  const tbody=document.querySelector('#rt-table tbody');
+  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="9" class="empty">No se detectaron HTTPRoutes</td></tr>';return;}}
+  tbody.innerHTML=data.map(r=>{{
+    const hasGw=r.has_gateway, rules=r.rules_count||0;
+    let sp='<span class="pill pill-green">Healthy</span>';
+    if(!hasGw)sp='<span class="pill pill-red">No Gateway</span>';
+    else if(rules===0)sp='<span class="pill pill-yellow">No Rules</span>';
+    return `<tr><td>${{esc(r.cluster)}}</td><td>${{esc(r.name)}}</td><td>${{esc(r.namespace)}}</td>
+      <td>${{esc(r.hostnames)}}</td><td>${{esc(r.date_created)}}</td><td>${{esc(String(rules))}}</td>
+      <td>${{esc(r.attached_gateways)}}</td><td>${{sp}}</td><td>${{esc(r.revision_time)}}</td></tr>`;
+  }}).join('');
+}}
+
+function renderServices(data){{
+  const tbody=document.querySelector('#svc-table tbody');
+  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="8" class="empty">No se detectaron Services</td></tr>';return;}}
+  tbody.innerHTML=data.map(s=>{{
+    const pr=s.pods_ready||0, pt=s.pods_total||0;
+    let pp=`<span class="pill pill-green">${{pr}}/${{pt}}</span>`;
+    if(pt===0)pp=`<span class="pill pill-red">${{pr}}/${{pt}}</span>`;
+    else if(pr<pt)pp=`<span class="pill pill-yellow">${{pr}}/${{pt}}</span>`;
+    return `<tr><td>${{esc(s.cluster)}}</td><td>${{esc(s.name)}}</td><td>${{esc(s.namespace)}}</td>
+      <td>${{pill(s.status)}}</td><td>${{esc(s.type)}}</td><td>${{esc(s.endpoints)}}</td><td>${{pp}}</td>
+      <td>${{esc(s.revision_time)}}</td></tr>`;
+  }}).join('');
+}}
+
+function renderPolicies(data){{
+  const tbody=document.querySelector('#pol-table tbody');
+  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="10" class="empty">No se detectaron Policies</td></tr>';return;}}
+  tbody.innerHTML=data.map(p=>`<tr>
+    <td>${{esc(p.cluster)}}</td><td>${{esc(p.name)}}</td><td>${{esc(p.namespace)}}</td>
+    <td>${{esc(p.kind)}}</td><td>${{esc(p.policy_type)}}</td><td>${{esc(p.target_kind)}}</td>
+    <td>${{esc(p.target_name)}}</td><td>${{pill(p.status)}}</td><td>${{esc(p.date_created)}}</td>
+    <td>${{esc(p.revision_time)}}</td></tr>`).join('');
+}}
+
+function renderDuplicates(data){{
+  const tbody=document.querySelector('#dup-table tbody');
+  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="11" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>';return;}}
+  const sc={{CRITICAL:'pill-critical',HIGH:'pill-high',MEDIUM:'pill-medium'}};
+  tbody.innerHTML=data.map(d=>{{
+    const sev=d.severity||'MEDIUM';
+    const p=`<span class="pill ${{sc[sev]||'pill-gray'}}">${{esc(sev)}}</span>`;
+    return `<tr><td>${{p}}</td><td>${{esc(d.cluster)}}</td><td>${{esc(d.gateway)}}</td>
+      <td>${{esc(d.listener)}}</td><td>${{esc(d.hostname)}}</td><td>${{esc(d.path)}}</td>
+      <td>${{esc(d.method)}}</td><td>${{esc(d.route_1)}}</td><td>${{esc(d.route_2)}}</td>
+      <td>${{esc(d.conflict_type)}}</td><td>${{esc(d.revision_time)}}</td></tr>`;
+  }}).join('');
+}}
+
+function updateCardsAndBadges(){{
+  const g=dashboardData.gateways||[], r=dashboardData.routes||[], s=dashboardData.services||[], p=dashboardData.policies||[], d=dashboardData.duplicates||[];
+  const cards=document.querySelectorAll('.card .value');
+  if(cards.length>=5){{
+    cards[0].textContent=g.filter(x=>x.status==='Healthy').length;
+    cards[1].textContent=r.filter(x=>x.has_gateway&&(x.rules_count||0)>0).length;
+    cards[2].textContent=s.filter(x=>x.status==='OK'&&(x.pods_ready||0)===(x.pods_total||0)&&(x.pods_total||0)>0).length;
+    cards[3].textContent=p.length;
+    cards[4].textContent=d.filter(x=>x.severity==='CRITICAL').length;
+  }}
+  const badges=document.querySelectorAll('.tab .badge-num');
+  if(badges.length>=5){{badges[0].textContent=g.length;badges[1].textContent=r.length;badges[2].textContent=s.length;badges[3].textContent=p.length;badges[4].textContent=d.length;}}
+}}
+
+function renderAll(){{
+  renderGateways(dashboardData.gateways||[]);
+  renderRoutes(dashboardData.routes||[]);
+  renderServices(dashboardData.services||[]);
+  renderPolicies(dashboardData.policies||[]);
+  renderDuplicates(dashboardData.duplicates||[]);
+  updateCardsAndBadges();
+}}
+
+function detectResourceType(filename){{
+  const f=filename.toLowerCase();
+  if(f.includes('gateway'))return 'gateways';
+  if(f.includes('route'))return 'routes';
+  if(f.includes('service'))return 'services';
+  if(f.includes('politic'))return 'policies';
+  if(f.includes('duplicate'))return 'duplicates';
+  return null;
+}}
+
+document.getElementById('json-input').addEventListener('change', function(e){{
+  const files=Array.from(e.target.files);
+  if(!files.length)return;
+  let loaded=0;
+  const info=document.getElementById('load-info');
+  info.textContent='Cargando '+files.length+' archivo(s)...';
+  files.forEach(file=>{{
+    const reader=new FileReader();
+    reader.onload=function(ev){{
+      try{{
+        const parsed=JSON.parse(ev.target.result);
+        const data=parsed.data||parsed;
+        const rtype=detectResourceType(file.name);
+        if(rtype&&Array.isArray(data)){{
+          dashboardData[rtype]=data;
+          loaded++;
+          info.textContent='Cargados '+loaded+'/'+files.length+' archivo(s). '+rtype+' actualizado.';
+          renderAll();
+        }}else{{
+          info.textContent='No se pudo detectar tipo de recurso de: '+file.name;
+        }}
+      }}catch(err){{
+        info.textContent='Error parseando '+file.name+': '+err.message;
+      }}
+    }};
+    reader.readAsText(file);
+  }});
+}});
+
 function showTab(name){{
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
@@ -338,7 +501,7 @@ def _pill(status):
 
 def _render_gateway_rows(gateways):
     if not gateways:
-        return '        <tr><td colspan="9" class="empty">No se detectaron Gateways</td></tr>'
+        return '        <tr><td colspan="10" class="empty">No se detectaron Gateways</td></tr>'
     rows = []
     for g in gateways:
         rows.append(f"""        <tr>
@@ -351,13 +514,14 @@ def _render_gateway_rows(gateways):
           <td>{escape(g.get('load_balancer',''))}</td>
           <td>{escape(g.get('ip_addresses',''))}</td>
           <td>{escape(g.get('ports',''))}</td>
+          <td>{escape(g.get('revision_time',''))}</td>
         </tr>""")
     return '\n'.join(rows)
 
 
 def _render_route_rows(routes):
     if not routes:
-        return '        <tr><td colspan="8" class="empty">No se detectaron HTTPRoutes</td></tr>'
+        return '        <tr><td colspan="9" class="empty">No se detectaron HTTPRoutes</td></tr>'
     rows = []
     for r in routes:
         has_gw = r.get('has_gateway', False)
@@ -377,13 +541,14 @@ def _render_route_rows(routes):
           <td>{escape(str(rules))}</td>
           <td>{escape(r.get('attached_gateways',''))}</td>
           <td>{status_pill}</td>
+          <td>{escape(r.get('revision_time',''))}</td>
         </tr>""")
     return '\n'.join(rows)
 
 
 def _render_service_rows(services):
     if not services:
-        return '        <tr><td colspan="7" class="empty">No se detectaron Services</td></tr>'
+        return '        <tr><td colspan="8" class="empty">No se detectaron Services</td></tr>'
     rows = []
     for s in services:
         pods_ready = s.get('pods_ready', 0)
@@ -402,13 +567,14 @@ def _render_service_rows(services):
           <td>{escape(s.get('type',''))}</td>
           <td>{escape(s.get('endpoints',''))}</td>
           <td>{pods_pill}</td>
+          <td>{escape(s.get('revision_time',''))}</td>
         </tr>""")
     return '\n'.join(rows)
 
 
 def _render_policy_rows(policies):
     if not policies:
-        return '        <tr><td colspan="9" class="empty">No se detectaron Policies</td></tr>'
+        return '        <tr><td colspan="10" class="empty">No se detectaron Policies</td></tr>'
     rows = []
     for p in policies:
         rows.append(f"""        <tr>
@@ -421,13 +587,14 @@ def _render_policy_rows(policies):
           <td>{escape(p.get('target_name',''))}</td>
           <td>{_pill(p.get('status',''))}</td>
           <td>{escape(p.get('date_created',''))}</td>
+          <td>{escape(p.get('revision_time',''))}</td>
         </tr>""")
     return '\n'.join(rows)
 
 
 def _render_duplicate_rows(duplicates):
     if not duplicates:
-        return '        <tr><td colspan="10" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>'
+        return '        <tr><td colspan="11" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>'
     sev_class = {'CRITICAL': 'pill-critical', 'HIGH': 'pill-high', 'MEDIUM': 'pill-medium'}
     rows = []
     for d in duplicates:
@@ -444,5 +611,6 @@ def _render_duplicate_rows(duplicates):
           <td>{escape(d.get('route_1',''))}</td>
           <td>{escape(d.get('route_2',''))}</td>
           <td>{escape(d.get('conflict_type',''))}</td>
+          <td>{escape(d.get('revision_time',''))}</td>
         </tr>""")
     return '\n'.join(rows)

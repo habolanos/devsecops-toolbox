@@ -23,49 +23,60 @@ class TestDashboardGenerator(unittest.TestCase):
             'gateways': [
                 {'name': 'gw-1', 'status': 'Healthy', 'gateway_class': 'gke-l7-ril',
                  'type': 'Single', 'load_balancer': 'lb-1', 'ip_addresses': '10.0.0.1',
-                 'namespace': 'default', 'ports': '80,443', 'cluster': 'cluster-a'},
+                 'namespace': 'default', 'ports': '80,443', 'cluster': 'cluster-a',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'name': 'gw-2', 'status': 'Unhealthy', 'gateway_class': 'gke-l7-ril',
                  'type': 'Multi', 'load_balancer': 'lb-2', 'ip_addresses': '10.0.0.2',
-                 'namespace': 'prod', 'ports': '80', 'cluster': 'cluster-b'},
+                 'namespace': 'prod', 'ports': '80', 'cluster': 'cluster-b',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
             ],
             'routes': [
                 {'name': 'route-1', 'namespace': 'default', 'hostnames': 'api.example.com',
                  'date_created': '2026-01-01', 'rules_count': 2,
-                 'attached_gateways': 'gw-1', 'has_gateway': True, 'cluster': 'cluster-a'},
+                 'attached_gateways': 'gw-1', 'has_gateway': True, 'cluster': 'cluster-a',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'name': 'route-2', 'namespace': 'prod', 'hostnames': 'svc.example.com',
                  'date_created': '2026-02-01', 'rules_count': 0,
-                 'attached_gateways': '', 'has_gateway': False, 'cluster': 'cluster-b'},
+                 'attached_gateways': '', 'has_gateway': False, 'cluster': 'cluster-b',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
             ],
             'services': [
                 {'name': 'svc-1', 'status': 'OK', 'type': 'ClusterIP',
                  'endpoints': '10.0.1.1', 'pods_ready': 3, 'pods_total': 3,
-                 'namespace': 'default', 'cluster': 'cluster-a'},
+                 'namespace': 'default', 'cluster': 'cluster-a',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'name': 'svc-2', 'status': 'OK', 'type': 'ClusterIP',
                  'endpoints': '10.0.1.2', 'pods_ready': 1, 'pods_total': 3,
-                 'namespace': 'prod', 'cluster': 'cluster-b'},
+                 'namespace': 'prod', 'cluster': 'cluster-b',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'name': 'svc-3', 'status': 'Pending', 'type': 'ClusterIP',
                  'endpoints': 'None', 'pods_ready': 0, 'pods_total': 0,
-                 'namespace': 'prod', 'cluster': 'cluster-b'},
+                 'namespace': 'prod', 'cluster': 'cluster-b',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
             ],
             'policies': [
                 {'name': 'pol-1', 'status': 'Healthy', 'kind': 'HealthCheckPolicy',
                  'policy_type': 'HTTP health check', 'target_kind': 'Gateway',
                  'target_name': 'gw-1', 'namespace': 'default',
-                 'date_created': '2026-01-01', 'cluster': 'cluster-a'},
+                 'date_created': '2026-01-01', 'cluster': 'cluster-a',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
             ],
             'duplicates': [
                 {'severity': 'CRITICAL', 'gateway': 'default/gw-1', 'listener': 'http',
                  'hostname': 'api.example.com', 'path': '/api', 'method': 'GET',
                  'route_1': 'default/route-1', 'route_2': 'default/route-3',
-                 'conflict_type': 'Duplicidad exacta', 'cluster': 'cluster-a'},
+                 'conflict_type': 'Duplicidad exacta', 'cluster': 'cluster-a',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'severity': 'HIGH', 'gateway': 'default/gw-1', 'listener': 'http',
                  'hostname': 'api.example.com', 'path': '/api ~ /api/v1', 'method': '*',
                  'route_1': 'default/route-1', 'route_2': 'default/route-2',
-                 'conflict_type': 'Paths solapados', 'cluster': 'cluster-a'},
+                 'conflict_type': 'Paths solapados', 'cluster': 'cluster-a',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'severity': 'MEDIUM', 'gateway': 'prod/gw-2', 'listener': '*',
                  'hostname': 'svc.example.com', 'path': '*', 'method': '*',
                  'route_1': 'prod/route-2', 'route_2': 'prod/route-4',
-                 'conflict_type': 'Mismo hostname sin sectionName', 'cluster': 'cluster-b'},
+                 'conflict_type': 'Mismo hostname sin sectionName', 'cluster': 'cluster-b',
+                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
             ],
         }
         defaults.update(overrides)
@@ -200,6 +211,45 @@ class TestDashboardGenerator(unittest.TestCase):
         self.assertIn('Buscar service', content)
         self.assertIn('Buscar policy', content)
         self.assertIn('Buscar conflicto', content)
+
+    def test_html_contains_generated_at(self):
+        results = self._sample_results()
+        path = generate_dashboard(results, self.project_id, self.revision_time, self.output_path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        self.assertIn('Generado:', content)
+
+    def test_html_has_load_json_button(self):
+        results = self._sample_results()
+        path = generate_dashboard(results, self.project_id, self.revision_time, self.output_path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        self.assertIn('Cargar JSON', content)
+        self.assertIn('json-input', content)
+        self.assertIn('FileReader', content)
+
+    def test_html_has_embedded_data(self):
+        results = self._sample_results()
+        path = generate_dashboard(results, self.project_id, self.revision_time, self.output_path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        self.assertIn('dashboard-data', content)
+        self.assertIn('dashboardData', content)
+
+    def test_html_has_revision_time_column(self):
+        results = self._sample_results()
+        path = generate_dashboard(results, self.project_id, self.revision_time, self.output_path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        # The revision_time from sample data should appear in table rows
+        self.assertIn('2026-07-29 12:00:00', content)
+
+    def test_html_has_detect_resource_type(self):
+        results = self._sample_results()
+        path = generate_dashboard(results, self.project_id, self.revision_time, self.output_path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        self.assertIn('detectResourceType', content)
 
 
 if __name__ == '__main__':
