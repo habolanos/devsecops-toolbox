@@ -46,7 +46,7 @@ except ImportError:
         return p
 # -------------------------------------------------------------------
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 print_lock = Lock()
 
@@ -82,7 +82,7 @@ def get_args():
     parser.add_argument(
         "--view",
         type=str,
-        choices=["all", "gateways", "routes", "services", "policies"],
+        choices=["all", "gateways", "routes", "services", "policies", "duplicates"],
         default="all",
         help="Vista específica a mostrar (default: all)"
     )
@@ -664,6 +664,316 @@ def print_routes_table(console, routes, revision_time, debug=False):
     return results
 
 
+def _extract_route_keys(route):
+    """
+    Extrae claves de comparacion de una HTTPRoute.
+    Retorna lista de tuplas: (gateway_ns, gateway_name, section, hostname, path, method)
+    """
+    spec = route.get('spec', {})
+    metadata = route.get('metadata', {})
+    route_ns = metadata.get('namespace', 'N/A')
+    route_name = metadata.get('name', 'N/A')
+
+    hostnames = spec.get('hostnames', [])
+    parent_refs = spec.get('parentRefs', [])
+    rules = spec.get('rules', [])
+
+    keys = []
+
+    for pref in parent_refs:
+        gw_name = pref.get('name', 'N/A')
+        gw_ns = pref.get('namespace', route_ns)
+        section = pref.get('sectionName', '*')
+
+        for hostname in hostnames:
+            if not rules:
+                keys.append({
+                    'gateway_ns': gw_ns,
+                    'gateway_name': gw_name,
+                    'section': section,
+                    'hostname': hostname,
+                    'path': '*',
+                    'method': '*',
+                    'route_ns': route_ns,
+                    'route_name': route_name
+                })
+            else:
+                for rule in rules:
+                    matches = rule.get('matches', [])
+                    if not matches:
+                        keys.append({
+                            'gateway_ns': gw_ns,
+                            'gateway_name': gw_name,
+                            'section': section,
+                            'hostname': hostname,
+                            'path': '*',
+                            'method': '*',
+                            'route_ns': route_ns,
+                            'route_name': route_name
+                        })
+                    else:
+                        for match in matches:
+                            path_value = match.get('path', {}).get('value', '*')
+                            path_type = match.get('path', {}).get('type', 'PathPrefix')
+                            method = match.get('method', '*')
+                            keys.append({
+                                'gateway_ns': gw_ns,
+                                'gateway_name': gw_name,
+                                'section': section,
+                                'hostname': hostname,
+                                'path': path_value,
+                                'path_type': path_type,
+                                'method': method,
+                                'route_ns': route_ns,
+                                'route_name': route_name
+                            })
+
+    return keys
+
+
+def _paths_overlap(path1, type1, path2, type2):
+    """Determina si dos paths se solapan considerando su tipo."""
+    if path1 == path2:
+        return True
+    if path1 == '*' or path2 == '*':
+        return True
+
+    if type1 == 'PathPrefix' and type2 == 'PathPrefix':
+        if path1.startswith(path2) or path2.startswith(path1):
+            return True
+
+    if type1 == 'Exact' and type2 == 'Exact':
+        return path1 == path2
+
+    if type1 == 'PathPrefix' and type2 == 'Exact':
+        return path2.startswith(path1)
+    if type2 == 'PathPrefix' and type1 == 'Exact':
+        return path1.startswith(path2)
+
+    return False
+
+
+def detect_route_duplicates(routes, gateways=None):
+    """
+    Detecta duplicidades y conflictos entre HTTPRoutes agrupadas por Gateway.
+
+    Retorna lista de conflictos con:
+    - severity: CRITICAL, HIGH, MEDIUM
+    - gateway, listener, hostname, path, method
+    - route_1, route_2 (namespace/name)
+    - conflict_type: descripcion del conflicto
+    """
+    if not routes:
+        return []
+
+    all_keys = []
+    for route in routes:
+        all_keys.extend(_extract_route_keys(route))
+
+    if not all_keys:
+        return []
+
+    conflicts = []
+
+    # Agrupar por (gateway_ns, gateway_name, section, hostname)
+    groups = {}
+    for k in all_keys:
+        group_key = (k['gateway_ns'], k['gateway_name'], k['section'], k['hostname'])
+        groups.setdefault(group_key, []).append(k)
+
+    for group_key, keys in groups.items():
+        gw_ns, gw_name, section, hostname = group_key
+
+        # Nivel 1: CRITICAL - misma combinacion exacta Gateway+Hostname+Path+Method
+        exact_map = {}
+        for k in keys:
+            exact_key = (k['path'], k['method'])
+            exact_map.setdefault(exact_key, []).append(k)
+
+        for exact_key, group in exact_map.items():
+            if len(group) < 2:
+                continue
+            route_ids = {(k['route_ns'], k['route_name']) for k in group}
+            if len(route_ids) < 2:
+                continue
+
+            route_list = sorted(route_ids)
+            for i in range(len(route_list)):
+                for j in range(i + 1, len(route_list)):
+                    r1 = route_list[i]
+                    r2 = route_list[j]
+                    conflicts.append({
+                        'severity': 'CRITICAL',
+                        'gateway': f"{gw_ns}/{gw_name}",
+                        'listener': section,
+                        'hostname': hostname,
+                        'path': exact_key[0],
+                        'method': exact_key[1],
+                        'route_1': f"{r1[0]}/{r1[1]}",
+                        'route_2': f"{r2[0]}/{r2[1]}",
+                        'conflict_type': 'Mismo path+method en mismo gateway+hostname'
+                    })
+
+        # Nivel 2: HIGH - paths solapados con PathPrefix
+        prefix_keys = [k for k in keys if k.get('path_type', 'PathPrefix') == 'PathPrefix' and k['path'] != '*']
+        for i in range(len(prefix_keys)):
+            for j in range(i + 1, len(prefix_keys)):
+                k1 = prefix_keys[i]
+                k2 = prefix_keys[j]
+                if k1['route_ns'] == k2['route_ns'] and k1['route_name'] == k2['route_name']:
+                    continue
+                if k1['method'] != k2['method'] and k1['method'] != '*' and k2['method'] != '*':
+                    continue
+                if _paths_overlap(k1['path'], 'PathPrefix', k2['path'], 'PathPrefix'):
+                    pair_str_1 = f"{k1['route_ns']}/{k1['route_name']}"
+                    pair_str_2 = f"{k2['route_ns']}/{k2['route_name']}"
+                    already_critical = any(
+                        c['severity'] == 'CRITICAL' and
+                        ((c['route_1'] == pair_str_1 and c['route_2'] == pair_str_2) or
+                         (c['route_1'] == pair_str_2 and c['route_2'] == pair_str_1))
+                        for c in conflicts
+                    )
+                    if already_critical:
+                        continue
+                    conflict_exists = any(
+                        c['route_1'] == pair_str_2 and
+                        c['route_2'] == pair_str_1 and
+                        c['conflict_type'] == 'Paths solapados (PathPrefix)'
+                        for c in conflicts
+                    )
+                    if not conflict_exists:
+                        conflicts.append({
+                            'severity': 'HIGH',
+                            'gateway': f"{gw_ns}/{gw_name}",
+                            'listener': section,
+                            'hostname': hostname,
+                            'path': f"{k1['path']} ~ {k2['path']}",
+                            'method': k1.get('method', '*'),
+                            'route_1': f"{k1['route_ns']}/{k1['route_name']}",
+                            'route_2': f"{k2['route_ns']}/{k2['route_name']}",
+                            'conflict_type': 'Paths solapados (PathPrefix)'
+                        })
+
+    # Nivel 3: MEDIUM - mismo hostname en mismo gateway desde routes diferentes sin section
+    no_section_keys = [k for k in all_keys if k['section'] == '*']
+    hostname_gateway_map = {}
+    for k in no_section_keys:
+        hg_key = (k['gateway_ns'], k['gateway_name'], k['hostname'])
+        hostname_gateway_map.setdefault(hg_key, set()).add((k['route_ns'], k['route_name']))
+
+    for hg_key, route_ids in hostname_gateway_map.items():
+        if len(route_ids) < 2:
+            continue
+        gw_ns, gw_name, hostname = hg_key
+        route_list = sorted(route_ids)
+        for i in range(len(route_list)):
+            for j in range(i + 1, len(route_list)):
+                r1 = route_list[i]
+                r2 = route_list[j]
+                already = any(
+                    c['severity'] == 'CRITICAL' and
+                    c['route_1'] == f"{r1[0]}/{r1[1]}" and
+                    c['route_2'] == f"{r2[0]}/{r2[1]}"
+                    for c in conflicts
+                )
+                if not already:
+                    conflicts.append({
+                        'severity': 'MEDIUM',
+                        'gateway': f"{gw_ns}/{gw_name}",
+                        'listener': '*',
+                        'hostname': hostname,
+                        'path': '*',
+                        'method': '*',
+                        'route_1': f"{r1[0]}/{r1[1]}",
+                        'route_2': f"{r2[0]}/{r2[1]}",
+                        'conflict_type': 'Mismo hostname sin sectionName especifico'
+                    })
+
+    severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2}
+    conflicts.sort(key=lambda c: (severity_order.get(c['severity'], 3), c['gateway'], c['hostname']))
+
+    return conflicts
+
+
+def print_duplicates_table(console, routes, gateways, revision_time, debug=False):
+    """Detecta e imprime HTTPRoutes duplicadas/conflictivas por Gateway"""
+    conflicts = detect_route_duplicates(routes, gateways)
+
+    if not conflicts:
+        console.print("[bold green]✅ No se detectaron duplicidades ni conflictos entre HTTPRoutes.[/]")
+        return []
+
+    table = Table(
+        title="🚨 HTTPRoutes Duplicadas/Conflictivas",
+        title_style="bold red",
+        header_style="bold cyan",
+        border_style="dim"
+    )
+
+    table.add_column("Severity", justify="center")
+    table.add_column("Gateway", style="white")
+    table.add_column("Listener", justify="center")
+    table.add_column("Hostname", style="cyan")
+    table.add_column("Path", style="yellow")
+    table.add_column("Method", justify="center")
+    table.add_column("Route 1", style="white")
+    table.add_column("Route 2", style="white")
+    table.add_column("Conflict Type", style="dim")
+
+    severity_style = {
+        'CRITICAL': '[bold white on red] CRITICAL [/]',
+        'HIGH': '[bold white on yellow] HIGH [/]',
+        'MEDIUM': '[bold white on blue] MEDIUM [/]'
+    }
+
+    results = []
+
+    for c in conflicts:
+        sev_display = severity_style.get(c['severity'], c['severity'])
+        method_display = c['method'] if c['method'] != '*' else '*'
+
+        table.add_row(
+            sev_display,
+            c['gateway'],
+            c['listener'],
+            c['hostname'],
+            c['path'],
+            method_display,
+            c['route_1'],
+            c['route_2'],
+            c['conflict_type']
+        )
+
+        results.append({
+            'severity': c['severity'],
+            'gateway': c['gateway'],
+            'listener': c['listener'],
+            'hostname': c['hostname'],
+            'path': c['path'],
+            'method': c['method'],
+            'route_1': c['route_1'],
+            'route_2': c['route_2'],
+            'conflict_type': c['conflict_type'],
+            'revision_time': revision_time
+        })
+
+    console.print(table)
+
+    critical = sum(1 for c in conflicts if c['severity'] == 'CRITICAL')
+    high = sum(1 for c in conflicts if c['severity'] == 'HIGH')
+    medium = sum(1 for c in conflicts if c['severity'] == 'MEDIUM')
+
+    summary = (
+        f"[bold red]🚨 CRITICAL: {critical}[/]  "
+        f"[bold yellow]⚠️  HIGH: {high}[/]  "
+        f"[bold blue]📋 MEDIUM: {medium}[/]  "
+        f"[dim]| Total conflicts: {len(conflicts)}[/]"
+    )
+    console.print(Panel(summary, title="📊 Resumen Duplicidades", border_style="red", expand=False))
+
+    return results
+
+
 def print_services_table(console, services, revision_time, debug=False, use_parallel=True, max_workers=4):
     """Imprime tabla de Services"""
     table = Table(
@@ -879,9 +1189,9 @@ def fetch_all_resources_parallel(namespace, view, debug=False, max_workers=4):
     }
     
     tasks = []
-    if view in ['all', 'gateways']:
+    if view in ['all', 'gateways', 'duplicates']:
         tasks.append(('gateways', get_gateways, [namespace, debug]))
-    if view in ['all', 'routes']:
+    if view in ['all', 'routes', 'duplicates']:
         tasks.append(('routes', get_httproutes, [namespace, debug]))
     if view in ['all', 'services']:
         tasks.append(('services', get_services, [namespace, debug]))
@@ -910,7 +1220,8 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
         'gateways': [],
         'routes': [],
         'services': [],
-        'policies': []
+        'policies': [],
+        'duplicates': []
     }
     
     with print_lock:
@@ -924,8 +1235,8 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
         services = resources['services']
         all_policies = resources['health_policies'] + resources['backend_policies']
     else:
-        gateways = get_gateways(namespace, debug) if view in ['all', 'gateways'] else []
-        routes = get_httproutes(namespace, debug) if view in ['all', 'routes'] else []
+        gateways = get_gateways(namespace, debug) if view in ['all', 'gateways', 'duplicates'] else []
+        routes = get_httproutes(namespace, debug) if view in ['all', 'routes', 'duplicates'] else []
         services = get_services(namespace, debug) if view in ['all', 'services'] else []
         health_policies = get_healthcheckpolicies(namespace, debug) if view in ['all', 'policies'] else []
         backend_policies = get_gcpbackendpolicies(namespace, debug) if view in ['all', 'policies'] else []
@@ -962,6 +1273,14 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
             for r in pol_results:
                 r['cluster'] = cluster_name
             results['policies'] = pol_results
+            console.print()
+        
+        if view == 'duplicates':
+            console.print("[bold cyan]═══ DUPLICATES ═══[/]\n")
+            dup_results = print_duplicates_table(console, routes, gateways, revision_time, debug)
+            for r in dup_results:
+                r['cluster'] = cluster_name
+            results['duplicates'] = dup_results
             console.print()
     
     return results
@@ -1068,7 +1387,8 @@ def main():
         'gateways': [],
         'routes': [],
         'services': [],
-        'policies': []
+        'policies': [],
+        'duplicates': []
     }
     
     try:

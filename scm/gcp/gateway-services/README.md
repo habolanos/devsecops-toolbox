@@ -55,6 +55,9 @@ python gcp_gateway_checker.py --view services
 
 # Ver solo Policies
 python gcp_gateway_checker.py --view policies
+
+# Detectar HTTPRoutes duplicadas/conflictivas por Gateway
+python gcp_gateway_checker.py --view duplicates
 ```
 
 ### Exportar Resultados
@@ -80,7 +83,7 @@ python gcp_gateway_checker.py --debug
 | `--project` | ID del proyecto GCP | cpl-corp-cial-prod-17042024 |
 | `--cluster` | Nombre del cluster GKE específico | Todos los clusters |
 | `--namespace` | Namespace específico | Todos |
-| `--view` | Vista específica (all, gateways, routes, services, policies) | all |
+| `--view` | Vista específica (all, gateways, routes, services, policies, duplicates) | all |
 | `--debug` | Activa modo debug para ver comandos gcloud | False |
 | `--output, -o` | Exporta a archivo (csv, json) | - |
 | `--timezone`, `-tz` | Zona horaria para mostrar fechas | America/Mazatlan (Culiacán) |
@@ -141,6 +144,50 @@ python gcp_gateway_checker.py --debug
 - **Causa**: `targetRef` apunta a un recurso inexistente
 - **Acción**: Verificar que el Service target existe en el namespace
 
+### 5. HTTPRoutes Duplicadas por Gateway
+- **Causa**: Dos o mas HTTPRoutes adjuntas al mismo Gateway declaran los mismos hostnames y paths
+- **Acción**: Consolidar las routes o separar por listener (sectionName)
+
+## Deteccion de HTTPRoutes Duplicadas
+
+La vista `--view duplicates` analiza todas las HTTPRoutes y detecta conflictos agrupandolos por severidad:
+
+### Niveles de Severidad
+
+| Severidad | Criterio | Descripcion |
+|-----------|---------|-------------|
+| **CRITICAL** | Gateway + Hostname + Path + Method identicos | El controller no sabe a cual route enviar el request. Conflicto seguro. |
+| **HIGH** | Paths solapados (PathPrefix) en mismo Gateway + Hostname | Ej: `/api` y `/api/v1` causan ambiguedad de routing. |
+| **MEDIUM** | Mismo Hostname en mismo Gateway sin sectionName especifico | Ambas routes adjuntas a todos los listeners del gateway. Revisar. |
+
+### Columnas del Reporte
+
+| Columna | Contenido |
+|---------|-----------|
+| **Severity** | CRITICAL / HIGH / MEDIUM |
+| **Gateway** | namespace/name del Gateway |
+| **Listener** | sectionName o `*` si no especifica |
+| **Hostname** | Hostname en conflicto |
+| **Path** | Path(s) en conflicto |
+| **Method** | Metodo HTTP o `*` |
+| **Route 1** | namespace/name de la primera route |
+| **Route 2** | namespace/name de la segunda route |
+| **Conflict Type** | Descripcion del tipo de conflicto |
+
+### Uso
+
+```bash
+# Detectar duplicidades en todos los clusters
+python gcp_gateway_checker.py --view duplicates
+
+# Detectar en un namespace especifico
+python gcp_gateway_checker.py --view duplicates --namespace mi-namespace
+
+# Exportar resultados de duplicidades
+python gcp_gateway_checker.py --view duplicates -o csv
+python gcp_gateway_checker.py --view duplicates -o json
+```
+
 ## Archivos de Salida
 
 Los archivos exportados se guardan en el directorio `outcome/`:
@@ -184,6 +231,7 @@ kubectl describe gateway mi-gateway -n mi-namespace
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
+| 2026-07-29 | 2.2.0 | Nueva vista `--view duplicates`: deteccion de HTTPRoutes duplicadas/conflictivas por Gateway con 3 niveles de severidad (CRITICAL/HIGH/MEDIUM) |
 | 2026-02-20 | 2.1.0 | Reporte JSON mejorado con metadatos (timestamp, timezone, summary) |
 | 2026-02-19 | 2.0.1 | Validación de conexión GCP al inicio (check_gcp_connection) |
 | 2026-02-16 | 2.0.0 | Ejecución paralela (recursos y endpoints), Live display con progreso dinámico, timezone configurable |
