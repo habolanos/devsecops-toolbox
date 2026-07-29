@@ -1604,8 +1604,7 @@ def main():
     
     # Exportar si se solicita
     if args.output:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        outcome_dir = os.path.join(script_dir, 'outcome')
+        outcome_dir = str(get_output_dir("outcome"))
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         filename = f"deployment_validation_{deployment}_{timestamp}.{args.output}"
         filepath = os.path.join(outcome_dir, filename)

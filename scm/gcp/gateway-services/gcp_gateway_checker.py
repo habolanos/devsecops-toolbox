@@ -1467,9 +1467,7 @@ def main():
                         all_results[key].extend(cluster_results[key])
         
         # Generar dashboard HTML por defecto (siempre, incluso sin --output)
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        outcome_dir = os.path.join(script_dir, 'outcome')
-        os.makedirs(outcome_dir, exist_ok=True)
+        outcome_dir = str(get_output_dir("outcome"))
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         cluster_suffix = f"_{args.cluster}" if args.cluster else ""
         

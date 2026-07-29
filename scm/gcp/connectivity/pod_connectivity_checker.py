@@ -1792,8 +1792,7 @@ Notas:
     checker.run_all_checks()
 
     if args.output:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        outcome_dir = os.path.join(script_dir, "outcome")
+        outcome_dir = str(get_output_dir("outcome"))
         ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"pod_connectivity_{args.sql_instance}_{ts_str}.{args.output}"
         filepath = os.path.join(outcome_dir, filename)

@@ -1254,8 +1254,7 @@ def main():
     
     # Exportar si se especificó
     if args.output:
-        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'outcome')
-        os.makedirs(output_dir, exist_ok=True)
+        output_dir = str(get_output_dir("outcome"))
         
         if args.output == 'json':
             filepath = export_to_json(data, project_id, output_dir, tz_name)

@@ -721,8 +721,7 @@ def create_comparison_table(data_a: Dict, data_b: Dict, project_a: str, project_
 
 def export_to_json(data: Dict, findings: List[Dict], project_id: str, timezone_str: str, console):
     """Exporta datos a JSON."""
-    outcome_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outcome")
-    os.makedirs(outcome_dir, exist_ok=True)
+    outcome_dir = str(get_output_dir("outcome"))
     
     tz = ZoneInfo(timezone_str)
     now = datetime.now(tz)
@@ -761,8 +760,7 @@ def export_to_csv(data: Dict, findings: List[Dict], project_id: str, timezone_st
     """Exporta hallazgos a CSV."""
     import csv
     
-    outcome_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outcome")
-    os.makedirs(outcome_dir, exist_ok=True)
+    outcome_dir = str(get_output_dir("outcome"))
     
     tz = ZoneInfo(timezone_str)
     now = datetime.now(tz)
