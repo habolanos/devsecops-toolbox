@@ -1375,7 +1375,15 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
                 r['cluster'] = cluster_name
             results['routes'] = rt_results
             console.print()
-        
+
+        if view in ['all', 'duplicates']:
+            console.print("[bold cyan]═══ DUPLICATES ═══[/]\n")
+            dup_results = print_duplicates_table(console, routes, gateways, revision_time, debug)
+            for r in dup_results:
+                r['cluster'] = cluster_name
+            results['duplicates'] = dup_results
+            console.print()
+
         if view in ['all', 'services']:
             console.print("[bold cyan]═══ SERVICES ═══[/]\n")
             svc_results = print_services_table(console, services, revision_time, debug, use_parallel, max_workers)
@@ -1391,15 +1399,7 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
                 r['cluster'] = cluster_name
             results['policies'] = pol_results
             console.print()
-        
-        if view in ['all', 'duplicates']:
-            console.print("[bold cyan]═══ DUPLICATES ═══[/]\n")
-            dup_results = print_duplicates_table(console, routes, gateways, revision_time, debug)
-            for r in dup_results:
-                r['cluster'] = cluster_name
-            results['duplicates'] = dup_results
-            console.print()
-    
+
     return results
 
 
