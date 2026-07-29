@@ -680,10 +680,47 @@ def print_routes_table(console, routes, revision_time, debug=False):
     return results
 
 
+def _normalize_headers(headers_list):
+    """Normaliza headers de un match a frozenset para comparacion."""
+    if not headers_list:
+        return frozenset()
+    return frozenset(
+        (h.get('type', 'Exact'), h.get('name', ''), h.get('value', ''))
+        for h in headers_list
+    )
+
+
+def _normalize_query_params(qp_list):
+    """Normaliza queryParams de un match a frozenset para comparacion."""
+    if not qp_list:
+        return frozenset()
+    return frozenset(
+        (q.get('type', 'Exact'), q.get('name', ''), q.get('value', ''))
+        for q in qp_list
+    )
+
+
+def _headers_display(headers_set):
+    """Convierte un frozenset de headers a string legible para la tabla."""
+    if not headers_set:
+        return '*'
+    parts = [f"{h[1]}={h[2]}" for h in sorted(headers_set)]
+    return ', '.join(parts)
+
+
+def _query_params_display(qp_set):
+    """Convierte un frozenset de queryParams a string legible para la tabla."""
+    if not qp_set:
+        return '*'
+    parts = [f"{q[1]}={q[2]}" for q in sorted(qp_set)]
+    return ', '.join(parts)
+
+
 def _extract_route_keys(route):
     """
     Extrae claves de comparacion de una HTTPRoute.
-    Retorna lista de tuplas: (gateway_ns, gateway_name, section, hostname, path, method)
+    Retorna lista de dicts con: gateway_ns, gateway_name, section, hostname,
+    path, path_type, method, headers, query_params, route_ns, route_name.
     """
     spec = route.get('spec', {})
     metadata = route.get('metadata', {})
@@ -709,7 +746,10 @@ def _extract_route_keys(route):
                     'section': section,
                     'hostname': hostname,
                     'path': '*',
+                    'path_type': 'PathPrefix',
                     'method': '*',
+                    'headers': frozenset(),
+                    'query_params': frozenset(),
                     'route_ns': route_ns,
                     'route_name': route_name
                 })
@@ -723,7 +763,10 @@ def _extract_route_keys(route):
                             'section': section,
                             'hostname': hostname,
                             'path': '*',
+                            'path_type': 'PathPrefix',
                             'method': '*',
+                            'headers': frozenset(),
+                            'query_params': frozenset(),
                             'route_ns': route_ns,
                             'route_name': route_name
                         })
@@ -732,6 +775,8 @@ def _extract_route_keys(route):
                             path_value = match.get('path', {}).get('value', '*')
                             path_type = match.get('path', {}).get('type', 'PathPrefix')
                             method = match.get('method', '*')
+                            headers = _normalize_headers(match.get('headers', []))
+                            query_params = _normalize_query_params(match.get('queryParams', []))
                             keys.append({
                                 'gateway_ns': gw_ns,
                                 'gateway_name': gw_name,
@@ -740,11 +785,20 @@ def _extract_route_keys(route):
                                 'path': path_value,
                                 'path_type': path_type,
                                 'method': method,
+                                'headers': headers,
+                                'query_params': query_params,
                                 'route_ns': route_ns,
                                 'route_name': route_name
                             })
 
     return keys
+
+
+def _normalize_path(path):
+    """Normaliza un path removiendo trailing slash (excepto root)."""
+    if path == '/' or path == '*':
+        return path
+    return path.rstrip('/')
 
 
 def _paths_overlap(path1, type1, path2, type2):
@@ -754,17 +808,29 @@ def _paths_overlap(path1, type1, path2, type2):
     if path1 == '*' or path2 == '*':
         return True
 
+    p1 = _normalize_path(path1)
+    p2 = _normalize_path(path2)
+
+    if p1 == p2:
+        return True
+
     if type1 == 'PathPrefix' and type2 == 'PathPrefix':
-        if path1.startswith(path2) or path2.startswith(path1):
+        if p1 == '/' or p2 == '/':
+            return True
+        if p1.startswith(p2 + '/') or p2.startswith(p1 + '/'):
             return True
 
     if type1 == 'Exact' and type2 == 'Exact':
-        return path1 == path2
+        return p1 == p2
 
     if type1 == 'PathPrefix' and type2 == 'Exact':
-        return path2.startswith(path1)
+        if p1 == '/':
+            return True
+        return p2.startswith(p1 + '/') or p2 == p1
     if type2 == 'PathPrefix' and type1 == 'Exact':
-        return path1.startswith(path2)
+        if p2 == '/':
+            return True
+        return p1.startswith(p2 + '/') or p1 == p2
 
     return False
 
@@ -800,10 +866,10 @@ def detect_route_duplicates(routes, gateways=None):
     for group_key, keys in groups.items():
         gw_ns, gw_name, section, hostname = group_key
 
-        # Nivel 1: CRITICAL - misma combinacion exacta Gateway+Hostname+Path+Method
+        # Nivel 1: CRITICAL - misma combinacion exacta Gateway+Hostname+Path+Method+Headers+QueryParams
         exact_map = {}
         for k in keys:
-            exact_key = (k['path'], k['method'])
+            exact_key = (k['path'], k['method'], k['headers'], k['query_params'])
             exact_map.setdefault(exact_key, []).append(k)
 
         for exact_key, group in exact_map.items():
@@ -825,9 +891,11 @@ def detect_route_duplicates(routes, gateways=None):
                         'hostname': hostname,
                         'path': exact_key[0],
                         'method': exact_key[1],
+                        'headers': _headers_display(exact_key[2]),
+                        'query_params': _query_params_display(exact_key[3]),
                         'route_1': f"{r1[0]}/{r1[1]}",
                         'route_2': f"{r2[0]}/{r2[1]}",
-                        'conflict_type': 'Mismo path+method en mismo gateway+hostname'
+                        'conflict_type': 'Mismo path+method+headers+queryParams en mismo gateway+hostname'
                     })
 
         # Nivel 2: HIGH - paths solapados con PathPrefix
@@ -839,6 +907,8 @@ def detect_route_duplicates(routes, gateways=None):
                 if k1['route_ns'] == k2['route_ns'] and k1['route_name'] == k2['route_name']:
                     continue
                 if k1['method'] != k2['method'] and k1['method'] != '*' and k2['method'] != '*':
+                    continue
+                if k1['headers'] != k2['headers'] or k1['query_params'] != k2['query_params']:
                     continue
                 if _paths_overlap(k1['path'], 'PathPrefix', k2['path'], 'PathPrefix'):
                     pair_str_1 = f"{k1['route_ns']}/{k1['route_name']}"
@@ -865,22 +935,25 @@ def detect_route_duplicates(routes, gateways=None):
                             'hostname': hostname,
                             'path': f"{k1['path']} ~ {k2['path']}",
                             'method': k1.get('method', '*'),
+                            'headers': _headers_display(k1['headers']),
+                            'query_params': _query_params_display(k1['query_params']),
                             'route_1': f"{k1['route_ns']}/{k1['route_name']}",
                             'route_2': f"{k2['route_ns']}/{k2['route_name']}",
                             'conflict_type': 'Paths solapados (PathPrefix)'
                         })
 
     # Nivel 3: MEDIUM - mismo hostname en mismo gateway desde routes diferentes sin section
+    # Solo si tambien comparten mismos headers y queryParams (sin diferenciacion)
     no_section_keys = [k for k in all_keys if k['section'] == '*']
     hostname_gateway_map = {}
     for k in no_section_keys:
-        hg_key = (k['gateway_ns'], k['gateway_name'], k['hostname'])
+        hg_key = (k['gateway_ns'], k['gateway_name'], k['hostname'], k['headers'], k['query_params'])
         hostname_gateway_map.setdefault(hg_key, set()).add((k['route_ns'], k['route_name']))
 
     for hg_key, route_ids in hostname_gateway_map.items():
         if len(route_ids) < 2:
             continue
-        gw_ns, gw_name, hostname = hg_key
+        gw_ns, gw_name, hostname, hdrs, qps = hg_key
         route_list = sorted(route_ids)
         for i in range(len(route_list)):
             for j in range(i + 1, len(route_list)):
@@ -900,6 +973,8 @@ def detect_route_duplicates(routes, gateways=None):
                         'hostname': hostname,
                         'path': '*',
                         'method': '*',
+                        'headers': _headers_display(hdrs),
+                        'query_params': _query_params_display(qps),
                         'route_1': f"{r1[0]}/{r1[1]}",
                         'route_2': f"{r2[0]}/{r2[1]}",
                         'conflict_type': 'Mismo hostname sin sectionName especifico'
@@ -932,6 +1007,8 @@ def print_duplicates_table(console, routes, gateways, revision_time, debug=False
     table.add_column("Hostname", style="cyan")
     table.add_column("Path", style="yellow")
     table.add_column("Method", justify="center")
+    table.add_column("Headers", style="magenta", overflow="fold")
+    table.add_column("Query Params", style="magenta", overflow="fold")
     table.add_column("Route 1", style="white")
     table.add_column("Route 2", style="white")
     table.add_column("Conflict Type", style="dim")
@@ -955,6 +1032,8 @@ def print_duplicates_table(console, routes, gateways, revision_time, debug=False
             c['hostname'],
             c['path'],
             method_display,
+            c.get('headers', '*'),
+            c.get('query_params', '*'),
             c['route_1'],
             c['route_2'],
             c['conflict_type']
@@ -967,6 +1046,8 @@ def print_duplicates_table(console, routes, gateways, revision_time, debug=False
             'hostname': c['hostname'],
             'path': c['path'],
             'method': c['method'],
+            'headers': c.get('headers', '*'),
+            'query_params': c.get('query_params', '*'),
             'route_1': c['route_1'],
             'route_2': c['route_2'],
             'conflict_type': c['conflict_type'],
