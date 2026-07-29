@@ -122,5 +122,26 @@ class TestMultiProjectSupport(unittest.TestCase):
         self.assertEqual(__version__, "1.2.0")
 
 
+    def test_sanitize_filename_single_project(self):
+        """Verifica que _sanitize_project_for_filename retorna el proyecto unico sin cambios."""
+        from gcp_load_balancer_checker import _sanitize_project_for_filename
+        self.assertEqual(_sanitize_project_for_filename("my-project"), "my-project")
+
+    def test_sanitize_filename_multiple_projects(self):
+        """Verifica que _sanitize_project_for_filename acorta nombres con multiples proyectos."""
+        from gcp_load_balancer_checker import _sanitize_project_for_filename
+        result = _sanitize_project_for_filename("proj-1, proj-2, proj-3")
+        self.assertEqual(result, "multi_3_projects")
+        self.assertLess(len(result), 50)
+
+    def test_sanitize_filename_many_projects(self):
+        """Verifica que el nombre sanitizado es corto incluso con muchos proyectos."""
+        from gcp_load_balancer_checker import _sanitize_project_for_filename
+        projects = ",".join([f"project-{i}" for i in range(20)])
+        result = _sanitize_project_for_filename(projects)
+        self.assertEqual(result, "multi_20_projects")
+        self.assertLess(len(result), 50)
+
+
 if __name__ == '__main__':
     unittest.main()

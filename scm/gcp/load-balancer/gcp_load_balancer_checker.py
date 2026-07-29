@@ -942,12 +942,21 @@ def create_summary_table(data: Dict, console) -> Table:
     return table
 
 
+def _sanitize_project_for_filename(project_id: str) -> str:
+    """Genera un nombre de archivo seguro a partir del project_id."""
+    projects = [p.strip() for p in project_id.split(',') if p.strip()]
+    if len(projects) == 1:
+        return projects[0]
+    return f"multi_{len(projects)}_projects"
+
+
 def export_to_json(data: Dict, project_id: str, output_dir: str, tz_name: str) -> str:
     """Exporta los datos a JSON con metadatos completos."""
     tz = ZoneInfo(tz_name)
     now = datetime.now(tz)
     timestamp = now.strftime("%Y%m%d_%H%M%S")
-    filename = f"lb_checker_{project_id}_{timestamp}.json"
+    safe_name = _sanitize_project_for_filename(project_id)
+    filename = f"lb_checker_{safe_name}_{timestamp}.json"
     filepath = os.path.join(output_dir, filename)
     
     all_forwarding = data.get('forwarding_rules_global', []) + data.get('forwarding_rules_regional', [])
@@ -984,7 +993,8 @@ def export_to_csv(data: Dict, project_id: str, output_dir: str, tz_name: str) ->
     
     tz = ZoneInfo(tz_name)
     timestamp = datetime.now(tz).strftime("%Y%m%d_%H%M%S")
-    filename = f"lb_checker_{project_id}_{timestamp}.csv"
+    safe_name = _sanitize_project_for_filename(project_id)
+    filename = f"lb_checker_{safe_name}_{timestamp}.csv"
     filepath = os.path.join(output_dir, filename)
     
     # Exportar forwarding rules como tabla principal
