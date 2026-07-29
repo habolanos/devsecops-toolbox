@@ -46,7 +46,7 @@ except ImportError:
         return p
 # -------------------------------------------------------------------
 
-__version__ = "2.2.0"
+__version__ = "2.2.2"
 
 print_lock = Lock()
 
@@ -182,23 +182,27 @@ def check_gcp_connection(project_id, console, debug=False):
         active_account = auth_result.stdout.strip().split('\n')[0]
         console.print(f"[dim]🔐 Cuenta activa: {active_account}[/]")
         
-        project_cmd = f'gcloud projects describe {project_id} --format="value(projectId)" 2>&1'
-        project_result = subprocess.run(project_cmd, shell=True, capture_output=True, text=True)
-        
-        if debug:
-            print(f"[DEBUG] Project command: {project_cmd}")
-            print(f"[DEBUG] Project result: {project_result.stdout.strip()}")
-        
-        if project_result.returncode != 0:
-            error_msg = project_result.stderr or project_result.stdout
-            if "not found" in error_msg.lower() or "permission" in error_msg.lower():
-                console.print(f"[red]❌ No tienes acceso al proyecto: {project_id}[/]")
+        projects = [p.strip() for p in project_id.split(',') if p.strip()]
+        all_ok = True
+        for proj in projects:
+            project_cmd = f'gcloud projects describe {proj} --format="value(projectId)" 2>&1'
+            project_result = subprocess.run(project_cmd, shell=True, capture_output=True, text=True)
+            
+            if debug:
+                print(f"[DEBUG] Project command: {project_cmd}")
+                print(f"[DEBUG] Project result: {project_result.stdout.strip()}")
+            
+            if project_result.returncode != 0:
+                error_msg = project_result.stderr or project_result.stdout
+                if "not found" in error_msg.lower() or "permission" in error_msg.lower():
+                    console.print(f"[red]❌ No tienes acceso al proyecto: {proj}[/]")
+                else:
+                    console.print(f"[red]❌ Error de conexión ({proj}): {error_msg.strip()}[/]")
+                all_ok = False
             else:
-                console.print(f"[red]❌ Error de conexión: {error_msg.strip()}[/]")
-            return False
+                console.print(f"[dim]✅ Conexión verificada: {proj}[/]")
         
-        console.print(f"[dim]✅ Conexión verificada al proyecto: {project_id}[/]")
-        return True
+        return all_ok
         
     except Exception as e:
         if debug:
@@ -231,9 +235,16 @@ def run_gcloud_command(command, debug=False):
 
 
 def get_clusters(project_id, debug=False):
-    """Obtiene lista de clusters GKE del proyecto"""
-    cmd = f'gcloud container clusters list --project={project_id} --format=json'
-    return run_gcloud_command(cmd, debug) or []
+    """Obtiene lista de clusters GKE del proyecto (soporta multiples proyectos separados por coma)"""
+    projects = [p.strip() for p in project_id.split(',') if p.strip()]
+    all_clusters = []
+    for proj in projects:
+        cmd = f'gcloud container clusters list --project={proj} --format=json'
+        clusters = run_gcloud_command(cmd, debug) or []
+        for c in clusters:
+            c['_project_id'] = proj
+        all_clusters.extend(clusters)
+    return all_clusters
 
 
 def get_cluster_credentials(project_id, cluster_name, location, debug=False):
@@ -1423,7 +1434,7 @@ def main():
             clusters_status[cluster_name]['status'] = 'connecting'
             live.update(create_progress_table(clusters_status))
             
-            if not get_cluster_credentials(project_id, cluster_name, location, args.debug):
+            if not get_cluster_credentials(cluster.get('_project_id', project_id), cluster_name, location, args.debug):
                 clusters_status[cluster_name]['status'] = 'error'
                 live.update(create_progress_table(clusters_status))
                 return None
