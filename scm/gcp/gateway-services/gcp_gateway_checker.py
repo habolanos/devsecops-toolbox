@@ -1367,7 +1367,15 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
                 r['cluster'] = cluster_name
             results['gateways'] = gw_results
             console.print()
-        
+
+        if view in ['all', 'policies']:
+            console.print("[bold cyan]═══ POLICIES ═══[/]\n")
+            pol_results = print_policies_table(console, all_policies, revision_time, debug)
+            for r in pol_results:
+                r['cluster'] = cluster_name
+            results['policies'] = pol_results
+            console.print()
+
         if view in ['all', 'routes']:
             console.print("[bold cyan]═══ ROUTES ═══[/]\n")
             rt_results = print_routes_table(console, routes, revision_time, debug)
@@ -1390,14 +1398,6 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
             for r in svc_results:
                 r['cluster'] = cluster_name
             results['services'] = svc_results
-            console.print()
-        
-        if view in ['all', 'policies']:
-            console.print("[bold cyan]═══ POLICIES ═══[/]\n")
-            pol_results = print_policies_table(console, all_policies, revision_time, debug)
-            for r in pol_results:
-                r['cluster'] = cluster_name
-            results['policies'] = pol_results
             console.print()
 
     return results
