@@ -46,10 +46,15 @@ except ImportError:
         return p
 # -------------------------------------------------------------------
 
-__version__ = "2.2.2"
+__version__ = "2.3.0"
 
 print_lock = Lock()
 
+try:
+    from dashboard_generator import generate_dashboard
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
 
 try:
     from export_manager import ExportManager
@@ -99,8 +104,8 @@ def get_args():
     parser.add_argument(
         "--output", "-o",
         type=str,
-        choices=["csv", "json"],
-        help="Exporta resultados a archivo (csv o json) en carpeta outcome/"
+        choices=["csv", "json", "html"],
+        help="Exporta resultados a archivo (csv, json o html) en carpeta outcome/"
     )
     parser.add_argument(
         "--timezone", "-tz",
@@ -1461,14 +1466,14 @@ def main():
                     for key in all_results:
                         all_results[key].extend(cluster_results[key])
         
+        # Generar dashboard HTML por defecto (siempre, incluso sin --output)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        outcome_dir = os.path.join(script_dir, 'outcome')
+        os.makedirs(outcome_dir, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        cluster_suffix = f"_{args.cluster}" if args.cluster else ""
+        
         if args.output:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            outcome_dir = os.path.join(script_dir, 'outcome')
-            os.makedirs(outcome_dir, exist_ok=True)
-            
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            cluster_suffix = f"_{args.cluster}" if args.cluster else ""
-            
             for resource_type, data in all_results.items():
                 if data:
                     filename = f"gateway_{resource_type}{cluster_suffix}_{timestamp}"
@@ -1481,6 +1486,16 @@ def main():
                         filepath = os.path.join(outcome_dir, f"{filename}.json")
                         export_to_json(data, filepath, project_id, tz_name)
                         console.print(f"[bold green]📁 Exportado:[/] {filepath}")
+        
+        # Dashboard HTML (siempre se genera por defecto)
+        if DASHBOARD_AVAILABLE:
+            html_filename = f"gateway_dashboard{cluster_suffix}_{timestamp}.html"
+            html_path = os.path.join(outcome_dir, html_filename)
+            clusters_scanned = [c.get('name', 'unknown') for c in clusters]
+            generate_dashboard(all_results, project_id, revision_time, html_path, clusters_scanned)
+            console.print(f"[bold green]📊 Dashboard HTML:[/] {html_path}")
+        else:
+            console.print("[yellow]⚠️  dashboard_generator no disponible. Dashboard HTML no generado.[/]")
         
         console.print(f"\n[dim]Tip: Usa --cluster para filtrar por un cluster específico.[/]\n")
     

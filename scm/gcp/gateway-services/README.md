@@ -68,6 +68,38 @@ python gcp_gateway_checker.py --output csv
 
 # Exportar a JSON
 python gcp_gateway_checker.py --output json
+
+# Exportar a HTML (dashboard interactivo)
+python gcp_gateway_checker.py --output html
+```
+
+> **Nota:** El dashboard HTML se genera **por defecto** en cada ejecución, sin necesidad de especificar `--output html`. Se guarda en `outcome/gateway_dashboard_<timestamp>.html`.
+
+### Dashboard HTML Interactivo
+
+El dashboard HTML se genera **por defecto** en cada ejecución y incluye:
+
+- **Tarjetas resumen**: Gateways healthy, HTTPRoutes healthy, Services healthy, Policies, Duplicates CRITICAL
+- **Pestañas**: Gateways, HTTPRoutes, Services, Policies, Duplicates
+- **Tablas ordenables**: Click en cualquier columna para ordenar
+- **Busqueda en vivo**: Filtra resultados por texto en cada tabla
+- **Pills de estado**: Colores semaforicos (verde=healthy, rojo=unhealthy, amarillo=degraded)
+- **Deteccion de duplicados**: Conflictos CRITICAL/HIGH/MEDIUM con detalles de rutas conflictivas
+- **Diseño responsive**: Funciona en desktop y movil
+- **Tema oscuro**: Interfaz moderna con colores oscuros
+
+El archivo se guarda en `outcome/gateway_dashboard_<timestamp>.html`.
+
+### Deteccion de HTTPRoutes Duplicadas
+
+Usa `--view duplicates` para identificar conflictos entre HTTPRoutes:
+
+- **CRITICAL**: Mismo hostname + path + method en mismo gateway/listener
+- **HIGH**: Paths solapados (PathPrefix) en mismo hostname/gateway
+- **MEDIUM**: Mismo hostname en mismo gateway desde routes diferentes sin sectionName especifico
+
+```bash
+python gcp_gateway_checker.py --view duplicates
 ```
 
 ### Modo Debug
@@ -85,7 +117,7 @@ python gcp_gateway_checker.py --debug
 | `--namespace` | Namespace específico | Todos |
 | `--view` | Vista específica (all, gateways, routes, services, policies, duplicates) | all |
 | `--debug` | Activa modo debug para ver comandos gcloud | False |
-| `--output, -o` | Exporta a archivo (csv, json) | - |
+| `--output, -o` | Exporta a archivo (csv, json, html) | html (dashboard por defecto) |
 | `--timezone`, `-tz` | Zona horaria para mostrar fechas | America/Mazatlan (Culiacán) |
 | `--parallel` | Ejecuta procesamiento en paralelo | True |
 | `--no-parallel` | Desactiva procesamiento paralelo | False |
@@ -231,7 +263,7 @@ kubectl describe gateway mi-gateway -n mi-namespace
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
-| 2026-07-29 | 2.2.3 | tools.py: multi-proyecto ejecuta una vez por proyecto, cluster prompt inteligente (obligatorio para tools que lo requieren), duplicates en view options |
+| 2026-07-29 | 2.3.0 | Dashboard HTML interactivo por defecto (tabs, sort, search, cards), export html, descripcion mejorada en tools.py |
 | 2026-07-29 | 2.2.2 | Soporte para multiples proyectos separados por coma en --project |
 | 2026-07-29 | 2.2.1 | Ajuste: prompt de cluster en tools.py ahora usa TODOS por defecto (vacio = todos) |
 | 2026-07-29 | 2.2.0 | Nueva vista `--view duplicates`: deteccion de HTTPRoutes duplicadas/conflictivas por Gateway con 3 niveles de severidad (CRITICAL/HIGH/MEDIUM) |

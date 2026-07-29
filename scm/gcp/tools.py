@@ -234,7 +234,7 @@ TOOLS = {
     },
     "11": {
         "name": "Gateway Services Checker",
-        "description": "Monitorea Gateways, Routes, Services y Policies en GKE",
+        "description": "Monitorea Gateways, HTTPRoutes, Services y Policies en GKE. Detecta HTTPRoutes duplicadas/conflictivas por Gateway con niveles de severidad (CRITICAL/HIGH/MEDIUM). Genera dashboard HTML interactivo por defecto",
         "path": "gateway-services/gcp_gateway_checker.py",
         "args": ["--project", "--cluster", "--namespace", "--view", "-o"],
         "requirements": "gateway-services/requirements.txt",
@@ -1169,12 +1169,18 @@ def run_tool(tool_key: str):
             args.append("--all")
     
     if "--output" in tool_args or "-o" in tool_args:
-        print(f"\n{Colors.BOLD}¿Exportar resultado? (json/csv/ninguno) [json]:{Colors.ENDC} ", end="")
+        is_gateway = "gateway-services" in tool.get("path", "")
+        default_fmt = "html" if is_gateway else "json"
+        options_text = "json/csv/html/ninguno" if is_gateway else "json/csv/ninguno"
+        print(f"\n{Colors.BOLD}¿Exportar resultado? ({options_text}) [{default_fmt}]:{Colors.ENDC} ", end="")
         output_format = input().strip().lower()
-        if output_format in ["json", "csv"]:
+        if output_format in ["json", "csv", "html"]:
             args.extend(["-o", output_format])
-        elif output_format == "" or output_format == "json":
-            args.extend(["-o", "json"])
+        elif output_format == "" or output_format == default_fmt:
+            if is_gateway:
+                args.extend(["-o", "html"])
+            else:
+                args.extend(["-o", "json"])
     
     # Añadir argumentos adicionales si los hay
     if "additional_args" in tool:
