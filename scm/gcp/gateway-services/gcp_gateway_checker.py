@@ -619,7 +619,13 @@ def print_routes_table(console, routes, revision_time, debug=False):
         console.print("[yellow]⚠️  No se detectaron HTTPRoutes.[/]")
         return results
     
-    routes = sorted(routes, key=lambda x: x.get('metadata', {}).get('name', ''))
+    def _first_path(route):
+        for rule in route.get('spec', {}).get('rules', []):
+            for match in rule.get('matches', []):
+                return match.get('path', {}).get('value', '*')
+        return '*'
+
+    routes = sorted(routes, key=lambda x: (_first_path(x), x.get('metadata', {}).get('name', '')), reverse=True)
     
     for route in routes:
         metadata = route.get('metadata', {})
@@ -994,45 +1000,7 @@ def detect_route_duplicates(routes, gateways=None):
                             'conflict_type': 'Paths solapados (PathPrefix)'
                         })
 
-    # Nivel 3: MEDIUM - mismo hostname en mismo gateway desde routes diferentes sin section
-    # Solo si tambien comparten mismos headers y queryParams (sin diferenciacion)
-    no_section_keys = [k for k in all_keys if k['section'] == '*']
-    hostname_gateway_map = {}
-    for k in no_section_keys:
-        hg_key = (k['gateway_ns'], k['gateway_name'], k['hostname'], k['headers'], k['query_params'])
-        hostname_gateway_map.setdefault(hg_key, set()).add((k['route_ns'], k['route_name']))
-
-    for hg_key, route_ids in hostname_gateway_map.items():
-        if len(route_ids) < 2:
-            continue
-        gw_ns, gw_name, hostname, hdrs, qps = hg_key
-        route_list = sorted(route_ids)
-        for i in range(len(route_list)):
-            for j in range(i + 1, len(route_list)):
-                r1 = route_list[i]
-                r2 = route_list[j]
-                already = any(
-                    c['severity'] == 'CRITICAL' and
-                    c['route_1'] == f"{r1[0]}/{r1[1]}" and
-                    c['route_2'] == f"{r2[0]}/{r2[1]}"
-                    for c in conflicts
-                )
-                if not already:
-                    conflicts.append({
-                        'severity': 'MEDIUM',
-                        'gateway': f"{gw_ns}/{gw_name}",
-                        'listener': '*',
-                        'hostname': hostname,
-                        'path': '*',
-                        'method': '*',
-                        'headers': _headers_display(hdrs),
-                        'query_params': _query_params_display(qps),
-                        'route_1': f"{r1[0]}/{r1[1]}",
-                        'route_2': f"{r2[0]}/{r2[1]}",
-                        'conflict_type': 'Mismo hostname sin sectionName especifico'
-                    })
-
-    severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2}
+    severity_order = {'CRITICAL': 0, 'HIGH': 1}
     conflicts.sort(key=lambda c: (severity_order.get(c['severity'], 3), c['gateway'], c['hostname']))
 
     return conflicts

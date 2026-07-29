@@ -76,12 +76,6 @@ class TestDashboardGenerator(unittest.TestCase):
                  'route_1': 'default/route-1', 'route_2': 'default/route-2',
                  'conflict_type': 'Paths solapados', 'cluster': 'cluster-a',
                  'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
-                {'severity': 'MEDIUM', 'gateway': 'prod/gw-2', 'listener': '*',
-                 'hostname': 'svc.example.com', 'path': '*', 'method': '*',
-                 'headers': '*', 'query_params': '*',
-                 'route_1': 'prod/route-2', 'route_2': 'prod/route-4',
-                 'conflict_type': 'Mismo hostname sin sectionName', 'cluster': 'cluster-b',
-                 'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
             ],
         }
         defaults.update(overrides)

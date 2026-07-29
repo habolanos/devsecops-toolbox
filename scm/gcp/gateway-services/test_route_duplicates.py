@@ -240,7 +240,7 @@ class TestDetectRouteDuplicates(unittest.TestCase):
         self.assertGreaterEqual(len(high_conflicts), 1)
         self.assertIn('~', high_conflicts[0]['path'])
 
-    def test_medium_same_hostname_no_section(self):
+    def test_medium_same_hostname_no_section_no_conflict(self):
         routes = [
             _make_route(
                 'route1', 'ns1', ['api.example.com'],
@@ -255,7 +255,7 @@ class TestDetectRouteDuplicates(unittest.TestCase):
         ]
         conflicts = detect_route_duplicates(routes)
         medium_conflicts = [c for c in conflicts if c['severity'] == 'MEDIUM']
-        self.assertEqual(len(medium_conflicts), 1)
+        self.assertEqual(len(medium_conflicts), 0)
 
     def test_different_gateways_no_conflict(self):
         routes = [
@@ -323,7 +323,7 @@ class TestDetectRouteDuplicates(unittest.TestCase):
         ]
         conflicts = detect_route_duplicates(routes)
         severities = [c['severity'] for c in conflicts]
-        self.assertEqual(severities, sorted(severities, key=lambda s: {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2}[s]))
+        self.assertEqual(severities, sorted(severities, key=lambda s: {'CRITICAL': 0, 'HIGH': 1}.get(s, 3)))
 
 
 class TestHeadersQueryParamsDifferentiation(unittest.TestCase):
