@@ -954,25 +954,44 @@ def run_tool(tool_key: str):
     args = []
     tool_args = tool.get("args", [])
 
+    project_list = None
     if "--project" in tool_args:
         print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
-        project = input().strip()
-        if not project:
-            project = DEFAULT_PROJECT_ID
-            print(f"{Colors.GREEN}Usando proyecto: {project}{Colors.ENDC}")
+        project_input = input().strip()
+        if not project_input:
+            project_list = [DEFAULT_PROJECT_ID]
+            print(f"{Colors.GREEN}Usando proyecto: {DEFAULT_PROJECT_ID}{Colors.ENDC}")
         else:
-            projects = [p.strip() for p in project.split(',')]
-            print(f"{Colors.GREEN}Usando proyectos: {', '.join(projects)}{Colors.ENDC}")
-        args.extend(["--project", project])
+            project_list = [p.strip() for p in project_input.split(',') if p.strip()]
+            if len(project_list) == 1:
+                print(f"{Colors.GREEN}Usando proyecto: {project_list[0]}{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}Usando {len(project_list)} proyectos: {', '.join(project_list)}{Colors.ENDC}")
+        args.extend(["--project", project_list[0]])
 
     if "--cluster" in tool_args:
-        print(f"\n{Colors.BOLD}Ingrese el nombre del cluster [{Colors.CYAN}TODOS{Colors.ENDC}{Colors.BOLD}] (vacio = todos):{Colors.ENDC} ", end="")
-        cluster = input().strip()
-        if cluster:
+        tool_path = tool.get("path", "")
+        cluster_required = any(x in tool_path for x in [
+            "ip_addresses_checker", "deploy_dependency_checker",
+            "deployment_validator", "deployments_off_analyzer"
+        ])
+        if cluster_required:
+            print(f"\n{Colors.BOLD}Ingrese el nombre del cluster (obligatorio):{Colors.ENDC} ", end="")
+            cluster = input().strip()
+            if not cluster:
+                print(f"{Colors.FAIL}El cluster es obligatorio para esta herramienta.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
             print(f"{Colors.GREEN}Usando cluster: {cluster}{Colors.ENDC}")
             args.extend(["--cluster", cluster])
         else:
-            print(f"{Colors.GREEN}Usando todos los clusters del proyecto{Colors.ENDC}")
+            print(f"\n{Colors.BOLD}Ingrese el nombre del cluster [{Colors.CYAN}TODOS{Colors.ENDC}{Colors.BOLD}] (vacio = todos):{Colors.ENDC} ", end="")
+            cluster = input().strip()
+            if cluster:
+                print(f"{Colors.GREEN}Usando cluster: {cluster}{Colors.ENDC}")
+                args.extend(["--cluster", cluster])
+            else:
+                print(f"{Colors.GREEN}Usando todos los clusters del proyecto{Colors.ENDC}")
 
     if "--region" in tool_args:
         print(f"\n{Colors.BOLD}Ingrese la región del cluster [us-central1]:{Colors.ENDC} ", end="")
@@ -1107,6 +1126,9 @@ def run_tool(tool_key: str):
         elif "cloud-armor" in tool.get("path", ""):
             view_options = "all/policies/rules/backends/gaps"
             valid_views = ["all", "policies", "rules", "backends", "gaps"]
+        elif "gateway-services" in tool.get("path", ""):
+            view_options = "all/gateways/routes/services/policies/duplicates"
+            valid_views = ["all", "gateways", "routes", "services", "policies", "duplicates"]
         else:
             view_options = "all/gateways/routes/services/policies"
             valid_views = ["all", "gateways", "routes", "services", "policies"]
@@ -1158,20 +1180,44 @@ def run_tool(tool_key: str):
     if "additional_args" in tool:
         args.extend(tool["additional_args"])
     
-    cmd.extend(args)
-    
-    # Mostrar comando que se va a ejecutar
-    print(f"\n{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(cmd)}\n")
-    
-    log_command(cmd)
-    try:
-        # Ejecutar el comando dentro del venv
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        log_command(cmd, "ERROR")
-        print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
-    except KeyboardInterrupt:
-        print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
+    # Ejecutar una vez por proyecto si hay multiples
+    if project_list and len(project_list) > 1:
+        for i, proj in enumerate(project_list):
+            # Reemplazar el proyecto en los args
+            proj_args = list(args)
+            proj_idx = proj_args.index("--project") + 1
+            proj_args[proj_idx] = proj
+            
+            proj_cmd = list(cmd) + proj_args
+            
+            print(f"\n{Colors.CYAN}[{i+1}/{len(project_list)}] Proyecto: {proj}{Colors.ENDC}")
+            print(f"{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(proj_cmd)}\n")
+            
+            log_command(proj_cmd)
+            try:
+                subprocess.run(proj_cmd, check=True)
+            except subprocess.CalledProcessError as e:
+                log_command(proj_cmd, "ERROR")
+                print(f"{Colors.FAIL}Error en proyecto {proj}: {e}{Colors.ENDC}")
+            except KeyboardInterrupt:
+                print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
+                break
+            print()
+    else:
+        cmd.extend(args)
+        
+        # Mostrar comando que se va a ejecutar
+        print(f"\n{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(cmd)}\n")
+        
+        log_command(cmd)
+        try:
+            # Ejecutar el comando dentro del venv
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            log_command(cmd, "ERROR")
+            print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
+        except KeyboardInterrupt:
+            print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
     
     input("\nPresione Enter para continuar...")
 
@@ -1262,13 +1308,16 @@ def run_all_checkers():
     
     # Solicitar proyecto una sola vez
     print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
-    project = input().strip()
-    if not project:
-        project = DEFAULT_PROJECT_ID
-        print(f"{Colors.GREEN}Usando proyecto: {project}{Colors.ENDC}")
+    project_input = input().strip()
+    if not project_input:
+        project_list_all = [DEFAULT_PROJECT_ID]
+        print(f"{Colors.GREEN}Usando proyecto: {DEFAULT_PROJECT_ID}{Colors.ENDC}")
     else:
-        projects = [p.strip() for p in project.split(',')]
-        print(f"{Colors.GREEN}Usando proyectos: {', '.join(projects)}{Colors.ENDC}")
+        project_list_all = [p.strip() for p in project_input.split(',') if p.strip()]
+        if len(project_list_all) == 1:
+            print(f"{Colors.GREEN}Usando proyecto: {project_list_all[0]}{Colors.ENDC}")
+        else:
+            print(f"{Colors.GREEN}Usando {len(project_list_all)} proyectos: {', '.join(project_list_all)}{Colors.ENDC}")
     
     print(f"\n{Colors.BOLD}¿Continuar? (s/n) [s]:{Colors.ENDC} ", end="")
     confirm = input().strip().lower()
@@ -1313,18 +1362,27 @@ def run_all_checkers():
             results.append((tool['name'], "ERROR", f"Script no encontrado: {script_path}"))
             continue
         
-        cmd = [venv_python, str(script_path), "--project", project, "-o", "json"]
+        cmd_base = [venv_python, str(script_path)]
         
-        log_command(cmd)
-        try:
-            result = subprocess.run(cmd, check=True)
-            results.append((tool['name'], "OK", "Completado"))
-        except subprocess.CalledProcessError as e:
-            log_command(cmd, "ERROR")
-            results.append((tool['name'], "ERROR", str(e)))
-        except KeyboardInterrupt:
-            print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
-            break
+        for proj in project_list_all:
+            cmd = cmd_base + ["--project", proj, "-o", "json"]
+            
+            if len(project_list_all) > 1:
+                if RICH_AVAILABLE and console:
+                    console.print(f"[dim]  Proyecto: {proj}[/dim]")
+                else:
+                    print(f"{Colors.CYAN}  Proyecto: {proj}{Colors.ENDC}")
+            
+            log_command(cmd)
+            try:
+                result = subprocess.run(cmd, check=True)
+                results.append((tool['name'], "OK", f"Completado ({proj})"))
+            except subprocess.CalledProcessError as e:
+                log_command(cmd, "ERROR")
+                results.append((tool['name'], "ERROR", f"{proj}: {e}"))
+            except KeyboardInterrupt:
+                print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
+                break
     
     # Resumen final
     elapsed = time_module.time() - start_time

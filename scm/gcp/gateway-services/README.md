@@ -231,6 +231,7 @@ kubectl describe gateway mi-gateway -n mi-namespace
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
+| 2026-07-29 | 2.2.3 | tools.py: multi-proyecto ejecuta una vez por proyecto, cluster prompt inteligente (obligatorio para tools que lo requieren), duplicates en view options |
 | 2026-07-29 | 2.2.2 | Soporte para multiples proyectos separados por coma en --project |
 | 2026-07-29 | 2.2.1 | Ajuste: prompt de cluster en tools.py ahora usa TODOS por defecto (vacio = todos) |
 | 2026-07-29 | 2.2.0 | Nueva vista `--view duplicates`: deteccion de HTTPRoutes duplicadas/conflictivas por Gateway con 3 niveles de severidad (CRITICAL/HIGH/MEDIUM) |
