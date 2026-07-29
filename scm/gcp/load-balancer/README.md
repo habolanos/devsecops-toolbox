@@ -55,6 +55,9 @@ pip install rich
 # Ver todos los load balancers
 python gcp_load_balancer_checker.py --project mi-proyecto
 
+# Multiples proyectos separados por coma
+python gcp_load_balancer_checker.py --project proyecto-1,proyecto-2,proyecto-3
+
 # Ver solo forwarding rules
 python gcp_load_balancer_checker.py --project mi-proyecto --view forwarding
 
@@ -280,6 +283,7 @@ Muestra:
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-07-29 | 1.2.0 | Soporte para multiples proyectos separados por coma en --project |
 | 2026-03-25 | 1.1.0 | Security Policies (Cloud Armor), CDN Config, Comparación entre proyectos |
 | 2026-02-19 | 1.0.0 | Versión inicial con soporte completo para Load Balancers |
 

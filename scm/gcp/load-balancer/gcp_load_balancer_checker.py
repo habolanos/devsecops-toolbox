@@ -55,7 +55,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 
@@ -74,7 +74,7 @@ def get_args():
         "--project", "-p",
         type=str,
         default="cpl-corp-cial-prod-17042024",
-        help="ID del proyecto de GCP (Default: cpl-corp-cial-prod-17042024)"
+        help="ID del proyecto de GCP o multiples separados por coma (Default: cpl-corp-cial-prod-17042024)"
     )
     parser.add_argument(
         "--debug",
@@ -152,14 +152,15 @@ def show_help(console):
 def check_gcp_connection(project_id: str, console, debug: bool = False) -> bool:
     """
     Verifica la conexión a GCP antes de ejecutar el script.
+    Soporta múltiples proyectos separados por coma.
     
     Args:
-        project_id: ID del proyecto GCP
+        project_id: ID del proyecto GCP (o múltiples separados por coma)
         console: Consola Rich para output
         debug: Modo debug
     
     Returns:
-        True si la conexión es válida, False en caso contrario
+        True si la conexión es válida para al menos un proyecto, False en caso contrario
     """
     try:
         # Verificar sesión activa de gcloud
@@ -176,22 +177,26 @@ def check_gcp_connection(project_id: str, console, debug: bool = False) -> bool:
         active_account = auth_result.stdout.strip().split('\n')[0]
         console.print(f"[green]✓[/green] Sesión activa: [cyan]{active_account}[/cyan]")
         
-        # Verificar acceso al proyecto
-        project_cmd = f'gcloud projects describe {project_id} --format="value(projectId)" 2>&1'
-        if debug:
-            console.print(f"[dim]DEBUG: {project_cmd}[/dim]")
-        
-        project_result = subprocess.run(project_cmd, shell=True, capture_output=True, text=True)
-        
-        if project_result.returncode != 0:
-            error_msg = project_result.stdout.strip() or project_result.stderr.strip()
-            console.print(f"[red]❌ No tienes acceso al proyecto: {project_id}[/]")
+        # Verificar acceso a cada proyecto
+        projects = [p.strip() for p in project_id.split(',') if p.strip()]
+        all_ok = True
+        for proj in projects:
+            project_cmd = f'gcloud projects describe {proj} --format="value(projectId)" 2>&1'
             if debug:
-                console.print(f"[dim]Error: {error_msg}[/dim]")
-            return False
+                console.print(f"[dim]DEBUG: {project_cmd}[/dim]")
+            
+            project_result = subprocess.run(project_cmd, shell=True, capture_output=True, text=True)
+            
+            if project_result.returncode != 0:
+                error_msg = project_result.stdout.strip() or project_result.stderr.strip()
+                console.print(f"[red]❌ No tienes acceso al proyecto: {proj}[/]")
+                if debug:
+                    console.print(f"[dim]Error: {error_msg}[/dim]")
+                all_ok = False
+            else:
+                console.print(f"[green]✓[/green] Proyecto accesible: [cyan]{proj}[/cyan]")
         
-        console.print(f"[green]✓[/green] Proyecto accesible: [cyan]{project_id}[/cyan]")
-        return True
+        return all_ok
         
     except Exception as e:
         console.print(f"[red]❌ Error verificando conexión: {e}[/]")
@@ -1056,6 +1061,9 @@ def main():
     max_workers = args.max_workers
     view = args.view
     
+    # Soportar múltiples proyectos separados por coma
+    projects = [p.strip() for p in project_id.split(',') if p.strip()]
+    
     console.print(Panel(
         f"[bold cyan]GCP Load Balancer Checker v{__version__}[/bold cyan]\n"
         f"Proyecto: [yellow]{project_id}[/yellow]",
@@ -1069,63 +1077,76 @@ def main():
     
     console.print()
     
-    # Recolectar datos
+    # Recolectar datos de todos los proyectos
     data = {}
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console
-    ) as progress:
+    for idx, proj in enumerate(projects):
+        if len(projects) > 1:
+            console.print(f"\n[bold cyan][{idx+1}/{len(projects)}] Proyecto: {proj}[/bold cyan]")
         
-        if use_parallel:
-            task = progress.add_task("Recolectando datos de Load Balancers (paralelo)...", total=None)
+        proj_data = {}
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
             
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(get_forwarding_rules_global, project_id, debug, console): 'forwarding_rules_global',
-                    executor.submit(get_forwarding_rules_regional, project_id, debug, console): 'forwarding_rules_regional',
-                    executor.submit(get_target_http_proxies, project_id, debug, console): 'target_http_proxies',
-                    executor.submit(get_target_https_proxies, project_id, debug, console): 'target_https_proxies',
-                    executor.submit(get_target_tcp_proxies, project_id, debug, console): 'target_tcp_proxies',
-                    executor.submit(get_target_ssl_proxies, project_id, debug, console): 'target_ssl_proxies',
-                    executor.submit(get_url_maps, project_id, debug, console): 'url_maps',
-                    executor.submit(get_backend_services_global, project_id, debug, console): 'backend_services_global',
-                    executor.submit(get_backend_services_regional, project_id, debug, console): 'backend_services_regional',
-                    executor.submit(get_backend_buckets, project_id, debug, console): 'backend_buckets',
-                    executor.submit(get_health_checks, project_id, debug, console): 'health_checks',
-                    executor.submit(get_ssl_certificates, project_id, debug, console): 'ssl_certificates',
-                    executor.submit(get_ssl_policies, project_id, debug, console): 'ssl_policies',
-                    executor.submit(get_target_pools, project_id, debug, console): 'target_pools',
-                    executor.submit(get_target_instances, project_id, debug, console): 'target_instances',
-                    executor.submit(get_security_policies, project_id, debug, console): 'security_policies',
-                }
+            if use_parallel:
+                task = progress.add_task(f"Recolectando datos de Load Balancers (paralelo)...", total=None)
                 
-                for future in as_completed(futures):
-                    key = futures[future]
-                    try:
-                        data[key] = future.result()
-                    except Exception as e:
-                        console.print(f"[yellow]⚠️ Error obteniendo {key}: {e}[/yellow]")
-                        data[key] = []
-        else:
-            task = progress.add_task("Recolectando datos de Load Balancers...", total=None)
-            data['forwarding_rules_global'] = get_forwarding_rules_global(project_id, debug, console)
-            data['forwarding_rules_regional'] = get_forwarding_rules_regional(project_id, debug, console)
-            data['target_http_proxies'] = get_target_http_proxies(project_id, debug, console)
-            data['target_https_proxies'] = get_target_https_proxies(project_id, debug, console)
-            data['target_tcp_proxies'] = get_target_tcp_proxies(project_id, debug, console)
-            data['target_ssl_proxies'] = get_target_ssl_proxies(project_id, debug, console)
-            data['url_maps'] = get_url_maps(project_id, debug, console)
-            data['backend_services_global'] = get_backend_services_global(project_id, debug, console)
-            data['backend_services_regional'] = get_backend_services_regional(project_id, debug, console)
-            data['backend_buckets'] = get_backend_buckets(project_id, debug, console)
-            data['health_checks'] = get_health_checks(project_id, debug, console)
-            data['ssl_certificates'] = get_ssl_certificates(project_id, debug, console)
-            data['ssl_policies'] = get_ssl_policies(project_id, debug, console)
-            data['target_pools'] = get_target_pools(project_id, debug, console)
-            data['target_instances'] = get_target_instances(project_id, debug, console)
-            data['security_policies'] = get_security_policies(project_id, debug, console)
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {
+                        executor.submit(get_forwarding_rules_global, proj, debug, console): 'forwarding_rules_global',
+                        executor.submit(get_forwarding_rules_regional, proj, debug, console): 'forwarding_rules_regional',
+                        executor.submit(get_target_http_proxies, proj, debug, console): 'target_http_proxies',
+                        executor.submit(get_target_https_proxies, proj, debug, console): 'target_https_proxies',
+                        executor.submit(get_target_tcp_proxies, proj, debug, console): 'target_tcp_proxies',
+                        executor.submit(get_target_ssl_proxies, proj, debug, console): 'target_ssl_proxies',
+                        executor.submit(get_url_maps, proj, debug, console): 'url_maps',
+                        executor.submit(get_backend_services_global, proj, debug, console): 'backend_services_global',
+                        executor.submit(get_backend_services_regional, proj, debug, console): 'backend_services_regional',
+                        executor.submit(get_backend_buckets, proj, debug, console): 'backend_buckets',
+                        executor.submit(get_health_checks, proj, debug, console): 'health_checks',
+                        executor.submit(get_ssl_certificates, proj, debug, console): 'ssl_certificates',
+                        executor.submit(get_ssl_policies, proj, debug, console): 'ssl_policies',
+                        executor.submit(get_target_pools, proj, debug, console): 'target_pools',
+                        executor.submit(get_target_instances, proj, debug, console): 'target_instances',
+                        executor.submit(get_security_policies, proj, debug, console): 'security_policies',
+                    }
+                    
+                    for future in as_completed(futures):
+                        key = futures[future]
+                        try:
+                            proj_data[key] = future.result()
+                        except Exception as e:
+                            console.print(f"[yellow]⚠️ Error obteniendo {key}: {e}[/yellow]")
+                            proj_data[key] = []
+            else:
+                task = progress.add_task("Recolectando datos de Load Balancers...", total=None)
+                proj_data['forwarding_rules_global'] = get_forwarding_rules_global(proj, debug, console)
+                proj_data['forwarding_rules_regional'] = get_forwarding_rules_regional(proj, debug, console)
+                proj_data['target_http_proxies'] = get_target_http_proxies(proj, debug, console)
+                proj_data['target_https_proxies'] = get_target_https_proxies(proj, debug, console)
+                proj_data['target_tcp_proxies'] = get_target_tcp_proxies(proj, debug, console)
+                proj_data['target_ssl_proxies'] = get_target_ssl_proxies(proj, debug, console)
+                proj_data['url_maps'] = get_url_maps(proj, debug, console)
+                proj_data['backend_services_global'] = get_backend_services_global(proj, debug, console)
+                proj_data['backend_services_regional'] = get_backend_services_regional(proj, debug, console)
+                proj_data['backend_buckets'] = get_backend_buckets(proj, debug, console)
+                proj_data['health_checks'] = get_health_checks(proj, debug, console)
+                proj_data['ssl_certificates'] = get_ssl_certificates(proj, debug, console)
+                proj_data['ssl_policies'] = get_ssl_policies(proj, debug, console)
+                proj_data['target_pools'] = get_target_pools(proj, debug, console)
+                proj_data['target_instances'] = get_target_instances(proj, debug, console)
+                proj_data['security_policies'] = get_security_policies(proj, debug, console)
+        
+        # Merge proj_data into data (append lists)
+        for key, val in proj_data.items():
+            if key in data and isinstance(data[key], list) and isinstance(val, list):
+                data[key].extend(val)
+            else:
+                data[key] = val
     
     # Mostrar tablas según la vista seleccionada
     console.print()
