@@ -966,12 +966,13 @@ def run_tool(tool_key: str):
         args.extend(["--project", project])
 
     if "--cluster" in tool_args:
-        print(f"\n{Colors.BOLD}Ingrese el nombre del cluster [{Colors.CYAN}{DEFAULT_CLUSTER_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        print(f"\n{Colors.BOLD}Ingrese el nombre del cluster [{Colors.CYAN}TODOS{Colors.ENDC}{Colors.BOLD}] (vacio = todos):{Colors.ENDC} ", end="")
         cluster = input().strip()
-        if not cluster:
-            cluster = DEFAULT_CLUSTER_ID
+        if cluster:
             print(f"{Colors.GREEN}Usando cluster: {cluster}{Colors.ENDC}")
-        args.extend(["--cluster", cluster])
+            args.extend(["--cluster", cluster])
+        else:
+            print(f"{Colors.GREEN}Usando todos los clusters del proyecto{Colors.ENDC}")
 
     if "--region" in tool_args:
         print(f"\n{Colors.BOLD}Ingrese la región del cluster [us-central1]:{Colors.ENDC} ", end="")
