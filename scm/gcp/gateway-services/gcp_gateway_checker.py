@@ -1424,7 +1424,7 @@ def scan_cluster_resources(console, cluster_name, namespace, view, revision_time
             results['policies'] = pol_results
             console.print()
         
-        if view == 'duplicates':
+        if view in ['all', 'duplicates']:
             console.print("[bold cyan]═══ DUPLICATES ═══[/]\n")
             dup_results = print_duplicates_table(console, routes, gateways, revision_time, debug)
             for r in dup_results:
