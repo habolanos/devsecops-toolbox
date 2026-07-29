@@ -33,10 +33,12 @@ class TestDashboardGenerator(unittest.TestCase):
             'routes': [
                 {'name': 'route-1', 'namespace': 'default', 'hostnames': 'api.example.com',
                  'date_created': '2026-01-01', 'rules_count': 2,
+                 'path_prefix': '/api/v1', 'method': 'GET', 'headers': 'X-Service=A', 'query_params': '*',
                  'attached_gateways': 'gw-1', 'has_gateway': True, 'cluster': 'cluster-a',
                  'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
                 {'name': 'route-2', 'namespace': 'prod', 'hostnames': 'svc.example.com',
                  'date_created': '2026-02-01', 'rules_count': 0,
+                 'path_prefix': '*', 'method': '*', 'headers': '*', 'query_params': '*',
                  'attached_gateways': '', 'has_gateway': False, 'cluster': 'cluster-b',
                  'revision_time': '2026-07-29 12:00:00 (UTC-05:00)'},
             ],

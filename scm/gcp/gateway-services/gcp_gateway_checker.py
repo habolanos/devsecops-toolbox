@@ -606,6 +606,10 @@ def print_routes_table(console, routes, revision_time, debug=False):
     table.add_column("Hostnames", justify="left")
     table.add_column("Date Created", justify="center")
     table.add_column("Rules", justify="center")
+    table.add_column("Path Prefix", justify="left")
+    table.add_column("Method", justify="center")
+    table.add_column("Headers", justify="left")
+    table.add_column("Query Params", justify="left")
     table.add_column("Attached Gateways", justify="left")
     table.add_column("Semáforo SRE", justify="left")
     
@@ -642,12 +646,56 @@ def print_routes_table(console, routes, revision_time, debug=False):
         
         has_gateway = len(attached_gateways) > 0
         
+        # Extraer matching criteria de todas las rules/matches
+        paths = []
+        methods = []
+        headers_display = []
+        query_params_display = []
+        for rule in rules:
+            for match in rule.get('matches', []):
+                path_info = match.get('path', {})
+                path_value = path_info.get('value', '*')
+                path_type = path_info.get('type', 'PathPrefix')
+                if path_type == 'PathPrefix':
+                    paths.append(path_value)
+                else:
+                    paths.append(f"{path_value} ({path_type})")
+                method = match.get('method', '*')
+                methods.append(method)
+                hdrs = match.get('headers', [])
+                if hdrs:
+                    hdr_strs = [f"{h.get('name','')}={h.get('value','')}" for h in hdrs]
+                    headers_display.append(', '.join(hdr_strs))
+                else:
+                    headers_display.append('*')
+                qps = match.get('queryParams', [])
+                if qps:
+                    qp_strs = [f"{q.get('name','')}={q.get('value','')}" for q in qps]
+                    query_params_display.append(', '.join(qp_strs))
+                else:
+                    query_params_display.append('*')
+        
+        paths_display = '\n'.join(paths[:3])
+        if len(paths) > 3:
+            paths_display += f" (+{len(paths) - 3})"
+        methods_display = ', '.join(sorted(set(methods)))
+        headers_str = '\n'.join(headers_display[:3])
+        if len(headers_display) > 3:
+            headers_str += f" (+{len(headers_display) - 3})"
+        query_params_str = '\n'.join(query_params_display[:3])
+        if len(query_params_display) > 3:
+            query_params_str += f" (+{len(query_params_display) - 3})"
+        
         results.append({
             'name': name,
             'namespace': namespace,
             'hostnames': ', '.join(hostnames),
             'date_created': creation,
             'rules_count': rules_count,
+            'path_prefix': paths_display.replace('\n', '; '),
+            'method': methods_display,
+            'headers': headers_str.replace('\n', '; '),
+            'query_params': query_params_str.replace('\n', '; '),
             'attached_gateways': ', '.join(attached_gateways),
             'has_gateway': has_gateway,
             'revision_time': revision_time
@@ -659,6 +707,10 @@ def print_routes_table(console, routes, revision_time, debug=False):
             hostnames_display,
             creation,
             str(rules_count),
+            paths_display,
+            methods_display,
+            headers_str,
+            query_params_str,
             gateways_display,
             get_route_sre_status(has_gateway, rules_count)
         )

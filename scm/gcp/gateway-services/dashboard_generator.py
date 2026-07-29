@@ -238,9 +238,13 @@ tbody tr:hover{{background:#1e293b;}}
         <th onclick="sortTable('rt-table',3)">Hostnames<span class="sort-arrow"></span></th>
         <th onclick="sortTable('rt-table',4)">Date Created<span class="sort-arrow"></span></th>
         <th onclick="sortTable('rt-table',5)">Rules<span class="sort-arrow"></span></th>
-        <th onclick="sortTable('rt-table',6)">Attached Gateways<span class="sort-arrow"></span></th>
-        <th onclick="sortTable('rt-table',7)">Status<span class="sort-arrow"></span></th>
-        <th onclick="sortTable('rt-table',8)">Revisión<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',6)">Path Prefix<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',7)">Method<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',8)">Headers<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',9)">Query Params<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',10)">Attached Gateways<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',11)">Status<span class="sort-arrow"></span></th>
+        <th onclick="sortTable('rt-table',12)">Revisión<span class="sort-arrow"></span></th>
       </tr></thead><tbody>
 {_render_route_rows(routes)}
       </tbody></table>
@@ -340,7 +344,7 @@ function renderGateways(data){{
 
 function renderRoutes(data){{
   const tbody=document.querySelector('#rt-table tbody');
-  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="9" class="empty">No se detectaron HTTPRoutes</td></tr>';return;}}
+  if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="13" class="empty">No se detectaron HTTPRoutes</td></tr>';return;}}
   tbody.innerHTML=data.map(r=>{{
     const hasGw=r.has_gateway, rules=r.rules_count||0;
     let sp='<span class="pill pill-green">Healthy</span>';
@@ -348,6 +352,8 @@ function renderRoutes(data){{
     else if(rules===0)sp='<span class="pill pill-yellow">No Rules</span>';
     return `<tr><td>${{esc(r.cluster)}}</td><td>${{esc(r.name)}}</td><td>${{esc(r.namespace)}}</td>
       <td>${{esc(r.hostnames)}}</td><td>${{esc(r.date_created)}}</td><td>${{esc(String(rules))}}</td>
+      <td>${{esc(r.path_prefix||'*')}}</td><td>${{esc(r.method||'*')}}</td>
+      <td>${{esc(r.headers||'*')}}</td><td>${{esc(r.query_params||'*')}}</td>
       <td>${{esc(r.attached_gateways)}}</td><td>${{sp}}</td><td>${{esc(r.revision_time)}}</td></tr>`;
   }}).join('');
 }}
@@ -524,7 +530,7 @@ def _render_gateway_rows(gateways):
 
 def _render_route_rows(routes):
     if not routes:
-        return '        <tr><td colspan="9" class="empty">No se detectaron HTTPRoutes</td></tr>'
+        return '        <tr><td colspan="13" class="empty">No se detectaron HTTPRoutes</td></tr>'
     rows = []
     for r in routes:
         has_gw = r.get('has_gateway', False)
@@ -542,6 +548,10 @@ def _render_route_rows(routes):
           <td>{escape(r.get('hostnames',''))}</td>
           <td>{escape(r.get('date_created',''))}</td>
           <td>{escape(str(rules))}</td>
+          <td>{escape(r.get('path_prefix','*'))}</td>
+          <td>{escape(r.get('method','*'))}</td>
+          <td>{escape(r.get('headers','*'))}</td>
+          <td>{escape(r.get('query_params','*'))}</td>
           <td>{escape(r.get('attached_gateways',''))}</td>
           <td>{status_pill}</td>
           <td>{escape(r.get('revision_time',''))}</td>
