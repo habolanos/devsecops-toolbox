@@ -84,7 +84,7 @@ El dashboard HTML se genera **por defecto** en cada ejecución y incluye:
 - **Tablas ordenables**: Click en cualquier columna para ordenar
 - **Busqueda en vivo**: Filtra resultados por texto en cada tabla
 - **Pills de estado**: Colores semaforicos (verde=healthy, rojo=unhealthy, amarillo=degraded)
-- **Deteccion de duplicados**: Conflictos CRITICAL/HIGH/MEDIUM con detalles de rutas conflictivas
+- **Deteccion de duplicados**: Conflictos CRITICAL/HIGH con detalles de rutas conflictivas
 - **Columna Revisión**: Fecha/hora de revision en cada fila de todas las tablas
 - **Fecha de generacion**: Timestamp de cuando se genero el dashboard (en header y footer)
 - **Carga de JSON**: Boton "Cargar JSON" para importar archivos JSON exportados y actualizar el dashboard dinamicamente
@@ -97,9 +97,8 @@ El archivo se guarda en `outcome/gateway_dashboard_<timestamp>.html`.
 
 Usa `--view duplicates` para identificar conflictos entre HTTPRoutes:
 
-- **CRITICAL**: Mismo hostname + path + method en mismo gateway/listener
-- **HIGH**: Paths solapados (PathPrefix) en mismo hostname/gateway
-- **MEDIUM**: Mismo hostname en mismo gateway desde routes diferentes sin sectionName especifico
+- **CRITICAL**: Mismo hostname + path + method + headers + queryParams en mismo gateway/listener
+- **HIGH**: Paths solapados (PathPrefix) en mismo hostname/gateway con mismos headers/queryParams
 
 ```bash
 python gcp_gateway_checker.py --view duplicates
@@ -191,15 +190,14 @@ La vista `--view duplicates` analiza todas las HTTPRoutes y detecta conflictos a
 
 | Severidad | Criterio | Descripcion |
 |-----------|---------|-------------|
-| **CRITICAL** | Gateway + Hostname + Path + Method identicos | El controller no sabe a cual route enviar el request. Conflicto seguro. |
+| **CRITICAL** | Gateway + Hostname + Path + Method + Headers + QueryParams identicos | El controller no sabe a cual route enviar el request. Conflicto seguro. |
 | **HIGH** | Paths solapados (PathPrefix) en mismo Gateway + Hostname | Ej: `/api` y `/api/v1` causan ambiguedad de routing. |
-| **MEDIUM** | Mismo Hostname en mismo Gateway sin sectionName especifico | Ambas routes adjuntas a todos los listeners del gateway. Revisar. |
 
 ### Columnas del Reporte
 
 | Columna | Contenido |
 |---------|-----------|
-| **Severity** | CRITICAL / HIGH / MEDIUM |
+| **Severity** | CRITICAL / HIGH |
 | **Gateway** | namespace/name del Gateway |
 | **Listener** | sectionName o `*` si no especifica |
 | **Hostname** | Hostname en conflicto |
@@ -266,10 +264,11 @@ kubectl describe gateway mi-gateway -n mi-namespace
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
+| 2026-07-29 | 2.4.0 | Eliminado nivel MEDIUM (generaba falsos positivos), deteccion solo CRITICAL/HIGH, tabla ROUTES ordenada por PathPrefix descendente, DUPLICATES despues de ROUTES, POLICIES despues de GATEWAYS |
 | 2026-07-29 | 2.3.1 | Columna Revisión en todas las tablas, fecha de generacion del dashboard, boton Cargar JSON para importar archivos JSON exportados |
 | 2026-07-29 | 2.2.2 | Soporte para multiples proyectos separados por coma en --project |
 | 2026-07-29 | 2.2.1 | Ajuste: prompt de cluster en tools.py ahora usa TODOS por defecto (vacio = todos) |
-| 2026-07-29 | 2.2.0 | Nueva vista `--view duplicates`: deteccion de HTTPRoutes duplicadas/conflictivas por Gateway con 3 niveles de severidad (CRITICAL/HIGH/MEDIUM) |
+| 2026-07-29 | 2.2.0 | Nueva vista `--view duplicates`: deteccion de HTTPRoutes duplicadas/conflictivas por Gateway con niveles de severidad (CRITICAL/HIGH) |
 | 2026-02-20 | 2.1.0 | Reporte JSON mejorado con metadatos (timestamp, timezone, summary) |
 | 2026-02-19 | 2.0.1 | Validación de conexión GCP al inicio (check_gcp_connection) |
 | 2026-02-16 | 2.0.0 | Ejecución paralela (recursos y endpoints), Live display con progreso dinámico, timezone configurable |

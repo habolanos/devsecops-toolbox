@@ -42,7 +42,6 @@ def generate_dashboard(all_results, project_id, revision_time, output_path, clus
 
     dup_critical = sum(1 for d in duplicates if d.get('severity') == 'CRITICAL')
     dup_high = sum(1 for d in duplicates if d.get('severity') == 'HIGH')
-    dup_medium = sum(1 for d in duplicates if d.get('severity') == 'MEDIUM')
 
     clusters_list = clusters_scanned or sorted(set(
         g.get('cluster', '') for g in gateways
@@ -71,7 +70,7 @@ def generate_dashboard(all_results, project_id, revision_time, output_path, clus
         gw_healthy=gw_healthy, gw_unhealthy=gw_unhealthy, gw_other=gw_other,
         rt_healthy=rt_healthy, rt_no_gw=rt_no_gw,
         svc_healthy=svc_healthy, svc_degraded=svc_degraded, svc_no_pods=svc_no_pods,
-        dup_critical=dup_critical, dup_high=dup_high, dup_medium=dup_medium,
+        dup_critical=dup_critical, dup_high=dup_high,
         clusters_list=clusters_list,
     )
 
@@ -197,7 +196,7 @@ tbody tr:hover{{background:#1e293b;}}
     <div class="card blue"><div class="icon">🛤️</div><div class="label">HTTPRoutes Healthy</div><div class="value">{ctx['rt_healthy']}</div><div class="sub">No Gateway: {ctx['rt_no_gw']} · Total: {len(routes)}</div></div>
     <div class="card purple"><div class="icon">🔌</div><div class="label">Services Healthy</div><div class="value">{ctx['svc_healthy']}</div><div class="sub">Degraded: {ctx['svc_degraded']} · No Pods: {ctx['svc_no_pods']} · Total: {len(services)}</div></div>
     <div class="card yellow"><div class="icon">📋</div><div class="label">Policies</div><div class="value">{len(policies)}</div><div class="sub">Health Check + Backend</div></div>
-    <div class="card red"><div class="icon">🚨</div><div class="label">Duplicates CRITICAL</div><div class="value">{ctx['dup_critical']}</div><div class="sub">High: {ctx['dup_high']} · Medium: {ctx['dup_medium']} · Total: {len(duplicates)}</div></div>
+    <div class="card red"><div class="icon">🚨</div><div class="label">Duplicates CRITICAL</div><div class="value">{ctx['dup_critical']}</div><div class="sub">High: {ctx['dup_high']} · Total: {len(duplicates)}</div></div>
   </div>
 
   <div class="tabs">
@@ -385,9 +384,9 @@ function renderPolicies(data){{
 function renderDuplicates(data){{
   const tbody=document.querySelector('#dup-table tbody');
   if(!data||!data.length){{tbody.innerHTML='<tr><td colspan="13" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>';return;}}
-  const sc={{CRITICAL:'pill-critical',HIGH:'pill-high',MEDIUM:'pill-medium'}};
+  const sc={{CRITICAL:'pill-critical',HIGH:'pill-high'}};
   tbody.innerHTML=data.map(d=>{{
-    const sev=d.severity||'MEDIUM';
+    const sev=d.severity||'HIGH';
     const p=`<span class="pill ${{sc[sev]||'pill-gray'}}">${{esc(sev)}}</span>`;
     return `<tr><td>${{p}}</td><td>${{esc(d.cluster)}}</td><td>${{esc(d.gateway)}}</td>
       <td>${{esc(d.listener)}}</td><td>${{esc(d.hostname)}}</td><td>${{esc(d.path)}}</td>
@@ -608,10 +607,10 @@ def _render_policy_rows(policies):
 def _render_duplicate_rows(duplicates):
     if not duplicates:
         return '        <tr><td colspan="13" class="empty">✅ No se detectaron duplicidades ni conflictos</td></tr>'
-    sev_class = {'CRITICAL': 'pill-critical', 'HIGH': 'pill-high', 'MEDIUM': 'pill-medium'}
+    sev_class = {'CRITICAL': 'pill-critical', 'HIGH': 'pill-high'}
     rows = []
     for d in duplicates:
-        sev = d.get('severity', 'MEDIUM')
+        sev = d.get('severity', 'HIGH')
         pill = f'<span class="pill {sev_class.get(sev, "pill-gray")}">{escape(sev)}</span>'
         rows.append(f"""        <tr>
           <td>{pill}</td>

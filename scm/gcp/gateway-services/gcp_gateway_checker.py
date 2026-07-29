@@ -898,7 +898,7 @@ def detect_route_duplicates(routes, gateways=None):
     Detecta duplicidades y conflictos entre HTTPRoutes agrupadas por Gateway.
 
     Retorna lista de conflictos con:
-    - severity: CRITICAL, HIGH, MEDIUM
+    - severity: CRITICAL, HIGH
     - gateway, listener, hostname, path, method
     - route_1, route_2 (namespace/name)
     - conflict_type: descripcion del conflicto
@@ -1035,8 +1035,7 @@ def print_duplicates_table(console, routes, gateways, revision_time, debug=False
 
     severity_style = {
         'CRITICAL': '[bold white on red] CRITICAL [/]',
-        'HIGH': '[bold white on yellow] HIGH [/]',
-        'MEDIUM': '[bold white on blue] MEDIUM [/]'
+        'HIGH': '[bold white on yellow] HIGH [/]'
     }
 
     results = []
@@ -1078,12 +1077,10 @@ def print_duplicates_table(console, routes, gateways, revision_time, debug=False
 
     critical = sum(1 for c in conflicts if c['severity'] == 'CRITICAL')
     high = sum(1 for c in conflicts if c['severity'] == 'HIGH')
-    medium = sum(1 for c in conflicts if c['severity'] == 'MEDIUM')
 
     summary = (
         f"[bold red]🚨 CRITICAL: {critical}[/]  "
         f"[bold yellow]⚠️  HIGH: {high}[/]  "
-        f"[bold blue]📋 MEDIUM: {medium}[/]  "
         f"[dim]| Total conflicts: {len(conflicts)}[/]"
     )
     console.print(Panel(summary, title="📊 Resumen Duplicidades", border_style="red", expand=False))
