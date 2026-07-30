@@ -357,6 +357,104 @@ class TestRenameStage(unittest.TestCase):
         self.assertEqual(rename_change['old_name'], 'QA')
         self.assertEqual(rename_change['new_name'], 'QA-Testing')
 
+    def test_rename_stage_updates_conditions_dependency(self):
+        """action: rename debe actualizar environment.conditions[] que referencian al stage viejo"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'Validador', 'rank': 1},
+                {
+                    'id': 2, 'name': 'Production', 'rank': 2,
+                    'conditions': [
+                        {'name': 'Validador', 'conditionType': 'environmentState', 'value': '4'}
+                    ]
+                }
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'Validador',
+                    'new_name': 'Validator'
+                }
+            ]
+        }
+
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+
+        # El condition debe referenciar 'Validator' ahora
+        prod_stage = [s for s in self.definition['environments'] if s['name'] == 'Production'][0]
+        self.assertEqual(prod_stage['conditions'][0]['name'], 'Validator')
+
+        # Debe registrar el cambio de dependencia
+        dep_changes = [c for c in engine.changes if c.get('type') == 'stage_dependency_update']
+        self.assertEqual(len(dep_changes), 1)
+        self.assertEqual(dep_changes[0]['old_ref'], 'Validador')
+        self.assertEqual(dep_changes[0]['new_ref'], 'Validator')
+
+    def test_rename_stage_updates_condition_string_dependency(self):
+        """action: rename debe actualizar deploymentInput.condition string que referencia al stage viejo"""
+        self.definition = {
+            'environments': [
+                {
+                    'id': 1, 'name': 'Validador', 'rank': 1,
+                    'deployPhases': [{'deploymentInput': {'condition': 'succeeded()'}}]
+                },
+                {
+                    'id': 2, 'name': 'Production', 'rank': 2,
+                    'deployPhases': [{'deploymentInput': {'condition': "succeeded('Validador')"}}]
+                }
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'Validador',
+                    'new_name': 'Validator'
+                }
+            ]
+        }
+
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+
+        # El condition string debe referenciar 'Validator' ahora
+        prod_stage = [s for s in self.definition['environments'] if s['name'] == 'Production'][0]
+        cond = prod_stage['deployPhases'][0]['deploymentInput']['condition']
+        self.assertIn("'Validator'", cond)
+        self.assertNotIn("'Validador'", cond)
+
+    def test_rename_stage_no_dependencies_still_works(self):
+        """action: rename sin dependencias debe funcionar igual que antes"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'Build', 'rank': 1},
+                {'id': 2, 'name': 'QA', 'rank': 2}
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'Build',
+                    'new_name': 'Compile'
+                }
+            ]
+        }
+
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+
+        stage_names = [s['name'] for s in self.definition['environments']]
+        self.assertIn('Compile', stage_names)
+        self.assertNotIn('Build', stage_names)
+
+        # No debe haber cambios de dependencia
+        dep_changes = [c for c in engine.changes if c.get('type') == 'stage_dependency_update']
+        self.assertEqual(len(dep_changes), 0)
+
 
 class TestPositionBetween(unittest.TestCase):
     """Tests específicos para position: between"""

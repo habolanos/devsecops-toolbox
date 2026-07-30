@@ -243,7 +243,7 @@ class UpdateEngine:
         })
     
     def _rename_stage(self, rule: Dict):
-        """Renombrar un stage existente."""
+        """Renombrar un stage existente y actualizar referencias de dependencia."""
         environments = self.definition.get('environments', [])
 
         source_name = rule.get('source_stage')
@@ -256,22 +256,6 @@ class UpdateEngine:
         existing_names = [stage.get('name', '') for stage in environments]
         if new_name in existing_names:
             raise ValueError(f"El nombre '{new_name}' ya existe en el pipeline")
-
-        # Validar dependencias: verificar si otros stages dependen de este stage
-        for stage in environments:
-            deploy_phases = stage.get('deployPhases', [])
-            for phase in deploy_phases:
-                deployment_input = phase.get('deploymentInput', {})
-                conditions = deployment_input.get('conditions', [])
-                for condition in conditions:
-                    if condition.get('conditionType') == '2':  # 2 = succeeded condition
-                        value = condition.get('value', '')
-                        if source_name in value:
-                            raise ValueError(
-                                f"El stage '{stage.get('name')}' depende de '{source_name}'. "
-                                f"Renombrarlo romperá la dependencia. "
-                                f"Primero actualice la dependencia en '{stage.get('name')}' para usar '{new_name}'."
-                            )
 
         # Localizar el stage a renombrar
         stage_found = False
@@ -290,6 +274,40 @@ class UpdateEngine:
 
         if not stage_found:
             raise ValueError(f"source_stage '{source_name}' no encontrado en el pipeline")
+
+        # Actualizar referencias al nombre viejo en las dependencias de otros stages
+        # Las dependencias entre stages en Azure DevOps se almacenan en:
+        # 1. environment.conditions[] (conditionType=environmentState, name=stage_referenciado)
+        # 2. deployPhases[].deploymentInput.condition (string con succeeded('StageName'))
+        for stage in environments:
+            # 1. Actualizar environment.conditions[]
+            conditions = stage.get('conditions', [])
+            for condition in conditions:
+                if condition.get('name') == source_name:
+                    condition['name'] = new_name
+                    self.changes.append({
+                        'type': 'stage_dependency_update',
+                        'stage': stage.get('name', ''),
+                        'field': 'conditions',
+                        'old_ref': source_name,
+                        'new_ref': new_name
+                    })
+
+            # 2. Actualizar deployPhases[].deploymentInput.condition (string)
+            deploy_phases = stage.get('deployPhases', [])
+            for phase in deploy_phases:
+                deployment_input = phase.get('deploymentInput', {})
+                cond_str = deployment_input.get('condition', '')
+                if source_name in cond_str:
+                    new_cond = cond_str.replace(f"'{source_name}'", f"'{new_name}'")
+                    deployment_input['condition'] = new_cond
+                    self.changes.append({
+                        'type': 'stage_dependency_update',
+                        'stage': stage.get('name', ''),
+                        'field': 'deploymentInput.condition',
+                        'old_ref': source_name,
+                        'new_ref': new_name
+                    })
 
         self.definition['environments'] = environments
     
