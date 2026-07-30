@@ -1,0 +1,46 @@
+metadata:
+  name: "Renombrar stage"
+  version: "1.0"
+  description: "Renombra un stage Validador a Validator"
+  comment: |
+    Renombrado de stage en pipeline CD.
+
+    Cambios realizados:
+    1. El stage "Validador" se renombra a "Validator".
+    2. Se mantiene el mismo ID, rank y configuración del stage original.
+    3. Solo se modifica el campo 'name' del environment.
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-07-30
+
+search:
+  # Incluir el stage a renombrar para que el análisis lo detecte
+  stages:
+    - name: "Validador"
+
+update:
+  stages:
+    - action: "rename"
+      # Stage existente a renombrar
+      source_stage: "Validador"
+      # Nuevo nombre del stage
+      new_name: "Validator"
+
+options:
+  dry_run: false
+  rollback_on_error: true
+  # Variable groups a remover antes de actualizar.
+  # Formato diferenciado por scope:
+  #   global:       Solo del nivel global del pipeline (definition.variableGroups)
+  #   environments:  Solo de cada stage (environments[].variableGroups)
+  #   all:           De ambos niveles
+  ignore_variable_groups:
+    all: [186, 196]
+  # Reemplazar agent pools (queueId) inexistentes por IDs validos.
+  # Agent Pool: queueId= 5331 para "gents-AutoScaling-Releases" 
+  # Formato: old_id: new_id
+  replace_agent_pools:
+    1749: 5331
+    1751: 5331
+    2722: 5331
+    7251: 5331

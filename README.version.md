@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.11`** — 2026-07-30
+**`1.7.12`** — 2026-07-30
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-07-30 | **1.7.12** | **Fix pipeline_updater: Rename stage ahora actualiza referencias de dependencia**: `_rename_stage` buscaba dependencias en `deployPhases[].deploymentInput.conditions` (campo incorrecto) y bloqueaba el renombrado con error. Azure DevOps almacena dependencias en `environment.conditions[]` (`conditionType=environmentState`, `name=stage`) y `deployPhases[].deploymentInput.condition` (string `succeeded('StageName')`). Ahora actualiza ambas referencias al nuevo nombre. Fix adicional: `azdo/tools.py` maneja rutas duplicadas de template YAML (autocompletado del shell). 3 tests de regresion agregados. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_copy_stage.py`, `scm/azdo/tools.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-07-30 | **1.7.11** | **Feat gcp_monitor: Parametro --multi-project para multiples proyectos**: Se agrega el parametro `--multi-project` a `gcp_monitor.py` para recibir multiples proyectos separados por coma de forma explicita. `--project` queda para un solo proyecto (backward compatible). En `tools.py` se agrega el conjunto `MULTI_PROJECT_PARAM_SCRIPTS` para distinguir scripts que usan `--multi-project` de los que usan `--project` con comma-separated. `run_tool` y `run_all_checkers` usan `--multi-project` cuando hay multiples proyectos y el script lo soporta. | `scm/gcp/monitoring/gcp_monitor.py`, `scm/gcp/tools.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-07-30 | **1.7.10** | **Fix tools.py: Soporte dual de multiples proyectos por script**: Se anade el conjunto `MULTI_PROJECT_SCRIPTS` con los scripts que soportan comma-separated en `--project` (gcp_gateway_checker, gcp_load_balancer_checker, gcp_monitor, gcp_service_account_checker, gcp_sa_multi_project_reporter). Si el script esta en el conjunto, se pasan todos los proyectos como `--project proj1,proj2,proj3` en una sola invocacion (acumulado). Si no esta en el conjunto, se ejecuta una vez por proyecto en un loop (uno a uno). Aplicado tanto a `run_tool` como a `run_all_checkers`. | `scm/gcp/tools.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-07-30 | **1.7.9** | **Fix tools.py: Restaurar paso de multiples proyectos separados por coma a --project**: El commit 19feb96 habia cambiado el comportamiento de tools.py para ejecutar scripts una vez por proyecto en un loop, en lugar de pasar todos los proyectos como string separado por coma al flag `--project`. Esto impedia que los scripts que soportan multiples proyectos (gcp_gateway_checker, gcp_load_balancer_checker, gcp_monitor) acumularan resultados. Restaurado el comportamiento anterior: se pasa `--project proj1,proj2,proj3` en una sola invocacion, tanto en `run_tool` como en `run_all_checkers`. | `scm/gcp/tools.py`, `VERSION`, `README.md`, `README.version.md` |
