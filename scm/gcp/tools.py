@@ -116,6 +116,15 @@ DEFAULT_CLUSTER_ID = "gke-cs-wms-qa-01"
 # Deployment por defecto para checkers de conectividad
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 
+# Scripts que soportan multiples proyectos separados por coma en --project
+MULTI_PROJECT_SCRIPTS = {
+    "gcp_gateway_checker",
+    "gcp_load_balancer_checker",
+    "gcp_monitor",
+    "gcp_service_account_checker",
+    "gcp_sa_multi_project_reporter",
+}
+
 # Definición de las herramientas disponibles (con grupo asignado)
 # Ordenadas por grupo: monitoring(1-2, 24-25), iam(3-5), security(6), database(7-9), network(10-13), kubernetes(14-19), artifacts(20), inventory(22), reports(21)
 TOOLS = {
@@ -1186,20 +1195,47 @@ def run_tool(tool_key: str):
     if "additional_args" in tool:
         args.extend(tool["additional_args"])
     
-    cmd.extend(args)
-    
-    # Mostrar comando que se va a ejecutar
-    print(f"\n{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(cmd)}\n")
-    
-    log_command(cmd)
-    try:
-        # Ejecutar el comando dentro del venv
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        log_command(cmd, "ERROR")
-        print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
-    except KeyboardInterrupt:
-        print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
+    # Determinar si el script soporta multiples proyectos separados por coma
+    script_name = os.path.basename(tool.get("path", ""))
+    script_stem = os.path.splitext(script_name)[0]
+    supports_multi = script_stem in MULTI_PROJECT_SCRIPTS
+
+    if project_list and len(project_list) > 1 and not supports_multi:
+        # Script no soporta comma-separated: ejecutar una vez por proyecto
+        for i, proj in enumerate(project_list):
+            proj_args = list(args)
+            proj_idx = proj_args.index("--project") + 1
+            proj_args[proj_idx] = proj
+
+            proj_cmd = list(cmd) + proj_args
+
+            print(f"\n{Colors.CYAN}[{i+1}/{len(project_list)}] Proyecto: {proj}{Colors.ENDC}")
+            print(f"{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(proj_cmd)}\n")
+
+            log_command(proj_cmd)
+            try:
+                subprocess.run(proj_cmd, check=True)
+            except subprocess.CalledProcessError as e:
+                log_command(proj_cmd, "ERROR")
+                print(f"{Colors.FAIL}Error en proyecto {proj}: {e}{Colors.ENDC}")
+            except KeyboardInterrupt:
+                print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
+                break
+            print()
+    else:
+        # Script soporta comma-separated o solo hay un proyecto
+        cmd.extend(args)
+
+        print(f"\n{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(cmd)}\n")
+
+        log_command(cmd)
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            log_command(cmd, "ERROR")
+            print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
+        except KeyboardInterrupt:
+            print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
     
     input("\nPresione Enter para continuar...")
 
@@ -1344,18 +1380,43 @@ def run_all_checkers():
             results.append((tool['name'], "ERROR", f"Script no encontrado: {script_path}"))
             continue
         
-        cmd = [venv_python, str(script_path), "--project", ','.join(project_list_all), "-o", "json"]
-        
-        log_command(cmd)
-        try:
-            result = subprocess.run(cmd, check=True)
-            results.append((tool['name'], "OK", "Completado"))
-        except subprocess.CalledProcessError as e:
-            log_command(cmd, "ERROR")
-            results.append((tool['name'], "ERROR", str(e)))
-        except KeyboardInterrupt:
-            print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
-            break
+        # Determinar si el script soporta multiples proyectos separados por coma
+        script_name = os.path.basename(tool["path"])
+        script_stem = os.path.splitext(script_name)[0]
+        supports_multi = script_stem in MULTI_PROJECT_SCRIPTS
+
+        if len(project_list_all) > 1 and not supports_multi:
+            # Script no soporta comma-separated: ejecutar una vez por proyecto
+            for proj in project_list_all:
+                cmd = [venv_python, str(script_path), "--project", proj, "-o", "json"]
+                if len(project_list_all) > 1:
+                    if RICH_AVAILABLE and console:
+                        console.print(f"[dim]  Proyecto: {proj}[/dim]")
+                    else:
+                        print(f"{Colors.CYAN}  Proyecto: {proj}{Colors.ENDC}")
+                log_command(cmd)
+                try:
+                    result = subprocess.run(cmd, check=True)
+                    results.append((tool['name'], "OK", f"Completado ({proj})"))
+                except subprocess.CalledProcessError as e:
+                    log_command(cmd, "ERROR")
+                    results.append((tool['name'], "ERROR", f"{proj}: {e}"))
+                except KeyboardInterrupt:
+                    print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
+                    break
+        else:
+            # Script soporta comma-separated o solo hay un proyecto
+            cmd = [venv_python, str(script_path), "--project", ','.join(project_list_all), "-o", "json"]
+            log_command(cmd)
+            try:
+                result = subprocess.run(cmd, check=True)
+                results.append((tool['name'], "OK", "Completado"))
+            except subprocess.CalledProcessError as e:
+                log_command(cmd, "ERROR")
+                results.append((tool['name'], "ERROR", str(e)))
+            except KeyboardInterrupt:
+                print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
+                break
     
     # Resumen final
     elapsed = time_module.time() - start_time
