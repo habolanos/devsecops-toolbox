@@ -967,7 +967,7 @@ def run_tool(tool_key: str):
                 print(f"{Colors.GREEN}Usando proyecto: {project_list[0]}{Colors.ENDC}")
             else:
                 print(f"{Colors.GREEN}Usando {len(project_list)} proyectos: {', '.join(project_list)}{Colors.ENDC}")
-        args.extend(["--project", project_list[0]])
+        args.extend(["--project", ','.join(project_list)])
 
     if "--cluster" in tool_args:
         tool_path = tool.get("path", "")
@@ -1186,44 +1186,20 @@ def run_tool(tool_key: str):
     if "additional_args" in tool:
         args.extend(tool["additional_args"])
     
-    # Ejecutar una vez por proyecto si hay multiples
-    if project_list and len(project_list) > 1:
-        for i, proj in enumerate(project_list):
-            # Reemplazar el proyecto en los args
-            proj_args = list(args)
-            proj_idx = proj_args.index("--project") + 1
-            proj_args[proj_idx] = proj
-            
-            proj_cmd = list(cmd) + proj_args
-            
-            print(f"\n{Colors.CYAN}[{i+1}/{len(project_list)}] Proyecto: {proj}{Colors.ENDC}")
-            print(f"{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(proj_cmd)}\n")
-            
-            log_command(proj_cmd)
-            try:
-                subprocess.run(proj_cmd, check=True)
-            except subprocess.CalledProcessError as e:
-                log_command(proj_cmd, "ERROR")
-                print(f"{Colors.FAIL}Error en proyecto {proj}: {e}{Colors.ENDC}")
-            except KeyboardInterrupt:
-                print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
-                break
-            print()
-    else:
-        cmd.extend(args)
-        
-        # Mostrar comando que se va a ejecutar
-        print(f"\n{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(cmd)}\n")
-        
-        log_command(cmd)
-        try:
-            # Ejecutar el comando dentro del venv
-            subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            log_command(cmd, "ERROR")
-            print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
-        except KeyboardInterrupt:
-            print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
+    cmd.extend(args)
+    
+    # Mostrar comando que se va a ejecutar
+    print(f"\n{Colors.CYAN}Ejecutando (en venv):{Colors.ENDC} {' '.join(cmd)}\n")
+    
+    log_command(cmd)
+    try:
+        # Ejecutar el comando dentro del venv
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        log_command(cmd, "ERROR")
+        print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
+    except KeyboardInterrupt:
+        print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
     
     input("\nPresione Enter para continuar...")
 
@@ -1368,27 +1344,18 @@ def run_all_checkers():
             results.append((tool['name'], "ERROR", f"Script no encontrado: {script_path}"))
             continue
         
-        cmd_base = [venv_python, str(script_path)]
+        cmd = [venv_python, str(script_path), "--project", ','.join(project_list_all), "-o", "json"]
         
-        for proj in project_list_all:
-            cmd = cmd_base + ["--project", proj, "-o", "json"]
-            
-            if len(project_list_all) > 1:
-                if RICH_AVAILABLE and console:
-                    console.print(f"[dim]  Proyecto: {proj}[/dim]")
-                else:
-                    print(f"{Colors.CYAN}  Proyecto: {proj}{Colors.ENDC}")
-            
-            log_command(cmd)
-            try:
-                result = subprocess.run(cmd, check=True)
-                results.append((tool['name'], "OK", f"Completado ({proj})"))
-            except subprocess.CalledProcessError as e:
-                log_command(cmd, "ERROR")
-                results.append((tool['name'], "ERROR", f"{proj}: {e}"))
-            except KeyboardInterrupt:
-                print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
-                break
+        log_command(cmd)
+        try:
+            result = subprocess.run(cmd, check=True)
+            results.append((tool['name'], "OK", "Completado"))
+        except subprocess.CalledProcessError as e:
+            log_command(cmd, "ERROR")
+            results.append((tool['name'], "ERROR", str(e)))
+        except KeyboardInterrupt:
+            print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
+            break
     
     # Resumen final
     elapsed = time_module.time() - start_time
