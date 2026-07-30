@@ -1326,7 +1326,13 @@ def get_args():
         "--project", "-p",
         type=str,
         default="cpl-cs-wms-dev-30112023",
-        help="ID(s) del proyecto GCP, separados por comas (Default: cpl-cs-wms-dev-30112023)"
+        help="ID del proyecto GCP (Default: cpl-cs-wms-dev-30112023)"
+    )
+    parser.add_argument(
+        "--multi-project",
+        type=str,
+        default=None,
+        help="IDs de multiples proyectos GCP separados por comas (ej: proj1,proj2,proj3)"
     )
     parser.add_argument(
         "--debug",
@@ -1406,8 +1412,11 @@ def main() -> int:
         return 0
     
     start_time = datetime.now()
-    # Procesar múltiples proyectos separados por comas
-    project_ids = [p.strip() for p in args.project.split(',')]
+    # Determinar lista de proyectos: --multi-project tiene prioridad sobre --project
+    if args.multi_project:
+        project_ids = [p.strip() for p in args.multi_project.split(',') if p.strip()]
+    else:
+        project_ids = [p.strip() for p in args.project.split(',') if p.strip()]
     debug = args.debug
     use_parallel = args.parallel and not args.no_parallel
     max_workers = args.max_workers

@@ -120,9 +120,13 @@ DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 MULTI_PROJECT_SCRIPTS = {
     "gcp_gateway_checker",
     "gcp_load_balancer_checker",
-    "gcp_monitor",
     "gcp_service_account_checker",
     "gcp_sa_multi_project_reporter",
+}
+
+# Scripts que soportan --multi-project (parametro explicito para comma-separated)
+MULTI_PROJECT_PARAM_SCRIPTS = {
+    "gcp_monitor",
 }
 
 # Definición de las herramientas disponibles (con grupo asignado)
@@ -133,7 +137,7 @@ TOOLS = {
         "name": "Monitoreo de Recursos GCP",
         "description": "Monitorea recursos GCP (CPU, memoria, SQL, etc.)",
         "path": "monitoring/gcp_monitor.py",
-        "args": ["--project"],
+        "args": ["--project", "--multi-project"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
         "status": "ready"
@@ -964,7 +968,7 @@ def run_tool(tool_key: str):
     tool_args = tool.get("args", [])
 
     project_list = None
-    if "--project" in tool_args:
+    if "--project" in tool_args or "--multi-project" in tool_args:
         print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         project_input = input().strip()
         if not project_input:
@@ -976,7 +980,11 @@ def run_tool(tool_key: str):
                 print(f"{Colors.GREEN}Usando proyecto: {project_list[0]}{Colors.ENDC}")
             else:
                 print(f"{Colors.GREEN}Usando {len(project_list)} proyectos: {', '.join(project_list)}{Colors.ENDC}")
-        args.extend(["--project", ','.join(project_list)])
+        # Si hay multiples proyectos y la tool soporta --multi-project, usarlo
+        if len(project_list) > 1 and "--multi-project" in tool_args:
+            args.extend(["--multi-project", ','.join(project_list)])
+        else:
+            args.extend(["--project", project_list[0]])
 
     if "--cluster" in tool_args:
         tool_path = tool.get("path", "")
@@ -1199,8 +1207,9 @@ def run_tool(tool_key: str):
     script_name = os.path.basename(tool.get("path", ""))
     script_stem = os.path.splitext(script_name)[0]
     supports_multi = script_stem in MULTI_PROJECT_SCRIPTS
+    supports_multi_param = script_stem in MULTI_PROJECT_PARAM_SCRIPTS
 
-    if project_list and len(project_list) > 1 and not supports_multi:
+    if project_list and len(project_list) > 1 and not supports_multi and not supports_multi_param:
         # Script no soporta comma-separated: ejecutar una vez por proyecto
         for i, proj in enumerate(project_list):
             proj_args = list(args)
@@ -1384,8 +1393,9 @@ def run_all_checkers():
         script_name = os.path.basename(tool["path"])
         script_stem = os.path.splitext(script_name)[0]
         supports_multi = script_stem in MULTI_PROJECT_SCRIPTS
+        supports_multi_param = script_stem in MULTI_PROJECT_PARAM_SCRIPTS
 
-        if len(project_list_all) > 1 and not supports_multi:
+        if len(project_list_all) > 1 and not supports_multi and not supports_multi_param:
             # Script no soporta comma-separated: ejecutar una vez por proyecto
             for proj in project_list_all:
                 cmd = [venv_python, str(script_path), "--project", proj, "-o", "json"]
@@ -1404,8 +1414,21 @@ def run_all_checkers():
                 except KeyboardInterrupt:
                     print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
                     break
+        elif len(project_list_all) > 1 and supports_multi_param:
+            # Script soporta --multi-project explicito
+            cmd = [venv_python, str(script_path), "--multi-project", ','.join(project_list_all), "-o", "json"]
+            log_command(cmd)
+            try:
+                result = subprocess.run(cmd, check=True)
+                results.append((tool['name'], "OK", "Completado"))
+            except subprocess.CalledProcessError as e:
+                log_command(cmd, "ERROR")
+                results.append((tool['name'], "ERROR", str(e)))
+            except KeyboardInterrupt:
+                print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
+                break
         else:
-            # Script soporta comma-separated o solo hay un proyecto
+            # Script soporta comma-separated en --project o solo hay un proyecto
             cmd = [venv_python, str(script_path), "--project", ','.join(project_list_all), "-o", "json"]
             log_command(cmd)
             try:
