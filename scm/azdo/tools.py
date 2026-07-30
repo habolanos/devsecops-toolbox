@@ -1562,6 +1562,17 @@ def run_tool(tool_key: str):
                     # BASE_DIR es scm/azdo, necesitamos subir 2 niveles para llegar a la raíz
                     project_root = BASE_DIR.parent.parent
                     template_full_path = project_root / template_path_input
+                    
+                    # Si no existe, intentar limpiar prefijos duplicados (autocompletado del shell)
+                    if not template_full_path.exists():
+                        # Caso: el usuario ingreso algo como scm/templates/devsecops-toolbox\scm\templates\file.yaml
+                        # Normalizar separadores y usar la ultima ocurrencia de 'scm/templates/' como punto de corte
+                        normalized = template_path_input.replace('\\', '/').replace('//', '/')
+                        if 'scm/templates/' in normalized:
+                            # rsplit para tomar despues de la ultima ocurrencia de 'scm/templates/'
+                            last_part = normalized.rsplit('scm/templates/', 1)[-1]
+                            clean_path = 'scm/templates/' + last_part
+                            template_full_path = project_root / clean_path
                 
                 # Verificar que el template existe
                 if not template_full_path.exists():
