@@ -269,18 +269,24 @@ class UpdateEngine:
         if not source_name or not new_name:
             raise ValueError("action 'rename' requiere 'source_stage' y 'new_name'")
 
-        # Validar que el nuevo nombre no exista ya
+        # Si el source_stage no existe, skip silencioso (no-op).
+        # Permite que un template cubra multiples variantes de pipelines
+        # donde algunos tienen "Texcoco" y otros "Cedis Texcoco".
         existing_names = [stage.get('name', '') for stage in environments]
-        if new_name in existing_names:
-            raise ValueError(f"El nombre '{new_name}' ya existe en el pipeline")
+        if source_name not in existing_names:
+            return
+
+        # Si el new_name ya existe como un stage distinto, skip silencioso.
+        # El pipeline puede ya tener el stage con el nombre destino (ej:
+        # ya tiene "Production" y no necesita renombrar "Texcoco").
+        if new_name in existing_names and new_name != source_name:
+            return
 
         # Localizar el stage a renombrar
-        stage_found = False
         for stage in environments:
             if stage.get('name', '') == source_name:
                 old_name = stage['name']
                 stage['name'] = new_name
-                stage_found = True
 
                 self.changes.append({
                     'type': 'stage_rename',
@@ -288,9 +294,6 @@ class UpdateEngine:
                     'new_name': new_name
                 })
                 break
-
-        if not stage_found:
-            raise ValueError(f"source_stage '{source_name}' no encontrado en el pipeline")
 
         # Actualizar referencias al nombre viejo en las dependencias de otros stages
         # Las dependencias entre stages en Azure DevOps se almacenan en:

@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.13`** — 2026-07-31
+**`1.7.14`** — 2026-07-31
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-07-31 | **1.7.14** | **Fix pipeline_updater: Rename stage skip-safe para multiples variantes de pipelines**: `_rename_stage` lanzaba `ValueError` cuando el `source_stage` no existia o cuando `new_name` ya existia, abortando todas las reglas subsiguientes (reorder, otras renames). Ahora skip silencioso en ambos casos: (1) si source_stage no existe (ej: template tiene "Cedis Texcoco" pero el pipeline tiene "Texcoco"), (2) si new_name ya existe como stage distinto (ej: pipeline ya tiene "Production"). Esto permite que un template cubra multiples variantes de pipelines sin abortar. 3 tests de regresion agregados/actualizados. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_copy_stage.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-07-31 | **1.7.13** | **Fix pipeline_updater: Reorder stages renumera todos los ranks consecutivamente**: `_reorder_stages` solo asignaba ranks a los stages listados en el template, dejando los demás con su rank original. Esto causaba ranks duplicados o no consecutivos, generando error `VS402874: The ranks of release pipeline stages need to be consecutive natural numbers starting from the number '1'`. Ahora se renumeran TODOS los stages consecutivamente desde 1 despues de aplicar los ranks explicitos del template. 4 tests de regresion agregados. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_copy_stage.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-07-30 | **1.7.12** | **Fix pipeline_updater: Rename stage ahora actualiza referencias de dependencia**: `_rename_stage` buscaba dependencias en `deployPhases[].deploymentInput.conditions` (campo incorrecto) y bloqueaba el renombrado con error. Azure DevOps almacena dependencias en `environment.conditions[]` (`conditionType=environmentState`, `name=stage`) y `deployPhases[].deploymentInput.condition` (string `succeeded('StageName')`). Ahora actualiza ambas referencias al nuevo nombre. Fix adicional: `azdo/tools.py` maneja rutas duplicadas de template YAML (autocompletado del shell). 3 tests de regresion agregados. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_copy_stage.py`, `scm/azdo/tools.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-07-30 | **1.7.11** | **Feat gcp_monitor: Parametro --multi-project para multiples proyectos**: Se agrega el parametro `--multi-project` a `gcp_monitor.py` para recibir multiples proyectos separados por coma de forma explicita. `--project` queda para un solo proyecto (backward compatible). En `tools.py` se agrega el conjunto `MULTI_PROJECT_PARAM_SCRIPTS` para distinguir scripts que usan `--multi-project` de los que usan `--project` con comma-separated. `run_tool` y `run_all_checkers` usan `--multi-project` cuando hay multiples proyectos y el script lo soporta. | `scm/gcp/monitoring/gcp_monitor.py`, `scm/gcp/tools.py`, `VERSION`, `README.md`, `README.version.md` |

@@ -315,8 +315,8 @@ class TestRenameStage(unittest.TestCase):
         self.assertEqual(renamed_stage['id'], 2)
         self.assertEqual(renamed_stage['rank'], 2)
     
-    def test_rename_stage_invalid_source_returns_false(self):
-        """action: rename con source_stage inexistente debe retornar False"""
+    def test_rename_stage_invalid_source_skips_silently(self):
+        """action: rename con source_stage inexistente debe skip silencioso (no error)"""
         update_rules = {
             'stages': [
                 {
@@ -330,7 +330,60 @@ class TestRenameStage(unittest.TestCase):
         engine = UpdateEngine(self.definition, self.matches, update_rules)
         result = engine.apply_updates()
         
-        self.assertFalse(result)
+        self.assertTrue(result)
+        stage_names = [s['name'] for s in self.definition['environments']]
+        self.assertNotIn('Nuevo', stage_names)
+
+    def test_rename_stage_target_exists_skips_silently(self):
+        """action: rename cuando new_name ya existe debe skip silencioso (no duplicar)"""
+        update_rules = {
+            'stages': [
+                {
+                    'action': 'rename',
+                    'source_stage': 'QA',
+                    'new_name': 'Production'
+                }
+            ]
+        }
+        
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        result = engine.apply_updates()
+        
+        self.assertTrue(result)
+        stage_names = [s['name'] for s in self.definition['environments']]
+        self.assertEqual(stage_names.count('Production'), 1)
+        self.assertIn('QA', stage_names)
+
+    def test_rename_multiple_rules_one_missing_skips_that_one(self):
+        """Multiples reglas rename: si una source no existe, skip esa y continua las demas"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'SCM Inspection', 'rank': 1},
+                {'id': 2, 'name': 'Texcoco', 'rank': 2},
+                {'id': 3, 'name': 'Develop', 'rank': 3},
+                {'id': 4, 'name': 'QA', 'rank': 4},
+                {'id': 5, 'name': 'Production', 'rank': 5},
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {'action': 'rename', 'source_stage': 'Cedis Texcoco', 'new_name': 'Production'},
+                {'action': 'rename', 'source_stage': 'Texcoco', 'new_name': 'Production'},
+                {'name': 'SCM Inspection', 'rank': 1},
+                {'name': 'Develop', 'rank': 2},
+                {'name': 'QA', 'rank': 3},
+                {'name': 'Production', 'rank': 4},
+            ]
+        }
+        
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        result = engine.apply_updates()
+        
+        self.assertTrue(result)
+        stage_names = [s['name'] for s in self.definition['environments']]
+        self.assertEqual(stage_names.count('Production'), 1)
+        self.assertIn('Texcoco', stage_names)
+        self.assertNotIn('Cedis Texcoco', stage_names)
     
     def test_rename_stage_records_change(self):
         """action: rename debe registrar el cambio en self.changes"""
