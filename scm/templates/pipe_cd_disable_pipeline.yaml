@@ -11,11 +11,11 @@ metadata:
   created_at: "2026-07-31"
 
 search:
-  # Buscar pipelines que tengan al menos un stage.
-  # Para deshabilitar TODOS los pipelines, usar este template con
-  # cualquier lista de definition-ids.
+  # El wildcard "*" coincide con cualquier stage.
+  # Esto hace que el template aplique a TODOS los pipelines que tengan
+  # al menos un environment/stage.
   #
-  # Para filtrar por stages especificos, agregar los nombres aqui:
+  # Para filtrar por stages especificos, cambiar "*" por el nombre:
   # stages:
   #   - name: "Production"
   #
@@ -27,7 +27,7 @@ search:
   #   - name: "QA"
   #   - name: "Production"
   stages:
-    - name: "Production"
+    - name: "*"
 
 update:
   pipeline:
