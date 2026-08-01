@@ -93,7 +93,7 @@ class AzureDevOpsClient:
         except requests.RequestException as e:
             raise AzureDevOpsError(f"Error al obtener definición: {str(e)}")
     
-    def update_release_definition(self, definition_id: int, definition: Dict, comment: Optional[str] = None) -> bool:
+    def update_release_definition(self, definition_id: int, definition: Dict, comment: Optional[str] = None, disable: bool = False) -> bool:
         """
         Guardar cambios en definición de release
         
@@ -101,6 +101,7 @@ class AzureDevOpsClient:
             definition_id: ID de la definición
             definition: Diccionario con la definición actualizada
             comment: Comentario de la revisión (aparece en el historial de Azure DevOps)
+            disable: Si True, setea isDisabled=true en la definicion (disable, no delete)
             
         Returns:
             True si la actualización fue exitosa
@@ -121,13 +122,20 @@ class AzureDevOpsClient:
             if comment is not None:
                 definition_copy['comment'] = comment
             
+            # Si se va a deshabilitar, setear isDisabled=true
+            if disable:
+                definition_copy['isDisabled'] = True
+            
             # Remover campos que no deben enviarse en PUT
             # Azure DevOps es estricto con los campos que acepta
+            # Nota: isDisabled se mantiene si disable=True
             fields_to_remove = [
                 '_links', 'url', 'projectReference', 'createdBy', 'createdOn',
-                'modifiedBy', 'modifiedOn', 'isDeleted', 'isDisabled',
+                'modifiedBy', 'modifiedOn', 'isDeleted',
                 'currentRelease', 'badgeUrl', 'lastRelease'
             ]
+            if not disable:
+                fields_to_remove.append('isDisabled')
             
             for field in fields_to_remove:
                 definition_copy.pop(field, None)

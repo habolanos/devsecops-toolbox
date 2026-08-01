@@ -138,8 +138,8 @@ class TestValidatorAcceptsPipelineAction(unittest.TestCase):
         self.assertEqual(warnings_about_update, [])
 
 
-class TestDeleteReleaseDefinition(unittest.TestCase):
-    """Tests para AzureDevOpsClient.delete_release_definition"""
+class TestDisableReleaseDefinition(unittest.TestCase):
+    """Tests para AzureDevOpsClient.update_release_definition con disable=True"""
 
     def setUp(self):
         self.client = AzureDevOpsClient(
@@ -147,6 +147,13 @@ class TestDeleteReleaseDefinition(unittest.TestCase):
             org="https://dev.azure.com/Coppel-Retail",
             project="Cadena_de_Suministros"
         )
+        self.definition = {
+            'id': 2016,
+            'name': 'Pipeline CD',
+            'revision': 23,
+            'environments': [],
+            'isDisabled': False,
+        }
 
     def _mock_response(self, status_code=200, text=''):
         response = MagicMock()
@@ -155,41 +162,51 @@ class TestDeleteReleaseDefinition(unittest.TestCase):
         response.raise_for_status = MagicMock()
         return response
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.delete')
-    def test_delete_calls_correct_url(self, mock_delete):
-        """delete_release_definition debe llamar DELETE en la URL correcta"""
-        mock_delete.return_value = self._mock_response(200)
+    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    def test_disable_sets_is_disabled_true(self, mock_put):
+        """update_release_definition con disable=True debe setear isDisabled=true en el body"""
+        mock_put.return_value = self._mock_response(200)
 
-        result = self.client.delete_release_definition(2016)
+        self.client.update_release_definition(2016, self.definition, disable=True)
 
+        sent_body = mock_put.call_args.kwargs['json']
+        self.assertTrue(sent_body.get('isDisabled'))
+
+    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    def test_disable_keeps_is_disabled_in_body(self, mock_put):
+        """update_release_definition con disable=True NO debe remover isDisabled del body"""
+        mock_put.return_value = self._mock_response(200)
+
+        self.client.update_release_definition(2016, self.definition, disable=True)
+
+        sent_body = mock_put.call_args.kwargs['json']
+        self.assertIn('isDisabled', sent_body)
+
+    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    def test_normal_update_strips_is_disabled(self, mock_put):
+        """update_release_definition sin disable debe remover isDisabled del body"""
+        mock_put.return_value = self._mock_response(200)
+
+        self.client.update_release_definition(2016, self.definition)
+
+        sent_body = mock_put.call_args.kwargs['json']
+        self.assertNotIn('isDisabled', sent_body)
+
+    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    def test_disable_returns_true_on_200(self, mock_put):
+        """update_release_definition con disable=True debe retornar True en 200"""
+        mock_put.return_value = self._mock_response(200)
+
+        result = self.client.update_release_definition(2016, self.definition, disable=True)
         self.assertTrue(result)
-        called_url = mock_delete.call_args[0][0]
-        self.assertIn('/2016', called_url)
-        self.assertIn('release/definitions', called_url)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.delete')
-    def test_delete_raises_not_found_on_404(self, mock_delete):
-        """delete_release_definition debe lanzar PipelineNotFoundError en 404"""
-        mock_delete.return_value = self._mock_response(404, 'Not found')
-
-        with self.assertRaises(PipelineNotFoundError):
-            self.client.delete_release_definition(9999)
-
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.delete')
-    def test_delete_raises_permission_on_403(self, mock_delete):
-        """delete_release_definition debe lanzar PermissionDeniedError en 403"""
-        mock_delete.return_value = self._mock_response(403, 'Forbidden')
-
-        with self.assertRaises(PermissionDeniedError):
-            self.client.delete_release_definition(2016)
-
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.delete')
-    def test_delete_raises_azuredevops_error_on_500(self, mock_delete):
-        """delete_release_definition debe lanzar AzureDevOpsError en 500"""
-        mock_delete.return_value = self._mock_response(500, 'Internal server error')
+    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    def test_disable_raises_error_on_500(self, mock_put):
+        """update_release_definition con disable=True debe lanzar AzureDevOpsError en 500"""
+        mock_put.return_value = self._mock_response(500, 'Internal server error')
 
         with self.assertRaises(AzureDevOpsError):
-            self.client.delete_release_definition(2016)
+            self.client.update_release_definition(2016, self.definition, disable=True)
 
 
 class TestParallelExecutorDisableFlow(unittest.TestCase):
@@ -213,22 +230,24 @@ class TestParallelExecutorDisableFlow(unittest.TestCase):
             ]
         }
         client.create_snapshot.return_value = f'snapshot_{definition_id}_1234567890'
-        client.delete_release_definition.return_value = True
+        client.update_release_definition.return_value = True
         return client
 
-    def test_disable_flow_calls_delete_not_update(self):
-        """Cuando pipeline_action='disable', debe llamar delete_release_definition, no update"""
+    def test_disable_flow_calls_update_with_disable_true(self):
+        """Cuando pipeline_action='disable', debe llamar update_release_definition con disable=True"""
         client = self._mock_azdo_client()
         executor = ParallelExecutor(max_workers=1)
 
         result = executor._process_pipeline(2016, self.parser, client)
 
         self.assertTrue(result.success)
-        client.delete_release_definition.assert_called_once_with(2016)
-        client.update_release_definition.assert_not_called()
+        client.update_release_definition.assert_called_once()
+        call_kwargs = client.update_release_definition.call_args
+        self.assertEqual(call_kwargs.args[0], 2016)
+        self.assertTrue(call_kwargs.kwargs.get('disable'))
 
-    def test_disable_flow_creates_snapshot_before_delete(self):
-        """El flujo disable debe crear snapshot antes de eliminar (para rollback)"""
+    def test_disable_flow_creates_snapshot_before_disable(self):
+        """El flujo disable debe crear snapshot antes de deshabilitar (para rollback)"""
         client = self._mock_azdo_client()
         executor = ParallelExecutor(max_workers=1)
 
@@ -259,10 +278,10 @@ class TestParallelExecutorDisableFlow(unittest.TestCase):
         # El pipeline tiene "Production" y el template busca "Production"
         self.assertGreater(result.matches_found, 0)
 
-    def test_disable_flow_delete_error_returns_failure(self):
-        """Si delete falla, el resultado debe ser success=False con error"""
+    def test_disable_flow_error_returns_failure(self):
+        """Si update con disable falla, el resultado debe ser success=False con error"""
         client = self._mock_azdo_client()
-        client.delete_release_definition.side_effect = AzureDevOpsError("API error")
+        client.update_release_definition.side_effect = AzureDevOpsError("API error")
         executor = ParallelExecutor(max_workers=1)
 
         result = executor._process_pipeline(2016, self.parser, client)

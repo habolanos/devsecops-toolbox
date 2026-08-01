@@ -139,9 +139,16 @@ class ParallelExecutor:
             pipeline_action = template_parser.get_pipeline_action()
             
             if pipeline_action == 'disable':
-                # Flujo de deshabilitación: soft-delete del pipeline
-                print(f"  [Pipeline {definition_id}] 4/5 Deshabilitando pipeline (soft-delete)...")
-                success = azdo_client.delete_release_definition(definition_id)
+                # Flujo de deshabilitación: PUT con isDisabled=true
+                # El pipeline permanece visible en la UI pero no permite crear releases.
+                # Es reversible: un PUT con isDisabled=false lo re-habilita.
+                print(f"  [Pipeline {definition_id}] 4/5 Deshabilitando pipeline (isDisabled=true)...")
+                metadata = template_parser.get_metadata()
+                success = azdo_client.update_release_definition(
+                    definition_id, definition,
+                    comment=metadata.comment,
+                    disable=True
+                )
                 print(f"  [Pipeline {definition_id}]   ✓ Pipeline deshabilitado exitosamente")
                 
                 duration = time.time() - start_time
