@@ -21,7 +21,6 @@ metadata:
 
 search:
   # Validación exacta: Pipeline debe tener EXACTAMENTE estos 4 stages
-  exact_match: true
   stages:
     - name: "SCM Inspection"
     - name: "Develop"

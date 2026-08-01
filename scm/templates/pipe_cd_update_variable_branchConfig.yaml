@@ -15,4 +15,4 @@ update:
   variables:
     - name: "branchConfig"
       old_value: "config-cadenaSuministro"
-      new_value: "master"
+      new_value: "feature/feature-amad"

@@ -1,42 +1,43 @@
 metadata:
   name: "Reordenar stages - Validación exacta"
   version: "1.0"
-  description: "Reordenamiento: SCM Inspection → Develop → QA → Production → Validator"
+  description: "Reordenamiento, Grupo T11"
   comment: |
     Reordenamiento de stages con validación exacta, Grupo T1
 
     IMPORTANTE: Este template SOLO actualiza pipelines que tengan
-    EXACTAMENTE "SCM Inspection → Develop → QA → Production → Validator"
+    EXACTAMENTE "Develop → QA → Production → Staging → Validador"
 
     Nuevo orden de ejecución:
-    1. SCM Inspection
-    2. Develop
-    3. QA
-    5. Validator
-    6. Production
+    1. Develop
+    2. QA
+    3. Staging
+    4. Validador
+    5. Production
 
     Realizado por: Harold Adrian
     Fecha: 2026-07-24
 
 search:
   # Validación exacta: Pipeline debe tener EXACTAMENTE estos 4 stages
+  exact_match: true
   stages:
-    - name: "SCM Inspection"
     - name: "Develop"
     - name: "QA"
-    - name: "Validator"
+    - name: "Staging"
+    - name: "Validador"
     - name: "Production"
 
 update:
   stages:
     # Nuevo orden: Build → Deploy → Test → Validate
-    - name: "SCM Inspection"
-      rank: 1
     - name: "Develop"
-      rank: 2
+      rank: 1
     - name: "QA"
+      rank: 2
+    - name: "Staging"
       rank: 3
-    - name: "Validator"
+    - name: "Validador"
       rank: 4
     - name: "Production"
       rank: 5
