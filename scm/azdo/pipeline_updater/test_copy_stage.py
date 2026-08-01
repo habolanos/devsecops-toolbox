@@ -511,5 +511,118 @@ class TestPositionBetween(unittest.TestCase):
         self.assertEqual(stage_names[-1], 'C')
 
 
+class TestReorderStages(unittest.TestCase):
+    """Tests para reordenamiento de stages con rank"""
+
+    def setUp(self):
+        self.matches = []
+
+    def test_reorder_partial_stages_renumbers_all_consecutive(self):
+        """Reordenar solo algunos stages debe renumerar TODOS consecutivamente desde 1"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'SCM Inspection', 'rank': 1},
+                {'id': 2, 'name': 'Texcoco', 'rank': 2},
+                {'id': 3, 'name': 'Develop', 'rank': 3},
+                {'id': 4, 'name': 'QA', 'rank': 4},
+                {'id': 5, 'name': 'Production', 'rank': 5},
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {'name': 'SCM Inspection', 'rank': 1},
+                {'name': 'Develop', 'rank': 2},
+                {'name': 'QA', 'rank': 3},
+                {'name': 'Production', 'rank': 4},
+            ]
+        }
+
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+
+        ranks = [s['rank'] for s in self.definition['environments']]
+        self.assertEqual(ranks, [1, 2, 3, 4, 5])
+
+    def test_reorder_all_stages_consecutive(self):
+        """Reordenar todos los stages debe producir ranks consecutivos desde 1"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'Develop', 'rank': 1},
+                {'id': 2, 'name': 'QA', 'rank': 2},
+                {'id': 3, 'name': 'Staging', 'rank': 3},
+                {'id': 4, 'name': 'Production', 'rank': 4},
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {'name': 'Develop', 'rank': 1},
+                {'name': 'QA', 'rank': 2},
+                {'name': 'Staging', 'rank': 3},
+                {'name': 'Production', 'rank': 4},
+            ]
+        }
+
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+
+        ranks = [s['rank'] for s in self.definition['environments']]
+        self.assertEqual(ranks, [1, 2, 3, 4])
+
+    def test_reorder_moves_stage_to_different_position(self):
+        """Mover un stage a una posicion distinta debe renumerar consecutivamente"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'Develop', 'rank': 1},
+                {'id': 2, 'name': 'QA', 'rank': 2},
+                {'id': 3, 'name': 'Staging', 'rank': 3},
+                {'id': 4, 'name': 'Production', 'rank': 4},
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {'name': 'Develop', 'rank': 1},
+                {'name': 'Staging', 'rank': 2},
+                {'name': 'QA', 'rank': 3},
+                {'name': 'Production', 'rank': 4},
+            ]
+        }
+
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+
+        names = [s['name'] for s in self.definition['environments']]
+        self.assertEqual(names, ['Develop', 'Staging', 'QA', 'Production'])
+        ranks = [s['rank'] for s in self.definition['environments']]
+        self.assertEqual(ranks, [1, 2, 3, 4])
+
+    def test_reorder_no_duplicate_ranks(self):
+        """No debe haber ranks duplicados despues del reordenamiento"""
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'SCM Inspection', 'rank': 1},
+                {'id': 2, 'name': 'Develop', 'rank': 2},
+                {'id': 3, 'name': 'QA', 'rank': 3},
+                {'id': 4, 'name': 'Validator', 'rank': 4},
+                {'id': 5, 'name': 'Production', 'rank': 5},
+            ]
+        }
+        update_rules = {
+            'stages': [
+                {'name': 'SCM Inspection', 'rank': 1},
+                {'name': 'Develop', 'rank': 2},
+                {'name': 'QA', 'rank': 3},
+                {'name': 'Validator', 'rank': 4},
+                {'name': 'Production', 'rank': 5},
+            ]
+        }
+
+        engine = UpdateEngine(self.definition, self.matches, update_rules)
+        engine.apply_updates()
+
+        ranks = [s['rank'] for s in self.definition['environments']]
+        self.assertEqual(len(ranks), len(set(ranks)))
+        self.assertEqual(ranks, [1, 2, 3, 4, 5])
+
+
 if __name__ == '__main__':
     unittest.main()

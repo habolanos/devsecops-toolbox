@@ -120,6 +120,23 @@ class UpdateEngine:
             new_environments = [stage for stage, _, _ in stages_to_reorder]
             new_environments.extend(other_stages)
             
+            # Azure DevOps requiere que los ranks sean números consecutivos
+            # empezando desde 1 para TODOS los stages. Si el template solo
+            # especifica ranks para algunos stages, los demás conservan su
+            # rank original, lo que puede crear ranks duplicados o no
+            # consecutivos. Renumerar todos los stages consecutivamente.
+            for i, stage in enumerate(new_environments):
+                old_rank = stage.get('rank')
+                new_rank = i + 1
+                if old_rank != new_rank:
+                    stage['rank'] = new_rank
+                    self.changes.append({
+                        'type': 'stage_reorder',
+                        'stage': stage.get('name', ''),
+                        'old_rank': old_rank,
+                        'new_rank': new_rank
+                    })
+            
             self.definition['environments'] = new_environments
     
     def _process_stage_actions(self, stage_rules: List[Dict]):
