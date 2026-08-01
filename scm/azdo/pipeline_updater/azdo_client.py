@@ -216,6 +216,47 @@ class AzureDevOpsClient:
         except requests.RequestException as e:
             raise AzureDevOpsError(f"Error al listar definiciones: {str(e)}")
     
+    def delete_release_definition(self, definition_id: int) -> bool:
+        """
+        Eliminar (soft-delete) una definición de release.
+
+        Azure DevOps marca la definición como eliminada. No aparece en la UI
+        pero puede ser restaurada si es necesario.
+
+        Args:
+            definition_id: ID de la definición a eliminar
+
+        Returns:
+            True si la eliminación fue exitosa
+        """
+        url = f"{self.base_url}/_apis/release/definitions/{definition_id}"
+        params = {'api-version': self.api_version}
+
+        try:
+            response = requests.delete(
+                url,
+                params=params,
+                headers=self.headers,
+                timeout=30
+            )
+
+            if response.status_code == 404:
+                raise PipelineNotFoundError(f"Pipeline {definition_id} no encontrado")
+            elif response.status_code == 403:
+                raise PermissionDeniedError(f"Permiso denegado para eliminar pipeline {definition_id}")
+
+            if response.status_code >= 400:
+                error_body = response.text[:2000]
+                raise AzureDevOpsError(
+                    f"Error al eliminar definición {definition_id} "
+                    f"(HTTP {response.status_code}): {error_body}"
+                )
+
+            response.raise_for_status()
+            return True
+        except requests.RequestException as e:
+            raise AzureDevOpsError(f"Error al eliminar definición: {str(e)}")
+
     def variable_group_exists(self, group_id: int) -> bool:
         """
         Verifica si un variable group existe en el proyecto.

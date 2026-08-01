@@ -1,0 +1,37 @@
+metadata:
+  name: "Deshabilitar Pipeline CD"
+  version: "1.0"
+  description: >
+    Template para deshabilitar (soft-delete) pipelines CD en Azure DevOps.
+    El pipeline se marca como eliminado y desaparece de la UI,
+    pero puede ser restaurado usando el snapshot creado automaticamente.
+  comment: "Pipeline deshabilitado via pipeline_updater - soft delete"
+  author: "Harold Adrian"
+  created_at: "2026-07-31"
+
+search:
+  # Buscar pipelines que tengan al menos un stage.
+  # Para deshabilitar TODOS los pipelines, usar este template con
+  # cualquier lista de definition-ids.
+  #
+  # Para filtrar por stages especificos, agregar los nombres aqui:
+  # stages:
+  #   - name: "Production"
+  #
+  # Para validar que el pipeline tenga EXACTAMENTE ciertos stages:
+  # exact_match: true
+  # stages:
+  #   - name: "SCM Inspection"
+  #   - name: "Develop"
+  #   - name: "QA"
+  #   - name: "Production"
+  stages:
+    - name: "Production"
+
+update:
+  pipeline:
+    action: "disable"
+
+options:
+  dry_run: false
+  rollback_on_error: true

@@ -135,7 +135,33 @@ class ParallelExecutor:
             matches = search_engine.search_all()
             print(f"  [Pipeline {definition_id}]   ✓ Coincidencias encontradas: {len(matches)}")
             
-            # 4. Aplicar actualizaciones
+            # Verificar si el template tiene una acción a nivel de pipeline
+            pipeline_action = template_parser.get_pipeline_action()
+            
+            if pipeline_action == 'disable':
+                # Flujo de deshabilitación: soft-delete del pipeline
+                print(f"  [Pipeline {definition_id}] 4/5 Deshabilitando pipeline (soft-delete)...")
+                success = azdo_client.delete_release_definition(definition_id)
+                print(f"  [Pipeline {definition_id}]   ✓ Pipeline deshabilitado exitosamente")
+                
+                duration = time.time() - start_time
+                
+                return UpdateResult(
+                    definition_id=definition_id,
+                    success=success,
+                    snapshot_id=snapshot_id,
+                    matches_found=len(matches),
+                    changes_applied=1,
+                    changes=[{
+                        'type': 'pipeline_disable',
+                        'definition_id': definition_id,
+                        'snapshot_id': snapshot_id
+                    }],
+                    error=None,
+                    duration=duration
+                )
+            
+            # 4. Aplicar actualizaciones (flujo normal)
             print(f"  [Pipeline {definition_id}] 4/5 Aplicando actualizaciones...")
             update_rules = template_parser.get_update_rules()
             template_options = template_parser.get_template_options()

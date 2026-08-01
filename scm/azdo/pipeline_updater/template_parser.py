@@ -78,6 +78,22 @@ class TemplateParser:
         """Obtener opción rollback_on_error"""
         return self.options.get('rollback_on_error', True)
     
+    def get_pipeline_action(self) -> Optional[str]:
+        """
+        Obtener acción a nivel de pipeline (no stage).
+        
+        Soporta:
+          - None: actualización normal (default)
+          - "disable": eliminar (soft-delete) el pipeline
+        
+        Returns:
+            Acción del pipeline o None
+        """
+        pipeline = self.update_rules.get('pipeline', {})
+        if isinstance(pipeline, dict):
+            return pipeline.get('action')
+        return None
+    
     def get_template_options(self) -> TemplateOptions:
         """Obtener opciones como objeto TemplateOptions"""
         raw_ignore = self.options.get('ignore_variable_groups', [])

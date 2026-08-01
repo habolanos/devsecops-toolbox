@@ -95,7 +95,8 @@ class TemplateValidator:
         has_rules = any([
             update.get('stages'),
             update.get('tasks'),
-            update.get('variables')
+            update.get('variables'),
+            update.get('pipeline')
         ])
         
         if not has_rules:

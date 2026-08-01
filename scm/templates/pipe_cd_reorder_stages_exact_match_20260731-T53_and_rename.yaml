@@ -1,0 +1,47 @@
+metadata:
+  name: "Reordenar stages - Validación exacta"
+  version: "1.0"
+  description: "Reordenamiento: SCM Inspection → Texcoco → Develop → QA"
+  comment: |
+    Reordenamiento y renombrado de stages
+
+    IMPORTANTE: Este template SOLO actualiza pipelines que tengan
+    EXACTAMENTE "SCM Inspection → Texcoco → Develop → QA"
+
+    Nuevo orden de ejecución:
+    1. SCM Inspection
+    2. Develop
+    3. QA
+    4. Production
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-07-31
+
+search:
+  # Validación exacta: Pipeline debe tener EXACTAMENTE estos 4 stages
+  stages:
+    - name: "SCM Inspection"
+    - name: "Develop"
+
+update:
+  stages:
+    - action: "rename"
+      source_stage: "Cedis Texcoco"
+      new_name: "Production"
+    - action: "rename"
+      source_stage: "Texcoco"
+      new_name: "Production"
+    - name: "SCM Inspection"
+      rank: 1
+    - name: "Develop"
+      rank: 2
+    - name: "QA"
+      rank: 3
+    - name: "Validator"
+      rank: 4
+    - name: "Production"
+      rank: 5
+
+options:
+  dry_run: false
+  rollback_on_error: true
