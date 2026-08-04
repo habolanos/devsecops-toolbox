@@ -117,22 +117,30 @@ class SearchEngine:
         
         return matches
     
-    def search_variables(self, var_names: List[str]) -> List[Match]:
+    def search_variables(self, var_names: List) -> List[Match]:
         """
         Buscar variables por nombre
         
         Args:
-            var_names: Lista de nombres de variables a buscar
+            var_names: Lista de nombres de variables a buscar (strings o dicts)
             
         Returns:
             Lista de coincidencias
         """
         matches = []
         
+        # Normalizar var_names (pueden ser strings o dicts)
+        normalized_names = []
+        for item in var_names:
+            if isinstance(item, dict):
+                normalized_names.append(item.get('name', ''))
+            else:
+                normalized_names.append(item)
+        
         variables = self.definition.get('variables', {})
         
         for var_name, var_obj in variables.items():
-            for search_name in var_names:
+            for search_name in normalized_names:
                 if self._matches_pattern(var_name, search_name):
                     matches.append(Match(
                         type='variable',

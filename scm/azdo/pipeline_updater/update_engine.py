@@ -53,6 +53,11 @@ class UpdateEngine:
             if stage_rules and any(rule.get('rank') for rule in stage_rules):
                 self._reorder_stages(stage_rules)
             
+            # Procesar inserción de tasks nuevas en stages existentes
+            task_rules = self.update_rules.get('tasks', [])
+            if task_rules and any(rule.get('action') == 'add' for rule in task_rules):
+                self._process_add_task_actions(task_rules)
+            
             # Luego aplicar otras actualizaciones
             for match in self.matches:
                 if match.type == 'task':
@@ -330,6 +335,72 @@ class UpdateEngine:
                     })
 
         self.definition['environments'] = environments
+    
+    def _process_add_task_actions(self, task_rules: List[Dict]):
+        """
+        Procesar acciones de inserción de tasks nuevas dentro de stages existentes.
+        
+        Soporta reglas con action='add' que insertan una task nueva:
+          - before_task: displayName de la task existente antes de la cual insertar
+          - after_task: displayName de la task existente después de la cual insertar
+          - stage: nombre del stage donde insertar (opcional, default: todos los stages)
+          - task: definición completa de la task a insertar
+        
+        Args:
+            task_rules: Reglas de actualización de tasks
+        """
+        environments = self.definition.get('environments', [])
+        
+        for rule in task_rules:
+            if rule.get('action') != 'add':
+                continue
+            
+            task_def = rule.get('task')
+            if not task_def:
+                raise ValueError("action 'add' en tasks requiere 'task' con la definición")
+            
+            before_task_name = rule.get('before_task')
+            after_task_name = rule.get('after_task')
+            target_stage_name = rule.get('stage')
+            
+            if not before_task_name and not after_task_name:
+                raise ValueError("action 'add' en tasks requiere 'before_task' o 'after_task'")
+            
+            for stage in environments:
+                stage_name = stage.get('name', '')
+                
+                # Filtrar por stage si se especifica
+                if target_stage_name and stage_name != target_stage_name:
+                    continue
+                
+                for phase in stage.get('deployPhases', []):
+                    deployment_input = phase.get('deploymentInput', {})
+                    tasks = deployment_input.get('tasks', [])
+                    
+                    insert_index = None
+                    if before_task_name:
+                        for idx, t in enumerate(tasks):
+                            if fnmatch.fnmatch(t.get('displayName', ''), before_task_name):
+                                insert_index = idx
+                                break
+                    elif after_task_name:
+                        for idx, t in enumerate(tasks):
+                            if fnmatch.fnmatch(t.get('displayName', ''), after_task_name):
+                                insert_index = idx + 1
+                                break
+                    
+                    if insert_index is not None:
+                        new_task = copy.deepcopy(task_def)
+                        tasks.insert(insert_index, new_task)
+                        
+                        self.changes.append({
+                            'type': 'task_add',
+                            'stage': stage_name,
+                            'task': new_task.get('displayName', ''),
+                            'before_task': before_task_name or '',
+                            'after_task': after_task_name or '',
+                            'position': insert_index
+                        })
     
     def _remove_ignored_variable_groups(self):
         """
