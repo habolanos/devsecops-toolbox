@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: habolanos.devsecops-toolbox
+PackageVersion: 1.7.20
+InstallerLocale: en-US
+InstallerType: portable
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/habolanos/devsecops-toolbox/releases/download/1.7.20/devsecops-toolbox.exe
+    InstallerSha256: 95DAB3C22D2EDE81F2731E63EA21AB12508109ED185F4E9427C94C49E97F58A7
+    Commands:
+      - devsecops-toolbox
+
+ManifestType: installer
+ManifestVersion: 1.6.0

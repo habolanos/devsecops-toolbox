@@ -55,7 +55,20 @@ git clone https://github.com/habolanos/devsecops-toolbox.git
 cd devsecops-toolbox
 ```
 
-### Opción 2: Usar Docker (Recomendado)
+### Opción 2: Winget (Windows Package Manager)
+
+```powershell
+winget install habolanos.devsecops-toolbox
+```
+
+Después de instalar, ejecuta directamente desde cualquier terminal:
+```powershell
+devsecops-toolbox
+```
+
+> **Nota**: Requiere Windows 10 1709+ o Windows 11. El ejecutable es standalone (~420 MB) e incluye Python y todas las dependencias.
+
+### Opción 3: Usar Docker (Recomendado)
 
 ```bash
 # Descargar imagen
@@ -83,10 +96,10 @@ Si prefieres **no instalar Python**, puedes usar los ejecutables compilados prec
 
 ```bash
 # Descargar ejecutable
-toolbox.exe
+devsecops-toolbox.exe
 
 # O usar el script wrapper
-toolbox.bat
+devsecops-toolbox.bat
 ```
 
 **Requisitos**: Ninguno (todo incluido en el ejecutable)
@@ -95,10 +108,10 @@ toolbox.bat
 
 ```bash
 # Descargar ejecutable
-./toolbox
+./devsecops-toolbox
 
 # O usar el script wrapper
-./toolbox
+./devsecops-toolbox
 ```
 
 **Requisitos**: Ninguno (todo incluido en el ejecutable)
@@ -129,10 +142,10 @@ python3 build_executables.py
 
 ```bash
 # Windows
-dist/toolbox.exe
+dist/devsecops-toolbox.exe
 
 # Linux
-./dist/toolbox
+./dist/devsecops-toolbox
 ```
 
 ---
@@ -141,6 +154,7 @@ dist/toolbox.exe
 
 | Método | Requisitos | Complejidad | Velocidad |
 |--------|-----------|-----------|----------|
+| **Winget** | Windows 10+ | ⭐ Muy Simple | ⚡ Inmediato |
 | **Ejecutable** | Ninguno | ⭐ Muy Simple | ⚡ Inmediato |
 | **Python + Git** | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
 | **Docker** | Docker | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
@@ -959,6 +973,11 @@ devsecops-toolbox/
 │   ├── tests/                    # Tests (unitarios e integración)
 │   ├── config.json.template      # Template de configuración
 │   └── README.md                 # Documentación detallada
+├── build_executables.py          # Compilador de ejecutables (PyInstaller)
+├── winget/                       # Manifests de Windows Package Manager
+│   └── manifests/h/habolanos/devsecops-toolbox/
+│       └── 1.7.20/               # YAML manifests por versión
+├── dist/                         # Ejecutables compilados
 ├── Dockerfile                    # Imagen Docker
 ├── docker-compose.yml            # Orquestación Docker
 ├── docker-entrypoint.sh          # Script de inicio Docker

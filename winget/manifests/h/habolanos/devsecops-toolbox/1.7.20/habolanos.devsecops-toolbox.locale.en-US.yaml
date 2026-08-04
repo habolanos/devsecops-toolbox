@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: habolanos.devsecops-toolbox
+PackageVersion: 1.7.20
+PackageLocale: en-US
+Publisher: Harold Adrian
+PublisherUrl: https://github.com/habolanos
+PublisherSupportUrl: https://github.com/habolanos/devsecops-toolbox/issues
+Author: Harold Adrian
+PackageName: DevSecOps Toolbox
+PackageUrl: https://github.com/habolanos/devsecops-toolbox
+License: MIT
+LicenseUrl: https://github.com/habolanos/devsecops-toolbox/blob/master/LICENSE
+ShortDescription: Unified tools for GCP, Azure DevOps and AWS security operations
+Description: |-
+  DevSecOps Toolbox is a collection of 121+ tools for cloud security operations
+  across GCP, Azure, AWS, and Azure DevOps. Includes inventory scanners,
+  pipeline analyzers, KPI dashboards, and terminal utilities for DevSecOps teams.
+Tags:
+  - devsecops
+  - gcp
+  - azure
+  - aws
+  - cloud
+  - security
+  - sre
+  - kubernetes
+  - monitoring
+ReleaseNotes: |-
+  ## What's New
+  - add_task action for Azure DevOps pipeline updater
+  - Skip unnecessary PUT calls when no changes detected
+  - Regional pipeline templates for stage renaming
+  - Fix search_variables for dictionary-based variable names
+ReleaseNotesUrl: https://github.com/habolanos/devsecops-toolbox/releases/tag/1.7.20
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

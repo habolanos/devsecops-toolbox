@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script para compilar ejecutables de DevSecOps Toolbox para Windows y Linux.
-Genera: toolbox.exe (Windows) y toolbox (Linux)
+Genera: devsecops-toolbox.exe (Windows) y devsecops-toolbox (Linux)
 """
 
 import os
@@ -59,9 +59,9 @@ def build_executable():
         "-m", "PyInstaller",
         "--onefile",
         "--console",
-        "--name", "toolbox",
+        "--name", "devsecops-toolbox",
         "--distpath", str(dist_dir),
-        "--buildpath", str(build_dir),
+        "--workpath", str(build_dir),
         "--specpath", str(project_root),
         "--add-data", f"{project_root / 'scm'}:scm",
         "--hidden-import=rich",
@@ -78,12 +78,12 @@ def build_executable():
         
         # Mostrar ubicación del ejecutable
         if is_windows:
-            exe_path = dist_dir / "toolbox.exe"
+            exe_path = dist_dir / "devsecops-toolbox.exe"
             if exe_path.exists():
                 print(f"✅ Ejecutable creado: {exe_path}")
                 print(f"   Tamaño: {exe_path.stat().st_size / (1024*1024):.2f} MB")
         else:
-            exe_path = dist_dir / "toolbox"
+            exe_path = dist_dir / "devsecops-toolbox"
             if exe_path.exists():
                 print(f"✅ Ejecutable creado: {exe_path}")
                 print(f"   Tamaño: {exe_path.stat().st_size / (1024*1024):.2f} MB")
@@ -103,7 +103,7 @@ def create_wrapper_scripts():
     project_root = Path(__file__).parent
     
     # Script para Windows (batch)
-    batch_script = project_root / "toolbox.bat"
+    batch_script = project_root / "devsecops-toolbox.bat"
     batch_content = """@echo off
 REM DevSecOps Toolbox - Wrapper para Windows
 REM Ejecuta el toolbox desde cualquier ubicación
@@ -114,7 +114,7 @@ REM Obtener directorio del script
 set SCRIPT_DIR=%~dp0
 
 REM Ejecutar el toolbox
-"%SCRIPT_DIR%dist\\toolbox.exe" %*
+"%SCRIPT_DIR%dist\\devsecops-toolbox.exe" %*
 
 endlocal
 """
@@ -124,7 +124,7 @@ endlocal
     print(f"✅ Script wrapper creado: {batch_script}")
     
     # Script para Linux (bash)
-    bash_script = project_root / "toolbox"
+    bash_script = project_root / "devsecops-toolbox"
     bash_content = """#!/bin/bash
 # DevSecOps Toolbox - Wrapper para Linux
 # Ejecuta el toolbox desde cualquier ubicación
@@ -132,7 +132,7 @@ endlocal
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Ejecutar el toolbox
-"$SCRIPT_DIR/dist/toolbox" "$@"
+"$SCRIPT_DIR/dist/devsecops-toolbox" "$@"
 """
     
     with open(bash_script, "w") as f:
@@ -168,12 +168,12 @@ def main():
     print("╚════════════════════════════════════════════════════════════════╝")
     print()
     print("📦 Ejecutables generados:")
-    print("   Windows: dist/toolbox.exe")
-    print("   Linux:   dist/toolbox")
+    print("   Windows: dist/devsecops-toolbox.exe")
+    print("   Linux:   dist/devsecops-toolbox")
     print()
     print("🚀 Uso:")
-    print("   Windows: toolbox.bat")
-    print("   Linux:   ./toolbox")
+    print("   Windows: devsecops-toolbox.bat")
+    print("   Linux:   ./devsecops-toolbox")
     print()
     
     return True

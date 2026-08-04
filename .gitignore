@@ -27,6 +27,8 @@ secrets/
 **/outcome
 outcome/
 *.log
+devsecops-toolbox
+*.bat
 
 #python
 venv/
@@ -79,3 +81,10 @@ outcome/coverage.xml
 *.docx
 
 debug*.txt
+
+#build artifacts
+build/
+dist/
+*.spec
+devsecops-toolbox
+devsecops-toolbox.bat
