@@ -1,0 +1,48 @@
+metadata:
+  name: "Renombrar stages Texcoco a Production"
+  version: "1.1"
+  description: "Renombra Cedis Texcoco y Texcoco a Production en todos los pipelines"
+  comment:  |
+    Renombrado de stage en pipeline CD.
+
+    Cambios realizados:
+    1. El stage "Cedis Texcoco" se renombra a "Production", "Textcoco" a "Production"
+    2. Se mantiene el mismo ID, rank y configuración del stage original.
+    3. Solo se modifica el campo 'name' del environment.
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-03
+  author: "Harold Adrian"
+  created_at: "2026-08-03"
+
+search:
+  # El wildcard "*" coincide con cualquier stage.
+  # Esto hace que el template aplique a TODOS los pipelines que tengan
+  # al menos un environment/stage.
+  #
+  # Para filtrar por stages especificos, cambiar "*" por el nombre:
+  # stages:
+  #   - name: "Production"
+  #
+  # Para validar que el pipeline tenga EXACTAMENTE ciertos stages:
+  # exact_match: true
+  # stages:
+  #   - name: "SCM Inspection"
+  #   - name: "Develop"
+  #   - name: "QA"
+  #   - name: "Production"
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "rename"
+      source_stage: "Cedis Texcoco"
+      new_name: "Production"
+    - action: "rename"
+      source_stage: "Texcoco"
+      new_name: "Production"
+
+options:
+  dry_run: false
+  rollback_on_error: true

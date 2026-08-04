@@ -1,12 +1,12 @@
 metadata:
-  name: "Deshabilitar Pipeline CD"
+  name: "Renombrar SCM_Inspection a SCM Inspection"
   version: "1.1"
-  description: "Renombrade de stages"
+  description: "Renombra SCM_Inspection a SCM Inspection en todos los pipelines"
   comment:  |
     Renombrado de stage en pipeline CD.
 
     Cambios realizados:
-    1. El stage "Cedis Texcoco" se renombra a "Production", "Textcoco" a "Production"
+    1. El stage "SCM_Inspection" se renombra a "SCM Inspection".
     2. Se mantiene el mismo ID, rank y configuración del stage original.
     3. Solo se modifica el campo 'name' del environment.
 
@@ -37,11 +37,8 @@ search:
 update:
   stages:
     - action: "rename"
-      source_stage: "Cedis Texcoco"
-      new_name: "Production"
-    - action: "rename"
-      source_stage: "Texcoco"
-      new_name: "Production"
+      source_stage: "SCM_Inspection"
+      new_name: "SCM Inspection"
 
 options:
   dry_run: false
