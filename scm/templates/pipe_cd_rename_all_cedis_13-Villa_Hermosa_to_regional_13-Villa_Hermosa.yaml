@@ -1,0 +1,56 @@
+metadata:
+  name: "Renombrar stages Texcoco a Production"
+  version: "1.1"
+  description: "Renombra stage 13-Villa_Hermosa se renombra a 13-Villa Hermosa"
+  comment:  |
+    Renombrado de stage en pipeline CD.
+
+    Cambios realizados:
+    1. El stage "13-Villa_Hermosa" se renombra a "13-Villa Hermosa".
+    2. Se mantiene el mismo ID, rank y configuración del stage original.
+    3. Solo se modifica el campo 'name' del environment.
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-03
+  author: "Harold Adrian"
+  created_at: "2026-08-03"
+
+search:
+  # El wildcard "*" coincide con cualquier stage.
+  # Esto hace que el template aplique a TODOS los pipelines que tengan
+  # al menos un environment/stage.
+  #
+  # Para filtrar por stages especificos, cambiar "*" por el nombre:
+  # stages:
+  #   - name: "Production"
+  #
+  # Para validar que el pipeline tenga EXACTAMENTE ciertos stages:
+  # exact_match: true
+  # stages:
+  #   - name: "SCM Inspection"
+  #   - name: "Develop"
+  #   - name: "QA"
+  #   - name: "Production"
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "rename"
+      source_stage: "1-Culiacan"
+      new_name: "01-Culiacan"
+
+
+options:
+  dry_run: false
+  rollback_on_error: true
+  ignore_variable_groups:
+    all: [186, 196]
+  # Reemplazar agent pools (queueId) inexistentes por IDs validos.
+  # Agent Pool: queueId= 5331 para "gents-AutoScaling-Releases" 
+  # Formato: old_id: new_id
+  replace_agent_pools:
+    1749: 5331
+    1751: 5331
+    2722: 5331
+    7251: 5331
