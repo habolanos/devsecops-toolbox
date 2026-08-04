@@ -110,22 +110,6 @@ docker build -t devsecops-toolbox:latest .
 
 ---
 
-###  Compilar Tus Propios Ejecutables
-
-Si necesitas compilar los ejecutables desde el código fuente:
-
-```bash
-# Instalar PyInstaller
-pip install pyinstaller
-
-# Compilar (Windows y Linux)
-python build_executables.py
-
-# El ejecutable se genera en dist/devsecops-toolbox.exe (Windows) o dist/devsecops-toolbox (Linux)
-```
-
----
-
 ### 📊 Comparativa de Instalación
 
 | Método | Requisitos | Complejidad | Velocidad |
