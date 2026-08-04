@@ -42,11 +42,11 @@ jobs:
       - name: Check if tag exists
         run: |
           VERSION=$(cat VERSION)
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "❌ Tag v$VERSION already exists!"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "❌ Tag $VERSION already exists!"
             exit 1
           fi
-          echo "✅ Tag v$VERSION is available"
+          echo "✅ Tag $VERSION is available"
 
       - name: Generate version summary
         if: always()
