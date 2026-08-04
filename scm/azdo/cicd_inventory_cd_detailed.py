@@ -37,15 +37,14 @@ try:
     from rich.console import Console
     from rich.table import Table
     RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 try:
     from export_manager import ExportManager
     EXPORT_MANAGER_AVAILABLE = True
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
-
-
-except ImportError:
-    RICH_AVAILABLE = False
 
 try:
     from utils import get_output_dir, resolve_output_path
@@ -252,10 +251,35 @@ def detect_obsolete(name: str) -> str:
 # FETCH CD PIPELINES
 # ==========================================================
 
+def _extract_variables(definition_detail):
+    """Extrae variables del detalle de un release definition.
+    
+    Azure DevOps retorna variables como:
+        {"branchConfig": {"value": "cadenaSuministro", "allowOverride": false}, ...}
+    """
+    variables = definition_detail.get("variables", {}) or {}
+    var_list = []
+    for var_name, var_data in variables.items():
+        val = var_data.get("value", "") if isinstance(var_data, dict) else str(var_data)
+        var_list.append({"name": var_name, "value": val})
+    return var_list
+
+
+def _variables_to_string(var_list):
+    """Convierte lista de variables a string legible para reporte."""
+    if not var_list:
+        return ""
+    return "; ".join(f"{v['name']}={v['value']}" for v in var_list)
+
+
 def _fetch_cd_pipeline(definition, headers, org, project):
-    """Fetch detalles de un pipeline CD: ambientes, último release."""
+    """Fetch detalles de un pipeline CD: ambientes, último release, variables."""
     def_id = definition.get("id")
     name = definition.get("name", "")
+    
+    # Fetch full definition detail (incluye variables)
+    detail_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions/{def_id}"
+    full_detail = safe_az_get(detail_url, headers)
     
     # Último release
     url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
@@ -266,10 +290,17 @@ def _fetch_cd_pipeline(definition, headers, org, project):
     last_rel_date = last_r.get("createdOn", "")
     last_rel_status = last_r.get("status", "")
     
-    envs = definition.get("environments", [])
+    # Usar full_detail si está disponible, sino fallback al definition básico
+    source = full_detail if full_detail else definition
+    envs = source.get("environments", [])
     env_names = [e.get("name", "") for e in envs]
     
-    return {
+    # Extraer variables del full detail
+    var_list = _extract_variables(source)
+    var_names = [v["name"] for v in var_list]
+    var_string = _variables_to_string(var_list)
+    
+    result = {
         "id": def_id,
         "name": name,
         "path": definition.get("path", ""),
@@ -281,7 +312,16 @@ def _fetch_cd_pipeline(definition, headers, org, project):
         "lastReleaseDate": last_rel_date,
         "lastReleaseStatus": last_rel_status,
         "isObsolete": detect_obsolete(name),
+        "variableCount": len(var_list),
+        "variableNames": ", ".join(var_names),
+        "variables": var_string,
     }
+    
+    # Agregar cada variable como columna individual (var_<name>)
+    for v in var_list:
+        result[f"var_{v['name']}"] = v["value"]
+    
+    return result
 
 
 def get_cd_definitions(headers, org, project):
@@ -375,6 +415,8 @@ def main():
     parser.add_argument("--project", default=DEFAULT_PROJECT, help="Proyecto")
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Hilos paralelos")
     parser.add_argument("--output", default=None, help="Directorio de salida")
+    parser.add_argument("--var-name", default=None, help="Filtrar pipelines que tienen esta variable (ej: branchConfig)")
+    parser.add_argument("--var-value", default=None, help="Filtrar pipelines donde la variable --var-name tiene este valor (ej: cadenaSuministro)")
     parser.add_argument("--force-refresh", action="store_true", help="Ignorar cache, consultar APIs")
     parser.add_argument("--skip-cache", action="store_true", help="Alias de --force-refresh")
     parser.add_argument("--use-cache-only", action="store_true", help="Solo cache, falla si no existe o > 24h")
@@ -453,7 +495,7 @@ def main():
                                 result = future.result()
                                 if result:
                                     rows.append(result)
-                                    api_calls += 2
+                                    api_calls += 3
                             except Exception as e:
                                 print(f"❌ Error procesando pipeline: {e}")
                             processed += 1
@@ -467,7 +509,7 @@ def main():
                             result = future.result()
                             if result:
                                 rows.append(result)
-                                api_calls += 2
+                                api_calls += 3
                         except Exception as e:
                             print(f"❌ Error procesando pipeline: {e}")
                         if i % 10 == 0 or i == total:
@@ -486,6 +528,21 @@ def main():
             }
             cache_path = _save_cache(cache_data)
             print(f"💾 Cache guardado: {cache_path.name}")
+        
+        # Filtrar por variable si se especificó
+        if args.var_name and rows:
+            var_key = f"var_{args.var_name}"
+            before_count = len(rows)
+            if args.var_value:
+                rows = [r for r in rows if r.get(var_key) is not None and str(r.get(var_key)) == args.var_value]
+                print(f"🔍 Filtro: var '{args.var_name}' = '{args.var_value}' → {len(rows)}/{before_count} pipelines")
+            else:
+                rows = [r for r in rows if r.get(var_key) is not None]
+                print(f"🔍 Filtro: var '{args.var_name}' existe → {len(rows)}/{before_count} pipelines")
+            
+            if not rows:
+                print("⚠️  Ningún pipeline coincide con el filtro de variable")
+                return
         
         if rows:
             export_results(rows, output_dir)

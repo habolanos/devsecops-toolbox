@@ -257,9 +257,9 @@ TOOLS: Dict = {
     },
     "15": {
         "name":        "CD Detailed Inventory",
-        "description": "[Flujo] Inventario detallado de pipelines CD (Release Definitions). Verifica cache previo (cd_raw.json < 24h) para skip APIs. Genera Excel + CSV + JSON cache.",
+        "description": "[Flujo] Inventario detallado de pipelines CD (Release Definitions). Extrae variables, filtra por var-name/var-value. Verifica cache previo (cd_raw.json < 24h) para skip APIs. Genera Excel + CSV + JSON cache.",
         "path":        "cicd_inventory_cd_detailed.py",
-        "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--use-cache-only"],
+        "args":        ["--pat", "--org", "--project", "--workers", "--output", "--var-name", "--var-value", "--force-refresh", "--use-cache-only"],
         "group":       "inventory",
         "status":      "ready",
     },
