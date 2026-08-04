@@ -66,6 +66,7 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 from io import BytesIO
+from html import escape as html_escape
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
@@ -133,8 +134,8 @@ def get_args() -> argparse.Namespace:
                    help="Personal Access Token con permiso Release (Read)")
     p.add_argument("--filter", "--repo", "-f", "-r", dest="filter", default=None,
                    help="Filtrar pipelines por nombre/repo (substring, case insensitive)")
-    p.add_argument("--output", "-o", choices=["json", "csv", "excel"], default=None,
-                   help="Exportar resultados (json / csv / excel)")
+    p.add_argument("--output", "-o", choices=["json", "csv", "excel", "html"], default=None,
+                   help="Exportar resultados (json / csv / excel / html). HTML se genera siempre.")
     p.add_argument("--timezone", "-tz", default=DEFAULT_TIMEZONE,
                    help=f"Zona horaria para fechas (default: {DEFAULT_TIMEZONE})")
     p.add_argument("--threads", type=int, default=DEFAULT_THREADS,
@@ -493,6 +494,8 @@ def process_pipeline(
     )
     r_emoji, r_label = get_rating(score_data["total"], rel_info["prod_ever_deployed"])
 
+    is_disabled = bool(detail.get("isDisabled", False))
+
     return {
         "id":               def_id,
         "name":             name,
@@ -511,6 +514,7 @@ def process_pipeline(
         "rating_label":     r_label,
         "consistency":      CONS_UNIQUE,   # se completa en el paso global
         "cons_detail":      "",
+        "is_disabled":      is_disabled,
     }
 
 
@@ -536,12 +540,18 @@ def print_rich_table(console: "Console", rows: List[Dict], tz_name: str):
     tbl.add_column("Intentos",      justify="center",   width=9)
     tbl.add_column("Score",         justify="left",     width=24)
     tbl.add_column("Rating",        justify="center",   width=13)
+    tbl.add_column("Disabled",      justify="center",   width=10)
 
     for idx, row in enumerate(rows, 1):
         prod_cell = (
             f"[cyan]{row['prod_stage']}[/cyan]"
             if row["prod_stage"]
             else "[dim]—[/dim]"
+        )
+        disabled_cell = (
+            "[bold red]⛔ Sí[/bold red]"
+            if row.get("is_disabled")
+            else "[green]✅ No[/green]"
         )
         tbl.add_row(
             str(idx),
@@ -554,6 +564,7 @@ def print_rich_table(console: "Console", rows: List[Dict], tz_name: str):
             attempts_cell_rich(row["prod_attempts"]),
             score_bar_rich(row["score"]),
             f"{row['rating_emoji']} {row['rating_label']}",
+            disabled_cell,
         )
 
     console.print(tbl)
@@ -571,6 +582,7 @@ def print_rich_summary(console: "Console", rows: List[Dict], majority: Tuple, el
     cons_ok   = sum(1 for r in rows if r["consistency"] == CONS_OK)
     cons_part = sum(1 for r in rows if r["consistency"] == CONS_PARTIAL)
     cons_diff = sum(1 for r in rows if r["consistency"] == CONS_DIFF)
+    disabled  = sum(1 for r in rows if r.get("is_disabled"))
 
     majority_str = " → ".join(majority) if majority else "N/A"
 
@@ -588,6 +600,8 @@ def print_rich_summary(console: "Console", rows: List[Dict], majority: Tuple, el
         f"  [yellow]🟡 Parcial:   [/] {cons_part}\n"
         f"  [red]🔴 Diferente:  [/] {cons_diff}\n"
         f"[dim]  Patrón mayoritario: {majority_str}[/]\n\n"
+        f"[bold]⛔ Pipelines Disabled:[/]\n"
+        f"  [red]⛔ Disabled:  [/] {disabled}  /  [green]✅ Active: [/] {total - disabled}\n\n"
         f"[bold]📐 Fórmula Score:[/]\n"
         f"[dim]  Recencia (0-70): 70 × (1 - días/365)[/]\n"
         f"[dim]  Estabilidad (0-30): 30 - (intentos-1) × 10[/]\n\n"
@@ -747,10 +761,337 @@ def generate_pipeline_image(row: Dict, tz_name: str) -> Optional[bytes]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# HTML DASHBOARD
+# ═══════════════════════════════════════════════════════════════════════════════
+def generate_html_dashboard(
+    rows: List[Dict], tz_name: str, org: str = "", project: str = "",
+) -> Optional[str]:
+    """Genera un dashboard HTML interactivo en un solo archivo con dark theme.
+
+    Incluye:
+    - Metric cards (total, avg score, disabled, never deployed)
+    - Chart.js doughnut (score distribution) + bar (consistency)
+    - Sortable table con columna Disabled
+    - Datos embebidos para filtrado dinamico
+    """
+    if not rows:
+        return None
+
+    total      = len(rows)
+    avg_score  = round(sum(r["score"] for r in rows) / total) if total else 0
+    excellent  = sum(1 for r in rows if r["score"] >= 90)
+    good       = sum(1 for r in rows if 70 <= r["score"] < 90)
+    regular    = sum(1 for r in rows if 40 <= r["score"] < 70)
+    low        = sum(1 for r in rows if 0 < r["score"] < 40)
+    never      = sum(1 for r in rows if not r["ever_deployed"])
+    disabled   = sum(1 for r in rows if r.get("is_disabled"))
+    active     = total - disabled
+    cons_ok    = sum(1 for r in rows if r["consistency"] == CONS_OK)
+    cons_part  = sum(1 for r in rows if r["consistency"] == CONS_PARTIAL)
+    cons_diff  = sum(1 for r in rows if r["consistency"] == CONS_DIFF)
+    cons_uniq  = sum(1 for r in rows if r["consistency"] == CONS_UNIQUE)
+
+    generated_at = datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M:%S")
+
+    # Serializar datos para embeber
+    table_data = []
+    for r in rows:
+        dt_str = r["last_prod_dt"].astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M") if r["last_prod_dt"] else "Nunca"
+        table_data.append({
+            "id":            r["id"],
+            "name":          html_escape(r["name"]),
+            "stages":        html_escape(" → ".join(r["stages"])),
+            "stage_count":   len(r["stages"]),
+            "prod_stage":    html_escape(r["prod_stage"] or "—"),
+            "consistency":   r["consistency"],
+            "last_prod":     dt_str,
+            "attempts":      r["prod_attempts"] if r["prod_attempts"] is not None else "—",
+            "score":         r["score"],
+            "rating":        r["rating_label"],
+            "rating_emoji":  r["rating_emoji"],
+            "is_disabled":   r.get("is_disabled", False),
+            "ever_deployed": r["ever_deployed"],
+        })
+
+    embedded_data = json.dumps(table_data, ensure_ascii=False, default=str)
+    embedded_data = embedded_data.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+    org_label     = html_escape(org or "N/A")
+    project_label = html_escape(project or "N/A")
+
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Release CD Health Dashboard — {project_label}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif; background:#0f172a; color:#e2e8f0; min-height:100vh; }}
+.header {{ background:linear-gradient(135deg,#1e293b 0%,#334155 100%); padding:24px 32px; border-bottom:1px solid #475569; }}
+.header h1 {{ font-size:1.75rem; color:#38bdf8; display:flex; align-items:center; gap:10px; }}
+.header .meta {{ display:flex; gap:24px; margin-top:12px; flex-wrap:wrap; font-size:.875rem; color:#94a3b8; }}
+.header .meta span {{ display:flex; align-items:center; gap:6px; }}
+.header .badge {{ background:#1e293b; border:1px solid #475569; padding:4px 12px; border-radius:20px; font-size:.75rem; color:#38bdf8; }}
+.container {{ max-width:1400px; margin:0 auto; padding:24px; }}
+.section {{ margin-bottom:32px; }}
+.section-title {{ font-size:1.25rem; font-weight:600; margin-bottom:16px; display:flex; align-items:center; gap:8px; color:#f1f5f9; }}
+.section-title .count {{ background:#334155; color:#94a3b8; padding:2px 10px; border-radius:12px; font-size:.75rem; font-weight:400; }}
+.cards {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; margin-bottom:32px; }}
+.card {{ background:#1e293b; border:1px solid #334155; border-radius:12px; padding:20px; transition:transform .15s,border-color .15s; }}
+.card:hover {{ transform:translateY(-2px); border-color:#475569; }}
+.card .icon {{ font-size:1.75rem; margin-bottom:8px; }}
+.card .label {{ font-size:.75rem; color:#94a3b8; text-transform:uppercase; letter-spacing:.5px; }}
+.card .value {{ font-size:2rem; font-weight:700; margin-top:4px; }}
+.card.green .value {{ color:#4ade80; }}
+.card.red .value {{ color:#f87171; }}
+.card.yellow .value {{ color:#facc15; }}
+.card.blue .value {{ color:#60a5fa; }}
+.card.purple .value {{ color:#c084fc; }}
+.card .sub {{ font-size:.75rem; color:#64748b; margin-top:6px; }}
+.charts-row {{ display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:32px; }}
+.chart-box {{ background:#1e293b; border:1px solid #334155; border-radius:12px; padding:20px; }}
+.chart-box h3 {{ font-size:1rem; color:#f1f5f9; margin-bottom:16px; }}
+.chart-canvas-wrap {{ position:relative; height:280px; }}
+.filter-bar {{ display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }}
+.filter-bar input, .filter-bar select {{ background:#1e293b; border:1px solid #475569; color:#e2e8f0; padding:8px 14px; border-radius:8px; font-size:.8125rem; }}
+.filter-bar input {{ flex:1; min-width:200px; }}
+.filter-bar input:focus, .filter-bar select:focus {{ outline:none; border-color:#38bdf8; }}
+table {{ width:100%; border-collapse:collapse; font-size:.8125rem; }}
+thead th {{ text-align:left; padding:10px 14px; background:#1e293b; color:#94a3b8; font-weight:600; border-bottom:1px solid #334155; position:sticky; top:0; cursor:pointer; user-select:none; white-space:nowrap; }}
+thead th:hover {{ color:#38bdf8; }}
+thead th .sort-arrow {{ font-size:.6rem; margin-left:4px; opacity:.4; }}
+tbody td {{ padding:8px 14px; border-bottom:1px solid #1e293b; color:#cbd5e1; }}
+tbody tr:hover {{ background:#1e293b; }}
+.table-wrap {{ overflow-x:auto; border-radius:8px; border:1px solid #334155; max-height:600px; overflow-y:auto; }}
+.pill {{ display:inline-block; padding:2px 10px; border-radius:12px; font-size:.7rem; font-weight:600; }}
+.pill-green {{ background:#064e3b; color:#4ade80; }}
+.pill-red {{ background:#7f1d1d; color:#f87171; }}
+.pill-yellow {{ background:#78350f; color:#facc15; }}
+.pill-blue {{ background:#1e3a5f; color:#60a5fa; }}
+.pill-dim {{ background:#334155; color:#94a3b8; }}
+.score-bar {{ display:inline-block; width:80px; height:8px; border-radius:4px; background:#334155; position:relative; overflow:hidden; vertical-align:middle; }}
+.score-bar-fill {{ height:100%; border-radius:4px; }}
+.footer {{ text-align:center; padding:20px; color:#64748b; font-size:.75rem; margin-top:20px; }}
+@media (max-width:768px) {{ .charts-row {{ grid-template-columns:1fr; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🚀 Release CD Health Dashboard</h1>
+  <div class="meta">
+    <span>🏢 <strong>Org:</strong> {org_label}</span>
+    <span>📁 <strong>Proyecto:</strong> {project_label}</span>
+    <span>🕐 <strong>Generado:</strong> {generated_at}</span>
+    <span class="badge">v{__version__}</span>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Metric Cards -->
+  <div class="cards">
+    <div class="card blue">
+      <div class="icon">📋</div>
+      <div class="label">Pipelines Analizados</div>
+      <div class="value">{total}</div>
+      <div class="sub">Total de release definitions</div>
+    </div>
+    <div class="card green">
+      <div class="icon">📊</div>
+      <div class="label">Score Promedio</div>
+      <div class="value">{avg_score}<span style="font-size:1rem;color:#64748b">/100</span></div>
+      <div class="sub">Recencia (70) + Estabilidad (30)</div>
+    </div>
+    <div class="card red">
+      <div class="icon">⛔</div>
+      <div class="label">Pipelines Disabled</div>
+      <div class="value">{disabled}</div>
+      <div class="sub">{active} activos</div>
+    </div>
+    <div class="card yellow">
+      <div class="icon">🔴</div>
+      <div class="label">Nunca Desplegado</div>
+      <div class="value">{never}</div>
+      <div class="sub">Sin deploy a producción</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-box">
+      <h3>📊 Distribución de Score</h3>
+      <div class="chart-canvas-wrap"><canvas id="scoreChart"></canvas></div>
+    </div>
+    <div class="chart-box">
+      <h3>🔗 Consistencia de Stages</h3>
+      <div class="chart-canvas-wrap"><canvas id="consChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="section">
+    <div class="section-title">📋 Detalle por Pipeline <span class="count" id="rowCount">{total}</span></div>
+    <div class="filter-bar">
+      <input type="text" id="searchInput" placeholder="🔍 Filtrar por nombre, ID, stage..." oninput="applyFilters()">
+      <select id="filterDisabled" onchange="applyFilters()">
+        <option value="">Todos (Disabled)</option>
+        <option value="true">⛔ Disabled</option>
+        <option value="false">✅ Active</option>
+      </select>
+      <select id="filterRating" onchange="applyFilters()">
+        <option value="">Todos (Rating)</option>
+        <option value="Excelente">🟢 Excelente</option>
+        <option value="Bueno">🔵 Bueno</option>
+        <option value="Regular">🟡 Regular</option>
+        <option value="Bajo">🟠 Bajo</option>
+        <option value="Nunca">🔴 Nunca</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th onclick="sortTable(0)"># <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(1)">Def ID <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(2)">Pipeline CD <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(3)">Stages <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(4)">Consistencia <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(5)">Stage PROD <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(6)">Último PROD <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(7)">Intentos <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(8)">Score <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(9)">Rating <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(10)">Disabled <span class="sort-arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    Release CD Health Dashboard v{__version__} · Generado automáticamente · {generated_at}
+  </div>
+</div>
+
+<script>
+const DATA = {embedded_data};
+let sortCol = -1, sortAsc = true;
+
+function renderTable(data) {{
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  data.forEach((r, i) => {{
+    const scoreColor = r.score >= 70 ? '#4ade80' : r.score >= 40 ? '#facc15' : r.score > 0 ? '#f87171' : '#64748b';
+    const consPill = {{
+      'OK': '<span class="pill pill-green">✅ OK</span>',
+      'PARCIAL': '<span class="pill pill-yellow">🟡 Parcial</span>',
+      'DIFERENTE': '<span class="pill pill-red">🔴 Diferente</span>',
+      'ÚNICO': '<span class="pill pill-dim">❓ Único</span>',
+    }}[r.consistency] || r.consistency;
+    const disPill = r.is_disabled
+      ? '<span class="pill pill-red">⛔ Sí</span>'
+      : '<span class="pill pill-green">✅ No</span>';
+    const attTxt = r.attempts === '—' ? '<span style="color:#64748b">—</span>' :
+      r.attempts === 1 ? '<span style="color:#4ade80">1 ✅</span>' :
+      r.attempts === 2 ? '<span style="color:#facc15">2 🟡</span>' :
+      '<span style="color:#f87171">' + r.attempts + ' 🔴</span>';
+    tbody.innerHTML += `<tr>
+      <td>${{i+1}}</td>
+      <td>${{r.id}}</td>
+      <td><strong>${{r.name}}</strong></td>
+      <td>${{r.stages}}</td>
+      <td>${{consPill}}</td>
+      <td>${{r.prod_stage}}</td>
+      <td>${{r.last_prod}}</td>
+      <td>${{attTxt}}</td>
+      <td><div class="score-bar"><div class="score-bar-fill" style="width:${{r.score}}%;background:${{scoreColor}}"></div></div> ${{r.score}}</td>
+      <td>${{r.rating_emoji}} ${{r.rating}}</td>
+      <td>${{disPill}}</td>
+    </tr>`;
+  }});
+  document.getElementById('rowCount').textContent = data.length;
+}}
+
+function applyFilters() {{
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const fDis = document.getElementById('filterDisabled').value;
+  const fRat = document.getElementById('filterRating').value;
+  let filtered = DATA.filter(r => {{
+    if (q && !r.name.toLowerCase().includes(q) && !String(r.id).includes(q) && !r.stages.toLowerCase().includes(q)) return false;
+    if (fDis === 'true' && !r.is_disabled) return false;
+    if (fDis === 'false' && r.is_disabled) return false;
+    if (fRat && r.rating !== fRat) return false;
+    return true;
+  }});
+  if (sortCol >= 0) filtered = sortData(filtered, sortCol, sortAsc);
+  renderTable(filtered);
+}}
+
+function sortData(data, col, asc) {{
+  const keys = ['id','id','name','stages','consistency','prod_stage','last_prod','attempts','score','rating','is_disabled'];
+  const key = keys[col];
+  return data.slice().sort((a, b) => {{
+    let va = a[key], vb = b[key];
+    if (typeof va === 'boolean') {{ va = va ? 1 : 0; vb = vb ? 1 : 0; }}
+    if (typeof va === 'string') {{ va = va.toLowerCase(); vb = vb.toLowerCase(); }}
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  }});
+}}
+
+function sortTable(col) {{
+  if (sortCol === col) {{ sortAsc = !sortAsc; }} else {{ sortCol = col; sortAsc = true; }}
+  document.querySelectorAll('th .sort-arrow').forEach(a => a.textContent = '');
+  const arrow = document.querySelectorAll('th')[col].querySelector('.sort-arrow');
+  if (arrow) arrow.textContent = sortAsc ? '▲' : '▼';
+  applyFilters();
+}}
+
+// Charts
+const scoreCtx = document.getElementById('scoreChart').getContext('2d');
+new Chart(scoreCtx, {{
+  type: 'doughnut',
+  data: {{
+    labels: ['Excelente (90-100)', 'Bueno (70-89)', 'Regular (40-69)', 'Bajo (1-39)', 'Nunca (0)'],
+    datasets: [{{ data: [{excellent}, {good}, {regular}, {low}, {never}], backgroundColor: ['#4ade80', '#60a5fa', '#facc15', '#f87171', '#64748b'], borderWidth: 0 }}]
+  }},
+  options: {{ plugins: {{ legend: {{ position: 'bottom', labels: {{ color: '#94a3b8', font: {{ size: 11 }} }} }} }}, cutout: '60%' }}
+}});
+
+const consCtx = document.getElementById('consChart').getContext('2d');
+new Chart(consCtx, {{
+  type: 'bar',
+  data: {{
+    labels: ['OK', 'Parcial', 'Diferente', 'Único'],
+    datasets: [{{ data: [{cons_ok}, {cons_part}, {cons_diff}, {cons_uniq}], backgroundColor: ['#4ade80', '#facc15', '#f87171', '#64748b'], borderRadius: 6 }}]
+  }},
+  options: {{ plugins: {{ legend: {{ display: false }} }}, scales: {{ x: {{ ticks: {{ color: '#94a3b8' }} }}, y: {{ ticks: {{ color: '#94a3b8' }}, beginAtZero: true }} }} }}
+}});
+
+// Initial render
+renderTable(DATA);
+</script>
+</body>
+</html>"""
+
+    outcome_dir = str(get_output_dir("outcome"))
+    os.makedirs(outcome_dir, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filepath = os.path.join(outcome_dir, f"release_cd_health_dashboard_{ts}.html")
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(html)
+    return filepath
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # EXPORT
 # ═══════════════════════════════════════════════════════════════════════════════
 def export_results(
-    rows: List[Dict], fmt: str, script_dir: str, tz_name: str
+    rows: List[Dict], fmt: str, script_dir: str, tz_name: str,
+    org: str = "", project: str = "",
 ) -> Optional[str]:
     """Exporta resultados usando ExportManager centralizado."""
     flat = [{
@@ -770,6 +1111,7 @@ def export_results(
         "score_recency":                 r["score_recency"],
         "score_stability":               r["score_stability"],
         "rating":                        r["rating_label"],
+        "is_disabled":                   r.get("is_disabled", False),
     } for r in rows]
 
     if not EXPORT_MANAGER_AVAILABLE:
@@ -818,7 +1160,9 @@ def export_results(
         return manager.export_csv(flat)
     elif fmt == "excel":
         return manager.export_excel(flat, sheet_name="Release CD Health", summary=summary)
-    
+    elif fmt == "html":
+        return generate_html_dashboard(rows, tz_name, org=org, project=project)
+
     return None
 
 
@@ -952,14 +1296,15 @@ def main():
         if args.diagram:
             print_pipeline_diagrams(console, rows, tz_name)
     else:
-        hdr = f"{'#':>4}  {'ID':>7}  {'Pipeline':<35} {'Stages':<32} {'Cons':^10} {'Último PROD':^20} {'Int':^5} {'Score':>6}  Rating"
+        hdr = f"{'#':>4}  {'ID':>7}  {'Pipeline':<35} {'Stages':<32} {'Cons':^10} {'Último PROD':^20} {'Int':^5} {'Score':>6}  Rating      Dis"
         print(f"\n{'='*len(hdr)}\n{hdr}\n{'='*len(hdr)}")
         for idx, row in enumerate(rows, 1):
             stg = " → ".join(row["stages"])[:30]
             dt  = row["last_prod_dt"].strftime("%Y-%m-%d") if row["last_prod_dt"] else "Nunca"
             att = str(row["prod_attempts"]) if row["prod_attempts"] is not None else "—"
+            dis = "⛔ Sí" if row.get("is_disabled") else "✅ No"
             print(f"{idx:>4}  {row['id']:>7}  {row['name']:<35} {stg:<32} {row['consistency']:^10} "
-                  f"{dt:^20} {att:^5} {row['score']:>6}  {row['rating_emoji']} {row['rating_label']}")
+                  f"{dt:^20} {att:^5} {row['score']:>6}  {row['rating_emoji']} {row['rating_label']}  {dis}")
         avg = round(sum(r["score"] for r in rows) / len(rows)) if rows else 0
         print(f"\nTotal: {total_defs} | Score promedio: {avg}/100 | Tiempo: {elapsed:.2f}s\n")
 
@@ -969,10 +1314,17 @@ def main():
             rows, args.output,
             os.path.dirname(os.path.abspath(__file__)),
             tz_name,
+            org=args.org, project=args.project,
         )
         if fp:
             msg = f"📁 Exportado: {fp}"
             (console.print(f"[bold green]{msg}[/]\n") if console else print(msg))
+
+    # ── 7. HTML dashboard obligatorio ────────────────────────────────────────
+    html_fp = generate_html_dashboard(rows, tz_name, org=args.org, project=args.project)
+    if html_fp:
+        msg = f"📊 Dashboard HTML: {html_fp}"
+        (console.print(f"[bold cyan]{msg}[/]\n") if console else print(msg))
 
 
 if __name__ == "__main__":
