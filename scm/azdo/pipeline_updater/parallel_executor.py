@@ -183,7 +183,21 @@ class ParallelExecutor:
             changes_count = update_engine.get_changes_count()
             print(f"  [Pipeline {definition_id}]   ✓ Cambios aplicados: {changes_count}")
             
-            # 5. Guardar cambios
+            # 5. Guardar cambios (skip si no hubo cambios)
+            if changes_count == 0:
+                print(f"  [Pipeline {definition_id}] 5/5 Sin cambios - omitiendo PUT a Azure DevOps")
+                duration = time.time() - start_time
+                return UpdateResult(
+                    definition_id=definition_id,
+                    success=True,
+                    snapshot_id=snapshot_id,
+                    matches_found=len(matches),
+                    changes_applied=0,
+                    changes=[],
+                    error=None,
+                    duration=duration
+                )
+            
             print(f"  [Pipeline {definition_id}] 5/5 Guardando cambios en Azure DevOps...")
             metadata = template_parser.get_metadata()
             success = azdo_client.update_release_definition(
