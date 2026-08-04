@@ -15,7 +15,6 @@
 
 - [🚀 Características Principales](#-características-principales)
 - [📦 Instalación](#-instalación)
-- [🚀 Ejecutables Compilados](#-ejecutables-compilados-recomendado)
 - [🎯 Uso Rápido](#-uso-rápido)
 - [📋 Templates para Pipeline Updater](#-templates-para-pipeline-updater)
 - [🐳 Docker](#-docker)
@@ -48,27 +47,56 @@
 
 ## 📦 Instalación
 
-### Opción 1: Clonar Repositorio
+### Opción 1: Winget (Windows Package Manager) — Recomendado para Windows
+
+```powershell
+# Instalar
+winget install habolanos.devsecops-toolbox
+
+# Ejecutar desde cualquier terminal
+devsecops-toolbox
+```
+
+**Detalles:**
+- **Requisitos**: Windows 10 1709+ (build 16299) o Windows 11 con App Installer instalado
+- **Tamaño**: ~420 MB (ejecutable standalone con Python y todas las dependencias incluidas)
+- **Sin dependencias externas**: No requiere instalar Python, pip ni ningún otro prerequisito
+- **Actualización**: `winget upgrade habolanos.devsecops-toolbox`
+- **Desinstalación**: `winget uninstall habolanos.devsecops-toolbox`
+
+> **Nota**: Si `winget` no está disponible, descarga App Installer desde Microsoft Store o usa la Opción 2.
+
+### Opción 2: Ejecutable Compilado (Sin instalar nada)
+
+Descarga el ejecutable directamente desde [GitHub Releases](https://github.com/habolanos/devsecops-toolbox/releases):
+
+**Windows** 🪟
+```powershell
+# Descargar devsecops-toolbox.exe desde la página de releases
+# Ejecutar directamente
+.\devsecops-toolbox.exe
+```
+
+**Linux** 🐧
+```bash
+# Descargar devsecops-toolbox desde la página de releases
+chmod +x devsecops-toolbox
+./devsecops-toolbox
+```
+
+**Requisitos**: Ninguno (todo incluido en el ejecutable)
+
+### Opción 3: Clonar Repositorio (Para desarrollo)
 
 ```bash
 git clone https://github.com/habolanos/devsecops-toolbox.git
 cd devsecops-toolbox
+pip install -e ".[test]"
 ```
 
-### Opción 2: Winget (Windows Package Manager)
+**Requisitos**: Python 3.11+
 
-```powershell
-winget install habolanos.devsecops-toolbox
-```
-
-Después de instalar, ejecuta directamente desde cualquier terminal:
-```powershell
-devsecops-toolbox
-```
-
-> **Nota**: Requiere Windows 10 1709+ o Windows 11. El ejecutable es standalone (~420 MB) e incluye Python y todas las dependencias.
-
-### Opción 3: Usar Docker (Recomendado)
+### Opción 4: Docker
 
 ```bash
 # Descargar imagen
@@ -78,74 +106,22 @@ docker pull devsecops-toolbox:latest
 docker build -t devsecops-toolbox:latest .
 ```
 
-### Requisitos
-
-- **Python**: 3.11+
-- **Docker** (opcional): 20.10+
-- **Docker Compose** (opcional): 2.0+
+**Requisitos**: Docker 20.10+ y Docker Compose 2.0+
 
 ---
 
-## 🚀 Ejecutables Compilados (RECOMENDADO)
-
-### ⭐ Opción Más Simple: Usar Ejecutables
-
-Si prefieres **no instalar Python**, puedes usar los ejecutables compilados precompilados:
-
-#### **Windows** 🪟
-
-```bash
-# Descargar ejecutable
-devsecops-toolbox.exe
-
-# O usar el script wrapper
-devsecops-toolbox.bat
-```
-
-**Requisitos**: Ninguno (todo incluido en el ejecutable)
-
-#### **Linux** 🐧
-
-```bash
-# Descargar ejecutable
-./devsecops-toolbox
-
-# O usar el script wrapper
-./devsecops-toolbox
-```
-
-**Requisitos**: Ninguno (todo incluido en el ejecutable)
-
----
-
-### 📦 Compilar Tus Propios Ejecutables
+###  Compilar Tus Propios Ejecutables
 
 Si necesitas compilar los ejecutables desde el código fuente:
 
-#### **Paso 1: Instalar Dependencias**
-
 ```bash
+# Instalar PyInstaller
 pip install pyinstaller
-```
 
-#### **Paso 2: Compilar**
-
-```bash
-# Windows
+# Compilar (Windows y Linux)
 python build_executables.py
 
-# Linux
-python3 build_executables.py
-```
-
-#### **Paso 3: Usar Ejecutable**
-
-```bash
-# Windows
-dist/devsecops-toolbox.exe
-
-# Linux
-./dist/devsecops-toolbox
+# El ejecutable se genera en dist/devsecops-toolbox.exe (Windows) o dist/devsecops-toolbox (Linux)
 ```
 
 ---
@@ -154,10 +130,10 @@ dist/devsecops-toolbox.exe
 
 | Método | Requisitos | Complejidad | Velocidad |
 |--------|-----------|-----------|----------|
-| **Winget** | Windows 10+ | ⭐ Muy Simple | ⚡ Inmediato |
-| **Ejecutable** | Ninguno | ⭐ Muy Simple | ⚡ Inmediato |
-| **Python + Git** | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
-| **Docker** | Docker | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
+| **Winget** (Opción 1) | Windows 10+ | ⭐ Muy Simple | ⚡ Inmediato |
+| **Ejecutable** (Opción 2) | Ninguno | ⭐ Muy Simple | ⚡ Inmediato |
+| **Clonar repo** (Opción 3) | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
+| **Docker** (Opción 4) | Docker 20.10+ | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
 
 ---
 
