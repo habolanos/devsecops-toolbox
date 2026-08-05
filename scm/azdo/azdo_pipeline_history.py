@@ -480,8 +480,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     timeline_events = []
     for rev in revisions:
         rev_num = rev.get("revision", 0)
-        modified = rev.get("modifiedOn", "")
-        modified_by = (rev.get("modifiedBy") or {}).get("displayName", "?")
+        modified = rev.get("modifiedOn", "") or rev.get("createdOn", "")
+        modified_by = (rev.get("modifiedBy") or rev.get("createdBy") or {}).get("displayName", "?")
         comment = rev.get("comment", "") or "(sin comentario)"
         diff = diffs.get(rev_num, [])
         timeline_events.append({
@@ -933,8 +933,8 @@ def render_console(data: Dict, tz_name: str) -> None:
             diff = diffs.get(rev_num, [])
             t.add_row(
                 str(rev_num),
-                format_date(rev.get("modifiedOn", ""), tz_name),
-                (rev.get("modifiedBy") or {}).get("displayName", "?"),
+                format_date(rev.get("modifiedOn", "") or rev.get("createdOn", ""), tz_name),
+                (rev.get("modifiedBy") or rev.get("createdBy") or {}).get("displayName", "?"),
                 str(len(diff)),
                 rev.get("comment", "") or "(sin comentario)",
             )
@@ -970,8 +970,8 @@ def render_console(data: Dict, tz_name: str) -> None:
         diff = diffs.get(rev_num, [])
         if not diff:
             continue
-        date_str = format_date(rev.get("modifiedOn", ""), tz_name)
-        user = (rev.get("modifiedBy") or {}).get("displayName", "?")
+        date_str = format_date(rev.get("modifiedOn", "") or rev.get("createdOn", ""), tz_name)
+        user = (rev.get("modifiedBy") or rev.get("createdBy") or {}).get("displayName", "?")
         comment = rev.get("comment", "") or "(sin comentario)"
 
         td = Table(
@@ -1012,8 +1012,8 @@ def _render_fallback(data: Dict, tz_name: str) -> None:
     for rev in revisions:
         rev_num = rev.get("revision", 0)
         diff = diffs.get(rev_num, [])
-        date_str = format_date(rev.get("modifiedOn", ""), tz_name)
-        user = (rev.get("modifiedBy") or {}).get("displayName", "?")
+        date_str = format_date(rev.get("modifiedOn", "") or rev.get("createdOn", ""), tz_name)
+        user = (rev.get("modifiedBy") or rev.get("createdBy") or {}).get("displayName", "?")
         comment = rev.get("comment", "") or ""
         print(f"  Rev {rev_num} — {date_str} por {user}: \"{comment}\"  ({len(diff)} cambios)")
         for d in diff:
@@ -1033,7 +1033,7 @@ def export_results(data: Dict, fmt: str, tz_name: str) -> None:
         print(f"[WARN] ExportManager no disponible. Omitiendo export {fmt}.")
         return
 
-    em = ExportManager(output_dir=str(out_dir), tool_name="azdo_pipeline_history")
+    em = ExportManager(tool_name="azdo_pipeline_history")
 
     rows: List[Dict] = []
     for rev in data.get("revisions", []):
@@ -1042,8 +1042,8 @@ def export_results(data: Dict, fmt: str, tz_name: str) -> None:
         for d in diff:
             rows.append({
                 "revision": rev_num,
-                "date": format_date(rev.get("modifiedOn", ""), tz_name),
-                "user": (rev.get("modifiedBy") or {}).get("displayName", ""),
+                "date": format_date(rev.get("modifiedOn", "") or rev.get("createdOn", ""), tz_name),
+                "user": ((rev.get("modifiedBy") or rev.get("createdBy") or {}).get("displayName", "")),
                 "comment": rev.get("comment", ""),
                 "category": d.get("category", ""),
                 "field": d.get("field", ""),
@@ -1060,7 +1060,12 @@ def export_results(data: Dict, fmt: str, tz_name: str) -> None:
         })
 
     filename = f"pipeline_history_{def_id}"
-    em.export(rows, filename=filename, fmt=fmt)
+    if fmt == "json":
+        em.export_json(rows, filename=filename)
+    elif fmt == "csv":
+        em.export_csv(rows, filename=filename)
+    elif fmt == "excel":
+        em.export_excel(rows, filename=filename)
 
 
 # =============================================================================
@@ -1118,6 +1123,13 @@ def main() -> int:
             print(f"  [WARN] No se pudo descargar rev {rev_num}")
             diffs[rev_num] = []
             continue
+
+        # Merge metadata from full definition (has modifiedOn/modifiedBy/createdOn/createdBy)
+        for k in ("modifiedOn", "modifiedBy", "createdOn", "createdBy", "comment"):
+            if k in rev_def and k not in rev:
+                rev[k] = rev_def[k]
+            elif k in rev_def and not rev.get(k):
+                rev[k] = rev_def[k]
 
         if prev_def is not None:
             changes = compute_full_diff(prev_def, rev_def)
