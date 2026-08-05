@@ -741,17 +741,18 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
         # Extract build ID and source commit from artifacts
         build_id = ""
         source_commit = ""
+        build_source_version = ""
+        git_branch = ""
         for art in rel.get("artifacts", []):
+            def_ref = art.get("definitionReference", {})
             if art.get("type", "") == "Build":
-                def_ref = art.get("definitionReference", {})
-                build_id = def_ref.get("version", {}).get("id", "") or art.get("sourceVersion", "")
-                source_commit = def_ref.get("version", {}).get("sourceCommitId", "") or art.get("sourceVersion", "")
-                if not source_commit:
-                    source_commit = art.get("sourceVersion", "")
-                break
+                build_id = def_ref.get("version", {}).get("id", "")
+                build_source_version = def_ref.get("sourceVersion", {}).get("id", "")
+            elif art.get("type", "") == "Git":
+                source_commit = def_ref.get("version", {}).get("id", "")
+                git_branch = def_ref.get("branch", {}).get("id", "") or def_ref.get("branches", {}).get("id", "")
         if data.get("debug", False):
-            print(f"    [DEBUG] Release {rel.get('id', '?')} artifacts: {rel.get('artifacts', [])}")
-            print(f"    [DEBUG] Release {rel.get('id', '?')} -> buildId='{build_id}' sourceCommit='{source_commit}'")
+            print(f"    [DEBUG] Release {rel.get('id', '?')} -> buildId='{build_id}' sourceCommit='{source_commit[:8] if source_commit else ''}' branch='{git_branch}'")
         timeline_events.append({
             "type": "release",
             "id": rel.get("id", 0),
@@ -766,6 +767,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
                             "rank": e.get("rank", 0)} for e in envs],
             "buildId": build_id,
             "sourceCommit": source_commit[:8] if source_commit else "",
+            "buildSourceVersion": build_source_version[:8] if build_source_version else "",
+            "gitBranch": git_branch,
         })
     for c in data.get("commits", []):
         timeline_events.append({
@@ -1037,7 +1040,7 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   <span id="releaseCount" style="color:var(--text-dim);font-size:0.85em;align-self:center"></span>
 </div>
 <table id="releasesTable">
-  <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Fecha</th><th>Creado por</th><th>Artifact</th><th>Stages</th></tr></thead>
+  <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Fecha</th><th>Creado por</th><th>Artifact</th><th>Stages</th><th>Build</th><th>Commit</th><th>Rama</th></tr></thead>
   <tbody>
 """
     STATUS_COLORS = {
@@ -1084,6 +1087,17 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             f"{a.get('alias', '?')}({a.get('type', '?')})"
             for a in artifacts
         ) or "(sin artifact)")
+        # Extract build ID, source commit and branch from artifacts
+        r_build = ""
+        r_commit = ""
+        r_branch = ""
+        for a in artifacts:
+            dr = a.get("definitionReference", {})
+            if a.get("type", "") == "Build":
+                r_build = dr.get("version", {}).get("id", "")
+            elif a.get("type", "") == "Git":
+                r_commit = (dr.get("version", {}).get("id", "") or "")[:8]
+                r_branch = dr.get("branch", {}).get("id", "") or dr.get("branches", {}).get("id", "")
         # Stages info
         envs = rel.get("environments", [])
         stages_parts = []
@@ -1101,6 +1115,9 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
       <td>{ruser}</td>
       <td>{art_str}</td>
       <td>{stages_str}</td>
+      <td>{html_escape(r_build) or '-'}</td>
+      <td>{html_escape(r_commit) or '-'}</td>
+      <td>{html_escape(r_branch) or '-'}</td>
     </tr>
 """
     html += "  </tbody>\n</table>\n"
@@ -1206,6 +1223,8 @@ const releasePoints = timelineData
     envDetails: e.envDetails,
     buildId: e.buildId,
     sourceCommit: e.sourceCommit,
+    buildSourceVersion: e.buildSourceVersion,
+    gitBranch: e.gitBranch,
     r: Math.max(4, Math.min(20, e.changes * 1.5)),
   }}));
 
@@ -1382,7 +1401,9 @@ new Chart(ctx, {{
             ];
             if (d.stage === 'Production') {{
               if (d.buildId) lines.push('Build: ' + d.buildId);
-              if (d.sourceCommit) lines.push('Commit: ' + d.sourceCommit);
+              if (d.sourceCommit) lines.push('Commit master: ' + d.sourceCommit);
+              if (d.buildSourceVersion) lines.push('Build commit: ' + d.buildSourceVersion);
+              if (d.gitBranch) lines.push('Rama: ' + d.gitBranch);
             }}
             return lines;
           }},
@@ -1591,6 +1612,9 @@ def render_console(data: Dict, tz_name: str) -> None:
         tr.add_column("Creado por", min_width=20)
         tr.add_column("Artifact", min_width=20)
         tr.add_column("Stages", min_width=30)
+        tr.add_column("Build", width=10, justify="center")
+        tr.add_column("Commit", width=10, justify="center")
+        tr.add_column("Rama", min_width=15)
         for r in releases:
             eff_status, eff_stage = get_release_effective_status(r)
             rstat = eff_status
@@ -1605,6 +1629,17 @@ def render_console(data: Dict, tz_name: str) -> None:
                 f"{a.get('alias', '?')}({a.get('type', '?')})"
                 for a in artifacts
             ) or "(sin artifact)"
+            # Extract build ID, source commit and branch from artifacts
+            r_build = ""
+            r_commit = ""
+            r_branch = ""
+            for a in artifacts:
+                dr = a.get("definitionReference", {})
+                if a.get("type", "") == "Build":
+                    r_build = dr.get("version", {}).get("id", "")
+                elif a.get("type", "") == "Git":
+                    r_commit = (dr.get("version", {}).get("id", "") or "")[:8]
+                    r_branch = dr.get("branch", {}).get("id", "") or dr.get("branches", {}).get("id", "")
             # Extract environments/stages status with readable labels
             envs = r.get("environments", [])
             stages_parts = []
@@ -1622,6 +1657,9 @@ def render_console(data: Dict, tz_name: str) -> None:
                 ruser,
                 art_str,
                 stages_str,
+                r_build or "-",
+                r_commit or "-",
+                r_branch or "-",
             )
         console.print(tr)
 
