@@ -858,6 +858,17 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   .chart-container {{ background: var(--surface); border: 1px solid var(--border);
                       border-radius: 8px; padding: 16px; margin-bottom: 24px; height: 400px; }}
 
+  #chartTooltip {{ position: absolute; background: #161b22; border: 1px solid #30363d;
+                   border-radius: 8px; padding: 10px 14px; pointer-events: auto;
+                   box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000;
+                   max-width: 400px; transition: opacity 0.15s; }}
+  #chartTooltip .tt-title {{ color: #58a6ff; font-weight: 600; margin-bottom: 6px; font-size: 0.9em; }}
+  #chartTooltip .tt-body {{ color: #c9d1d9; font-size: 0.85em; line-height: 1.5; }}
+  #chartTooltip .tt-copy {{ margin-top: 8px; padding: 4px 12px; background: #21262d;
+                            border: 1px solid #30363d; border-radius: 6px; color: #58a6ff;
+                            cursor: pointer; font-size: 0.8em; transition: background 0.15s; }}
+  #chartTooltip .tt-copy:hover {{ background: #30363d; }}
+
   table {{ width: 100%; border-collapse: collapse; margin-bottom: 24px;
            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
            overflow: hidden; }}
@@ -1359,39 +1370,44 @@ new Chart(ctx, {{
     plugins: {{
       legend: {{ labels: {{ color: '#c9d1d9' }} }},
       tooltip: {{
-        backgroundColor: '#161b22',
-        borderColor: '#30363d',
-        borderWidth: 1,
-        titleColor: '#58a6ff',
-        bodyColor: '#c9d1d9',
-        callbacks: {{
-          title: function(ctx) {{ return new Date(ctx[0].raw.x).toLocaleString(); }},
-          label: function(ctx) {{
-            const d = ctx.raw;
-            if (d.revision !== undefined) {{
-              return [
-                'Revision #' + d.revision,
-                'Usuario: ' + d.user,
-                'Comentario: ' + d.comment,
-                'Cambios: ' + d.changes,
-              ];
-            }}
-            if (d.commitId !== undefined) {{
-              return [
-                'Commit: ' + d.commitId,
-                'Usuario: ' + d.user,
-                'Comentario: ' + (d.comment || '').split('\\n')[0].substring(0, 80),
-                'Archivos: ' + d.changes,
-              ];
-            }}
-            if (d.name !== undefined && d.message !== undefined) {{
-              return [
-                'Tag: ' + d.name,
-                'Usuario: ' + d.user,
-                'Mensaje: ' + (d.message || '').substring(0, 80),
-              ];
-            }}
-            const lines = [
+        enabled: false,
+        external: function(context) {{
+          let tt = document.getElementById('chartTooltip');
+          if (!tt) {{
+            tt = document.createElement('div');
+            tt.id = 'chartTooltip';
+            document.body.appendChild(tt);
+          }}
+          const tooltip = context.tooltip;
+          if (tooltip.opacity === 0) {{
+            tt.style.opacity = 0;
+            return;
+          }}
+          const d = tooltip.dataPoints[0].raw;
+          const title = new Date(d.x).toLocaleString();
+          let lines = [];
+          if (d.revision !== undefined) {{
+            lines = [
+              'Revision #' + d.revision,
+              'Usuario: ' + d.user,
+              'Comentario: ' + d.comment,
+              'Cambios: ' + d.changes,
+            ];
+          }} else if (d.commitId !== undefined) {{
+            lines = [
+              'Commit: ' + d.commitId,
+              'Usuario: ' + d.user,
+              'Comentario: ' + (d.comment || '').split('\\n')[0].substring(0, 80),
+              'Archivos: ' + d.changes,
+            ];
+          }} else if (d.name !== undefined && d.message !== undefined) {{
+            lines = [
+              'Tag: ' + d.name,
+              'Usuario: ' + d.user,
+              'Mensaje: ' + (d.message || '').substring(0, 80),
+            ];
+          }} else {{
+            lines = [
               'Release: ' + d.name,
               'Estado: ' + d.status + (d.stage ? ' (' + d.stage + ')' : ''),
               'Usuario: ' + d.user,
@@ -1405,8 +1421,16 @@ new Chart(ctx, {{
               if (d.buildSourceVersion) lines.push('Build commit: ' + d.buildSourceVersion);
               if (d.gitBranch) lines.push('Rama: ' + d.gitBranch);
             }}
-            return lines;
-          }},
+          }}
+          const text = title + '\\n' + lines.join('\\n');
+          const safeText = text.replace(/`/g, '\\`').replace(/\\n/g, '\\\\n');
+          tt.innerHTML = '<div class="tt-title">' + title + '</div>' +
+            '<div class="tt-body">' + lines.map(l => l.replace(/</g,'&lt;')).join('<br>') + '</div>' +
+            '<button class="tt-copy" onclick="navigator.clipboard.writeText(`' + safeText + '`).then(()=>{{this.textContent=\\'Copiado!\\';setTimeout(()=>this.textContent=\\'Copiar\\',1500)}})">Copiar</button>';
+          const pos = context.chart.canvas.getBoundingClientRect();
+          tt.style.opacity = 1;
+          tt.style.left = (pos.left + window.pageXOffset + tooltip.caretX + 12) + 'px';
+          tt.style.top = (pos.top + window.pageYOffset + tooltip.caretY - 10) + 'px';
         }},
       }},
     }},
