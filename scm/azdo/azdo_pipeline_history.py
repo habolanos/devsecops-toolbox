@@ -1019,7 +1019,8 @@ def render_console(data: Dict, tz_name: str) -> None:
             )
         console.print(tr)
 
-    # Diffs detail
+    # Unified diffs table
+    all_diffs: List[Dict] = []
     for rev in revisions:
         rev_num = rev.get("revision", 0)
         diff = diffs.get(rev_num, [])
@@ -1028,26 +1029,43 @@ def render_console(data: Dict, tz_name: str) -> None:
         date_str = format_date(rev.get("modifiedOn", "") or rev.get("createdOn", ""), tz_name)
         user = (rev.get("modifiedBy") or rev.get("createdBy") or {}).get("displayName", "?")
         comment = rev.get("comment", "") or "(sin comentario)"
+        for d in diff:
+            all_diffs.append({
+                "rev": rev_num,
+                "date": date_str,
+                "user": user,
+                "comment": comment,
+                "category": d.get("category", ""),
+                "field": d.get("field", ""),
+                "old_value": str(d.get("old_value", "")),
+                "new_value": str(d.get("new_value", "")),
+                "action": d.get("action", "modified"),
+            })
 
-        td = Table(
-            title=f"Rev {rev_num} — {date_str} por {user}: \"{comment}\"",
-            box=box.SIMPLE_HEAVY, border_style="yellow",
-            show_header=True, header_style="bold yellow",
-        )
+    if all_diffs:
+        td = Table(title="Detalle de Cambios por Revision", box=box.SIMPLE_HEAVY,
+                   border_style="yellow", show_header=True, header_style="bold yellow",
+                   show_lines=True)
+        td.add_column("Rev", width=5, justify="right")
+        td.add_column("Fecha", width=18)
+        td.add_column("Usuario", min_width=20)
         td.add_column("Categoria", width=12)
         td.add_column("Campo", min_width=30)
         td.add_column("Valor anterior", min_width=25)
         td.add_column("Valor nuevo", min_width=25)
         td.add_column("Accion", width=12)
 
-        for d in diff:
-            action = d.get("action", "modified")
+        for d in all_diffs:
+            action = d["action"]
             action_col = {"added": "green", "removed": "red", "modified": "yellow"}.get(action, "white")
             td.add_row(
-                d.get("category", ""),
-                d.get("field", ""),
-                str(d.get("old_value", "")),
-                str(d.get("new_value", "")),
+                str(d["rev"]),
+                d["date"],
+                d["user"],
+                d["category"],
+                d["field"],
+                d["old_value"],
+                d["new_value"],
                 f"[{action_col}]{action}[/{action_col}]",
             )
         console.print(td)
