@@ -1669,6 +1669,23 @@ def run_tool(tool_key: str):
             return
         extra += ["--release-id", val]
 
+    if "--definition-id" in tool_args and "--release-id" not in extra:
+        print(f"{Colors.BOLD}Pipeline Definition ID (obligatorio):{Colors.ENDC} ", end="")
+        val = input().strip()
+        if not val or not val.isdigit():
+            print(f"{Colors.RED}❌ El Definition ID es obligatorio y debe ser un número entero.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        extra += ["--definition-id", val]
+
+    if "--months" in tool_args:
+        print(f"{Colors.BOLD}Meses hacia atrás a analizar [6]:{Colors.ENDC} ", end="")
+        val = input().strip()
+        if val and val.isdigit():
+            extra += ["--months", val]
+        else:
+            extra += ["--months", "6"]
+
     if "--repo" in tool_args:
         if tool_key == "19":
             cfg_props_repo = config_get(cfg, "tools", "properties_branch_diff", "repo", default="")
