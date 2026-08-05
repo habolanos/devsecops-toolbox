@@ -347,6 +347,9 @@ def get_git_tags(org: str, project: str, repo_id: str,
                                 params={"api-version": API_VERSION_GIT_TAGS}, timeout=15)
             if resp.status_code == 200:
                 ann = resp.json()
+                if debug:
+                    print(f"    [DEBUG] Tag '{tag_name}' annotated response keys: {list(ann.keys())}")
+                    print(f"    [DEBUG] taggedObject: {ann.get('taggedObject', {})}")
                 commit_sha = ann.get("taggedObject", {}).get("commitId", "")
                 r["message"] = ann.get("message", "")
                 r["createdBy"] = ann.get("createdBy", {})
