@@ -209,6 +209,7 @@ def get_releases_in_range(org: str, project: str, def_id: int,
             "$top": top,
             "$skip": skip,
             "$orderBy": "createdOn asc",
+            "$expand": "environments,artifacts",
         }, debug)
         if not data or not data.get("value"):
             break
@@ -245,13 +246,16 @@ def extract_stages(defn: Dict) -> List[Dict]:
 
 
 def extract_variables(defn: Dict) -> List[Dict]:
-    """Extrae variables con scope (pipeline o stage)."""
+    """Extrae variables con scope (pipeline o stage).
+    Los secrets se muestran como *** (la API no devuelve el valor real)."""
     result = []
     # Pipeline-level variables
     for k, v in defn.get("variables", {}).items():
         if isinstance(v, dict):
-            val = v.get("value", "")
             secret = v.get("isSecret", False)
+            val = v.get("value", "")
+            if secret or val == "***":
+                val = "***"
         else:
             val = str(v)
             secret = False
@@ -261,8 +265,10 @@ def extract_variables(defn: Dict) -> List[Dict]:
         env_name = env.get("name", "")
         for k, v in env.get("variables", {}).items():
             if isinstance(v, dict):
-                val = v.get("value", "")
                 secret = v.get("isSecret", False)
+                val = v.get("value", "")
+                if secret or val == "***":
+                    val = "***"
             else:
                 val = str(v)
                 secret = False
@@ -397,12 +403,19 @@ def diff_variables(old_vars: List[Dict], new_vars: List[Dict]) -> List[Dict]:
             old_v = old_map[key]
             new_v = new_map[key]
             if old_v["value"] != new_v["value"]:
+                old_val = old_v["value"] if old_v["value"] else "(vacio)"
+                new_val = new_v["value"] if new_v["value"] else "(vacio)"
+                # Preserve *** for secrets (don't replace with (vacio))
+                if old_v.get("isSecret") or old_val == "***":
+                    old_val = "***"
+                if new_v.get("isSecret") or new_val == "***":
+                    new_val = "***"
                 changes.append({
                     "category": "Variable",
                     "scope": scope,
                     "field": f"Variable '{name}'",
-                    "old_value": old_v["value"] if old_v["value"] else "(vacio)",
-                    "new_value": new_v["value"] if new_v["value"] else "(vacio)",
+                    "old_value": old_val,
+                    "new_value": new_val,
                     "action": "modified",
                 })
     return changes
@@ -767,7 +780,7 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     html += """
 <h2>Releases en el Periodo</h2>
 <table id="releasesTable">
-  <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Fecha</th><th>Creado por</th></tr></thead>
+  <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Fecha</th><th>Creado por</th><th>Artifact</th><th>Stages</th></tr></thead>
   <tbody>
 """
     STATUS_COLORS = {
@@ -775,20 +788,59 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
         "failed": "badge-failed",
         "partiallySucceeded": "badge-partiallySucceeded",
         "cancelled": "badge-cancelled",
+        "abandoned": "badge-cancelled",
+        "rejected": "badge-failed",
+        "draft": "badge-cancelled",
+        "inProgress": "badge-partiallySucceeded",
+        "notDeployed": "badge-cancelled",
+        "pending": "badge-partiallySucceeded",
+    }
+    STATUS_LABELS = {
+        "succeeded": "Exitoso", "failed": "Fallido",
+        "partiallySucceeded": "Parcial", "cancelled": "Cancelado",
+        "abandoned": "Abandonado", "rejected": "Rechazado",
+        "draft": "Borrador", "inProgress": "En progreso",
+        "notDeployed": "No desplegado", "pending": "Pendiente",
+    }
+    ENV_STATUS_LABELS = {
+        "succeeded": "ok", "failed": "fail",
+        "partiallySucceeded": "partial", "cancelled": "cancel",
+        "inProgress": "progress", "notDeployed": "pending",
+        "queued": "queued", "rejected": "rejected",
+        "scheduled": "scheduled", "phaseInProgress": "progress",
+        "phaseSucceeded": "ok", "phaseFailed": "fail",
     }
     for rel in releases:
         rid = rel.get("id", "?")
         rname = html_escape(rel.get("name", ""))
         rstatus = rel.get("status", "?")
+        rlabel = STATUS_LABELS.get(rstatus, rstatus)
         rdate = format_date(rel.get("createdOn", ""), tz_name)
         ruser = html_escape((rel.get("createdBy") or {}).get("displayName", "?"))
         badge = STATUS_COLORS.get(rstatus, "badge-cancelled")
+        # Artifact info
+        artifacts = rel.get("artifacts", [])
+        art_str = html_escape(", ".join(
+            f"{a.get('alias', '?')}({a.get('type', '?')})"
+            for a in artifacts
+        ) or "(sin artifact)")
+        # Stages info
+        envs = rel.get("environments", [])
+        stages_parts = []
+        for e in envs:
+            e_name = html_escape(e.get("name", "?"))
+            e_stat = e.get("status", "?")
+            e_label = ENV_STATUS_LABELS.get(e_stat, e_stat)
+            stages_parts.append(f"{e_name}:{e_label}")
+        stages_str = html_escape(", ".join(stages_parts) or "(sin stages)")
         html += f"""    <tr>
       <td>{rid}</td>
       <td>{rname}</td>
-      <td><span class="badge {badge}">{rstatus}</span></td>
+      <td><span class="badge {badge}">{rlabel}</span></td>
       <td>{rdate}</td>
       <td>{ruser}</td>
+      <td>{art_str}</td>
+      <td>{stages_str}</td>
     </tr>
 """
     html += "  </tbody>\n</table>\n"
@@ -1040,6 +1092,24 @@ def render_console(data: Dict, tz_name: str) -> None:
         STATUS_COLOR = {
             "succeeded": "green", "failed": "red",
             "partiallySucceeded": "yellow", "cancelled": "dim",
+            "abandoned": "dim", "rejected": "red",
+            "draft": "dim", "inProgress": "blue",
+            "notDeployed": "dim", "pending": "blue",
+        }
+        STATUS_LABEL = {
+            "succeeded": "Exitoso", "failed": "Fallido",
+            "partiallySucceeded": "Parcial", "cancelled": "Cancelado",
+            "abandoned": "Abandonado", "rejected": "Rechazado",
+            "draft": "Borrador", "inProgress": "En progreso",
+            "notDeployed": "No desplegado", "pending": "Pendiente",
+        }
+        ENV_STATUS_LABEL = {
+            "succeeded": "ok", "failed": "fail",
+            "partiallySucceeded": "partial", "cancelled": "cancel",
+            "inProgress": "progress", "notDeployed": "pending",
+            "queued": "queued", "rejected": "rejected",
+            "scheduled": "scheduled", "phaseInProgress": "progress",
+            "phaseSucceeded": "ok", "phaseFailed": "fail",
         }
         tr = Table(title=f"Releases ({len(releases)} en el periodo)",
                    box=box.SIMPLE_HEAVY, border_style="dim",
@@ -1047,14 +1117,15 @@ def render_console(data: Dict, tz_name: str) -> None:
                    show_lines=False, row_styles=["dim", ""])
         tr.add_column("ID", width=7, justify="right")
         tr.add_column("Nombre", min_width=30)
-        tr.add_column("Estado", width=20)
+        tr.add_column("Estado", width=14)
         tr.add_column("Fecha", width=18, justify="center")
         tr.add_column("Creado por", min_width=20)
         tr.add_column("Artifact", min_width=20)
-        tr.add_column("Stages", min_width=25)
+        tr.add_column("Stages", min_width=30)
         for r in releases:
             rstat = r.get("status", "?")
             col = STATUS_COLOR.get(rstat, "white")
+            rlabel = STATUS_LABEL.get(rstat, rstat)
             ruser = ((r.get("createdBy") or {}).get("displayName", "?"))
             # Extract artifact info
             artifacts = r.get("artifacts", [])
@@ -1062,16 +1133,19 @@ def render_console(data: Dict, tz_name: str) -> None:
                 f"{a.get('alias', '?')}({a.get('type', '?')})"
                 for a in artifacts
             ) or "(sin artifact)"
-            # Extract environments/stages status
+            # Extract environments/stages status with readable labels
             envs = r.get("environments", [])
-            stages_str = ", ".join(
-                f"{e.get('name', '?')}:{e.get('status', '?')}"
-                for e in envs
-            ) or "(sin stages)"
+            stages_parts = []
+            for e in envs:
+                e_name = e.get("name", "?")
+                e_stat = e.get("status", "?")
+                e_label = ENV_STATUS_LABEL.get(e_stat, e_stat)
+                stages_parts.append(f"{e_name}:{e_label}")
+            stages_str = ", ".join(stages_parts) or "(sin stages)"
             tr.add_row(
                 str(r.get("id", "?")),
                 r.get("name", "?"),
-                f"[{col}]{rstat}[/{col}]",
+                f"[{col}]{rlabel}[/{col}]",
                 format_date(r.get("createdOn", ""), tz_name),
                 ruser,
                 art_str,

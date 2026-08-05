@@ -160,13 +160,23 @@ class TestExtractVariables:
         assert names == {"VAR1", "VAR2"}
         assert all(v["scope"] == "Pipeline" for v in result)
 
-    def test_secret_variables_not_masked(self):
+    def test_secret_variables_shown_as_asterisks(self):
         defn = {"variables": {"SECRET": {"value": "supersecret", "isSecret": True}}}
         result = extract_variables(defn)
         assert len(result) == 1
         assert result[0]["name"] == "SECRET"
-        assert result[0]["value"] == "supersecret"
+        assert result[0]["value"] == "***"
         assert result[0]["isSecret"] is True
+
+    def test_secret_variable_empty_value_shown_as_asterisks(self):
+        defn = {"variables": {"SECRET": {"value": "", "isSecret": True}}}
+        result = extract_variables(defn)
+        assert result[0]["value"] == "***"
+
+    def test_api_asterisk_value_preserved(self):
+        defn = {"variables": {"SECRET": {"value": "***", "isSecret": False}}}
+        result = extract_variables(defn)
+        assert result[0]["value"] == "***"
 
     def test_non_dict_variable(self):
         defn = {"variables": {"PLAIN": "value"}}
@@ -339,6 +349,24 @@ class TestDiffVariables:
         assert len(changes) == 1
         assert changes[0]["scope"] == "QA"
         assert changes[0]["action"] == "added"
+
+    def test_secret_diff_shows_asterisks(self):
+        old = [{"name": "S", "value": "***", "scope": "Pipeline", "isSecret": True}]
+        new = [{"name": "S", "value": "***", "scope": "Pipeline", "isSecret": True}]
+        # Same *** value = no change
+        assert diff_variables(old, new) == []
+
+    def test_secret_added_shows_asterisks(self):
+        new = [{"name": "S", "value": "***", "scope": "Pipeline", "isSecret": True}]
+        changes = diff_variables([], new)
+        assert changes[0]["new_value"] == "***"
+
+    def test_secret_empty_value_shows_asterisks_in_diff(self):
+        old = [{"name": "S", "value": "***", "scope": "Pipeline", "isSecret": True}]
+        new = [{"name": "S", "value": "", "scope": "Pipeline", "isSecret": True}]
+        changes = diff_variables(old, new)
+        assert changes[0]["old_value"] == "***"
+        assert changes[0]["new_value"] == "***"
 
 
 class TestDiffTasks:
