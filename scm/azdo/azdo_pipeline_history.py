@@ -245,13 +245,52 @@ def get_release_effective_status(rel: Dict) -> Tuple[str, str]:
 
 def extract_repo_id_from_artifacts(defn: Dict) -> Optional[str]:
     """Extrae el ID del repositorio Git desde los artifacts de la definicion.
-    El sourceId de artifacts tipo 'Git' tiene formato '{repoId}:{branchRef}'."""
+    Busca en sourceId (formato '{projectId}:{repoId}' o '{projectId}/{repoId}')
+    y en definitionReference.repository.id como fallback."""
     for a in defn.get("artifacts", []):
         if a.get("type", "").lower() == "git":
+            # Try definitionReference.repository.id first (most reliable)
+            def_ref = a.get("definitionReference", {})
+            repo_ref = def_ref.get("repository", {})
+            if repo_ref.get("id"):
+                return repo_ref["id"]
+            # Fallback: parse sourceId
             source_id = a.get("sourceId", "")
             if ":" in source_id:
-                return source_id.split(":")[0]
+                parts = source_id.split(":")
+                if len(parts) >= 2:
+                    return parts[1]  # {projectId}:{repoId}
+                return parts[0]
+            if "/" in source_id:
+                parts = source_id.split("/")
+                if len(parts) >= 2:
+                    return parts[-1]  # {projectId}/{repoId}
+                return parts[0]
             return source_id
+    return None
+
+
+def extract_repo_id_from_releases(releases: List[Dict]) -> Optional[str]:
+    """Extrae el ID del repositorio Git desde los artifacts de los releases."""
+    for rel in releases:
+        for a in rel.get("artifacts", []):
+            if a.get("type", "").lower() == "git":
+                def_ref = a.get("definitionReference", {})
+                repo_ref = def_ref.get("repository", {})
+                if repo_ref.get("id"):
+                    return repo_ref["id"]
+                source_id = a.get("sourceId", "")
+                if ":" in source_id:
+                    parts = source_id.split(":")
+                    if len(parts) >= 2:
+                        return parts[1]
+                    return parts[0]
+                if "/" in source_id:
+                    parts = source_id.split("/")
+                    if len(parts) >= 2:
+                        return parts[-1]
+                    return parts[0]
+                return source_id
     return None
 
 
@@ -1710,9 +1749,16 @@ def main() -> int:
     git_tags: List[Dict] = []
     repo_id: Optional[str] = None
     if not args.no_commits:
+        # Try definition artifacts first
         repo_id = extract_repo_id_from_artifacts(defn)
+        # Fallback: search in release artifacts
+        if not repo_id and releases:
+            repo_id = extract_repo_id_from_releases(releases)
         if repo_id:
             print(f"Obteniendo commits de rama '{args.branch}' (repo: {repo_id[:8]}...)...")
+            if args.debug:
+                print(f"  [DEBUG] Artifacts en definicion: {defn.get('artifacts', [])}")
+                print(f"  [DEBUG] repo_id extraido: {repo_id}")
             commits = get_git_commits(args.org, args.project, repo_id, args.branch,
                                       min_date, headers, args.debug)
             print(f"  {len(commits)} commits encontrados")
@@ -1734,7 +1780,11 @@ def main() -> int:
                 git_tags = filtered_tags
             print(f"  {len(git_tags)} tags en el rango")
         else:
-            print("  [WARN] No se encontro repositorio Git en los artifacts de la definicion")
+            print("  [WARN] No se encontro repositorio Git en los artifacts")
+            if args.debug:
+                print(f"  [DEBUG] Artifacts en definicion: {defn.get('artifacts', [])}")
+                if releases:
+                    print(f"  [DEBUG] Artifacts en primer release: {releases[0].get('artifacts', [])}")
 
     # 5. Assemble data
     data = {

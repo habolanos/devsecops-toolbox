@@ -553,15 +553,16 @@ class TestVsrm:
 # REPO ID EXTRACTION
 # =============================================================================
 class TestExtractRepoId:
-    def test_git_artifact_with_branch(self):
-        defn = {"artifacts": [{"type": "Git", "sourceId": "repo-abc-123:refs/heads/master"}]}
+    def test_git_artifact_with_projectid_repoId(self):
+        defn = {"artifacts": [{"type": "Git", "sourceId": "proj-123:repo-abc-123"}]}
         result = extract_repo_id_from_artifacts(defn)
         assert result == "repo-abc-123"
 
-    def test_git_artifact_without_branch(self):
-        defn = {"artifacts": [{"type": "Git", "sourceId": "repo-abc-456"}]}
+    def test_git_artifact_with_definitionReference(self):
+        defn = {"artifacts": [{"type": "Git", "sourceId": "proj:repo",
+                                 "definitionReference": {"repository": {"id": "repo-from-defref"}}}]}
         result = extract_repo_id_from_artifacts(defn)
-        assert result == "repo-abc-456"
+        assert result == "repo-from-defref"
 
     def test_no_git_artifact(self):
         defn = {"artifacts": [{"type": "Build", "sourceId": "build-123"}]}
@@ -576,8 +577,8 @@ class TestExtractRepoId:
     def test_multiple_artifacts_picks_first_git(self):
         defn = {"artifacts": [
             {"type": "Build", "sourceId": "build-1"},
-            {"type": "Git", "sourceId": "repo-first:refs/heads/dev"},
-            {"type": "Git", "sourceId": "repo-second:refs/heads/master"},
+            {"type": "Git", "sourceId": "proj-1:repo-first"},
+            {"type": "Git", "sourceId": "proj-2:repo-second"},
         ]}
         result = extract_repo_id_from_artifacts(defn)
         assert result == "repo-first"
