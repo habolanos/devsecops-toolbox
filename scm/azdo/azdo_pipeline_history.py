@@ -1069,8 +1069,8 @@ function filterDiffs() {{
       if (catMatch && textMatch) visibleRows++;
     }});
     // Hide entire revision block if no rows match (when filtering)
-    const hasTable = block.querySelector('.diff-table');
-    const showBlock = !hasTable || visibleRows > 0 || (!searchText && !catValue);
+    const isFiltering = searchText || catValue;
+    const showBlock = isFiltering ? visibleRows > 0 : true;
     block.style.display = showBlock ? '' : 'none';
     totalVisible += visibleRows;
   }});
