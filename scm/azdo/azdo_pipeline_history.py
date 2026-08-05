@@ -1043,19 +1043,39 @@ def render_console(data: Dict, tz_name: str) -> None:
         }
         tr = Table(title=f"Releases ({len(releases)} en el periodo)",
                    box=box.SIMPLE_HEAVY, border_style="dim",
-                   show_header=True, header_style="bold cyan")
+                   show_header=True, header_style="bold cyan",
+                   show_lines=False, row_styles=["dim", ""])
         tr.add_column("ID", width=7, justify="right")
-        tr.add_column("Nombre", min_width=38)
-        tr.add_column("Estado", width=22)
+        tr.add_column("Nombre", min_width=30)
+        tr.add_column("Estado", width=20)
         tr.add_column("Fecha", width=18, justify="center")
+        tr.add_column("Creado por", min_width=20)
+        tr.add_column("Artifact", min_width=20)
+        tr.add_column("Stages", min_width=25)
         for r in releases:
             rstat = r.get("status", "?")
             col = STATUS_COLOR.get(rstat, "white")
+            ruser = ((r.get("createdBy") or {}).get("displayName", "?"))
+            # Extract artifact info
+            artifacts = r.get("artifacts", [])
+            art_str = ", ".join(
+                f"{a.get('alias', '?')}({a.get('type', '?')})"
+                for a in artifacts
+            ) or "(sin artifact)"
+            # Extract environments/stages status
+            envs = r.get("environments", [])
+            stages_str = ", ".join(
+                f"{e.get('name', '?')}:{e.get('status', '?')}"
+                for e in envs
+            ) or "(sin stages)"
             tr.add_row(
                 str(r.get("id", "?")),
                 r.get("name", "?"),
                 f"[{col}]{rstat}[/{col}]",
                 format_date(r.get("createdOn", ""), tz_name),
+                ruser,
+                art_str,
+                stages_str,
             )
         console.print(tr)
 
@@ -1086,7 +1106,7 @@ def render_console(data: Dict, tz_name: str) -> None:
     if all_diffs:
         td = Table(title="Detalle de Cambios por Revision", box=box.SIMPLE_HEAVY,
                    border_style="yellow", show_header=True, header_style="bold yellow",
-                   show_lines=True)
+                   show_lines=False, row_styles=["dim", ""])
         td.add_column("Rev", width=5, justify="right")
         td.add_column("Fecha", width=18)
         td.add_column("Usuario", min_width=20)
@@ -1216,22 +1236,13 @@ def main() -> int:
         print("  [WARN] No se pudieron obtener revisiones o no hay historial.")
         revisions = []
 
-    # Filter revisions by date range
     min_date = months_ago_iso(args.months)
-    revisions_filtered = [
-        r for r in revisions
-        if parse_iso(r.get("modifiedOn", "") or "") is None
-        or parse_iso(r.get("modifiedOn", "") or "") >= parse_iso(min_date)
-    ]
-    if revisions_filtered:
-        revisions = revisions_filtered
-    print(f"  {len(revisions)} revisiones en los ultimos {args.months} meses")
+    min_dt = parse_iso(min_date)
+    print(f"  Rango: desde {min_date} ({args.months} meses)")
 
-    # 3. Download each revision's full definition and compute diffs
-    print("Descargando definiciones por revision y calculando diffs...")
-    diffs: Dict[int, List[Dict]] = {}
-    prev_def: Optional[Dict] = None
-
+    # 3. Download each revision's full definition, merge metadata, then filter by date
+    print("Descargando definiciones por revision...")
+    enriched: List[Tuple[Dict, Dict]] = []  # (revision_meta, full_definition)
     for i, rev in enumerate(revisions):
         rev_num = rev.get("revision", 0)
         rev_def = get_definition_at_revision(
@@ -1239,16 +1250,32 @@ def main() -> int:
         )
         if not rev_def:
             print(f"  [WARN] No se pudo descargar rev {rev_num}")
-            diffs[rev_num] = []
             continue
 
-        # Merge metadata from full definition (has modifiedOn/modifiedBy/createdOn/createdBy)
         for k in ("modifiedOn", "modifiedBy", "createdOn", "createdBy", "comment"):
             if k in rev_def and k not in rev:
                 rev[k] = rev_def[k]
             elif k in rev_def and not rev.get(k):
                 rev[k] = rev_def[k]
+        enriched.append((rev, rev_def))
 
+    # Filter by date using enriched metadata
+    revisions_filtered = []
+    for rev, rev_def in enriched:
+        rev_date_str = rev.get("modifiedOn", "") or rev.get("createdOn", "")
+        rev_dt = parse_iso(rev_date_str)
+        if rev_dt is None or rev_dt >= min_dt:
+            revisions_filtered.append((rev, rev_def))
+
+    revisions = [r[0] for r in revisions_filtered]
+    print(f"  {len(revisions)} revisiones en los ultimos {args.months} meses")
+
+    # Compute diffs between consecutive filtered revisions
+    print("Calculando diffs...")
+    diffs: Dict[int, List[Dict]] = {}
+    prev_def: Optional[Dict] = None
+    for rev, rev_def in revisions_filtered:
+        rev_num = rev.get("revision", 0)
         if prev_def is not None:
             changes = compute_full_diff(prev_def, rev_def)
             diffs[rev_num] = changes
@@ -1259,7 +1286,6 @@ def main() -> int:
         else:
             diffs[rev_num] = []
             print(f"  Rev {rev_num}: primera revision (baseline)")
-
         prev_def = rev_def
 
     # 4. Get releases in range
