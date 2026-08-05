@@ -897,6 +897,15 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   }}
   .filter-bar input {{ flex: 1; min-width: 200px; }}
 
+  .global-search-bar {{ display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+                        position: sticky; top: 0; z-index: 100; background: var(--bg);
+                        padding: 10px 0; border-bottom: 1px solid var(--border); }}
+  .global-search-bar input {{
+    flex: 1; min-width: 300px; background: var(--surface); border: 1px solid var(--accent);
+    color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 1em;
+  }}
+  .global-search-bar input:focus {{ outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,0.2); }}
+
   .legend {{ display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }}
   .legend-item {{ display: flex; align-items: center; gap: 6px; font-size: 0.85em; }}
   .legend-dot {{ width: 12px; height: 12px; border-radius: 50%; }}
@@ -939,6 +948,11 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   <div class="legend-item"><div class="legend-dot" style="background:#f778ba"></div> Tag git</div>
 </div>
 <div class="chart-container"><canvas id="timelineChart"></canvas></div>
+
+<div class="global-search-bar">
+  <input type="text" id="globalFilter" placeholder="Buscar en todas las tablas (releases, commits, tags, cambios)..." oninput="filterAllTables()">
+  <span id="globalCount" style="color:var(--text-dim);font-size:0.85em;align-self:center"></span>
+</div>
 
 <h2>Desglose por Categoria</h2>
 <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
@@ -1509,6 +1523,60 @@ function filterCommits() {{
   const countEl = document.getElementById('commitCount');
   if (searchText) {{
     countEl.textContent = visible + ' de ' + document.querySelectorAll('#commitsTable tbody tr').length + ' commit(s)';
+  }} else {{
+    countEl.textContent = '';
+  }}
+}}
+
+// --- Global filter: filters all tables simultaneously ---
+function filterAllTables() {{
+  const searchText = document.getElementById('globalFilter').value.toLowerCase();
+  let totalVisible = 0;
+  let totalRows = 0;
+
+  // Releases table
+  document.querySelectorAll('#releasesTable tbody tr').forEach(row => {{
+    totalRows++;
+    const text = row.textContent.toLowerCase();
+    const match = !searchText || text.includes(searchText);
+    row.style.display = match ? '' : 'none';
+    if (match) totalVisible++;
+  }});
+
+  // Commits table
+  document.querySelectorAll('#commitsTable tbody tr').forEach(row => {{
+    totalRows++;
+    const text = row.textContent.toLowerCase();
+    const match = !searchText || text.includes(searchText);
+    row.style.display = match ? '' : 'none';
+    if (match) totalVisible++;
+  }});
+
+  // Tags table
+  document.querySelectorAll('#tagsTable tbody tr').forEach(row => {{
+    totalRows++;
+    const text = row.textContent.toLowerCase();
+    const match = !searchText || text.includes(searchText);
+    row.style.display = match ? '' : 'none';
+    if (match) totalVisible++;
+  }});
+
+  // Diffs (revision blocks)
+  document.querySelectorAll('.revision-block').forEach(block => {{
+    block.querySelectorAll('.diff-table tbody tr').forEach(row => {{
+      totalRows++;
+      const text = row.textContent.toLowerCase();
+      const match = !searchText || text.includes(searchText);
+      row.style.display = match ? '' : 'none';
+      if (match) totalVisible++;
+    }});
+    const hasVisible = block.querySelectorAll('.diff-table tbody tr:not([style*="none"])').length > 0;
+    block.style.display = (!searchText || hasVisible) ? '' : 'none';
+  }});
+
+  const countEl = document.getElementById('globalCount');
+  if (searchText) {{
+    countEl.textContent = totalVisible + ' de ' + totalRows + ' fila(s) en todas las tablas';
   }} else {{
     countEl.textContent = '';
   }}
