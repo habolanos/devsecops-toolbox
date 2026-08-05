@@ -312,14 +312,41 @@ def get_git_commits(org: str, project: str, repo_id: str, branch: str,
 
 def get_git_tags(org: str, project: str, repo_id: str,
                  headers: Dict, debug: bool) -> List[Dict]:
-    """Obtiene tags del repositorio usando el endpoint refs con filter=tags/."""
+    """Obtiene tags del repositorio usando el endpoint refs con filter=tags/.
+    Luego enriquece cada tag con la fecha del commit al que apunta."""
     url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/refs"
     params = {
         "api-version": API_VERSION_GIT,
         "filter": "tags/",
     }
     data = api_get(url, headers, params, debug)
-    return data.get("value", []) if data else []
+    refs = data.get("value", []) if data else []
+    if not refs:
+        return []
+
+    # Fetch commit dates for each tag's objectId
+    commit_url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/commits/batch"
+    commit_ids = [r.get("objectId", "") for r in refs if r.get("objectId")]
+    commit_dates: Dict[str, str] = {}
+    if commit_ids:
+        try:
+            resp = requests.post(commit_url, headers={**headers, "Content-Type": "application/json"},
+                                 json={"commitIds": commit_ids, "includeWorkItems": False},
+                                 params={"api-version": API_VERSION_GIT}, timeout=30)
+            if resp.status_code == 200:
+                for c in resp.json().get("value", []):
+                    commit_dates[c.get("commitId", "")] = c.get("committer", {}).get("date", "") or c.get("author", {}).get("date", "")
+            elif debug:
+                print(f"[DEBUG] HTTP {resp.status_code} batch commits for tags")
+        except Exception as e:
+            if debug:
+                print(f"[DEBUG] batch commits for tags: {e}")
+
+    for r in refs:
+        obj_id = r.get("objectId", "")
+        r["createdDate"] = commit_dates.get(obj_id, "")
+
+    return refs
 
 
 # =============================================================================
@@ -672,13 +699,21 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             "changes": len(c.get("changes", [])),
         })
     for t in data.get("git_tags", []):
-        tag_date = t.get("createdDate", "") or t.get("taggedObject", {}).get("createdDate", "")
+        raw_name = t.get("name", "")
+        tag_name = raw_name.replace("refs/tags/", "") if raw_name.startswith("refs/tags/") else raw_name
+        tag_date = (t.get("createdDate", "") or
+                    t.get("taggedObject", {}).get("createdDate", "") or
+                    t.get("creator", {}).get("date", "") or
+                    t.get("committer", {}).get("date", ""))
+        tag_user = (t.get("createdBy", {}).get("displayName", "") or
+                    t.get("creator", {}).get("displayName", "?"))
+        tag_msg = t.get("message", "") or t.get("taggedObject", {}).get("message", "")
         timeline_events.append({
             "type": "tag",
-            "name": t.get("name", ""),
+            "name": tag_name,
             "date": tag_date,
-            "user": t.get("createdBy", {}).get("displayName", "?"),
-            "message": t.get("message", ""),
+            "user": tag_user,
+            "message": tag_msg,
         })
 
     timeline_events.sort(key=lambda x: x.get("date", ""))
@@ -1035,12 +1070,16 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   <tbody>
 """
         for t in tags_data:
-            t_name = html_escape(t.get("name", ""))
+            raw_name = t.get("name", "")
+            t_name = html_escape(raw_name.replace("refs/tags/", "") if raw_name.startswith("refs/tags/") else raw_name)
             t_date = format_date(
                 t.get("createdDate", "") or t.get("taggedObject", {}).get("createdDate", ""),
                 tz_name,
             )
-            t_user = html_escape(t.get("createdBy", {}).get("displayName", "?"))
+            t_user = html_escape(
+                t.get("createdBy", {}).get("displayName", "") or
+                t.get("creator", {}).get("displayName", "?")
+            )
             t_msg = html_escape((t.get("message", "") or "")[:120])
             html += f"""    <tr>
       <td style="font-family:monospace;color:#f778ba">{t_name}</td>
@@ -1584,12 +1623,14 @@ def render_console(data: Dict, tz_name: str) -> None:
         tt.add_column("Creado por", min_width=20)
         tt.add_column("Mensaje", min_width=40)
         for t in tags_data:
-            t_name = t.get("name", "")
+            raw_name = t.get("name", "")
+            t_name = raw_name.replace("refs/tags/", "") if raw_name.startswith("refs/tags/") else raw_name
             t_date = format_date(
                 t.get("createdDate", "") or t.get("taggedObject", {}).get("createdDate", ""),
                 tz_name,
             )
-            t_user = t.get("createdBy", {}).get("displayName", "?")
+            t_user = (t.get("createdBy", {}).get("displayName", "") or
+                      t.get("creator", {}).get("displayName", "?"))
             t_msg = (t.get("message", "") or "")[:80]
             tt.add_row(t_name, t_date, t_user, t_msg)
         console.print(tt)
