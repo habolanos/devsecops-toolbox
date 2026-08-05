@@ -318,15 +318,13 @@ def get_git_commits(org: str, project: str, repo_id: str, branch: str,
         if not commit_id:
             c["changes"] = []
             continue
-        commit_url = f"{base_url}/commits/{commit_id}"
+        commit_url = f"{base_url}/commits/{commit_id}/changes"
         try:
             resp = requests.get(commit_url, headers=headers,
                                 params={"api-version": API_VERSION_GIT}, timeout=15)
             if resp.status_code == 200:
                 detail = resp.json()
                 c["changes"] = detail.get("changes", [])
-                if debug:
-                    print(f"    [DEBUG] Commit {commit_id[:8]} -> {len(c['changes'])} changes, keys: {list(detail.keys())}")
             else:
                 c["changes"] = []
                 if debug:
