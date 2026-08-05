@@ -1755,7 +1755,8 @@ def main() -> int:
     render_console(data, args.timezone)
 
     # 7. Generate HTML (always)
-    html_path = out_dir / f"pipeline_history_{args.definition_id}.html"
+    html_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    html_path = out_dir / f"azdo_pipeline_history_{html_timestamp}_{args.definition_id}.html"
     generate_html(data, args.timezone, html_path)
     print(f"\n  HTML interactivo: {html_path}")
 
