@@ -313,7 +313,8 @@ def get_git_commits(org: str, project: str, repo_id: str, branch: str,
 def get_git_tags(org: str, project: str, repo_id: str,
                  headers: Dict, debug: bool) -> List[Dict]:
     """Obtiene tags del repositorio usando el endpoint refs con filter=tags/.
-    Luego enriquece cada tag con la fecha del commit al que apunta via GET individual."""
+    Luego enriquece cada tag con la fecha del commit al que apunta.
+    Para annotated tags, resuelve objectId -> taggedObject.commitId primero."""
     url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/refs"
     params = {
         "api-version": API_VERSION_GIT,
@@ -327,12 +328,42 @@ def get_git_tags(org: str, project: str, repo_id: str,
     if debug:
         print(f"  [DEBUG] {len(refs)} tag refs encontrados, enriqueciendo con fechas de commit...")
 
+    base_url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}"
+
     for r in refs:
         obj_id = r.get("objectId", "")
+        raw_name = r.get("name", "")
+        tag_name = raw_name.replace("refs/tags/", "") if raw_name.startswith("refs/tags/") else raw_name
         if not obj_id:
             r["createdDate"] = ""
             continue
-        commit_url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/commits/{obj_id}"
+
+        commit_sha = None
+
+        # Step 1: Try annotated tags endpoint to resolve commit SHA
+        ann_url = f"{base_url}/annotatedtags/{obj_id}"
+        try:
+            resp = requests.get(ann_url, headers=headers,
+                                params={"api-version": API_VERSION_GIT_TAGS}, timeout=15)
+            if resp.status_code == 200:
+                ann = resp.json()
+                commit_sha = ann.get("taggedObject", {}).get("commitId", "")
+                r["message"] = ann.get("message", "")
+                r["createdBy"] = ann.get("createdBy", {})
+                if debug:
+                    print(f"    [DEBUG] Tag '{tag_name}' annotated -> commit {commit_sha[:8] if commit_sha else '?'}")
+            elif debug:
+                print(f"    [DEBUG] Tag '{tag_name}' not annotated (HTTP {resp.status_code}), trying as lightweight...")
+        except Exception as e:
+            if debug:
+                print(f"    [DEBUG] Tag '{tag_name}' annotatedtags error: {e}")
+
+        # Step 2: If not annotated, objectId is the commit SHA directly
+        if not commit_sha:
+            commit_sha = obj_id
+
+        # Step 3: Fetch commit date
+        commit_url = f"{base_url}/commits/{commit_sha}"
         try:
             resp = requests.get(commit_url, headers=headers,
                                 params={"api-version": API_VERSION_GIT}, timeout=15)
@@ -341,17 +372,15 @@ def get_git_tags(org: str, project: str, repo_id: str,
                 c_date = c.get("committer", {}).get("date", "") or c.get("author", {}).get("date", "")
                 r["createdDate"] = c_date
                 if debug:
-                    raw_name = r.get("name", "")
-                    tag_name = raw_name.replace("refs/tags/", "") if raw_name.startswith("refs/tags/") else raw_name
-                    print(f"    [DEBUG] Tag '{tag_name}' -> commit {obj_id[:8]} -> date {c_date}")
+                    print(f"    [DEBUG] Tag '{tag_name}' -> commit {commit_sha[:8]} -> date {c_date}")
             else:
                 r["createdDate"] = ""
                 if debug:
-                    print(f"    [DEBUG] Tag '{r.get('name', '?')}' -> HTTP {resp.status_code} for commit {obj_id[:8]}")
+                    print(f"    [DEBUG] Tag '{tag_name}' -> HTTP {resp.status_code} for commit {commit_sha[:8]}")
         except Exception as e:
             r["createdDate"] = ""
             if debug:
-                print(f"    [DEBUG] Tag '{r.get('name', '?')}' -> error: {e}")
+                print(f"    [DEBUG] Tag '{tag_name}' commit fetch error: {e}")
 
     return refs
 
