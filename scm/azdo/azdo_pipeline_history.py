@@ -952,7 +952,7 @@ def render_console(data: Dict, tz_name: str) -> None:
         tr.add_column("Nombre", min_width=38)
         tr.add_column("Estado", width=22)
         tr.add_column("Fecha", width=18, justify="center")
-        for r in releases[:20]:
+        for r in releases:
             rstat = r.get("status", "?")
             col = STATUS_COLOR.get(rstat, "white")
             tr.add_row(
