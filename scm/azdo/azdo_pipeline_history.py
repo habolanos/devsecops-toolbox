@@ -635,6 +635,17 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
 </div>
 <div class="chart-container"><canvas id="timelineChart"></canvas></div>
 
+<h2>Desglose por Categoria</h2>
+<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;width:320px;height:320px">
+    <canvas id="categoryChart"></canvas>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;flex:1;min-width:300px">
+    <h3 style="color:var(--accent);margin-bottom:12px">Resumen por Categoria</h3>
+    {''.join(f'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text)">{cat}</span><span style="color:var(--accent);font-weight:bold">{count} cambio(s)</span></div>' for cat, count in sorted(cat_counts.items(), key=lambda x: -x[1]))}
+  </div>
+</div>
+
 <h2>Cambios por Revision</h2>
 <div class="filter-bar">
   <input type="text" id="diffFilter" placeholder="Filtrar cambios por campo, valor, categoria..." oninput="filterDiffs()">
@@ -669,6 +680,16 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
 """
             continue
 
+        # Category badges for this revision
+        rev_cats = {}
+        for d in diff_list:
+            cat = d.get("category", "Other")
+            rev_cats[cat] = rev_cats.get(cat, 0) + 1
+        cat_badges = ' '.join(
+            f'<span class="badge badge-modified" style="margin-right:6px">{cat}: {cnt}</span>'
+            for cat, cnt in sorted(rev_cats.items())
+        )
+
         html += f"""
   <div class="revision-block" data-rev="{rev_num}">
     <div class="revision-header">
@@ -678,6 +699,7 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
       <span class="revision-comment">"{comment}"</span>
       <span style="color:var(--orange);font-weight:bold">{len(diff_list)} cambio(s)</span>
     </div>
+    <div style="margin-bottom:10px">{cat_badges}</div>
     <table class="diff-table">
       <thead><tr><th>Categoria</th><th>Campo</th><th>Valor anterior</th><th></th><th>Valor nuevo</th><th>Accion</th></tr></thead>
       <tbody>
@@ -853,6 +875,40 @@ new Chart(ctx, {{
             ];
           }},
         }},
+      }},
+    }},
+  }},
+}});
+
+// --- Category Doughnut Chart ---
+const catCounts = {json.dumps(cat_counts)};
+const catCtx = document.getElementById('categoryChart').getContext('2d');
+const catColors = ['#58a6ff', '#3fb950', '#f85149', '#d29922', '#bc8cff', '#db6d28', '#8b949e'];
+new Chart(catCtx, {{
+  type: 'doughnut',
+  data: {{
+    labels: Object.keys(catCounts),
+    datasets: [{{
+      data: Object.values(catCounts),
+      backgroundColor: catColors.slice(0, Object.keys(catCounts).length),
+      borderColor: '#161b22',
+      borderWidth: 2,
+    }}],
+  }},
+  options: {{
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {{
+      legend: {{
+        position: 'bottom',
+        labels: {{ color: '#c9d1d9', font: {{ size: 11 }} }},
+      }},
+      tooltip: {{
+        backgroundColor: '#161b22',
+        borderColor: '#30363d',
+        borderWidth: 1,
+        titleColor: '#58a6ff',
+        bodyColor: '#c9d1d9',
       }},
     }},
   }},
