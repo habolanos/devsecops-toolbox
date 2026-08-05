@@ -544,6 +544,7 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             "diff": diff,
         })
     for rel in releases:
+        envs = rel.get("environments", [])
         timeline_events.append({
             "type": "release",
             "id": rel.get("id", 0),
@@ -551,6 +552,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             "date": rel.get("createdOn", ""),
             "status": rel.get("status", ""),
             "user": (rel.get("createdBy") or {}).get("displayName", "?"),
+            "changes": len(envs),
+            "envStatuses": [e.get("status", "?") for e in envs],
         })
 
     timeline_events.sort(key=lambda x: x.get("date", ""))
@@ -864,6 +867,7 @@ const revisionPoints = timelineData
     user: e.user,
     comment: e.comment,
     changes: e.changes,
+    r: Math.max(4, Math.min(20, e.changes * 1.5)),
   }}));
 
 const releasePoints = timelineData
@@ -874,6 +878,9 @@ const releasePoints = timelineData
     name: e.name,
     status: e.status,
     user: e.user,
+    changes: e.changes,
+    envStatuses: e.envStatuses,
+    r: Math.max(4, Math.min(20, e.changes * 1.5)),
   }}));
 
 new Chart(ctx, {{
@@ -883,34 +890,42 @@ new Chart(ctx, {{
       {{
         label: 'Revisiones',
         data: revisionPoints,
-        backgroundColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,0.6)',
         borderColor: '#58a6ff',
-        pointRadius: 8,
-        pointHoverRadius: 12,
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 8,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 12,
       }},
       {{
         label: 'Releases exitosos',
         data: releasePoints.filter(p => p.status === 'succeeded'),
-        backgroundColor: '#3fb950',
+        backgroundColor: 'rgba(63,185,80,0.6)',
         borderColor: '#3fb950',
-        pointRadius: 6,
-        pointHoverRadius: 10,
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 10,
       }},
       {{
         label: 'Releases fallidos',
         data: releasePoints.filter(p => p.status === 'failed'),
-        backgroundColor: '#f85149',
+        backgroundColor: 'rgba(248,81,73,0.6)',
         borderColor: '#f85149',
-        pointRadius: 6,
-        pointHoverRadius: 10,
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 10,
       }},
       {{
         label: 'Releases parciales',
         data: releasePoints.filter(p => p.status === 'partiallySucceeded'),
-        backgroundColor: '#d29922',
+        backgroundColor: 'rgba(210,153,34,0.6)',
         borderColor: '#d29922',
-        pointRadius: 6,
-        pointHoverRadius: 10,
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 10,
+      }},
+      {{
+        label: 'Releases otros',
+        data: releasePoints.filter(p => !['succeeded','failed','partiallySucceeded'].includes(p.status)),
+        backgroundColor: 'rgba(139,148,158,0.6)',
+        borderColor: '#8b949e',
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 10,
       }},
     ],
   }},
@@ -964,6 +979,8 @@ new Chart(ctx, {{
               'Release: ' + d.name,
               'Estado: ' + d.status,
               'Usuario: ' + d.user,
+              'Stages: ' + d.changes,
+              'Detalle: ' + (d.envStatuses || []).join(', '),
             ];
           }},
         }},
