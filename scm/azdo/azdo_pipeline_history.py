@@ -846,9 +846,10 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
 <div id="diffsContainer">
 """
 
-    for event in timeline_events:
-        if event["type"] != "revision":
-            continue
+    for event in sorted(
+        [e for e in timeline_events if e["type"] == "revision"],
+        key=lambda e: e["revision"], reverse=True
+    ):
         rev_num = event["revision"]
         date_str = format_date(event["date"], tz_name)
         user = html_escape(event["user"])
