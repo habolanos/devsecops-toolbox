@@ -1059,13 +1059,12 @@ def export_results(data: Dict, fmt: str, tz_name: str) -> None:
             "old_value": "", "new_value": "", "action": "",
         })
 
-    filename = f"pipeline_history_{def_id}"
     if fmt == "json":
-        em.export_json(rows, filename=filename)
+        em.export_json(rows)
     elif fmt == "csv":
-        em.export_csv(rows, filename=filename)
+        em.export_csv(rows)
     elif fmt == "excel":
-        em.export_excel(rows, filename=filename)
+        em.export_excel(rows)
 
 
 # =============================================================================
