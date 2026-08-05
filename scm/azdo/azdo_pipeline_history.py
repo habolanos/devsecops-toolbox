@@ -658,6 +658,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             "user": (rel.get("createdBy") or {}).get("displayName", "?"),
             "changes": len(envs),
             "envStatuses": [e.get("status", "?") for e in envs],
+            "envDetails": [{"name": e.get("name", "?"), "status": e.get("status", "?"),
+                            "rank": e.get("rank", 0)} for e in envs],
         })
     for c in data.get("commits", []):
         timeline_events.append({
@@ -1081,6 +1083,7 @@ const releasePoints = timelineData
     user: e.user,
     changes: e.changes,
     envStatuses: e.envStatuses,
+    envDetails: e.envDetails,
     r: Math.max(4, Math.min(20, e.changes * 1.5)),
   }}));
 
@@ -1244,7 +1247,8 @@ new Chart(ctx, {{
               'Estado: ' + d.status + (d.stage ? ' (' + d.stage + ')' : ''),
               'Usuario: ' + d.user,
               'Stages: ' + d.changes,
-              'Detalle: ' + (d.envStatuses || []).join(', '),
+              'Detalle:',
+              ...((d.envDetails || []).map(e => '  ' + e.name + ': ' + e.status)),
             ];
           }},
         }},
