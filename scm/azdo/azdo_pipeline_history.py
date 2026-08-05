@@ -727,6 +727,7 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     <option value="">Todas las categorias</option>
     {''.join(f'<option value="{c}">{c}</option>' for c in sorted(cat_counts)) }
   </select>
+  <span id="diffCount" style="color:var(--text-dim);font-size:0.85em;align-self:center"></span>
 </div>
 <div id="diffsContainer">
 """
@@ -802,6 +803,10 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     # Releases table
     html += """
 <h2>Releases en el Periodo</h2>
+<div class="filter-bar">
+  <input type="text" id="releaseFilter" placeholder="Filtrar releases por nombre, estado, stage, artifact..." oninput="filterReleases()">
+  <span id="releaseCount" style="color:var(--text-dim);font-size:0.85em;align-self:center"></span>
+</div>
 <table id="releasesTable">
   <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Fecha</th><th>Creado por</th><th>Artifact</th><th>Stages</th></tr></thead>
   <tbody>
@@ -1051,21 +1056,49 @@ new Chart(catCtx, {{
 function filterDiffs() {{
   const searchText = document.getElementById('diffFilter').value.toLowerCase();
   const catValue = document.getElementById('catFilter').value;
+  let totalVisible = 0;
 
   document.querySelectorAll('.revision-block').forEach(block => {{
-    let anyVisible = false;
+    let visibleRows = 0;
     block.querySelectorAll('.diff-table tbody tr').forEach(row => {{
       const cat = row.getAttribute('data-cat') || '';
       const text = row.textContent.toLowerCase();
       const catMatch = !catValue || cat === catValue;
       const textMatch = !searchText || text.includes(searchText);
       row.style.display = (catMatch && textMatch) ? '' : 'none';
-      if (catMatch && textMatch) anyVisible = true;
+      if (catMatch && textMatch) visibleRows++;
     }});
-    // Show revision block if it has any visible rows (or no rows at all)
+    // Hide entire revision block if no rows match (when filtering)
     const hasTable = block.querySelector('.diff-table');
-    block.style.display = (!hasTable || anyVisible || (!searchText && !catValue)) ? '' : 'none';
+    const showBlock = !hasTable || visibleRows > 0 || (!searchText && !catValue);
+    block.style.display = showBlock ? '' : 'none';
+    totalVisible += visibleRows;
   }});
+
+  const countEl = document.getElementById('diffCount');
+  if (searchText || catValue) {{
+    countEl.textContent = totalVisible + ' coincidencia(s)';
+  }} else {{
+    countEl.textContent = '';
+  }}
+}}
+
+// --- Filter releases ---
+function filterReleases() {{
+  const searchText = document.getElementById('releaseFilter').value.toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('#releasesTable tbody tr').forEach(row => {{
+    const text = row.textContent.toLowerCase();
+    const match = !searchText || text.includes(searchText);
+    row.style.display = match ? '' : 'none';
+    if (match) visible++;
+  }});
+  const countEl = document.getElementById('releaseCount');
+  if (searchText) {{
+    countEl.textContent = visible + ' de ' + document.querySelectorAll('#releasesTable tbody tr').length + ' release(s)';
+  }} else {{
+    countEl.textContent = '';
+  }}
 }}
 </script>
 </body>
