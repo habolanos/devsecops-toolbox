@@ -220,6 +220,23 @@ def get_releases_in_range(org: str, project: str, def_id: int,
     return all_releases
 
 
+def get_release_effective_status(rel: Dict) -> Tuple[str, str]:
+    """Determina el estatus efectivo del release basandose en el ultimo stage ejecutado.
+    Retorna (status, stage_name) donde status es el estatus del ultimo stage
+    que no sea 'notStarted', y stage_name es el nombre de ese stage.
+    Si ningun stage fue ejecutado, retorna el status global del release."""
+    NOT_EXECUTED = {"notStarted", "queued", "scheduled"}
+    envs = rel.get("environments", [])
+    # Sort by rank descending to find the last executed stage
+    sorted_envs = sorted(envs, key=lambda e: e.get("rank", 0), reverse=True)
+    for env in sorted_envs:
+        estatus = env.get("status", "")
+        if estatus and estatus not in NOT_EXECUTED:
+            return estatus, env.get("name", "?")
+    # No stage was executed, return global status
+    return rel.get("status", "?"), ""
+
+
 # =============================================================================
 # DIFF LOGIC
 # =============================================================================
@@ -545,12 +562,14 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
         })
     for rel in releases:
         envs = rel.get("environments", [])
+        eff_status, eff_stage = get_release_effective_status(rel)
         timeline_events.append({
             "type": "release",
             "id": rel.get("id", 0),
             "name": rel.get("name", ""),
             "date": rel.get("createdOn", ""),
-            "status": rel.get("status", ""),
+            "status": eff_status,
+            "stage": eff_stage,
             "user": (rel.get("createdBy") or {}).get("displayName", "?"),
             "changes": len(envs),
             "envStatuses": [e.get("status", "?") for e in envs],
@@ -561,9 +580,10 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     # Stats
     total_revisions = len(revisions)
     total_releases = len(releases)
-    succeeded = len([r for r in releases if r.get("status") == "succeeded"])
-    failed = len([r for r in releases if r.get("status") == "failed"])
-    partial = len([r for r in releases if r.get("status") == "partiallySucceeded"])
+    eff_statuses = [get_release_effective_status(r)[0] for r in releases]
+    succeeded = eff_statuses.count("succeeded")
+    failed = eff_statuses.count("failed")
+    partial = eff_statuses.count("partiallySucceeded")
     total_changes = sum(len(d) for d in diffs.values())
 
     # Category breakdown
@@ -816,8 +836,11 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     for rel in releases:
         rid = rel.get("id", "?")
         rname = html_escape(rel.get("name", ""))
-        rstatus = rel.get("status", "?")
+        eff_status, eff_stage = get_release_effective_status(rel)
+        rstatus = eff_status
         rlabel = STATUS_LABELS.get(rstatus, rstatus)
+        if eff_stage:
+            rlabel = f"{rlabel} ({eff_stage})"
         rdate = format_date(rel.get("createdOn", ""), tz_name)
         ruser = html_escape((rel.get("createdBy") or {}).get("displayName", "?"))
         badge = STATUS_COLORS.get(rstatus, "badge-cancelled")
@@ -877,6 +900,7 @@ const releasePoints = timelineData
     y: e.status === 'succeeded' ? 1 : e.status === 'failed' ? 0 : 0.5,
     name: e.name,
     status: e.status,
+    stage: e.stage,
     user: e.user,
     changes: e.changes,
     envStatuses: e.envStatuses,
@@ -977,7 +1001,7 @@ new Chart(ctx, {{
             }}
             return [
               'Release: ' + d.name,
-              'Estado: ' + d.status,
+              'Estado: ' + d.status + (d.stage ? ' (' + d.stage + ')' : ''),
               'Usuario: ' + d.user,
               'Stages: ' + d.changes,
               'Detalle: ' + (d.envStatuses || []).join(', '),
@@ -1069,8 +1093,9 @@ def render_console(data: Dict, tz_name: str) -> None:
 
     # Summary cards
     total_changes = sum(len(d) for d in diffs.values())
-    succeeded = len([r for r in releases if r.get("status") == "succeeded"])
-    failed = len([r for r in releases if r.get("status") == "failed"])
+    eff_statuses = [get_release_effective_status(r)[0] for r in releases]
+    succeeded = eff_statuses.count("succeeded")
+    failed = eff_statuses.count("failed")
 
     console.print(Panel(
         f"  [bold blue]Revisiones:[/] {len(revisions)}    "
@@ -1134,15 +1159,18 @@ def render_console(data: Dict, tz_name: str) -> None:
                    show_lines=False, row_styles=["dim", ""])
         tr.add_column("ID", width=7, justify="right")
         tr.add_column("Nombre", min_width=30)
-        tr.add_column("Estado", width=14)
+        tr.add_column("Estado", min_width=20)
         tr.add_column("Fecha", width=18, justify="center")
         tr.add_column("Creado por", min_width=20)
         tr.add_column("Artifact", min_width=20)
         tr.add_column("Stages", min_width=30)
         for r in releases:
-            rstat = r.get("status", "?")
+            eff_status, eff_stage = get_release_effective_status(r)
+            rstat = eff_status
             col = STATUS_COLOR.get(rstat, "white")
             rlabel = STATUS_LABEL.get(rstat, rstat)
+            if eff_stage:
+                rlabel = f"{rlabel} ({eff_stage})"
             ruser = ((r.get("createdBy") or {}).get("displayName", "?"))
             # Extract artifact info
             artifacts = r.get("artifacts", [])
