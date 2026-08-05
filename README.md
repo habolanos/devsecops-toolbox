@@ -945,7 +945,9 @@ devsecops-toolbox/
 ├── scm/                          # Código fuente principal
 │   ├── main.py                   # Launcher principal
 │   ├── gcp/                      # Herramientas GCP
-│   ├── azdo/                     # Herramientas AZDO
+│   ├── azdo/                     # Herramientas AZDO (27 herramientas)
+│   │   ├── azdo_pipeline_history.py  # Tool 26: Evolución histórica de Pipeline CD (HTML interactivo)
+│   │   └── ...
 │   ├── aws/                      # Herramientas AWS
 │   ├── terminal/                 # Scripts universales (agnostic cloud)
 │   ├── tests/                    # Tests (unitarios e integración)

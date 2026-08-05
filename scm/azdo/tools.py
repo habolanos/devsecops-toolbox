@@ -364,6 +364,14 @@ TOOLS: Dict = {
         "group":       "release",
         "status":      "ready",
     },
+    "26": {
+        "name":        "Pipeline History",
+        "description": "Evolución histórica de un Pipeline CD: revisiones, releases, diff exacto entre versiones y timeline interactiva HTML",
+        "path":        "azdo_pipeline_history.py",
+        "args":        ["--pat", "--org", "--project", "--definition-id", "--months", "--timezone", "--output", "--debug"],
+        "group":       "release",
+        "status":      "ready",
+    },
     "40": {
         "name":        "Health Probe Masivo Validator",
         "description": "Validación masiva de health probes en K8s desde AZDO - Mapeo de stages, pruebas de conectividad, reportería ejecutiva",
