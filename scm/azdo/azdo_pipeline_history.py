@@ -749,6 +749,9 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
                 if not source_commit:
                     source_commit = art.get("sourceVersion", "")
                 break
+        if data.get("debug", False):
+            print(f"    [DEBUG] Release {rel.get('id', '?')} artifacts: {rel.get('artifacts', [])}")
+            print(f"    [DEBUG] Release {rel.get('id', '?')} -> buildId='{build_id}' sourceCommit='{source_commit}'")
         timeline_events.append({
             "type": "release",
             "id": rel.get("id", 0),
@@ -1942,6 +1945,7 @@ def main() -> int:
         "git_tags": git_tags,
         "repo_id": repo_id,
         "branch": args.branch,
+        "debug": args.debug,
     }
 
     # 6. Console output
