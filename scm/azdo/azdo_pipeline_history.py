@@ -297,7 +297,8 @@ def extract_repo_id_from_releases(releases: List[Dict]) -> Optional[str]:
 def get_git_commits(org: str, project: str, repo_id: str, branch: str,
                     min_date: str, headers: Dict, debug: bool,
                     top: int = 500) -> List[Dict]:
-    """Obtiene commits de la rama especificada desde min_date hasta ahora."""
+    """Obtiene commits de la rama especificada desde min_date hasta ahora.
+    Enriquece cada commit con el numero de archivos modificados via GET individual."""
     url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/commits"
     params = {
         "api-version": API_VERSION_GIT,
@@ -307,7 +308,33 @@ def get_git_commits(org: str, project: str, repo_id: str, branch: str,
         "$top": top,
     }
     data = api_get(url, headers, params, debug)
-    return data.get("value", []) if data else []
+    commits = data.get("value", []) if data else []
+    if not commits:
+        return []
+
+    base_url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}"
+    for c in commits:
+        commit_id = c.get("commitId", "")
+        if not commit_id:
+            c["changes"] = []
+            continue
+        commit_url = f"{base_url}/commits/{commit_id}"
+        try:
+            resp = requests.get(commit_url, headers=headers,
+                                params={"api-version": API_VERSION_GIT}, timeout=15)
+            if resp.status_code == 200:
+                detail = resp.json()
+                c["changes"] = detail.get("changes", [])
+            else:
+                c["changes"] = []
+                if debug:
+                    print(f"    [DEBUG] Commit {commit_id[:8]} -> HTTP {resp.status_code}")
+        except Exception as e:
+            c["changes"] = []
+            if debug:
+                print(f"    [DEBUG] Commit {commit_id[:8]} -> error: {e}")
+
+    return commits
 
 
 def get_git_tags(org: str, project: str, repo_id: str,
