@@ -250,8 +250,7 @@ def extract_variables(defn: Dict) -> Dict[str, str]:
     for k, v in defn.get("variables", {}).items():
         if isinstance(v, dict):
             val = v.get("value", "")
-            secret = v.get("isSecret", False)
-            result[k] = "***" if secret else val
+            result[k] = val
         else:
             result[k] = str(v)
     return result

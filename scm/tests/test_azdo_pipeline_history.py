@@ -157,10 +157,10 @@ class TestExtractVariables:
         result = extract_variables(defn)
         assert result == {"VAR1": "hello", "VAR2": "world"}
 
-    def test_secret_variables_masked(self):
+    def test_secret_variables_not_masked(self):
         defn = {"variables": {"SECRET": {"value": "supersecret", "isSecret": True}}}
         result = extract_variables(defn)
-        assert result["SECRET"] == "***"
+        assert result["SECRET"] == "supersecret"
 
     def test_non_dict_variable(self):
         defn = {"variables": {"PLAIN": "value"}}
