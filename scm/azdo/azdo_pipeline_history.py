@@ -738,6 +738,17 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     for rel in releases:
         envs = rel.get("environments", [])
         eff_status, eff_stage = get_release_effective_status(rel)
+        # Extract build ID and source commit from artifacts
+        build_id = ""
+        source_commit = ""
+        for art in rel.get("artifacts", []):
+            if art.get("type", "") == "Build":
+                def_ref = art.get("definitionReference", {})
+                build_id = def_ref.get("version", {}).get("id", "") or art.get("sourceVersion", "")
+                source_commit = def_ref.get("version", {}).get("sourceCommitId", "") or art.get("sourceVersion", "")
+                if not source_commit:
+                    source_commit = art.get("sourceVersion", "")
+                break
         timeline_events.append({
             "type": "release",
             "id": rel.get("id", 0),
@@ -750,6 +761,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             "envStatuses": [e.get("status", "?") for e in envs],
             "envDetails": [{"name": e.get("name", "?"), "status": e.get("status", "?"),
                             "rank": e.get("rank", 0)} for e in envs],
+            "buildId": build_id,
+            "sourceCommit": source_commit[:8] if source_commit else "",
         })
     for c in data.get("commits", []):
         timeline_events.append({
@@ -1188,6 +1201,8 @@ const releasePoints = timelineData
     changes: e.changes,
     envStatuses: e.envStatuses,
     envDetails: e.envDetails,
+    buildId: e.buildId,
+    sourceCommit: e.sourceCommit,
     r: Math.max(4, Math.min(20, e.changes * 1.5)),
   }}));
 
@@ -1354,7 +1369,7 @@ new Chart(ctx, {{
                 'Mensaje: ' + (d.message || '').substring(0, 80),
               ];
             }}
-            return [
+            const lines = [
               'Release: ' + d.name,
               'Estado: ' + d.status + (d.stage ? ' (' + d.stage + ')' : ''),
               'Usuario: ' + d.user,
@@ -1362,6 +1377,11 @@ new Chart(ctx, {{
               'Detalle:',
               ...((d.envDetails || []).map(e => '  ' + e.name + ': ' + e.status)),
             ];
+            if (d.stage === 'Production') {{
+              if (d.buildId) lines.push('Build: ' + d.buildId);
+              if (d.sourceCommit) lines.push('Commit: ' + d.sourceCommit);
+            }}
+            return lines;
           }},
         }},
       }},
