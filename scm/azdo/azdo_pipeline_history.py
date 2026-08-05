@@ -988,7 +988,7 @@ new Chart(ctx, {{
           color: '#8b949e',
           stepSize: 0.5,
           callback: function(v) {{
-            const labels = {{-1: 'Cancelado', -0.5: 'Rechazado', 0: 'Fallido', 0.5: 'Parcial', 1: 'Exitoso', 2: 'Revision', 3: ''}};
+            const labels = {{'-1': 'Cancelado', '-0.5': 'Rechazado', '0': 'Fallido', '0.5': 'Parcial', '1': 'Exitoso', '2': 'Revision', '3': ''}};
             return labels[v] || '';
           }},
         }},
