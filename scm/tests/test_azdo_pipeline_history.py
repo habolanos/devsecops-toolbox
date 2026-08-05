@@ -38,6 +38,10 @@ from azdo_pipeline_history import (
     generate_html,
     make_headers,
     vsrm,
+    extract_repo_id_from_artifacts,
+    get_git_commits,
+    get_git_tags,
+    get_release_effective_status,
 )
 
 
@@ -543,3 +547,146 @@ class TestVsrm:
         # vsrm() does a simple string replace, so already-vsrm URLs get doubled
         # This is expected behavior - callers should pass non-vsrm URLs
         assert "vsrm.dev.azure.com" in result
+
+
+# =============================================================================
+# REPO ID EXTRACTION
+# =============================================================================
+class TestExtractRepoId:
+    def test_git_artifact_with_branch(self):
+        defn = {"artifacts": [{"type": "Git", "sourceId": "repo-abc-123:refs/heads/master"}]}
+        result = extract_repo_id_from_artifacts(defn)
+        assert result == "repo-abc-123"
+
+    def test_git_artifact_without_branch(self):
+        defn = {"artifacts": [{"type": "Git", "sourceId": "repo-abc-456"}]}
+        result = extract_repo_id_from_artifacts(defn)
+        assert result == "repo-abc-456"
+
+    def test_no_git_artifact(self):
+        defn = {"artifacts": [{"type": "Build", "sourceId": "build-123"}]}
+        result = extract_repo_id_from_artifacts(defn)
+        assert result is None
+
+    def test_no_artifacts(self):
+        defn = {}
+        result = extract_repo_id_from_artifacts(defn)
+        assert result is None
+
+    def test_multiple_artifacts_picks_first_git(self):
+        defn = {"artifacts": [
+            {"type": "Build", "sourceId": "build-1"},
+            {"type": "Git", "sourceId": "repo-first:refs/heads/dev"},
+            {"type": "Git", "sourceId": "repo-second:refs/heads/master"},
+        ]}
+        result = extract_repo_id_from_artifacts(defn)
+        assert result == "repo-first"
+
+
+# =============================================================================
+# GIT COMMITS API
+# =============================================================================
+class TestGetGitCommits:
+    def test_returns_value_list(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"value": [{"commitId": "abc123"}]}
+        mock_response.raise_for_status = MagicMock()
+        with patch("azdo_pipeline_history.requests.get", return_value=mock_response):
+            result = get_git_commits("https://dev.azure.com/org", "proj", "repo-1", "master",
+                                     "2024-01-01T00:00:00Z", {}, False)
+        assert len(result) == 1
+        assert result[0]["commitId"] == "abc123"
+
+    def test_returns_empty_on_none(self):
+        with patch("azdo_pipeline_history.requests.get", side_effect=Exception("network error")):
+            result = get_git_commits("https://dev.azure.com/org", "proj", "repo-1", "master",
+                                     "2024-01-01T00:00:00Z", {}, False)
+        assert result == []
+
+
+# =============================================================================
+# GIT TAGS API
+# =============================================================================
+class TestGetGitTags:
+    def test_returns_value_list(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"value": [{"name": "1.0.0"}]}
+        mock_response.raise_for_status = MagicMock()
+        with patch("azdo_pipeline_history.requests.get", return_value=mock_response):
+            result = get_git_tags("https://dev.azure.com/org", "proj", "repo-1", {}, False)
+        assert len(result) == 1
+        assert result[0]["name"] == "1.0.0"
+
+    def test_returns_empty_on_none(self):
+        with patch("azdo_pipeline_history.requests.get", side_effect=Exception("network error")):
+            result = get_git_tags("https://dev.azure.com/org", "proj", "repo-1", {}, False)
+        assert result == []
+
+
+# =============================================================================
+# HTML GENERATION WITH COMMITS/TAGS
+# =============================================================================
+class TestHtmlWithCommits:
+    def _make_data_with_commits(self):
+        return {
+            "definition": {"name": "TestPipe", "id": 42, "artifacts": []},
+            "revisions": [],
+            "releases": [],
+            "diffs": {},
+            "commits": [
+                {"commitId": "abc123def", "committer": {"name": "Dev", "date": "2024-02-01T10:00:00Z"},
+                 "comment": "fix: resolve bug", "changes": [1, 2, 3]},
+            ],
+            "git_tags": [
+                {"name": "1.0.0", "createdDate": "2024-03-01T00:00:00Z",
+                 "createdBy": {"displayName": "Dev"}, "message": "release 1.0.0"},
+            ],
+            "branch": "master",
+            "range_start": "2024-01-01",
+            "range_end": "2024-06-01",
+        }
+
+    def test_html_contains_commits_table(self):
+        data = self._make_data_with_commits()
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as f:
+            path = Path(f.name)
+        generate_html(data, "UTC", path)
+        content = path.read_text(encoding="utf-8")
+        path.unlink()
+        assert "commitsTable" in content
+        assert "abc123de" in content
+        assert "fix: resolve bug" in content
+
+    def test_html_contains_tags_table(self):
+        data = self._make_data_with_commits()
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as f:
+            path = Path(f.name)
+        generate_html(data, "UTC", path)
+        content = path.read_text(encoding="utf-8")
+        path.unlink()
+        assert "tagsTable" in content
+        assert "1.0.0" in content
+
+    def test_html_contains_commit_filter(self):
+        data = self._make_data_with_commits()
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as f:
+            path = Path(f.name)
+        generate_html(data, "UTC", path)
+        content = path.read_text(encoding="utf-8")
+        path.unlink()
+        assert "filterCommits" in content
+        assert "commitFilter" in content
+
+    def test_html_timeline_has_commit_points(self):
+        data = self._make_data_with_commits()
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as f:
+            path = Path(f.name)
+        generate_html(data, "UTC", path)
+        content = path.read_text(encoding="utf-8")
+        path.unlink()
+        assert "commitPoints" in content
+        assert "tagPoints" in content
+        assert "'Commits'" in content
+        assert "'Tags'" in content

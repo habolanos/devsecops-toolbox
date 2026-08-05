@@ -84,6 +84,8 @@ DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_MONTHS = 6
 API_VERSION_DEFS = "7.2-preview.4"
 API_VERSION_RELS = "7.2-preview.8"
+API_VERSION_GIT = "7.1"
+API_VERSION_GIT_TAGS = "7.2-preview.1"
 
 
 # =============================================================================
@@ -107,6 +109,10 @@ def get_args() -> argparse.Namespace:
                    help=f"Zona horaria (default: {DEFAULT_TIMEZONE})")
     p.add_argument("--output", "-o", choices=["json", "csv", "excel"], default=None,
                    help="Exportar resultados adicionales (json/csv/excel). HTML se genera siempre.")
+    p.add_argument("--branch", default="master",
+                   help="Rama del repositorio para consultar commits/tags (default: master)")
+    p.add_argument("--no-commits", action="store_true",
+                   help="No descargar commits/tags del repositorio git vinculado")
     p.add_argument("--debug", action="store_true",
                    help="Mostrar errores HTTP detallados")
     return p.parse_args()
@@ -235,6 +241,43 @@ def get_release_effective_status(rel: Dict) -> Tuple[str, str]:
             return estatus, env.get("name", "?")
     # No stage was executed, return global status
     return rel.get("status", "?"), ""
+
+
+def extract_repo_id_from_artifacts(defn: Dict) -> Optional[str]:
+    """Extrae el ID del repositorio Git desde los artifacts de la definicion.
+    El sourceId de artifacts tipo 'Git' tiene formato '{repoId}:{branchRef}'."""
+    for a in defn.get("artifacts", []):
+        if a.get("type", "").lower() == "git":
+            source_id = a.get("sourceId", "")
+            if ":" in source_id:
+                return source_id.split(":")[0]
+            return source_id
+    return None
+
+
+def get_git_commits(org: str, project: str, repo_id: str, branch: str,
+                    min_date: str, headers: Dict, debug: bool,
+                    top: int = 500) -> List[Dict]:
+    """Obtiene commits de la rama especificada desde min_date hasta ahora."""
+    url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/commits"
+    params = {
+        "api-version": API_VERSION_GIT,
+        "searchCriteria.itemVersion.version": branch,
+        "searchCriteria.itemVersion.versionType": "branch",
+        "searchCriteria.fromDate": min_date,
+        "$top": top,
+    }
+    data = api_get(url, headers, params, debug)
+    return data.get("value", []) if data else []
+
+
+def get_git_tags(org: str, project: str, repo_id: str,
+                 headers: Dict, debug: bool) -> List[Dict]:
+    """Obtiene annotated tags del repositorio."""
+    url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/annotatedtags"
+    params = {"api-version": API_VERSION_GIT_TAGS}
+    data = api_get(url, headers, params, debug)
+    return data.get("value", []) if data else []
 
 
 # =============================================================================
@@ -574,12 +617,33 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             "changes": len(envs),
             "envStatuses": [e.get("status", "?") for e in envs],
         })
+    for c in data.get("commits", []):
+        timeline_events.append({
+            "type": "commit",
+            "commitId": c.get("commitId", "")[:8],
+            "date": c.get("committer", {}).get("date", "") or c.get("author", {}).get("date", ""),
+            "user": (c.get("committer", {}).get("name", "") or
+                     c.get("author", {}).get("name", "?")),
+            "comment": c.get("comment", ""),
+            "changes": len(c.get("changes", [])),
+        })
+    for t in data.get("git_tags", []):
+        tag_date = t.get("createdDate", "") or t.get("taggedObject", {}).get("createdDate", "")
+        timeline_events.append({
+            "type": "tag",
+            "name": t.get("name", ""),
+            "date": tag_date,
+            "user": t.get("createdBy", {}).get("displayName", "?"),
+            "message": t.get("message", ""),
+        })
 
     timeline_events.sort(key=lambda x: x.get("date", ""))
 
     # Stats
     total_revisions = len(revisions)
     total_releases = len(releases)
+    total_commits = len(data.get("commits", []))
+    total_tags = len(data.get("git_tags", []))
     eff_statuses = [get_release_effective_status(r)[0] for r in releases]
     succeeded = eff_statuses.count("succeeded")
     failed = eff_statuses.count("failed")
@@ -698,6 +762,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   <div class="card yellow"><div class="num">{partial}</div><div class="label">Parcialmente exitosos</div></div>
   <div class="card purple"><div class="num">{total_changes}</div><div class="label">Cambios detectados</div></div>
   <div class="card"><div class="num">{total_releases}</div><div class="label">Total releases</div></div>
+  <div class="card"><div class="num">{total_commits}</div><div class="label">Commits ({html_escape(data.get("branch", "master"))})</div></div>
+  <div class="card"><div class="num">{total_tags}</div><div class="label">Tags git</div></div>
 </div>
 
 <h2>Timeline Interactiva</h2>
@@ -708,6 +774,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Release parcial</div>
   <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Release rechazado</div>
   <div class="legend-item"><div class="legend-dot" style="background:var(--text-dim)"></div> Release cancelado/otros</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> Commit ({html_escape(data.get("branch", "master"))})</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f778ba"></div> Tag git</div>
 </div>
 <div class="chart-container"><canvas id="timelineChart"></canvas></div>
 
@@ -878,6 +946,66 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
 """
     html += "  </tbody>\n</table>\n"
 
+    # Commits table
+    commits_data = data.get("commits", [])
+    branch_name = html_escape(data.get("branch", "master"))
+    html += f"""
+<h2>Commits en rama '{branch_name}' ({len(commits_data)} en el periodo)</h2>
+<div class="filter-bar">
+  <input type="text" id="commitFilter" placeholder="Filtrar commits por autor, mensaje, hash..." oninput="filterCommits()">
+  <span id="commitCount" style="color:var(--text-dim);font-size:0.85em;align-self:center"></span>
+</div>
+<table id="commitsTable">
+  <thead><tr><th>Hash</th><th>Fecha</th><th>Autor</th><th>Mensaje</th><th>Archivos</th></tr></thead>
+  <tbody>
+"""
+    for c in commits_data:
+        c_hash = c.get("commitId", "")[:8]
+        c_date = format_date(
+            c.get("committer", {}).get("date", "") or c.get("author", {}).get("date", ""),
+            tz_name,
+        )
+        c_author = html_escape(
+            c.get("committer", {}).get("name", "") or c.get("author", {}).get("name", "?")
+        )
+        c_comment = html_escape((c.get("comment", "") or "").split("\n")[0][:120])
+        c_files = len(c.get("changes", []))
+        html += f"""    <tr>
+      <td style="font-family:monospace;color:var(--purple)">{c_hash}</td>
+      <td>{c_date}</td>
+      <td>{c_author}</td>
+      <td>{c_comment}</td>
+      <td>{c_files}</td>
+    </tr>
+"""
+    html += "  </tbody>\n</table>\n"
+
+    # Tags table
+    tags_data = data.get("git_tags", [])
+    if tags_data:
+        html += f"""
+<h2>Tags Git ({len(tags_data)} en el periodo)</h2>
+<table id="tagsTable">
+  <thead><tr><th>Tag</th><th>Fecha</th><th>Creado por</th><th>Mensaje</th></tr></thead>
+  <tbody>
+"""
+        for t in tags_data:
+            t_name = html_escape(t.get("name", ""))
+            t_date = format_date(
+                t.get("createdDate", "") or t.get("taggedObject", {}).get("createdDate", ""),
+                tz_name,
+            )
+            t_user = html_escape(t.get("createdBy", {}).get("displayName", "?"))
+            t_msg = html_escape((t.get("message", "") or "")[:120])
+            html += f"""    <tr>
+      <td style="font-family:monospace;color:#f778ba">{t_name}</td>
+      <td>{t_date}</td>
+      <td>{t_user}</td>
+      <td>{t_msg}</td>
+    </tr>
+"""
+        html += "  </tbody>\n</table>\n"
+
     # JavaScript
     timeline_json = json.dumps(timeline_events, default=str)
 
@@ -912,6 +1040,29 @@ const releasePoints = timelineData
     changes: e.changes,
     envStatuses: e.envStatuses,
     r: Math.max(4, Math.min(20, e.changes * 1.5)),
+  }}));
+
+const commitPoints = timelineData
+  .filter(e => e.type === 'commit')
+  .map(e => ({{
+    x: e.date,
+    y: 3,
+    commitId: e.commitId,
+    user: e.user,
+    comment: e.comment,
+    changes: e.changes,
+    r: Math.max(3, Math.min(12, e.changes * 0.8)),
+  }}));
+
+const tagPoints = timelineData
+  .filter(e => e.type === 'tag')
+  .map(e => ({{
+    x: e.date,
+    y: 3.5,
+    name: e.name,
+    user: e.user,
+    message: e.message,
+    r: 6,
   }}));
 
 new Chart(ctx, {{
@@ -966,6 +1117,23 @@ new Chart(ctx, {{
         pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
         pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 10,
       }},
+      {{
+        label: 'Commits',
+        data: commitPoints,
+        backgroundColor: 'rgba(188,140,255,0.5)',
+        borderColor: '#bc8cff',
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 4,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 3 : 8,
+      }},
+      {{
+        label: 'Tags',
+        data: tagPoints,
+        backgroundColor: 'rgba(247,120,186,0.7)',
+        borderColor: '#f778ba',
+        pointStyle: 'rectRot',
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 3 : 10,
+      }},
     ],
   }},
   options: {{
@@ -981,14 +1149,14 @@ new Chart(ctx, {{
       }},
       y: {{
         min: -1.5,
-        max: 3,
+        max: 4,
         title: {{ display: true, text: 'Tipo', color: '#8b949e' }},
         grid: {{ color: '#30363d' }},
         ticks: {{
           color: '#8b949e',
           stepSize: 0.5,
           callback: function(v) {{
-            const labels = {{'-1': 'Cancelado', '-0.5': 'Rechazado', '0': 'Fallido', '0.5': 'Parcial', '1': 'Exitoso', '2': 'Revision', '3': ''}};
+            const labels = {{'-1': 'Cancelado', '-0.5': 'Rechazado', '0': 'Fallido', '0.5': 'Parcial', '1': 'Exitoso', '2': 'Revision', '3': 'Commits', '3.5': 'Tags', '4': ''}};
             return labels[v] || '';
           }},
         }},
@@ -1012,6 +1180,21 @@ new Chart(ctx, {{
                 'Usuario: ' + d.user,
                 'Comentario: ' + d.comment,
                 'Cambios: ' + d.changes,
+              ];
+            }}
+            if (d.commitId !== undefined) {{
+              return [
+                'Commit: ' + d.commitId,
+                'Usuario: ' + d.user,
+                'Comentario: ' + (d.comment || '').split('\\n')[0].substring(0, 80),
+                'Archivos: ' + d.changes,
+              ];
+            }}
+            if (d.name !== undefined && d.message !== undefined) {{
+              return [
+                'Tag: ' + d.name,
+                'Usuario: ' + d.user,
+                'Mensaje: ' + (d.message || '').substring(0, 80),
               ];
             }}
             return [
@@ -1110,6 +1293,24 @@ function filterReleases() {{
     countEl.textContent = '';
   }}
 }}
+
+// --- Filter commits ---
+function filterCommits() {{
+  const searchText = document.getElementById('commitFilter').value.toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('#commitsTable tbody tr').forEach(row => {{
+    const text = row.textContent.toLowerCase();
+    const match = !searchText || text.includes(searchText);
+    row.style.display = match ? '' : 'none';
+    if (match) visible++;
+  }});
+  const countEl = document.getElementById('commitCount');
+  if (searchText) {{
+    countEl.textContent = visible + ' de ' + document.querySelectorAll('#commitsTable tbody tr').length + ' commit(s)';
+  }} else {{
+    countEl.textContent = '';
+  }}
+}}
 </script>
 </body>
 </html>"""
@@ -1145,7 +1346,9 @@ def render_console(data: Dict, tz_name: str) -> None:
         f"[bold green]Releases OK:[/] {succeeded}    "
         f"[bold red]Releases FAIL:[/] {failed}    "
         f"[bold yellow]Total releases:[/] {len(releases)}    "
-        f"[bold purple]Cambios detectados:[/] {total_changes}",
+        f"[bold purple]Cambios detectados:[/] {total_changes}    "
+        f"[bold magenta]Commits:[/] {len(data.get('commits', []))}    "
+        f"[bold magenta]Tags:[/] {len(data.get('git_tags', []))}",
         title="Resumen",
         border_style="cyan",
     ))
@@ -1296,6 +1499,53 @@ def render_console(data: Dict, tz_name: str) -> None:
                 f"[{action_col}]{action}[/{action_col}]",
             )
         console.print(td)
+
+    # Commits table
+    commits_data = data.get("commits", [])
+    if commits_data:
+        tc = Table(title=f"Commits en rama '{data.get('branch', 'master')}' ({len(commits_data)} en el periodo)",
+                   box=box.SIMPLE_HEAVY, border_style="magenta",
+                   show_header=True, header_style="bold magenta",
+                   show_lines=False, row_styles=["dim", ""])
+        tc.add_column("Hash", width=10)
+        tc.add_column("Fecha", width=18)
+        tc.add_column("Autor", min_width=20)
+        tc.add_column("Mensaje", min_width=40)
+        tc.add_column("Archivos", width=8, justify="center")
+        for c in commits_data:
+            c_hash = c.get("commitId", "")[:8]
+            c_date = format_date(
+                c.get("committer", {}).get("date", "") or c.get("author", {}).get("date", ""),
+                tz_name,
+            )
+            c_author = (c.get("committer", {}).get("name", "") or
+                        c.get("author", {}).get("name", "?"))
+            c_comment = (c.get("comment", "") or "").split("\n")[0][:80]
+            c_files = len(c.get("changes", []))
+            tc.add_row(c_hash, c_date, c_author, c_comment, str(c_files))
+        console.print(tc)
+
+    # Tags table
+    tags_data = data.get("git_tags", [])
+    if tags_data:
+        tt = Table(title=f"Tags Git ({len(tags_data)} en el periodo)",
+                   box=box.SIMPLE_HEAVY, border_style="magenta",
+                   show_header=True, header_style="bold magenta",
+                   show_lines=False, row_styles=["dim", ""])
+        tt.add_column("Tag", min_width=20)
+        tt.add_column("Fecha", width=18)
+        tt.add_column("Creado por", min_width=20)
+        tt.add_column("Mensaje", min_width=40)
+        for t in tags_data:
+            t_name = t.get("name", "")
+            t_date = format_date(
+                t.get("createdDate", "") or t.get("taggedObject", {}).get("createdDate", ""),
+                tz_name,
+            )
+            t_user = t.get("createdBy", {}).get("displayName", "?")
+            t_msg = (t.get("message", "") or "")[:80]
+            tt.add_row(t_name, t_date, t_user, t_msg)
+        console.print(tt)
 
 
 def _render_fallback(data: Dict, tz_name: str) -> None:
@@ -1455,6 +1705,37 @@ def main() -> int:
     releases = get_releases_in_range(args.org, args.project, args.definition_id, min_date, headers, args.debug)
     print(f"  {len(releases)} releases encontrados")
 
+    # 4b. Get git commits and tags (if not disabled)
+    commits: List[Dict] = []
+    git_tags: List[Dict] = []
+    repo_id: Optional[str] = None
+    if not args.no_commits:
+        repo_id = extract_repo_id_from_artifacts(defn)
+        if repo_id:
+            print(f"Obteniendo commits de rama '{args.branch}' (repo: {repo_id[:8]}...)...")
+            commits = get_git_commits(args.org, args.project, repo_id, args.branch,
+                                      min_date, headers, args.debug)
+            print(f"  {len(commits)} commits encontrados")
+            print(f"Obteniendo tags del repositorio...")
+            git_tags = get_git_tags(args.org, args.project, repo_id, headers, args.debug)
+            # Filter tags by date
+            if git_tags:
+                filtered_tags = []
+                for t in git_tags:
+                    tag_date_str = t.get("taggedObject", {}).get("commitId", "")
+                    # Tags API doesn't return dates directly; use creationDate if available
+                    tag_date = t.get("createdDate", "") or t.get("taggedObject", {}).get("url", "")
+                    if tag_date:
+                        tag_dt = parse_iso(tag_date)
+                        if tag_dt is None or tag_dt >= min_dt:
+                            filtered_tags.append(t)
+                    else:
+                        filtered_tags.append(t)
+                git_tags = filtered_tags
+            print(f"  {len(git_tags)} tags en el rango")
+        else:
+            print("  [WARN] No se encontro repositorio Git en los artifacts de la definicion")
+
     # 5. Assemble data
     data = {
         "definition": defn,
@@ -1464,6 +1745,10 @@ def main() -> int:
         "project": args.project,
         "range_start": min_date,
         "range_end": datetime.now(dt_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "commits": commits,
+        "git_tags": git_tags,
+        "repo_id": repo_id,
+        "branch": args.branch,
     }
 
     # 6. Console output
