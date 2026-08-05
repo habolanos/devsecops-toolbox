@@ -706,6 +706,8 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
   <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Release exitoso</div>
   <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Release fallido</div>
   <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Release parcial</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Release rechazado</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--text-dim)"></div> Release cancelado/otros</div>
 </div>
 <div class="chart-container"><canvas id="timelineChart"></canvas></div>
 
@@ -902,7 +904,7 @@ const releasePoints = timelineData
   .filter(e => e.type === 'release')
   .map(e => ({{
     x: e.date,
-    y: e.status === 'succeeded' ? 1 : e.status === 'failed' ? 0 : 0.5,
+    y: e.status === 'succeeded' ? 1 : e.status === 'failed' ? 0 : e.status === 'partiallySucceeded' ? 0.5 : e.status === 'rejected' ? -0.5 : -1,
     name: e.name,
     status: e.status,
     stage: e.stage,
@@ -949,8 +951,16 @@ new Chart(ctx, {{
         pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 10,
       }},
       {{
-        label: 'Releases otros',
-        data: releasePoints.filter(p => !['succeeded','failed','partiallySucceeded'].includes(p.status)),
+        label: 'Releases rechazados',
+        data: releasePoints.filter(p => p.status === 'rejected'),
+        backgroundColor: 'rgba(219,109,40,0.6)',
+        borderColor: '#db6d28',
+        pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
+        pointHoverRadius: ctx => ctx.raw ? ctx.raw.r + 4 : 10,
+      }},
+      {{
+        label: 'Releases cancelados/otros',
+        data: releasePoints.filter(p => !['succeeded','failed','partiallySucceeded','rejected'].includes(p.status)),
         backgroundColor: 'rgba(139,148,158,0.6)',
         borderColor: '#8b949e',
         pointRadius: ctx => ctx.raw ? ctx.raw.r : 6,
@@ -970,15 +980,15 @@ new Chart(ctx, {{
         ticks: {{ color: '#8b949e' }},
       }},
       y: {{
-        min: -0.5,
+        min: -1.5,
         max: 3,
         title: {{ display: true, text: 'Tipo', color: '#8b949e' }},
         grid: {{ color: '#30363d' }},
         ticks: {{
           color: '#8b949e',
-          stepSize: 1,
+          stepSize: 0.5,
           callback: function(v) {{
-            const labels = {{0: 'Fallido', 0.5: 'Parcial', 1: 'Exitoso', 2: 'Revision', 3: ''}};
+            const labels = {{-1: 'Cancelado', -0.5: 'Rechazado', 0: 'Fallido', 0.5: 'Parcial', 1: 'Exitoso', 2: 'Revision', 3: ''}};
             return labels[v] || '';
           }},
         }},
