@@ -150,22 +150,45 @@ class TestExtractStages:
 
 class TestExtractVariables:
     def test_empty(self):
-        assert extract_variables({}) == {}
+        assert extract_variables({}) == []
 
     def test_normal_variables(self):
         defn = {"variables": {"VAR1": {"value": "hello"}, "VAR2": {"value": "world"}}}
         result = extract_variables(defn)
-        assert result == {"VAR1": "hello", "VAR2": "world"}
+        assert len(result) == 2
+        names = {v["name"] for v in result}
+        assert names == {"VAR1", "VAR2"}
+        assert all(v["scope"] == "Pipeline" for v in result)
 
     def test_secret_variables_not_masked(self):
         defn = {"variables": {"SECRET": {"value": "supersecret", "isSecret": True}}}
         result = extract_variables(defn)
-        assert result["SECRET"] == "supersecret"
+        assert len(result) == 1
+        assert result[0]["name"] == "SECRET"
+        assert result[0]["value"] == "supersecret"
+        assert result[0]["isSecret"] is True
 
     def test_non_dict_variable(self):
         defn = {"variables": {"PLAIN": "value"}}
         result = extract_variables(defn)
-        assert result["PLAIN"] == "value"
+        assert len(result) == 1
+        assert result[0]["name"] == "PLAIN"
+        assert result[0]["value"] == "value"
+
+    def test_environment_scope_variables(self):
+        defn = {
+            "variables": {"GLOBAL": {"value": "g"}},
+            "environments": [
+                {"name": "QA", "variables": {"QA_VAR": {"value": "q"}}},
+            ],
+        }
+        result = extract_variables(defn)
+        assert len(result) == 2
+        qa_var = [v for v in result if v["name"] == "QA_VAR"][0]
+        assert qa_var["scope"] == "QA"
+        assert qa_var["value"] == "q"
+        global_var = [v for v in result if v["name"] == "GLOBAL"][0]
+        assert global_var["scope"] == "Pipeline"
 
 
 class TestExtractTasks:
@@ -271,31 +294,51 @@ class TestDiffStages:
 
 
 class TestDiffVariables:
+    def _make_vars(self, mapping, scope="Pipeline"):
+        return [{"name": k, "value": v, "scope": scope, "isSecret": False} for k, v in mapping.items()]
+
     def test_no_changes(self):
-        vars_ = {"A": "1", "B": "2"}
+        vars_ = self._make_vars({"A": "1", "B": "2"})
         assert diff_variables(vars_, vars_) == []
 
     def test_variable_added(self):
-        changes = diff_variables({"A": "1"}, {"A": "1", "B": "2"})
+        old = self._make_vars({"A": "1"})
+        new = self._make_vars({"A": "1", "B": "2"})
+        changes = diff_variables(old, new)
         assert len(changes) == 1
         assert changes[0]["action"] == "added"
         assert "B" in changes[0]["field"]
+        assert changes[0]["scope"] == "Pipeline"
 
     def test_variable_removed(self):
-        changes = diff_variables({"A": "1", "B": "2"}, {"A": "1"})
+        old = self._make_vars({"A": "1", "B": "2"})
+        new = self._make_vars({"A": "1"})
+        changes = diff_variables(old, new)
         assert len(changes) == 1
         assert changes[0]["action"] == "removed"
 
     def test_variable_modified(self):
-        changes = diff_variables({"A": "1"}, {"A": "2"})
+        old = self._make_vars({"A": "1"})
+        new = self._make_vars({"A": "2"})
+        changes = diff_variables(old, new)
         assert len(changes) == 1
         assert changes[0]["action"] == "modified"
         assert changes[0]["old_value"] == "1"
         assert changes[0]["new_value"] == "2"
 
     def test_empty_value_shown_as_vacio(self):
-        changes = diff_variables({"A": "1"}, {"A": ""})
+        old = self._make_vars({"A": "1"})
+        new = self._make_vars({"A": ""})
+        changes = diff_variables(old, new)
         assert changes[0]["new_value"] == "(vacio)"
+
+    def test_same_var_different_scope(self):
+        old = self._make_vars({"A": "1"}, scope="Pipeline")
+        new = old + self._make_vars({"A": "2"}, scope="QA")
+        changes = diff_variables(old, new)
+        assert len(changes) == 1
+        assert changes[0]["scope"] == "QA"
+        assert changes[0]["action"] == "added"
 
 
 class TestDiffTasks:

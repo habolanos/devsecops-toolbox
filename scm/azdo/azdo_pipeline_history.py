@@ -79,7 +79,7 @@ __version__ = "1.0.0"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
-DEFAULT_PROJECT = "Compras.RMI"
+DEFAULT_PROJECT = "Cadena_de_Suministros"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_MONTHS = 6
 API_VERSION_DEFS = "7.2-preview.4"
@@ -244,15 +244,29 @@ def extract_stages(defn: Dict) -> List[Dict]:
     return sorted(stages, key=lambda s: s.get("rank", 0))
 
 
-def extract_variables(defn: Dict) -> Dict[str, str]:
-    """Extrae variables como {nombre: valor}."""
-    result = {}
+def extract_variables(defn: Dict) -> List[Dict]:
+    """Extrae variables con scope (pipeline o stage)."""
+    result = []
+    # Pipeline-level variables
     for k, v in defn.get("variables", {}).items():
         if isinstance(v, dict):
             val = v.get("value", "")
-            result[k] = val
+            secret = v.get("isSecret", False)
         else:
-            result[k] = str(v)
+            val = str(v)
+            secret = False
+        result.append({"name": k, "value": val, "scope": "Pipeline", "isSecret": secret})
+    # Environment/stage-level variables
+    for env in defn.get("environments", []):
+        env_name = env.get("name", "")
+        for k, v in env.get("variables", {}).items():
+            if isinstance(v, dict):
+                val = v.get("value", "")
+                secret = v.get("isSecret", False)
+            else:
+                val = str(v)
+                secret = False
+            result.append({"name": k, "value": val, "scope": env_name, "isSecret": secret})
     return result
 
 
@@ -313,6 +327,7 @@ def diff_stages(old_stages: List[Dict], new_stages: List[Dict]) -> List[Dict]:
         s = new_map[name]
         changes.append({
             "category": "Stage",
+            "scope": name,
             "field": f"Stage '{name}'",
             "old_value": "(no existia)",
             "new_value": f"rank={s['rank']}, pre={s['pre_approvals']}, post={s['post_approvals']}",
@@ -322,6 +337,7 @@ def diff_stages(old_stages: List[Dict], new_stages: List[Dict]) -> List[Dict]:
         s = old_map[name]
         changes.append({
             "category": "Stage",
+            "scope": name,
             "field": f"Stage '{name}'",
             "old_value": f"rank={s['rank']}, pre={s['pre_approvals']}, post={s['post_approvals']}",
             "new_value": "(eliminado)",
@@ -338,6 +354,7 @@ def diff_stages(old_stages: List[Dict], new_stages: List[Dict]) -> List[Dict]:
             if old_s.get(field_key) != new_s.get(field_key):
                 changes.append({
                     "category": "Stage",
+                    "scope": name,
                     "field": f"Stage '{name}' > {field_label}",
                     "old_value": str(old_s.get(field_key, "")),
                     "new_value": str(new_s.get(field_key, "")),
@@ -346,33 +363,48 @@ def diff_stages(old_stages: List[Dict], new_stages: List[Dict]) -> List[Dict]:
     return changes
 
 
-def diff_variables(old_vars: Dict[str, str], new_vars: Dict[str, str]) -> List[Dict]:
+def diff_variables(old_vars: List[Dict], new_vars: List[Dict]) -> List[Dict]:
     changes = []
-    for k in sorted(set(new_vars) - set(old_vars)):
-        changes.append({
-            "category": "Variable",
-            "field": f"Variable '{k}'",
-            "old_value": "(no existia)",
-            "new_value": new_vars[k],
-            "action": "added",
-        })
-    for k in sorted(set(old_vars) - set(new_vars)):
-        changes.append({
-            "category": "Variable",
-            "field": f"Variable '{k}'",
-            "old_value": old_vars[k],
-            "new_value": "(eliminada)",
-            "action": "removed",
-        })
-    for k in sorted(set(old_vars) & set(new_vars)):
-        if old_vars[k] != new_vars[k]:
+    old_map = {(v["scope"], v["name"]): v for v in old_vars}
+    new_map = {(v["scope"], v["name"]): v for v in new_vars}
+    all_keys = sorted(set(old_map) | set(new_map))
+
+    for key in all_keys:
+        scope, name = key
+        in_old = key in old_map
+        in_new = key in new_map
+        if in_new and not in_old:
+            v = new_map[key]
             changes.append({
                 "category": "Variable",
-                "field": f"Variable '{k}'",
-                "old_value": old_vars[k] if old_vars[k] else "(vacio)",
-                "new_value": new_vars[k] if new_vars[k] else "(vacio)",
-                "action": "modified",
+                "scope": scope,
+                "field": f"Variable '{name}'",
+                "old_value": "(no existia)",
+                "new_value": v["value"],
+                "action": "added",
             })
+        elif in_old and not in_new:
+            v = old_map[key]
+            changes.append({
+                "category": "Variable",
+                "scope": scope,
+                "field": f"Variable '{name}'",
+                "old_value": v["value"],
+                "new_value": "(eliminada)",
+                "action": "removed",
+            })
+        else:
+            old_v = old_map[key]
+            new_v = new_map[key]
+            if old_v["value"] != new_v["value"]:
+                changes.append({
+                    "category": "Variable",
+                    "scope": scope,
+                    "field": f"Variable '{name}'",
+                    "old_value": old_v["value"] if old_v["value"] else "(vacio)",
+                    "new_value": new_v["value"] if new_v["value"] else "(vacio)",
+                    "action": "modified",
+                })
     return changes
 
 
@@ -387,7 +419,8 @@ def diff_tasks(old_tasks: List[Dict], new_tasks: List[Dict]) -> List[Dict]:
         t = new_map[key]
         changes.append({
             "category": "Task",
-            "field": f"Task '{t['displayName']}' ({t['env']})",
+            "scope": t['env'],
+            "field": f"Task '{t['displayName']}'",
             "old_value": "(no existia)",
             "new_value": f"enabled={t['enabled']}",
             "action": "added",
@@ -396,7 +429,8 @@ def diff_tasks(old_tasks: List[Dict], new_tasks: List[Dict]) -> List[Dict]:
         t = old_map[key]
         changes.append({
             "category": "Task",
-            "field": f"Task '{t['displayName']}' ({t['env']})",
+            "scope": t['env'],
+            "field": f"Task '{t['displayName']}'",
             "old_value": f"enabled={t['enabled']}",
             "new_value": "(eliminada)",
             "action": "removed",
@@ -411,7 +445,8 @@ def diff_tasks(old_tasks: List[Dict], new_tasks: List[Dict]) -> List[Dict]:
             if old_t.get(field_key) != new_t.get(field_key):
                 changes.append({
                     "category": "Task",
-                    "field": f"Task '{old_t['displayName']}' ({old_t['env']}) > {field_label}",
+                    "scope": old_t['env'],
+                    "field": f"Task '{old_t['displayName']}' > {field_label}",
                     "old_value": str(old_t.get(field_key, "")),
                     "new_value": str(new_t.get(field_key, "")),
                     "action": "modified",
@@ -427,6 +462,7 @@ def diff_artifacts(old_arts: List[Dict], new_arts: List[Dict]) -> List[Dict]:
     for alias in sorted(set(new_map) - set(old_map)):
         changes.append({
             "category": "Artifact",
+            "scope": "Pipeline",
             "field": f"Artifact '{alias}'",
             "old_value": "(no existia)",
             "new_value": f"type={new_map[alias]['type']}",
@@ -435,6 +471,7 @@ def diff_artifacts(old_arts: List[Dict], new_arts: List[Dict]) -> List[Dict]:
     for alias in sorted(set(old_map) - set(new_map)):
         changes.append({
             "category": "Artifact",
+            "scope": "Pipeline",
             "field": f"Artifact '{alias}'",
             "old_value": f"type={old_map[alias]['type']}",
             "new_value": "(eliminado)",
@@ -445,6 +482,7 @@ def diff_artifacts(old_arts: List[Dict], new_arts: List[Dict]) -> List[Dict]:
             if old_map[alias].get(field_key) != new_map[alias].get(field_key):
                 changes.append({
                     "category": "Artifact",
+                    "scope": "Pipeline",
                     "field": f"Artifact '{alias}' > {field_key}",
                     "old_value": str(old_map[alias].get(field_key, "")),
                     "new_value": str(new_map[alias].get(field_key, "")),
@@ -701,11 +739,12 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
     </div>
     <div style="margin-bottom:10px">{cat_badges}</div>
     <table class="diff-table">
-      <thead><tr><th>Categoria</th><th>Campo</th><th>Valor anterior</th><th></th><th>Valor nuevo</th><th>Accion</th></tr></thead>
+      <thead><tr><th>Categoria</th><th>Scope</th><th>Campo</th><th>Valor anterior</th><th></th><th>Valor nuevo</th><th>Accion</th></tr></thead>
       <tbody>
 """
         for d in diff_list:
             cat = html_escape(d.get("category", ""))
+            scope = html_escape(d.get("scope", ""))
             field = html_escape(d.get("field", ""))
             old_val = html_escape(str(d.get("old_value", "")))
             new_val = html_escape(str(d.get("new_value", "")))
@@ -714,6 +753,7 @@ def generate_html(data: Dict, tz_name: str, output_path: Path) -> None:
             action_label = {"added": "Agregado", "removed": "Eliminado", "modified": "Modificado"}.get(action, action)
             html += f"""        <tr data-cat="{cat}">
           <td>{cat}</td>
+          <td>{scope}</td>
           <td>{field}</td>
           <td class="old-value">{old_val}</td>
           <td class="arrow">→</td>
@@ -1036,6 +1076,7 @@ def render_console(data: Dict, tz_name: str) -> None:
                 "user": user,
                 "comment": comment,
                 "category": d.get("category", ""),
+                "scope": d.get("scope", ""),
                 "field": d.get("field", ""),
                 "old_value": str(d.get("old_value", "")),
                 "new_value": str(d.get("new_value", "")),
@@ -1049,7 +1090,9 @@ def render_console(data: Dict, tz_name: str) -> None:
         td.add_column("Rev", width=5, justify="right")
         td.add_column("Fecha", width=18)
         td.add_column("Usuario", min_width=20)
+        td.add_column("Comentario", min_width=25)
         td.add_column("Categoria", width=12)
+        td.add_column("Scope", min_width=12)
         td.add_column("Campo", min_width=30)
         td.add_column("Valor anterior", min_width=25)
         td.add_column("Valor nuevo", min_width=25)
@@ -1062,7 +1105,9 @@ def render_console(data: Dict, tz_name: str) -> None:
                 str(d["rev"]),
                 d["date"],
                 d["user"],
+                d["comment"],
                 d["category"],
+                d["scope"],
                 d["field"],
                 d["old_value"],
                 d["new_value"],
@@ -1119,6 +1164,7 @@ def export_results(data: Dict, fmt: str, tz_name: str) -> None:
                 "user": ((rev.get("modifiedBy") or rev.get("createdBy") or {}).get("displayName", "")),
                 "comment": rev.get("comment", ""),
                 "category": d.get("category", ""),
+                "scope": d.get("scope", ""),
                 "field": d.get("field", ""),
                 "old_value": str(d.get("old_value", "")),
                 "new_value": str(d.get("new_value", "")),
@@ -1128,7 +1174,7 @@ def export_results(data: Dict, fmt: str, tz_name: str) -> None:
     if not rows:
         rows.append({
             "revision": "", "date": "", "user": "", "comment": "",
-            "category": "", "field": "Sin cambios detectados",
+            "category": "", "scope": "", "field": "Sin cambios detectados",
             "old_value": "", "new_value": "", "action": "",
         })
 
