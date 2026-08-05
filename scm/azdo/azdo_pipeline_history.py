@@ -312,9 +312,12 @@ def get_git_commits(org: str, project: str, repo_id: str, branch: str,
 
 def get_git_tags(org: str, project: str, repo_id: str,
                  headers: Dict, debug: bool) -> List[Dict]:
-    """Obtiene annotated tags del repositorio."""
-    url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/annotatedtags"
-    params = {"api-version": API_VERSION_GIT_TAGS}
+    """Obtiene tags del repositorio usando el endpoint refs con filter=tags/."""
+    url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/refs"
+    params = {
+        "api-version": API_VERSION_GIT,
+        "filter": "tags/",
+    }
     data = api_get(url, headers, params, debug)
     return data.get("value", []) if data else []
 
