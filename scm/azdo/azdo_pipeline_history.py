@@ -313,7 +313,7 @@ def get_git_commits(org: str, project: str, repo_id: str, branch: str,
 def get_git_tags(org: str, project: str, repo_id: str,
                  headers: Dict, debug: bool) -> List[Dict]:
     """Obtiene tags del repositorio usando el endpoint refs con filter=tags/.
-    Luego enriquece cada tag con la fecha del commit al que apunta."""
+    Luego enriquece cada tag con la fecha del commit al que apunta via GET individual."""
     url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/refs"
     params = {
         "api-version": API_VERSION_GIT,
@@ -324,27 +324,34 @@ def get_git_tags(org: str, project: str, repo_id: str,
     if not refs:
         return []
 
-    # Fetch commit dates for each tag's objectId
-    commit_url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/commits/batch"
-    commit_ids = [r.get("objectId", "") for r in refs if r.get("objectId")]
-    commit_dates: Dict[str, str] = {}
-    if commit_ids:
-        try:
-            resp = requests.post(commit_url, headers={**headers, "Content-Type": "application/json"},
-                                 json={"commitIds": commit_ids, "includeWorkItems": False},
-                                 params={"api-version": API_VERSION_GIT}, timeout=30)
-            if resp.status_code == 200:
-                for c in resp.json().get("value", []):
-                    commit_dates[c.get("commitId", "")] = c.get("committer", {}).get("date", "") or c.get("author", {}).get("date", "")
-            elif debug:
-                print(f"[DEBUG] HTTP {resp.status_code} batch commits for tags")
-        except Exception as e:
-            if debug:
-                print(f"[DEBUG] batch commits for tags: {e}")
+    if debug:
+        print(f"  [DEBUG] {len(refs)} tag refs encontrados, enriqueciendo con fechas de commit...")
 
     for r in refs:
         obj_id = r.get("objectId", "")
-        r["createdDate"] = commit_dates.get(obj_id, "")
+        if not obj_id:
+            r["createdDate"] = ""
+            continue
+        commit_url = f"{org}/{quote(project, safe='')}/_apis/git/repositories/{repo_id}/commits/{obj_id}"
+        try:
+            resp = requests.get(commit_url, headers=headers,
+                                params={"api-version": API_VERSION_GIT}, timeout=15)
+            if resp.status_code == 200:
+                c = resp.json()
+                c_date = c.get("committer", {}).get("date", "") or c.get("author", {}).get("date", "")
+                r["createdDate"] = c_date
+                if debug:
+                    raw_name = r.get("name", "")
+                    tag_name = raw_name.replace("refs/tags/", "") if raw_name.startswith("refs/tags/") else raw_name
+                    print(f"    [DEBUG] Tag '{tag_name}' -> commit {obj_id[:8]} -> date {c_date}")
+            else:
+                r["createdDate"] = ""
+                if debug:
+                    print(f"    [DEBUG] Tag '{r.get('name', '?')}' -> HTTP {resp.status_code} for commit {obj_id[:8]}")
+        except Exception as e:
+            r["createdDate"] = ""
+            if debug:
+                print(f"    [DEBUG] Tag '{r.get('name', '?')}' -> error: {e}")
 
     return refs
 
@@ -1822,19 +1829,21 @@ def main() -> int:
             print(f"  {len(commits)} commits encontrados")
             print(f"Obteniendo tags del repositorio...")
             git_tags = get_git_tags(args.org, args.project, repo_id, headers, args.debug)
-            # Filter tags by date
+            # Filter tags by date (createdDate is enriched from commit date)
             if git_tags:
                 filtered_tags = []
                 for t in git_tags:
-                    tag_date_str = t.get("taggedObject", {}).get("commitId", "")
-                    # Tags API doesn't return dates directly; use creationDate if available
-                    tag_date = t.get("createdDate", "") or t.get("taggedObject", {}).get("url", "")
+                    tag_date = t.get("createdDate", "")
                     if tag_date:
                         tag_dt = parse_iso(tag_date)
                         if tag_dt is None or tag_dt >= min_dt:
                             filtered_tags.append(t)
-                    else:
-                        filtered_tags.append(t)
+                        elif args.debug:
+                            raw_name = t.get("name", "")
+                            tag_name = raw_name.replace("refs/tags/", "") if raw_name.startswith("refs/tags/") else raw_name
+                            print(f"    [DEBUG] Tag '{tag_name}' descartado (fecha {tag_date} < {min_date})")
+                    elif args.debug:
+                        print(f"    [DEBUG] Tag '{t.get('name', '?')}' sin fecha, descartado")
                 git_tags = filtered_tags
             print(f"  {len(git_tags)} tags en el rango")
         else:
