@@ -1,0 +1,44 @@
+metadata:
+  name: "Mover Pipeline CD a otra carpeta"
+  version: "1.0"
+  description: >
+    Template para mover pipelines CD de una carpeta a otra en Azure DevOps.
+    Actualiza el campo "path" de la definicion de release via PUT.
+    El pipeline se reubica dentro de la estructura de carpetas del proyecto.
+    Se crea snapshot automatico para rollback.
+  comment: "Pipeline movido a nueva carpeta via pipeline_updater"
+  author: "Harold Adrian"
+  created_at: "2026-08-08"
+
+search:
+  # El wildcard "*" coincide con cualquier stage.
+  # Esto hace que el template aplique a TODOS los pipelines que tengan
+  # al menos un environment/stage.
+  #
+  # Para filtrar por stages especificos, cambiar "*" por el nombre:
+  # stages:
+  #   - name: "Production"
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "move"
+    # Path destino donde se movera el pipeline.
+    # Usar backslashes (\) como separador de carpetas.
+    # El path debe empezar con \ (raiz del proyecto).
+    #
+    # El placeholder {current} se reemplaza por el path actual del pipeline.
+    # Esto permite mover sin conocer el path previo.
+    #
+    # Ejemplo: si el path actual es \GCP\Proyecto WMS\Equipo WMS
+    #   path: '\Decomiso{current}'
+    #   resultado: \Decomiso\GCP\Proyecto WMS\Equipo WMS
+    #
+    # Tambien se puede usar un path absoluto (sin {current}):
+    #   path: '\Decomiso\GCP\Proyecto WMS\Equipo WMS'
+    path: '\Decomiso{current}'
+
+options:
+  dry_run: false
+  rollback_on_error: true

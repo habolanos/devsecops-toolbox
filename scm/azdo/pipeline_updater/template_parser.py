@@ -85,6 +85,7 @@ class TemplateParser:
         Soporta:
           - None: actualización normal (default)
           - "disable": eliminar (soft-delete) el pipeline
+          - "move": mover el pipeline a otra carpeta (cambiar path)
         
         Returns:
             Acción del pipeline o None
@@ -92,6 +93,18 @@ class TemplateParser:
         pipeline = self.update_rules.get('pipeline', {})
         if isinstance(pipeline, dict):
             return pipeline.get('action')
+        return None
+    
+    def get_pipeline_path(self) -> Optional[str]:
+        """
+        Obtener el path destino para la acción "move".
+        
+        Returns:
+            Path destino o None si no se especifica
+        """
+        pipeline = self.update_rules.get('pipeline', {})
+        if isinstance(pipeline, dict):
+            return pipeline.get('path')
         return None
     
     def get_template_options(self) -> TemplateOptions:

@@ -168,6 +168,54 @@ class ParallelExecutor:
                     duration=duration
                 )
             
+            if pipeline_action == 'move':
+                # Flujo de movimiento: cambiar el campo "path" de la definición
+                # y enviar via PUT. El pipeline se reubica dentro de la estructura
+                # de carpetas del proyecto en Azure DevOps.
+                #
+                # Soporta el placeholder {current} en el path destino:
+                #   path: '\Decomiso{current}'
+                # Si el path actual es '\GCP\Proyecto WMS', el resultado es
+                # '\Decomiso\GCP\Proyecto WMS'.
+                target_path = template_parser.get_pipeline_path()
+                if not target_path:
+                    raise ValueError("action 'move' requiere 'path' en update.pipeline")
+                
+                old_path = definition.get('path', '')
+                
+                # Resolver placeholder {current}
+                if '{current}' in target_path:
+                    target_path = target_path.replace('{current}', old_path)
+                
+                print(f"  [Pipeline {definition_id}] 4/5 Moviendo pipeline de '{old_path}' a '{target_path}'...")
+                
+                definition['path'] = target_path
+                metadata = template_parser.get_metadata()
+                success = azdo_client.update_release_definition(
+                    definition_id, definition,
+                    comment=metadata.comment
+                )
+                print(f"  [Pipeline {definition_id}]   ✓ Pipeline movido exitosamente")
+                
+                duration = time.time() - start_time
+                
+                return UpdateResult(
+                    definition_id=definition_id,
+                    success=success,
+                    snapshot_id=snapshot_id,
+                    matches_found=len(matches),
+                    changes_applied=1,
+                    changes=[{
+                        'type': 'pipeline_move',
+                        'definition_id': definition_id,
+                        'old_path': old_path,
+                        'new_path': target_path,
+                        'snapshot_id': snapshot_id
+                    }],
+                    error=None,
+                    duration=duration
+                )
+            
             # 4. Aplicar actualizaciones (flujo normal)
             print(f"  [Pipeline {definition_id}] 4/5 Aplicando actualizaciones...")
             update_rules = template_parser.get_update_rules()
