@@ -169,7 +169,11 @@ update:
   # ═══════════════════════════════════════════════════════════
   triggers:
     # Agregar artifact trigger: deploy automatico cuando llega artifact de main
-    # artifactName: "$auto" se resuelve dinamicamente al primer Build artifact del pipeline
+    # artifactName soporta $auto para resolver dinamicamente:
+    #   "$auto"       -> primer artifact de tipo Build del pipeline
+    #   "$auto:Build" -> primer artifact de tipo Build (explicito)
+    #   "$auto:Git"   -> primer artifact de tipo Git
+    # Tambien se puede usar un alias literal (ej: "_myartifact")
     - action: "add"
       triggerType: "artifactSource"
       triggerConfiguration:
@@ -180,7 +184,7 @@ update:
         useDefaultBranch: false
 
     # Actualizar artifact trigger existente (si ya existe uno)
-    # artifactName: "$auto" se resuelve dinamicamente al primer Build artifact del pipeline
+    # Mismas reglas de $auto que en action: "add"
     - action: "update"
       triggerType: "artifactSource"
       artifactName: "$auto"
