@@ -21,9 +21,15 @@ class AzdoStep(WizardStep):
         self.show_header()
         template = dict(self.template_config.get(self.section, {}))
 
-        org_url = self.ask(
-            "Organization URL (https://dev.azure.com/<org>)",
-            default=template.get("organization_url", "")
+        existing_org = template.get("organization", "")
+        if existing_org and "<TU_" not in existing_org:
+            default_org = existing_org
+        else:
+            default_org = ""
+
+        org_input = self.ask(
+            "Organization name (ej: Coppel-Retail)",
+            default=default_org
         )
         project = self.ask(
             "Project name",
@@ -34,7 +40,8 @@ class AzdoStep(WizardStep):
             password=True
         )
 
-        org_name = self._extract_org_name(org_url)
+        org_name = self._normalize_org_name(org_input)
+        org_url = f"https://dev.azure.com/{org_name}"
 
         result = dict(template)
         result["organization_url"] = org_url
@@ -54,17 +61,26 @@ class AzdoStep(WizardStep):
         if not pat or "<TU_" in pat:
             errors.append("PAT token es requerido")
         if not org_url or "<TU_" in org_url:
-            errors.append("Organization URL es requerida")
+            errors.append("Organization es requerida")
         if not project or "<TU_" in project:
             errors.append("Project name es requerido")
-        if org_url and not org_url.startswith("https://dev.azure.com/"):
-            errors.append("Organization URL debe empezar con https://dev.azure.com/")
 
         return errors
 
     @staticmethod
-    def _extract_org_name(org_url: str) -> str:
-        if not org_url:
+    def _normalize_org_name(org_input: str) -> str:
+        """Normaliza el input del usuario a un organization name.
+
+        Acepta:
+        - 'Coppel-Retail' -> 'Coppel-Retail'
+        - 'https://dev.azure.com/Coppel-Retail' -> 'Coppel-Retail'
+        - 'https://dev.azure.com/Coppel-Retail/' -> 'Coppel-Retail'
+        """
+        if not org_input:
             return ""
-        url = org_url.rstrip("/")
-        return url.split("/")[-1] if "/" in url else org_url
+        val = org_input.strip().rstrip("/")
+        if val.startswith("https://dev.azure.com/"):
+            val = val[len("https://dev.azure.com/"):]
+        elif val.startswith("https://"):
+            val = val.split("/")[-1]
+        return val.strip()

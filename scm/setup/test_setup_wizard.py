@@ -121,10 +121,15 @@ class TestAzdoStep(unittest.TestCase):
             }
         }
 
-    def test_extract_org_name_from_url(self):
-        self.assertEqual(AzdoStep._extract_org_name("https://dev.azure.com/myorg"), "myorg")
-        self.assertEqual(AzdoStep._extract_org_name("https://dev.azure.com/myorg/"), "myorg")
-        self.assertEqual(AzdoStep._extract_org_name(""), "")
+    def test_normalize_org_name_plain(self):
+        self.assertEqual(AzdoStep._normalize_org_name("Coppel-Retail"), "Coppel-Retail")
+
+    def test_normalize_org_name_from_url(self):
+        self.assertEqual(AzdoStep._normalize_org_name("https://dev.azure.com/Coppel-Retail"), "Coppel-Retail")
+        self.assertEqual(AzdoStep._normalize_org_name("https://dev.azure.com/Coppel-Retail/"), "Coppel-Retail")
+
+    def test_normalize_org_name_empty(self):
+        self.assertEqual(AzdoStep._normalize_org_name(""), "")
 
     def test_validate_valid_values(self):
         step = AzdoStep(self.console, self.template)
@@ -156,15 +161,15 @@ class TestAzdoStep(unittest.TestCase):
         errors = step.validate(values)
         self.assertTrue(any("PAT" in e for e in errors))
 
-    def test_validate_invalid_url(self):
+    def test_validate_placeholder_org(self):
         step = AzdoStep(self.console, self.template)
         values = {
-            "organization_url": "https://github.com/myorg",
+            "organization_url": "https://dev.azure.com/<TU_ORG>",
             "project": "myproject",
             "pat": "abc123",
         }
         errors = step.validate(values)
-        self.assertTrue(any("dev.azure.com" in e for e in errors))
+        self.assertTrue(any("Organization" in e for e in errors))
 
     def test_validate_missing_project(self):
         step = AzdoStep(self.console, self.template)
@@ -179,13 +184,13 @@ class TestAzdoStep(unittest.TestCase):
     def test_run_returns_hydrated_values(self):
         step = AzdoStep(self.console, self.template)
         step.ask = MagicMock(side_effect=[
-            "https://dev.azure.com/myorg",
+            "Coppel-Retail",
             "myproject",
             "mypat123"
         ])
         result = step.run()
-        self.assertEqual(result["organization_url"], "https://dev.azure.com/myorg")
-        self.assertEqual(result["organization"], "myorg")
+        self.assertEqual(result["organization_url"], "https://dev.azure.com/Coppel-Retail")
+        self.assertEqual(result["organization"], "Coppel-Retail")
         self.assertEqual(result["project"], "myproject")
         self.assertEqual(result["pat"], "mypat123")
         self.assertTrue(result["enabled"])
@@ -193,13 +198,24 @@ class TestAzdoStep(unittest.TestCase):
     def test_run_preserves_template_defaults(self):
         step = AzdoStep(self.console, self.template)
         step.ask = MagicMock(side_effect=[
-            "https://dev.azure.com/myorg",
+            "Coppel-Retail",
             "myproject",
             "mypat123"
         ])
         result = step.run()
         self.assertIn("defaults", result)
         self.assertEqual(result["defaults"]["timezone"], "America/Mazatlan")
+
+    def test_run_accepts_full_url_input(self):
+        step = AzdoStep(self.console, self.template)
+        step.ask = MagicMock(side_effect=[
+            "https://dev.azure.com/Coppel-Retail",
+            "myproject",
+            "mypat123"
+        ])
+        result = step.run()
+        self.assertEqual(result["organization"], "Coppel-Retail")
+        self.assertEqual(result["organization_url"], "https://dev.azure.com/Coppel-Retail")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
