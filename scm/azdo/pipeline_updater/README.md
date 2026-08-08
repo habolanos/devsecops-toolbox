@@ -89,6 +89,9 @@ search:
   artifacts:
     - alias: "drop"
       type: "BuildArtifact"
+  triggers:
+    - triggerType: "artifactSource"
+      artifactName: "_myartifact"
 ```
 
 **Patrones de búsqueda**:
@@ -116,7 +119,53 @@ update:
       properties:
         - path: "queueId"
           new_value: 123
+  triggers:
+    - action: "update"
+      triggerType: "artifactSource"
+      artifactName: "_myartifact"
+      fields:
+        - path: "branchFilters"
+          new_value: ["+refs/heads/main"]
+  artifacts:
+    - name: "_myartifact"
+      fields:
+        - path: "definitionReference.branch.id"
+          new_value: "refs/heads/main"
 ```
+
+#### Resolución dinámica de Artifact Name: `$auto`
+
+En lugar de hardcodear el alias del artifact (ej: `_myartifact`), se puede usar `$auto` para resolver dinámicamente el nombre del artifact del pipeline:
+
+```yaml
+update:
+  triggers:
+    - action: "add"
+      triggerType: "artifactSource"
+      triggerConfiguration:
+        artifactName: "$auto"          # Resuelve al primer Build artifact
+        branchFilters: ["+refs/heads/main"]
+    - action: "update"
+      triggerType: "artifactSource"
+      artifactName: "$auto"            # Resuelve al primer Build artifact
+      fields:
+        - path: "branchFilters"
+          new_value: ["+refs/heads/main"]
+  artifacts:
+    # Sin campo "name": aplica a todos los artifacts encontrados por search.artifacts
+    - fields:
+        - path: "definitionReference.branch.id"
+          new_value: "refs/heads/main"
+```
+
+**Tokens soportados**:
+- `"$auto"` o `"$auto:Build"`: resuelve al primer artifact de tipo `Build`
+- `"$auto:Git"`: resuelve al primer artifact de tipo `Git`
+- Cualquier otro valor: se usa literal (ej: `_myartifact`)
+
+**En `search.artifacts`**: usar `alias: "*"` con `type: "Build"` para encontrar cualquier Build artifact sin importar su alias.
+
+**En `update.artifacts`**: omitir el campo `name` para que la actualización aplique a todos los artifacts encontrados por `search.artifacts`.
 
 #### Acciones de Stage: `copy`, `add` y `rename`
 
@@ -180,6 +229,92 @@ update:
 **Notas**:
 - Al insertar stages, los `rank` se reasignan automáticamente (1, 2, 3...) según el orden del array, ya que Azure DevOps ordena por `rank`.
 - Los IDs de los nuevos stages se asignan automáticamente (max existente + 1).
+
+#### Triggers y Artifact Filters
+
+El Pipeline Updater soporta la gestión de **triggers** (disparadores de release) y **artifact branch filters** (filtros de branch del artifact source) en las definiciones de release de Azure DevOps.
+
+**Estructura de triggers en Azure DevOps**:
+
+Los triggers viven en `definition.triggers[]` y controlan cuándo se ejecuta un release automáticamente:
+
+- `triggerType: "artifactSource"` — Deploy automático cuando llega un nuevo artifact
+- `triggerType: "schedule"` — Deploy programado por horario
+- `triggerConfiguration.branchFilters` — Lista de branches que activan el deploy (formato Azure DevOps: `"+refs/heads/main"`)
+- `triggerConfiguration.useDefaultBranch` — Si usar la branch default del artifact
+- `triggerConfiguration.artifactName` — Nombre del artifact a observar
+
+**Acciones de Trigger: `add`, `update` y `remove`**
+
+**`action: add`** — Agrega un nuevo trigger:
+
+```yaml
+update:
+  triggers:
+    - action: "add"
+      triggerType: "artifactSource"
+      triggerConfiguration:
+        triggerType: "artifactSource"
+        artifactName: "_myartifact"
+        branchFilters:
+          - "+refs/heads/main"
+        useDefaultBranch: false
+```
+
+**`action: update`** — Actualiza campos de un trigger existente:
+
+```yaml
+update:
+  triggers:
+    - action: "update"
+      triggerType: "artifactSource"
+      artifactName: "_myartifact"
+      fields:
+        - path: "branchFilters"
+          new_value: ["+refs/heads/main", "+refs/heads/develop"]
+        - path: "useDefaultBranch"
+          new_value: false
+```
+
+**`action: remove`** — Elimina un trigger existente:
+
+```yaml
+update:
+  triggers:
+    - action: "remove"
+      triggerType: "artifactSource"
+      artifactName: "_myartifact"
+```
+
+**Actualizar Artifact Branch Filters**
+
+Los artifacts viven en `definition.artifacts[]` y contienen la referencia al branch source en `definitionReference.branch`:
+
+```yaml
+update:
+  artifacts:
+    - name: "_myartifact"
+      fields:
+        - path: "definitionReference.branch.id"
+          new_value: "refs/heads/main"
+        - path: "definitionReference.branch.name"
+          new_value: "main"
+```
+
+**Buscar triggers existentes**:
+
+```yaml
+search:
+  triggers:
+    - triggerType: "artifactSource"
+      artifactName: "_myartifact"
+```
+
+**Notas**:
+- Los triggers se procesan después de las acciones de stages y tasks.
+- Si la definición no tiene `triggers[]`, se crea automáticamente al usar `action: add`.
+- Los cambios de triggers se registran en el reporte con tipos `trigger_add`, `trigger_update` y `trigger_remove`.
+- Los cambios de artifacts se registran con tipo `artifact_field`.
 
 ### Options (Opciones)
 
@@ -460,14 +595,16 @@ El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
 
 ## Versión
 
-- **Versión**: 1.0.5
+- **Versión**: 1.0.7
 - **Autor**: Harold Adrian
-- **Fecha**: 2026-07-25
+- **Fecha**: 2026-08-08
 
 ## Historial de Cambios
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.0.7 | 2026-08-08 | **Resolución dinámica de Artifact Name ($auto)**: Elimina la necesidad de hardcodear el alias del artifact en templates. (1) **`$auto`**: resuelve al primer Build artifact del pipeline. (2) **`$auto:Git`**: resuelve al primer Git artifact. (3) **`$auto:Build`**: explícito para Build artifact. (4) Funciona en `update.triggers` con `action: add`, `update` y `remove`. (5) **`search.artifacts`** con `alias: "*"` encuentra cualquier artifact por tipo. (6) **`update.artifacts`** sin campo `name` aplica a todos los artifacts encontrados. (7) Template `pipe_cd_insert_stage_with_n_tasks.yaml` actualizado a v2.1 usando `$auto`. (8) **Pruebas**: 11 tests nuevos en `test_update_engine_auto.py`. Suite del módulo: 107 tests en verde (11 nuevos + 96 existentes). |
+| 1.0.6 | 2026-08-07 | **Triggers y Artifact Filters**: Soporte para gestionar triggers de release y artifact branch filters desde templates YAML. (1) **search.triggers**: buscar triggers por `triggerType` y `artifactName` en `definition.triggers[]`. (2) **update.triggers** con `action: add`: agrega nuevos triggers (artifactSource, schedule, etc.). (3) **update.triggers** con `action: update`: actualiza `branchFilters`, `useDefaultBranch` y otros campos de triggers existentes. (4) **update.triggers** con `action: remove`: elimina triggers por tipo y artifact. (5) **update.artifacts** con `fields`: actualiza `definitionReference.branch.id` y `.name` para cambiar el branch filter del artifact source. (6) **Pruebas**: 6 tests nuevos en `test_triggers.py` (add, update, remove, artifact branch filter, search, edge case sin triggers). Suite del módulo: 42 tests en verde (6 nuevos + 36 existentes). |
 | 1.0.5 | 2026-07-25 | **Acción de Stage: rename**: Implementación para renombrar stages existentes. (1) **action: rename**: cambia el nombre de un stage existente (`source_stage`) a un nuevo nombre (`new_name`). (2) **Preservación**: mantiene el ID, rank y configuración del stage original; solo modifica el campo `name`. (3) **Pruebas**: 4 tests nuevos en `test_copy_stage.py` (cambio de nombre, preservación de ID/rank, validación de source_stage, registro de cambios). (4) **Template**: `pipe_cd_rename_stage.yaml` como ejemplo de uso. (5) **Documentación**: README actualizado con ejemplo de `action: rename`. Suite del módulo: 34 tests en verde (14 nuevos + 20 existentes). |
 | 1.0.4 | 2026-07-24 | **Acciones de Stage: copy y add**: Implementación completa para insertar nuevos stages en pipelines. (1) **action: copy**: clona un stage existente (`source_stage`) y lo inserta con un nuevo nombre (`new_name`). Soporta modificación de atributos de tasks dentro del stage copiado (`task_updates`). (2) **action: add**: inserta un stage nuevo desde una definición embebida (`definition`). (3) **Posiciones de inserción**: `after`, `before`, `between`, `start`, `end`. `between` requiere `after_stage` y `before_stage`. (4) **Ranks automáticos**: al insertar stages, los `rank` se reasignan secuencialmente (1, 2, 3...) según el orden del array, ya que Azure DevOps ordena por `rank`. (5) **IDs automáticos**: los IDs de nuevos stages se asignan como max existente + 1. (6) **Pruebas**: `test_copy_stage.py` con 10 tests (copy, add, task_updates, between, validaciones). Documentación actualizada en README. |
 | 1.0.3 | 2026-07-24 | El campo `metadata.comment` del template ahora se envía como comentario de la revisión del release en Azure DevOps (visible en el historial). Se agregó `comment` a `TemplateMetadata` y al parser; `update_release_definition()` acepta el parámetro opcional `comment`. Pruebas añadidas en `test_update_release_definition.py`. |

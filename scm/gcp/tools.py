@@ -158,7 +158,8 @@ TOOLS = {
         "args": ["--project", "--output"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
-        "status": "ready"
+        "status": "ready",
+        "auto_run": {"output_format": "html"}
     },
     "25": {
         "name": "GKE Pod Resources Monitor",
@@ -167,7 +168,8 @@ TOOLS = {
         "args": ["--project", "--namespace", "--sort", "--top"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
-        "status": "ready"
+        "status": "ready",
+        "auto_run": {"skip_output": True}
     },
     # ══════════ IAM & SECURITY (3-5) ══════════
     "3": {
@@ -497,8 +499,8 @@ TOOLS = {
             "name": "Ejecutar Todos (Checkers)",
             "description": "Ejecuta todos los checkers con proyecto default y output JSON",
             "type": "auto_run",
-            "exclude": ["1", "2"],
-            "reason": "Excluye: Pod Connectivity (requiere deployment), Artifact Registry (requiere CSV)"
+            "exclude": ["1", "2", "39"],
+            "reason": "Excluye: Pod Connectivity (requiere deployment), Artifact Registry (requiere CSV), Event Tracker (requiere argumentos interactivos)"
         },
         "Q": {
             "name": "Salir",
@@ -1290,6 +1292,19 @@ def print_execution_summary_rich(results: list, elapsed: float):
         border_style="dim"
     ))
 
+def _get_auto_run_output_args(tool: dict) -> list:
+    """Determina los argumentos de salida para auto-run segun la configuracion del tool."""
+    tool_args = tool.get("args", [])
+    has_output = "--output" in tool_args or "-o" in tool_args
+    if not has_output:
+        return []
+    auto_run = tool.get("auto_run", {})
+    if auto_run.get("skip_output"):
+        return []
+    output_format = auto_run.get("output_format", "json")
+    return ["-o", output_format]
+
+
 def run_all_checkers():
     """Ejecuta todos los checkers de forma automática con proyecto default y output JSON."""
     import time as time_module
@@ -1398,7 +1413,8 @@ def run_all_checkers():
         if len(project_list_all) > 1 and not supports_multi and not supports_multi_param:
             # Script no soporta comma-separated: ejecutar una vez por proyecto
             for proj in project_list_all:
-                cmd = [venv_python, str(script_path), "--project", proj, "-o", "json"]
+                output_args = _get_auto_run_output_args(tool)
+                cmd = [venv_python, str(script_path), "--project", proj] + output_args
                 if len(project_list_all) > 1:
                     if RICH_AVAILABLE and console:
                         console.print(f"[dim]  Proyecto: {proj}[/dim]")
@@ -1416,7 +1432,8 @@ def run_all_checkers():
                     break
         elif len(project_list_all) > 1 and supports_multi_param:
             # Script soporta --multi-project explicito
-            cmd = [venv_python, str(script_path), "--multi-project", ','.join(project_list_all), "-o", "json"]
+            output_args = _get_auto_run_output_args(tool)
+            cmd = [venv_python, str(script_path), "--multi-project", ','.join(project_list_all)] + output_args
             log_command(cmd)
             try:
                 result = subprocess.run(cmd, check=True)
@@ -1429,7 +1446,8 @@ def run_all_checkers():
                 break
         else:
             # Script soporta comma-separated en --project o solo hay un proyecto
-            cmd = [venv_python, str(script_path), "--project", ','.join(project_list_all), "-o", "json"]
+            output_args = _get_auto_run_output_args(tool)
+            cmd = [venv_python, str(script_path), "--project", ','.join(project_list_all)] + output_args
             log_command(cmd)
             try:
                 result = subprocess.run(cmd, check=True)

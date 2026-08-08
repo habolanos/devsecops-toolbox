@@ -23,6 +23,8 @@ class UpdateRule:
     tasks: List[Dict] = field(default_factory=list)
     variables: List[Dict] = field(default_factory=list)
     stages: List[Dict] = field(default_factory=list)
+    triggers: List[Dict] = field(default_factory=list)
+    artifacts: List[Dict] = field(default_factory=list)
 
 
 @dataclass

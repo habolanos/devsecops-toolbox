@@ -58,6 +58,11 @@ class UpdateEngine:
             if task_rules and any(rule.get('action') == 'add' for rule in task_rules):
                 self._process_add_task_actions(task_rules)
             
+            # Procesar acciones de triggers (add/update/remove)
+            trigger_rules = self.update_rules.get('triggers', [])
+            if trigger_rules and any(rule.get('action') for rule in trigger_rules):
+                self._process_trigger_actions(trigger_rules)
+            
             # Luego aplicar otras actualizaciones
             for match in self.matches:
                 if match.type == 'task':
@@ -68,6 +73,8 @@ class UpdateEngine:
                     self._update_stage(match)
                 elif match.type == 'artifact':
                     self._update_artifact(match)
+                elif match.type == 'trigger':
+                    self._update_trigger(match)
             
             return True
         except Exception as e:
@@ -402,6 +409,188 @@ class UpdateEngine:
                             'position': insert_index
                         })
     
+    def _process_trigger_actions(self, trigger_rules: List[Dict]):
+        """
+        Procesar acciones de triggers (add/update/remove) en la definicion de release.
+        
+        Azure DevOps almacena triggers en definition.triggers[] con:
+          - triggerType: "artifactSource" | "schedule" | "sourcePullRequest"
+          - triggerConfiguration: {
+              triggerType, artifactName, branchFilters: ["+refs/heads/main"],
+              useDefaultBranch, scheduleDays, scheduleTime, ...
+            }
+        
+        Soporta:
+          - action: "add"    -> Agrega un nuevo trigger
+          - action: "update" -> Actualiza branchFilters u otros campos de un trigger existente
+          - action: "remove" -> Elimina un trigger existente
+        
+        Soporta artifactName: "$auto" que se resuelve dinamicamente al primer
+        Build artifact del pipeline. "$auto:Git" resuelve al primer Git artifact.
+        
+        Args:
+            trigger_rules: Reglas de actualizacion de triggers
+        """
+        triggers = self.definition.get('triggers', [])
+        
+        for rule in trigger_rules:
+            action = rule.get('action')
+            
+            if action == 'add':
+                trigger_type = rule.get('triggerType', 'artifactSource')
+                trigger_config = rule.get('triggerConfiguration', {})
+                
+                # Resolver $auto en artifactName
+                if trigger_config.get('artifactName', '').startswith('$auto'):
+                    trigger_config = copy.deepcopy(trigger_config)
+                    trigger_config['artifactName'] = self._resolve_artifact_name(
+                        trigger_config['artifactName']
+                    )
+                
+                new_trigger = {
+                    'triggerType': trigger_type,
+                    'triggerConfiguration': trigger_config
+                }
+                
+                triggers.append(new_trigger)
+                
+                self.changes.append({
+                    'type': 'trigger_add',
+                    'triggerType': trigger_type,
+                    'artifactName': trigger_config.get('artifactName', '')
+                })
+            
+            elif action == 'update':
+                target_type = rule.get('triggerType')
+                target_artifact = rule.get('artifactName', '')
+                
+                # Resolver $auto en artifactName para matching
+                if target_artifact.startswith('$auto'):
+                    target_artifact = self._resolve_artifact_name(target_artifact)
+                
+                fields = rule.get('fields', [])
+                
+                for trigger in triggers:
+                    trig_type = trigger.get('triggerType', '')
+                    trig_config = trigger.get('triggerConfiguration', {})
+                    trig_artifact = trig_config.get('artifactName', '')
+                    
+                    if target_type and trig_type != target_type:
+                        continue
+                    if target_artifact and trig_artifact != target_artifact:
+                        continue
+                    
+                    for field_update in fields:
+                        path = field_update.get('path')
+                        new_value = field_update.get('new_value')
+                        old_value = self._get_nested_value(trig_config, path)
+                        self._set_nested_value(trig_config, path, new_value)
+                        
+                        self.changes.append({
+                            'type': 'trigger_update',
+                            'triggerType': trig_type,
+                            'artifactName': trig_artifact,
+                            'field': path,
+                            'old': old_value,
+                            'new': new_value
+                        })
+            
+            elif action == 'remove':
+                target_type = rule.get('triggerType')
+                target_artifact = rule.get('artifactName', '')
+                
+                # Resolver $auto en artifactName para matching
+                if target_artifact.startswith('$auto'):
+                    target_artifact = self._resolve_artifact_name(target_artifact)
+                
+                original_len = len(triggers)
+                triggers = [
+                    t for t in triggers
+                    if not (
+                        (not target_type or t.get('triggerType', '') == target_type) and
+                        (not target_artifact or
+                         t.get('triggerConfiguration', {}).get('artifactName', '') == target_artifact)
+                    )
+                ]
+                
+                if len(triggers) < original_len:
+                    self.changes.append({
+                        'type': 'trigger_remove',
+                        'triggerType': target_type or '',
+                        'artifactName': target_artifact or '',
+                        'removed_count': original_len - len(triggers)
+                    })
+        
+        self.definition['triggers'] = triggers
+    
+    def _resolve_artifact_name(self, token: str) -> str:
+        """
+        Resolver un token $auto al alias real del artifact del pipeline.
+        
+        Tokens soportados:
+          - "$auto"     -> primer Build artifact
+          - "$auto:Git" -> primer Git artifact
+          - "$auto:Build" -> primer Build artifact (explicito)
+        
+        Si el token no empieza con $auto, se retorna tal cual.
+        Si no se encuentra ningun artifact del tipo solicitado, se retorna "".
+        
+        Args:
+            token: Token a resolver (ej: "$auto", "$auto:Git", "_myartifact")
+        
+        Returns:
+            Alias del artifact resuelto, o string vacio si no se encuentra
+        """
+        if not token or not token.startswith('$auto'):
+            return token
+        
+        # Determinar tipo de artifact solicitado
+        artifact_type = 'Build'
+        if ':' in token:
+            artifact_type = token.split(':', 1)[1]
+        
+        # Buscar en los artifacts de la definicion
+        for artifact in self.definition.get('artifacts', []):
+            if artifact.get('type', '') == artifact_type:
+                return artifact.get('alias', '')
+        
+        return ''
+    
+    def _update_trigger(self, match: Match):
+        """
+        Actualizar un trigger encontrado por search.
+        
+        Aplica reglas de update.triggers que no tienen 'action' (updates via fields).
+        
+        Args:
+            match: Coincidencia de trigger
+        """
+        trigger = match.object
+        trigger_rules = self.update_rules.get('triggers', [])
+        
+        for rule in trigger_rules:
+            if rule.get('action'):
+                continue
+            
+            rule_type = rule.get('triggerType', '')
+            if rule_type and rule_type != match.name:
+                continue
+            
+            trig_config = trigger.get('triggerConfiguration', {})
+            for field_update in rule.get('fields', []):
+                path = field_update.get('path')
+                new_value = field_update.get('new_value')
+                old_value = self._get_nested_value(trig_config, path)
+                self._set_nested_value(trig_config, path, new_value)
+                
+                self.changes.append({
+                    'type': 'trigger_update',
+                    'triggerType': match.name,
+                    'field': path,
+                    'old': old_value,
+                    'new': new_value
+                })
+    
     def _remove_ignored_variable_groups(self):
         """
         Remover referencias a variable groups segun el scope configurado.
@@ -675,6 +864,11 @@ class UpdateEngine:
         """
         Actualizar un artifact
         
+        Soporta actualizacion de propiedades via 'fields' y 'properties'.
+        Tambien soporta actualizacion de branch filters via:
+          - path: "definitionReference.branch.id" -> cambiar branch del artifact
+          - path: "definitionReference.branch.name" -> cambiar nombre de branch
+        
         Args:
             match: Coincidencia de artifact
         """
@@ -682,8 +876,11 @@ class UpdateEngine:
         artifact_rules = self.update_rules.get('artifacts', [])
         
         for rule in artifact_rules:
+            if rule.get('action'):
+                continue
+                
             if self._rule_matches_match(rule, match):
-                # Actualizar propiedades del artifact
+                # Actualizar propiedades del artifact (formato 'properties')
                 for prop_update in rule.get('properties', []):
                     path = prop_update.get('path')
                     new_value = prop_update.get('new_value')
@@ -695,6 +892,22 @@ class UpdateEngine:
                         'type': 'artifact_property',
                         'artifact': match.name,
                         'property': path,
+                        'old': old_value,
+                        'new': new_value
+                    })
+                
+                # Actualizar campos del artifact (formato 'fields')
+                for field_update in rule.get('fields', []):
+                    path = field_update.get('path')
+                    new_value = field_update.get('new_value')
+                    old_value = self._get_nested_value(artifact, path)
+                    
+                    self._set_nested_value(artifact, path, new_value)
+                    
+                    self.changes.append({
+                        'type': 'artifact_field',
+                        'artifact': match.name,
+                        'field': path,
                         'old': old_value,
                         'new': new_value
                     })

@@ -133,6 +133,36 @@ Después: Build → Security Check → Deploy → Producción
 
 ---
 
+### **pipe_cd_insert_stage_with_n_tasks.yaml** 🆕
+Insertar un nuevo stage con N tasks, configurar triggers y artifact branch filters, actualizar dependencias y reordenar por rank.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 21
+# Ingresar: scm/templates/pipe_cd_insert_stage_with_n_tasks.yaml
+```
+
+**Ejemplo**:
+```
+Antes:  Staging → Producción
+Después: Staging → Pre Deploy Validation → Producción
+
+- Pre Deploy Validation contiene 3 tasks (Unit Tests, Security Scan, Smoke Tests)
+- Producción depende de Pre Deploy Validation (no de Staging)
+- Artifact trigger configurado con branch filter: refs/heads/main
+- Artifact branch filter actualizado a "main"
+```
+
+**Características**:
+- Stage con N tasks escalable (copiar y pegar bloques de task)
+- Triggers: `action: add` / `update` / `remove` con `branchFilters`
+- Artifact filters: actualizar `definitionReference.branch.id` y `.name`
+- Reordenamiento por `rank`
+- Dependencias entre stages actualizadas automáticamente
+
+---
+
 ## 🚀 Cómo Usar
 
 ### **Paso 1: Personalizar Template**
@@ -215,6 +245,6 @@ Para más información sobre el formato de templates, consulta:
 
 ---
 
-**Versión**: 1.0  
-**Última actualización**: 2026-07-13  
+**Versión**: 1.1  
+**Última actualización**: 2026-08-07  
 **Estado**: ✅ Listos para usar

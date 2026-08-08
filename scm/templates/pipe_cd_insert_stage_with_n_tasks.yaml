@@ -1,0 +1,208 @@
+metadata:
+  name: "Insertar stage con N tasks, triggers y artifact filters"
+  version: "2.1"
+  description: "Agrega un nuevo stage con multiples tasks, configura triggers y artifact branch filters, actualiza dependencias y reordena por rank"
+  comment: |
+    Template generico para insertar un nuevo stage con N tareas,
+    triggers y artifact filters.
+
+    Usa $auto para resolver dinamicamente el nombre del artifact
+    del pipeline (primer Build o Git artifact encontrado),
+    evitando hardcodear el alias del artifact.
+
+    Cambios realizados:
+    1. Nuevo stage: "Pre Deploy Validation" (entre Staging y Produccion)
+    2. El stage contiene 3 tasks de ejemplo (escalable a N):
+       - Task 1: Run Unit Tests
+       - Task 2: Security Scan
+       - Task 3: Smoke Tests
+    3. Produccion depende del nuevo stage (no de Staging directamente)
+    4. Reordenamiento por rank:
+       - Staging:     rank 1
+       - Pre Deploy Validation: rank 2
+       - Produccion:  rank 3
+    5. Artifact trigger configurado con branch filter (refs/heads/main)
+    6. Artifact filter actualizado para usar branch "main"
+
+    Para agregar mas tasks, simplemente anade mas elementos a la lista
+    `definition.deployPhases[0].deploymentInput.tasks`.
+
+    Para cambiar la posicion del stage, modifica:
+    - position: "between" | "after" | "before" | "start" | "end"
+    - after_stage / before_stage: stage de referencia
+
+    Para configurar triggers:
+    - update.triggers con action: "add" | "update" | "remove"
+    - triggerType: "artifactSource" (deploy on new artifact) | "schedule"
+    - triggerConfiguration.artifactName: "$auto" resuelve al primer
+      Build artifact del pipeline. "$auto:Git" resuelve al primer Git artifact.
+    - triggerConfiguration.branchFilters: lista de branch patterns
+      Formato Azure DevOps: "+refs/heads/main" (con prefijo +)
+
+    Para actualizar artifact branch filters:
+    - update.artifacts sin campo "name" aplica a todos los artifacts
+      encontrados por search.artifacts
+    - fields: path "definitionReference.branch.id"
+      y "definitionReference.branch.name"
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-07
+  author: "Harold Adrian"
+  created_at: "2026-08-07"
+
+search:
+  # Stages existentes que deben estar presentes en el pipeline
+  stages:
+    - name: "Staging"
+    - name: "Producción"
+  # Buscar artifacts por tipo (wildcard "*" en alias = cualquier artifact)
+  artifacts:
+    - alias: "*"
+      type: "Build"
+
+update:
+  # ═══════════════════════════════════════════════════════════
+  # 1. INSERTAR NUEVO STAGE CON N TASKS
+  # ═══════════════════════════════════════════════════════════
+  stages:
+    - name: "Pre Deploy Validation"
+      action: "add"
+      position: "between"
+      after_stage: "Staging"
+      before_stage: "Producción"
+      definition:
+        id: 3
+        name: "Pre Deploy Validation"
+        rank: 2
+        deployPhases:
+          - id: 1
+            name: "Validation Tasks"
+            deploymentInput:
+              tasks:
+                # ── Task 1: Unit Tests ──
+                - displayName: "Run Unit Tests"
+                  enabled: true
+                  alwaysRun: false
+                  continueOnError: false
+                  timeoutInMinutes: 10
+                  task:
+                    id: "6C731787-BC2C-4436-8290-A81493FFEA35"
+                    versionSpec: "3.*"
+                    definitionType: "task"
+                  inputs:
+                    script: |
+                      #!/bin/bash
+                      echo "Running unit tests..."
+                      echo "Executing test suite..."
+                      echo "All unit tests passed!"
+
+                # ── Task 2: Security Scan ──
+                - displayName: "Security Scan"
+                  enabled: true
+                  alwaysRun: false
+                  continueOnError: false
+                  timeoutInMinutes: 5
+                  task:
+                    id: "6C731787-BC2C-4436-8290-A81493FFEA35"
+                    versionSpec: "3.*"
+                    definitionType: "task"
+                  inputs:
+                    script: |
+                      #!/bin/bash
+                      echo "Running security scan..."
+                      echo "Scanning Docker image vulnerabilities..."
+                      echo "Validating Kubernetes policies..."
+                      echo "Security scan completed!"
+
+                # ── Task 3: Smoke Tests ──
+                - displayName: "Smoke Tests"
+                  enabled: true
+                  alwaysRun: false
+                  continueOnError: false
+                  timeoutInMinutes: 5
+                  task:
+                    id: "6C731787-BC2C-4436-8290-A81493FFEA35"
+                    versionSpec: "3.*"
+                    definitionType: "task"
+                  inputs:
+                    script: |
+                      #!/bin/bash
+                      echo "Running smoke tests..."
+                      curl -f https://api.staging.com/health || exit 1
+                      curl -f https://api.staging.com/version || exit 1
+                      echo "All smoke tests passed!"
+
+                # ── Para agregar mas tasks, copia el bloque anterior ──
+                # ── y cambia displayName, script, timeoutInMinutes ──
+
+        # Pre-deployment: Aprobacion automatica de Staging
+        preDeployApprovals:
+          approvals:
+            - rank: 1
+              isAutomated: true
+              isNotificationOn: false
+              approver:
+                displayName: "Automated"
+
+        # Post-deployment: Sin aprobaciones adicionales
+        postDeployApprovals:
+          approvals: []
+
+    # ═══════════════════════════════════════════════════════════
+    # 2. REORDENAR STAGES EXISTENTES POR RANK
+    # ═══════════════════════════════════════════════════════════
+    - name: "Staging"
+      rank: 1
+
+    - name: "Producción"
+      rank: 3
+      # ═══════════════════════════════════════════════════════════
+      # 3. ACTUALIZAR DEPENDENCIAS: Producción depende del nuevo stage
+      # ═══════════════════════════════════════════════════════════
+      fields:
+        - path: "preDeployApprovals.approvals[0].approver.displayName"
+          old_value: "Staging"
+          new_value: "Pre Deploy Validation"
+
+  # ═══════════════════════════════════════════════════════════
+  # 4. CONFIGURAR TRIGGERS (Artifact Trigger con Branch Filter)
+  # ═══════════════════════════════════════════════════════════
+  triggers:
+    # Agregar artifact trigger: deploy automatico cuando llega artifact de main
+    # artifactName: "$auto" se resuelve dinamicamente al primer Build artifact del pipeline
+    - action: "add"
+      triggerType: "artifactSource"
+      triggerConfiguration:
+        triggerType: "artifactSource"
+        artifactName: "$auto"
+        branchFilters:
+          - "+refs/heads/main"
+        useDefaultBranch: false
+
+    # Actualizar artifact trigger existente (si ya existe uno)
+    # artifactName: "$auto" se resuelve dinamicamente al primer Build artifact del pipeline
+    - action: "update"
+      triggerType: "artifactSource"
+      artifactName: "$auto"
+      fields:
+        - path: "branchFilters"
+          new_value:
+            - "+refs/heads/main"
+        - path: "useDefaultBranch"
+          new_value: false
+
+  # ═══════════════════════════════════════════════════════════
+  # 5. ACTUALIZAR ARTIFACT BRANCH FILTER
+  # ═══════════════════════════════════════════════════════════
+  # Sin campo "name": aplica a todos los artifacts encontrados por search.artifacts
+  artifacts:
+    - fields:
+        # Cambiar branch del artifact source
+        - path: "definitionReference.branch.id"
+          new_value: "refs/heads/main"
+        - path: "definitionReference.branch.name"
+          new_value: "main"
+
+options:
+  dry_run: false
+  rollback_on_error: true

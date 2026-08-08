@@ -40,12 +40,13 @@ class SearchEngine:
         # Buscar stages
         self.matches.extend(self.search_stages(self.search_rules.get('stages', [])))
         
-        # Buscar tasks, variables y artifacts solo si hay coincidencias de stages
+        # Buscar tasks, variables, artifacts y triggers solo si hay coincidencias de stages
         # o si no se especificó exact_match
         if self.matches or not self.search_rules.get('exact_match', False):
             self.matches.extend(self.search_tasks(self.search_rules.get('tasks', [])))
             self.matches.extend(self.search_variables(self.search_rules.get('variables', [])))
             self.matches.extend(self.search_artifacts(self.search_rules.get('artifacts', [])))
+            self.matches.extend(self.search_triggers(self.search_rules.get('triggers', [])))
         
         return self.matches
     
@@ -180,6 +181,68 @@ class SearchEngine:
                     break
         
         return matches
+    
+    def search_triggers(self, trigger_criteria: List[Dict]) -> List[Match]:
+        """
+        Buscar triggers por criterios en la definicion de release.
+        
+        Azure DevOps almacena triggers en definition.triggers[] con:
+          - triggerType: "artifactSource" | "schedule" | "sourcePullRequest"
+          - triggerConfiguration: config del trigger (branchFilters, artifactName, etc.)
+        
+        Args:
+            trigger_criteria: Lista de criterios de busqueda
+            
+        Returns:
+            Lista de coincidencias
+        """
+        matches = []
+        
+        triggers = self.definition.get('triggers', [])
+        
+        for trig_idx, trigger in enumerate(triggers):
+            trig_type = trigger.get('triggerType', '')
+            
+            for criteria in trigger_criteria:
+                if self._trigger_matches(trigger, criteria):
+                    matches.append(Match(
+                        type='trigger',
+                        name=trig_type,
+                        location=f"triggers[{trig_idx}]",
+                        object=trigger
+                    ))
+                    break
+        
+        return matches
+    
+    def _trigger_matches(self, trigger: Dict, criteria: Dict) -> bool:
+        """
+        Verificar si trigger coincide con criterios
+        
+        Args:
+            trigger: Objeto trigger
+            criteria: Criterios de busqueda
+            
+        Returns:
+            True si coincide
+        """
+        # Verificar triggerType
+        trig_type = trigger.get('triggerType', '')
+        criteria_type = criteria.get('triggerType', '')
+        
+        if criteria_type and trig_type != criteria_type:
+            return False
+        
+        # Verificar artifactName dentro de triggerConfiguration
+        trig_config = trigger.get('triggerConfiguration', {})
+        criteria_artifact = criteria.get('artifactName', '')
+        
+        if criteria_artifact:
+            trig_artifact = trig_config.get('artifactName', '')
+            if trig_artifact != criteria_artifact:
+                return False
+        
+        return True
     
     def _matches_pattern(self, text: str, pattern: str) -> bool:
         """

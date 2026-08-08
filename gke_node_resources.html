@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GKE Node Resources Monitor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .header h1 { margin: 0 0 10px 0; font-size: 24px; }
+        .header p { margin: 0; opacity: 0.9; font-size: 14px; }
+        .cluster {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .cluster h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover { background: #f8f9fa; }
+        .cpu-high { color: #dc3545; font-weight: bold; }
+        .cpu-med { color: #ffc107; font-weight: bold; }
+        .cpu-low { color: #28a745; font-weight: bold; }
+        .mem-high { color: #dc3545; font-weight: bold; }
+        .mem-med { color: #ffc107; font-weight: bold; }
+        .mem-low { color: #28a745; font-weight: bold; }
+        .no-data {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>☸️ GKE Node Resources Monitor</h1>
+        <p>Proyecto: <strong>cpl-cs-csc-stag-11042025</strong> | Generado: 2026-08-06 20:54:26</p>
+    </div>
+    <div class="cluster">
+        <h2>Cluster: gke-cs-csc-stag-01</h2>
+        <p class="no-data">No se pudieron obtener datos de este cluster</p>
+    </div>
+    <div class="cluster">
+        <h2>Cluster: us-central1-cpr-cs-csc-comp-0e2a09bc-gke</h2>
+        <p class="no-data">No se pudieron obtener datos de este cluster</p>
+    </div>
+</body>
+</html>
