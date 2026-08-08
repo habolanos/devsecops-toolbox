@@ -497,6 +497,20 @@ class TestSetupWizard(unittest.TestCase):
         wizard = SetupWizard(self.config_path, self.template_path, console=MagicMock())
         self.assertFalse(wizard.should_run())
 
+    def test_should_not_run_with_optional_placeholders(self):
+        """Config con placeholders solo en secciones opcionales (azure, aws) no dispara wizard."""
+        config_with_optional_placeholders = {
+            "azdo": {"organization_url": "https://dev.azure.com/org", "project": "proj", "pat": "real_pat"},
+            "gcp": {"project_id": "real-project"},
+            "global": {"output_dir": "outcome"},
+            "azure": {"subscription_id": "<TU_SUB>", "tenant_id": "<TU_TENANT>"},
+            "aws": {"profile": "<TU_PROFILE>"},
+        }
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            json.dump(config_with_optional_placeholders, f)
+        wizard = SetupWizard(self.config_path, self.template_path, console=MagicMock())
+        self.assertFalse(wizard.should_run())
+
     def test_should_run_invalid_json(self):
         with open(self.config_path, "w", encoding="utf-8") as f:
             f.write("invalid json {{{")

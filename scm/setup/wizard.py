@@ -81,7 +81,11 @@ class SetupWizard:
             return {}
 
     def should_run(self) -> bool:
-        """True si config.json no existe o contiene placeholders sin hidratar.
+        """True si config.json no existe o tiene placeholders en secciones requeridas.
+
+        Solo revisa las secciones requeridas (azdo, gcp, global). Si el usuario
+        tiene placeholders en secciones opcionales (azure, aws, dashboard), el
+        wizard NO se ejecuta.
 
         Returns:
             bool: True si el wizard debe ejecutarse.
@@ -92,9 +96,20 @@ class SetupWizard:
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            return ConfigValidator.has_placeholders(config)
         except (json.JSONDecodeError, Exception):
             return True
+
+        for section in ConfigValidator.REQUIRED_SECTIONS:
+            section_data = config.get(section, {})
+            if isinstance(section_data, dict):
+                for field in ConfigValidator.SECTION_REQUIRED_FIELDS.get(section, []):
+                    value = str(section_data.get(field, ""))
+                    if not value or ConfigValidator.PLACEHOLDER_PATTERN.search(value):
+                        return True
+            else:
+                return True
+
+        return False
 
     def run(self) -> bool:
         """Ejecuta el wizard completo.
@@ -104,11 +119,13 @@ class SetupWizard:
         """
         self._show_welcome()
 
+        existing = self._load_existing_config() or {}
         config = copy.deepcopy(self.template)
+        config.update(copy.deepcopy(existing))
         precheck_results: Dict[str, Any] = {}
 
         for step_cls in self.STEP_CLASSES:
-            step = step_cls(self.console, self.template)
+            step = step_cls(self.console, config)
 
             if step.optional and step.ask_skip():
                 if self.console and RICH_AVAILABLE:
