@@ -901,7 +901,25 @@ Scripts shell **agnósticos de cloud provider** que funcionan con cualquier clus
 
 ## ⚙️ Configuración
 
-### Configuración Inicial
+### Configuración Inicial (Wizard Automático)
+
+Desde la versión 1.7.23, **la primera ejecución del toolbox lanza un wizard interactivo** que detecta CLIs instalados (gcloud, az, aws), sesiones activas, y hidrata `config.json` automáticamente:
+
+```bash
+# Ejecutar el launcher (wizard aparece automáticamente si config.json no existe)
+python scm/main.py
+```
+
+El wizard:
+- **Detecta** gcloud/az/aws instalados y sesiones activas
+- **Sugiere** project_id (GCP), subscription (Azure), profile (AWS) desde la sesión activa
+- **Hidrata** AZDO (org, project, pat), GCP, Azure, AWS, Dashboard y Global
+- **Valida** que no queden placeholders `<TU_*>` sin hidratar
+- **Guarda** `config.json` limpio (sin keys de metadata `_info`)
+
+Pasos opcionales (Azure, AWS, Dashboard) se pueden skip con Enter.
+
+### Configuración Manual (sin wizard)
 
 ```bash
 # 1. Copiar el template
@@ -984,7 +1002,8 @@ docker-compose exec toolbox-dev pytest scm/tests/ -v
 ```
 devsecops-toolbox/
 ├── scm/                          # Código fuente principal
-│   ├── main.py                   # Launcher principal
+│   ├── main.py                   # Launcher principal (ejecuta wizard en 1a ejecucion)
+│   ├── setup/                    # Wizard de configuracion inicial
 │   ├── gcp/                      # Herramientas GCP
 │   ├── azdo/                     # Herramientas AZDO (27 herramientas)
 │   │   ├── azdo_pipeline_history.py  # Tool 26: Evolución histórica de Pipeline CD (HTML interactivo)

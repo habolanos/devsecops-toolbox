@@ -885,8 +885,33 @@ def show_info():
     input("\nPresione Enter para continuar...")
 
 
+def _run_setup_wizard_if_needed():
+    """Ejecuta el wizard de configuracion si config.json no existe o esta incompleto."""
+    try:
+        from setup.wizard import SetupWizard
+        wizard = SetupWizard(CONFIG_FILE, CONFIG_TEMPLATE, console=console if RICH_AVAILABLE else None)
+        if wizard.should_run():
+            if RICH_AVAILABLE and console:
+                console.print("[cyan]🔧 Primera ejecucion detectada. Iniciando wizard de configuracion...[/cyan]\n")
+            else:
+                print("Primera ejecucion detectada. Iniciando wizard de configuracion...\n")
+            wizard.run()
+            global _config
+            _config = None  # Forzar recarga del config recien creado
+    except ImportError:
+        pass  # setup package no disponible, continuar sin wizard
+    except Exception as e:
+        if RICH_AVAILABLE and console:
+            console.print(f"[yellow]Wizard omitido: {e}[/yellow]")
+        else:
+            print(f"Wizard omitido: {e}")
+
+
 def main():
     """Función principal del menú."""
+    # Ejecutar wizard de configuracion en primera ejecucion
+    _run_setup_wizard_if_needed()
+    
     while True:
         try:
             print_header()

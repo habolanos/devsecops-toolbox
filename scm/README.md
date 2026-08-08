@@ -7,6 +7,7 @@ Punto de entrada unificado para herramientas de múltiples plataformas cloud y D
 | Directorio/Archivo | Descripción |
 |--------------------|-------------|
 | `main.py` | Launcher principal - punto de entrada unificado |
+| `setup/` | Wizard de configuracion inicial (primera ejecucion) |
 | `gcp/` | Herramientas SRE para Google Cloud Platform |
 | `azdo/` | Herramientas para Azure DevOps |
 | `aws/` | Herramientas DevSecOps para Amazon Web Services |
