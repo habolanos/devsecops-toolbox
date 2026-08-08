@@ -533,6 +533,47 @@ python scm/main.py
 
 ---
 
+#### **7. pipe_cd_move_to_folder.yaml** 📁
+Mover pipelines CD a otra carpeta en Azure DevOps.
+
+**Caso de uso**: Reorganizar pipelines moviéndolos a una carpeta de decomiso o nueva estructura
+
+Soporta el placeholder `{current}` que se reemplaza por el path actual del pipeline, permitiendo mover sin conocer el path previo:
+
+```yaml
+metadata:
+  name: "Mover Pipeline CD a otra carpeta"
+  comment: "Pipeline movido a nueva carpeta via pipeline_updater"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "move"
+    path: '\Decomiso{current}'
+```
+
+**Cómo funciona `{current}`**:
+- Si el pipeline está en `\GCP\Proyecto WMS\Equipo WMS` → resultado: `\Decomiso\GCP\Proyecto WMS\Equipo WMS`
+- Si el pipeline está en `\Other\Folder` → resultado: `\Decomiso\Other\Folder`
+- Si el pipeline no tiene path (vacío) → resultado: `\Decomiso`
+
+**También soporta path absoluto** (sin `{current}`):
+```yaml
+    path: '\Decomiso\GCP\Proyecto WMS\Equipo WMS'
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_move_to_folder.yaml
+```
+
+---
+
 ### 🚀 Cómo Usar Templates
 
 #### **Paso 1: Personalizar Template**

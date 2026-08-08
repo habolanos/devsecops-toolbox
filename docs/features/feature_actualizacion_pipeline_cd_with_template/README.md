@@ -247,6 +247,28 @@ update:
       rank: 3
 ```
 
+### 5. Mover Pipeline a Otra Carpeta
+```yaml
+metadata:
+  name: "Mover Pipeline CD a otra carpeta"
+  comment: "Pipeline movido a nueva carpeta via pipeline_updater"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "move"
+    path: '\Decomiso{current}'
+```
+
+El placeholder `{current}` se reemplaza por el path actual del pipeline:
+- `\GCP\Proyecto WMS` → `\Decomiso\GCP\Proyecto WMS`
+- Path vacío → `\Decomiso`
+
+También soporta path absoluto: `path: '\Decomiso\GCP\Proyecto WMS'`
+
 ---
 
 ## 🔒 Seguridad
@@ -340,6 +362,7 @@ devsecops-toolbox/
 │   │   ├── pipe_cd_update_azure.yaml
 │   │   ├── pipe_cd_update_script.yaml
 │   │   ├── pipe_cd_update_migracion.yaml
+│   │   ├── pipe_cd_move_to_folder.yaml
 │   │   └── README.md
 │   │
 │   ├── azdo/

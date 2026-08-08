@@ -414,6 +414,79 @@ search:
 
 ---
 
-**Guía de Actualización de Pipelines CD v1.1.0**  
-**Última actualización:** 24 de Julio de 2026  
-**Próxima revisión:** 24 de Octubre de 2026
+---
+
+## 🆕 Mover Pipelines CD entre Carpetas (v1.2.0)
+
+### Acción `move` en Pipeline Updater
+
+**Fecha:** 8 de Agosto de 2026
+
+El Pipeline Updater ahora soporta la acción `move` para reubicar pipelines CD entre carpetas de Azure DevOps mediante templates YAML.
+
+#### Template de ejemplo
+
+```yaml
+metadata:
+  name: "Mover Pipeline CD a otra carpeta"
+  comment: "Pipeline movido a nueva carpeta via pipeline_updater"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "move"
+    path: '\Decomiso{current}'
+```
+
+#### Placeholder `{current}`
+
+El placeholder `{current}` se reemplaza por el path actual del pipeline, permitiendo mover sin conocer el path previo:
+
+| Path actual | Template path | Resultado |
+|-------------|---------------|-----------|
+| `\GCP\Proyecto WMS\Equipo WMS` | `\Decomiso{current}` | `\Decomiso\GCP\Proyecto WMS\Equipo WMS` |
+| `\Other\Folder` | `\Decomiso{current}` | `\Decomiso\Other\Folder` |
+| (vacío) | `\Decomiso{current}` | `\Decomiso` |
+
+#### Path absoluto (sin `{current}`)
+
+También se puede especificar un path fijo:
+
+```yaml
+update:
+  pipeline:
+    action: "move"
+    path: '\Decomiso\GCP\Proyecto WMS\Equipo WMS'
+```
+
+#### Características
+
+- **Snapshot automático**: se crea antes de mover para rollback
+- **Auditoría**: el comentario del template se registra en el historial del release
+- **Validación**: si falta `path`, se genera error antes de ejecutar
+- **Búsqueda**: el template busca coincidencias para validar que el pipeline aplica
+
+#### Uso
+
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_move_to_folder.yaml
+```
+
+#### Pruebas
+
+27 tests unitarios en `test_template_move_to_folder.py` cubren:
+- Carga del template real desde disco
+- Parser: `get_pipeline_action()` y `get_pipeline_path()`
+- Validator: acepta templates con `action: move`
+- Flujo `ParallelExecutor`: resolución de `{current}`, path absoluto, snapshot, error sin path, old_path vacío, diferentes paths actuales
+
+---
+
+**Guía de Actualización de Pipelines CD v1.2.0**  
+**Última actualización:** 8 de Agosto de 2026  
+**Próxima revisión:** 8 de Noviembre de 2026

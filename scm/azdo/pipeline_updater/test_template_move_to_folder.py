@@ -347,5 +347,101 @@ class TestParallelExecutorMoveFlow(unittest.TestCase):
         self.assertEqual(result.changes[0]['new_path'], '\\Decomiso')
 
 
+class TestMoveTemplateRealFile(unittest.TestCase):
+    """Tests end-to-end cargando el template real pipe_cd_move_to_folder.yaml"""
+
+    def setUp(self):
+        template_path = str(TEMPLATES_DIR / "pipe_cd_move_to_folder.yaml")
+        self.parser = TemplateParser(template_path)
+
+    def _mock_azdo_client(self, definition_id=600, old_path='\\GCP\\Proyecto WMS\\Equipo WMS'):
+        client = MagicMock()
+        client.get_release_definition.return_value = {
+            'id': definition_id,
+            'name': 'Pipeline CD Real Template Test',
+            'revision': 3,
+            'path': old_path,
+            'environments': [
+                {'id': 1, 'name': 'Production', 'rank': 1}
+            ]
+        }
+        client.create_snapshot.return_value = f'snapshot_{definition_id}_1234567890'
+        client.update_release_definition.return_value = True
+        return client
+
+    def test_real_template_loads(self):
+        """El template real carga correctamente desde disco"""
+        self.assertEqual(self.parser.get_pipeline_action(), 'move')
+        self.assertIsNotNone(self.parser.get_pipeline_path())
+        self.assertIn('{current}', self.parser.get_pipeline_path())
+
+    def test_real_template_metadata(self):
+        """El template real tiene metadata correcta"""
+        meta = self.parser.get_metadata()
+        self.assertEqual(meta.name, 'Mover Pipeline CD a otra carpeta')
+        self.assertEqual(meta.version, '1.0')
+
+    def test_real_template_validator_passes(self):
+        """El template real pasa validacion"""
+        template = load_template("pipe_cd_move_to_folder.yaml")
+        validator = TemplateValidator(template)
+        self.assertTrue(validator.validate())
+        self.assertEqual(validator.get_errors(), [])
+
+    def test_real_template_move_resolves_current(self):
+        """El template real resuelve {current} al path del pipeline via ParallelExecutor"""
+        client = self._mock_azdo_client(old_path='\\GCP\\Proyecto WMS\\Equipo WMS')
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(600, self.parser, client)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.changes[0]['type'], 'pipeline_move')
+        self.assertEqual(result.changes[0]['old_path'], '\\GCP\\Proyecto WMS\\Equipo WMS')
+        self.assertEqual(result.changes[0]['new_path'], '\\Decomiso\\GCP\\Proyecto WMS\\Equipo WMS')
+
+    def test_real_template_move_different_path(self):
+        """El template real resuelve {current} con un path actual diferente"""
+        client = self._mock_azdo_client(old_path='\\Projects\\Legacy\\App1')
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(600, self.parser, client)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.changes[0]['old_path'], '\\Projects\\Legacy\\App1')
+        self.assertEqual(result.changes[0]['new_path'], '\\Decomiso\\Projects\\Legacy\\App1')
+
+    def test_real_template_move_empty_path(self):
+        """El template real con path vacio resulta en solo el prefijo \\Decomiso"""
+        client = self._mock_azdo_client(old_path='')
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(600, self.parser, client)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.changes[0]['new_path'], '\\Decomiso')
+
+    def test_real_template_move_creates_snapshot(self):
+        """El template real crea snapshot antes de mover"""
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(600, self.parser, client)
+
+        client.create_snapshot.assert_called_once()
+        self.assertIn('snapshot', result.snapshot_id)
+
+    def test_real_template_move_sends_modified_definition(self):
+        """El template real envia la definicion con path modificado via PUT"""
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        executor._process_pipeline(600, self.parser, client)
+
+        client.update_release_definition.assert_called_once()
+        sent_body = client.update_release_definition.call_args.args[1]
+        self.assertEqual(sent_body['path'], '\\Decomiso\\GCP\\Proyecto WMS\\Equipo WMS')
+
+
 if __name__ == '__main__':
     unittest.main()
