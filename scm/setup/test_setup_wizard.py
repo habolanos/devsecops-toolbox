@@ -450,6 +450,43 @@ class TestPrecheckStep(unittest.TestCase):
         self.assertFalse(session)
         self.assertEqual(detail, "Timeout")
 
+    def test_try_auto_login_user_declines(self):
+        step = PrecheckStep(self.console, self.template)
+        step.confirm = MagicMock(return_value=False)
+        session, detail = step._try_auto_login(
+            "gcloud", "GCP", ["gcloud", "auth", "login"], ["gcloud", "auth", "list"]
+        )
+        self.assertFalse(session)
+        self.assertEqual(detail, "No autenticado")
+
+    @patch('setup.steps.precheck_step.subprocess.run')
+    def test_try_auto_login_success(self, mock_run):
+        step = PrecheckStep(self.console, self.template)
+        step.confirm = MagicMock(return_value=True)
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=""),  # login command
+            MagicMock(returncode=0, stdout="user@example.com"),  # session check
+        ]
+        session, detail = step._try_auto_login(
+            "gcloud", "GCP", ["gcloud", "auth", "login"], ["gcloud", "auth", "list"]
+        )
+        self.assertTrue(session)
+        self.assertEqual(detail, "user@example.com")
+
+    @patch('setup.steps.precheck_step.subprocess.run')
+    def test_try_auto_login_fail(self, mock_run):
+        step = PrecheckStep(self.console, self.template)
+        step.confirm = MagicMock(return_value=True)
+        mock_run.side_effect = [
+            MagicMock(returncode=1, stdout=""),  # login command fails
+            MagicMock(returncode=1, stdout=""),  # session check still fails
+        ]
+        session, detail = step._try_auto_login(
+            "gcloud", "GCP", ["gcloud", "auth", "login"], ["gcloud", "auth", "list"]
+        )
+        self.assertFalse(session)
+        self.assertEqual(detail, "Login fallido")
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SETUP WIZARD TESTS
