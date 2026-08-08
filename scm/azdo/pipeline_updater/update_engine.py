@@ -4,6 +4,7 @@ Motor de actualización para Pipeline Updater
 
 import copy
 import fnmatch
+import re
 from typing import Dict, List, Any
 from .models import Match, TemplateOptions
 
@@ -95,6 +96,8 @@ class UpdateEngine:
         for rule in stage_rules:
             stage_name = rule.get('name', '')
             rank = rule.get('rank')
+            if rank is None and rule.get('definition'):
+                rank = rule['definition'].get('rank')
             if stage_name and rank is not None:
                 stage_map[stage_name] = rank
         
@@ -844,7 +847,7 @@ class UpdateEngine:
         
         for rule in stage_rules:
             if self._rule_matches_match(rule, match):
-                # Actualizar propiedades del stage
+                # Actualizar propiedades del stage (formato 'properties')
                 for prop_update in rule.get('properties', []):
                     path = prop_update.get('path')
                     new_value = prop_update.get('new_value')
@@ -856,6 +859,22 @@ class UpdateEngine:
                         'type': 'stage_property',
                         'stage': match.name,
                         'property': path,
+                        'old': old_value,
+                        'new': new_value
+                    })
+                
+                # Actualizar campos del stage (formato 'fields')
+                for field_update in rule.get('fields', []):
+                    path = field_update.get('path')
+                    new_value = field_update.get('new_value')
+                    old_value = self._get_nested_value(stage, path)
+                    
+                    self._set_nested_value(stage, path, new_value)
+                    
+                    self.changes.append({
+                        'type': 'stage_field',
+                        'stage': match.name,
+                        'field': path,
                         'old': old_value,
                         'new': new_value
                     })
@@ -934,6 +953,9 @@ class UpdateEngine:
         """
         Obtener valor en ruta anidada
         
+        Soporta indices de array con notacion key[index]:
+          ej: "preDeployApprovals.approvals[0].approver.displayName"
+        
         Args:
             obj: Diccionario
             path: Ruta (ej: "inputs.imageRepository")
@@ -945,8 +967,50 @@ class UpdateEngine:
         current = obj
         
         for key in keys:
+            current = self._navigate_key(current, key)
+            if current is None:
+                return None
+        
+        return current
+    
+    @staticmethod
+    def _navigate_key(current: Any, key: str) -> Any:
+        """
+        Navegar una clave que puede contener un indice de array.
+        
+        Formatos soportados:
+          - "key" -> dict[key]
+          - "key[0]" -> dict[key][0]
+          - "key[0][1]" -> dict[key][0][1]
+        
+        Args:
+            current: Objeto actual (dict o list)
+            key: Clave a navegar
+        
+        Returns:
+            Valor en la ruta, o None si no existe
+        """
+        match = re.match(r'^(\w+)((?:\[\d+\])*)$', key)
+        if not match:
             if isinstance(current, dict):
-                current = current.get(key)
+                return current.get(key)
+            return None
+        
+        base_key = match.group(1)
+        indices = match.group(2)
+        
+        if isinstance(current, dict):
+            current = current.get(base_key)
+        else:
+            return None
+        
+        if current is None:
+            return None
+        
+        for idx_match in re.finditer(r'\[(\d+)\]', indices):
+            idx = int(idx_match.group(1))
+            if isinstance(current, list) and 0 <= idx < len(current):
+                current = current[idx]
             else:
                 return None
         
@@ -955,6 +1019,9 @@ class UpdateEngine:
     def _set_nested_value(self, obj: Dict, path: str, value: Any):
         """
         Establecer valor en ruta anidada
+        
+        Soporta indices de array con notacion key[index]:
+          ej: "preDeployApprovals.approvals[0].approver.displayName"
         
         Args:
             obj: Diccionario
@@ -965,11 +1032,88 @@ class UpdateEngine:
         current = obj
         
         for key in keys[:-1]:
+            current = self._navigate_and_create(current, key)
+        
+        self._navigate_and_set(current, keys[-1], value)
+    
+    @staticmethod
+    def _navigate_and_create(current: Any, key: str) -> Any:
+        """
+        Navegar una clave que puede contener indices de array,
+        creando estructuras intermedias si no existen.
+        """
+        match = re.match(r'^(\w+)((?:\[\d+\])*)$', key)
+        if not match:
+            if not isinstance(current, dict):
+                return current
             if key not in current:
                 current[key] = {}
-            current = current[key]
+            return current[key]
         
-        current[keys[-1]] = value
+        base_key = match.group(1)
+        indices = match.group(2)
+        
+        if not isinstance(current, dict):
+            return current
+        if base_key not in current:
+            current[base_key] = [] if indices else {}
+        
+        current = current[base_key]
+        
+        for idx_match in re.finditer(r'\[(\d+)\]', indices):
+            idx = int(idx_match.group(1))
+            if not isinstance(current, list):
+                return current
+            while len(current) <= idx:
+                current.append({})
+            if not isinstance(current[idx], (dict, list)):
+                current[idx] = {}
+            current = current[idx]
+        
+        return current
+    
+    @staticmethod
+    def _navigate_and_set(current: Any, key: str, value: Any):
+        """
+        Navegar una clave final que puede contener indices de array
+        y establecer el valor.
+        """
+        match = re.match(r'^(\w+)((?:\[\d+\])*)$', key)
+        if not match:
+            if isinstance(current, dict):
+                current[key] = value
+            return
+        
+        base_key = match.group(1)
+        indices = match.group(2)
+        
+        if not indices:
+            if isinstance(current, dict):
+                current[base_key] = value
+            return
+        
+        if not isinstance(current, dict):
+            return
+        if base_key not in current:
+            current[base_key] = []
+        
+        current = current[base_key]
+        
+        idx_matches = list(re.finditer(r'\[(\d+)\]', indices))
+        for i, idx_match in enumerate(idx_matches):
+            idx = int(idx_match.group(1))
+            if not isinstance(current, list):
+                return
+            if i == len(idx_matches) - 1:
+                while len(current) <= idx:
+                    current.append(None)
+                current[idx] = value
+            else:
+                while len(current) <= idx:
+                    current.append({})
+                if not isinstance(current[idx], (dict, list)):
+                    current[idx] = {}
+                current = current[idx]
     
     def get_changes(self) -> List[Dict]:
         """Obtener lista de cambios realizados"""
