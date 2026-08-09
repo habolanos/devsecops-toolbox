@@ -128,14 +128,13 @@ class AzureDevOpsClient:
             
             # Remover campos que no deben enviarse en PUT
             # Azure DevOps es estricto con los campos que acepta
-            # Nota: isDisabled se mantiene si disable=True
+            # Nota: isDisabled NO se remueve nunca — debe preservarse
+            # para no re-activar pipelines que estaban disabled
             fields_to_remove = [
                 '_links', 'url', 'projectReference', 'createdBy', 'createdOn',
                 'modifiedBy', 'modifiedOn', 'isDeleted',
                 'currentRelease', 'badgeUrl', 'lastRelease'
             ]
-            if not disable:
-                fields_to_remove.append('isDisabled')
             
             for field in fields_to_remove:
                 definition_copy.pop(field, None)

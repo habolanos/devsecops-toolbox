@@ -163,6 +163,55 @@ Después: Staging → Pre Deploy Validation → Producción
 
 ---
 
+### **pipe_cd_move_to_folder.yaml** 🆕
+Mover pipelines CD a otra carpeta dentro del proyecto de Azure DevOps.
+
+Soporta el placeholder `{current}` para mover preservando el path relativo.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 21
+# Ingresar: scm/templates/pipe_cd_move_to_folder.yaml
+```
+
+**Ejemplo**:
+```
+path: '\Decomiso{current}'
+# Si el path actual es \GCP\Proyecto WMS
+# Resultado: \Decomiso\GCP\Proyecto WMS
+```
+
+---
+
+### **pipe_cd_autosort_stages.yaml** 🆕
+Auto-ordenar stages numericos alfanumericamente, manteniendo fijos los stages no numericos.
+
+**Comportamiento**:
+1. Los stages en `fixed_stages` mantienen su posicion original
+2. Los stages que coinciden con `sort_pattern` (default: empiezan con numero) se ordenan alfanumericamente
+3. Todos los ranks se renumeran consecutivamente (1..N)
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 21
+# Ingresar: scm/templates/pipe_cd_autosort_stages.yaml
+```
+
+**Ejemplo**:
+```
+Antes:  Develop → QA → Production → 03-Laguna → 01-Culiacan → 02-Leon
+Después: Develop → QA → Production → 01-Culiacan → 02-Leon → 03-Laguna
+```
+
+**Opciones configurables**:
+- `fixed_stages`: lista de stages que no se reordenan (default: Develop, QA, Production)
+- `sort_pattern`: regex para identificar stages a ordenar (default: `^\d+`)
+- `sort_order`: `asc` (ascendente) o `desc` (descendente)
+
+---
+
 ## 🚀 Cómo Usar
 
 ### **Paso 1: Personalizar Template**
@@ -245,6 +294,6 @@ Para más información sobre el formato de templates, consulta:
 
 ---
 
-**Versión**: 1.1  
-**Última actualización**: 2026-08-07  
+**Versión**: 1.2  
+**Última actualización**: 2026-08-09  
 **Estado**: ✅ Listos para usar

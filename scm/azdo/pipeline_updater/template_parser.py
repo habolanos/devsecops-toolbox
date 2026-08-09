@@ -107,6 +107,25 @@ class TemplateParser:
             return pipeline.get('path')
         return None
     
+    def get_pipeline_sort_config(self) -> Dict:
+        r"""
+        Obtener configuracion para la accion 'autosort_stages'.
+
+        Returns:
+            Diccionario con:
+              - fixed_stages: lista de nombres de stages fijos (default: [])
+              - sort_pattern: regex para identificar stages a ordenar (default: r'^\d+')
+              - sort_order: 'asc' o 'desc' (default: 'asc')
+        """
+        pipeline = self.update_rules.get('pipeline', {})
+        if not isinstance(pipeline, dict):
+            return {}
+        return {
+            'fixed_stages': pipeline.get('fixed_stages', []),
+            'sort_pattern': pipeline.get('sort_pattern', r'^\d+'),
+            'sort_order': pipeline.get('sort_order', 'asc')
+        }
+
     def get_template_options(self) -> TemplateOptions:
         """Obtener opciones como objeto TemplateOptions"""
         raw_ignore = self.options.get('ignore_variable_groups', [])

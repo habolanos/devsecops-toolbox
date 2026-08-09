@@ -1,0 +1,46 @@
+metadata:
+  name: "Auto-ordenar stages numericos alfanumerico"
+  version: "1.0"
+  description: |
+    Reordena automaticamente los stages que empiezan con numero en orden
+    alfanumerico ascendente, manteniendo fijos los stages no numericos
+    (Develop, QA, Production) en su posicion original.
+  comment: |
+    Auto-ordenamiento de stages numericos
+
+    Comportamiento:
+    1. Los stages listados en fixed_stages mantienen su posicion y orden original.
+    2. Los stages que coinciden con sort_pattern (default: empiezan con numero)
+       se ordenan alfanumericamente de forma ascendente.
+    3. Los stages numericos se colocan despues de los stages fijos.
+    4. Todos los ranks se renumeran consecutivamente (1..N).
+
+    Ejemplo:
+      Antes:  Develop, QA, Production, 03-Laguna, 01-Culiacan, 02-Leon
+      Despues: Develop, QA, Production, 01-Culiacan, 02-Leon, 03-Laguna
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-09
+
+search:
+  # El wildcard "*" coincide con cualquier stage.
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "autosort_stages"
+    # Stages fijos que mantienen su posicion original (no se reordenan)
+    fixed_stages:
+      - "Develop"
+      - "QA"
+      - "Production"
+    # Patron regex para identificar stages a ordenar
+    # Default: stages que empiezan con numero
+    sort_pattern: "^\\d+"
+    # Orden: "asc" (alfanumerico ascendente) o "desc" (descendente)
+    sort_order: "asc"
+
+options:
+  dry_run: false
+  rollback_on_error: true

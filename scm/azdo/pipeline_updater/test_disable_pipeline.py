@@ -183,14 +183,15 @@ class TestDisableReleaseDefinition(unittest.TestCase):
         self.assertIn('isDisabled', sent_body)
 
     @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
-    def test_normal_update_strips_is_disabled(self, mock_put):
-        """update_release_definition sin disable debe remover isDisabled del body"""
+    def test_normal_update_preserves_is_disabled(self, mock_put):
+        """update_release_definition sin disable debe preservar isDisabled del body"""
         mock_put.return_value = self._mock_response(200)
 
         self.client.update_release_definition(2016, self.definition)
 
         sent_body = mock_put.call_args.kwargs['json']
-        self.assertNotIn('isDisabled', sent_body)
+        self.assertIn('isDisabled', sent_body)
+        self.assertEqual(sent_body['isDisabled'], False)
 
     @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
     def test_disable_returns_true_on_200(self, mock_put):
@@ -289,3 +290,66 @@ class TestParallelExecutorDisableFlow(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIsNotNone(result.error)
         self.assertIn('API error', result.error)
+
+
+class TestMovePreservesDisabledState(unittest.TestCase):
+    """Regresion: mover un pipeline disabled no debe re-activarlo"""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        template_path = os.path.join(self.tmpdir, 'move_template.yaml')
+        with open(template_path, 'w', encoding='utf-8') as f:
+            f.write(
+                "metadata:\n"
+                "  name: 'Move test'\n"
+                "  version: '1.0'\n"
+                "search:\n"
+                "  stages:\n"
+                "    - name: '*'\n"
+                "update:\n"
+                "  pipeline:\n"
+                "    action: 'move'\n"
+                "    path: '\\\\NewFolder{current}'\n"
+            )
+        self.parser = TemplateParser(template_path)
+
+    def _mock_azdo_client_disabled_pipeline(self, definition_id=2016):
+        client = MagicMock()
+        client.get_release_definition.return_value = {
+            'id': definition_id,
+            'name': 'Pipeline CD Disabled',
+            'revision': 5,
+            'path': '\\OldFolder',
+            'isDisabled': True,
+            'environments': [
+                {'id': 1, 'name': 'Production', 'rank': 1}
+            ]
+        }
+        client.create_snapshot.return_value = f'snapshot_{definition_id}_1234567890'
+        client.update_release_definition.return_value = True
+        return client
+
+    def test_move_disabled_pipeline_preserves_is_disabled(self):
+        """Mover un pipeline con isDisabled=True debe preservar ese estado en el PUT"""
+        client = self._mock_azdo_client_disabled_pipeline()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2016, self.parser, client)
+
+        self.assertTrue(result.success)
+        client.update_release_definition.assert_called_once()
+        sent_definition = client.update_release_definition.call_args.args[1]
+        self.assertTrue(sent_definition.get('isDisabled', False),
+                        "isDisabled debe preservarse como True al mover un pipeline disabled")
+
+    def test_move_disabled_pipeline_records_move_change(self):
+        """El resultado del move en pipeline disabled debe tener type='pipeline_move'"""
+        client = self._mock_azdo_client_disabled_pipeline()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2016, self.parser, client)
+
+        self.assertEqual(len(result.changes), 1)
+        self.assertEqual(result.changes[0]['type'], 'pipeline_move')
+        self.assertEqual(result.changes[0]['old_path'], '\\OldFolder')
+        self.assertIn('NewFolder', result.changes[0]['new_path'])

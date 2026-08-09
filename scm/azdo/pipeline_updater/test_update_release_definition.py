@@ -85,11 +85,15 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         sent_body = mock_put.call_args.kwargs['json']
         readonly_fields = [
             '_links', 'url', 'projectReference', 'createdBy', 'createdOn',
-            'modifiedBy', 'modifiedOn', 'isDeleted', 'isDisabled',
+            'modifiedBy', 'modifiedOn', 'isDeleted',
             'currentRelease', 'badgeUrl', 'lastRelease'
         ]
         for field in readonly_fields:
             self.assertNotIn(field, sent_body)
+
+        # isDisabled se preserva para no re-activar pipelines disabled
+        self.assertIn('isDisabled', sent_body)
+        self.assertEqual(sent_body['isDisabled'], False)
 
         # Campos válidos se conservan
         self.assertIn('environments', sent_body)

@@ -2,6 +2,7 @@
 Ejecutor paralelo para Pipeline Updater
 """
 
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Callable
@@ -212,6 +213,82 @@ class ParallelExecutor:
                         'new_path': target_path,
                         'snapshot_id': snapshot_id
                     }],
+                    error=None,
+                    duration=duration
+                )
+            
+            if pipeline_action == 'autosort_stages':
+                # Flujo de auto-ordenamiento: separar stages fijos de stages
+                # numericos, ordenar los numericos alfanumericamente, y
+                # renumerar todos los ranks consecutivamente.
+                sort_config = template_parser.get_pipeline_sort_config()
+                fixed_stages = sort_config.get('fixed_stages', [])
+                sort_pattern = sort_config.get('sort_pattern', r'^\d+')
+                sort_order = sort_config.get('sort_order', 'asc')
+                
+                environments = definition.get('environments', [])
+                
+                # Separar stages en fijos, ordenables y otros
+                fixed = []
+                sortable = []
+                others = []
+                fixed_set = set(fixed_stages)
+                compiled_pattern = re.compile(sort_pattern)
+                
+                for stage in environments:
+                    name = stage.get('name', '')
+                    if name in fixed_set:
+                        fixed.append(stage)
+                    elif compiled_pattern.search(name):
+                        sortable.append(stage)
+                    else:
+                        others.append(stage)
+                
+                # Ordenar stages numericos alfanumericamente
+                reverse = (sort_order == 'desc')
+                sortable.sort(key=lambda s: s.get('name', ''), reverse=reverse)
+                
+                # Construir nuevo orden: fijos (en su orden original) +
+                # ordenables (sorted) + otros (en su orden original)
+                new_environments = fixed + sortable + others
+                
+                # Renumerar ranks consecutivamente
+                changes = []
+                for i, stage in enumerate(new_environments):
+                    old_rank = stage.get('rank')
+                    new_rank = i + 1
+                    if old_rank != new_rank:
+                        stage['rank'] = new_rank
+                        changes.append({
+                            'type': 'stage_autosort',
+                            'stage': stage.get('name', ''),
+                            'old_rank': old_rank,
+                            'new_rank': new_rank
+                        })
+                
+                print(f"  [Pipeline {definition_id}] 4/5 Auto-ordenando {len(sortable)} stages numericos...")
+                if changes:
+                    print(f"  [Pipeline {definition_id}]   ✓ {len(changes)} stages reordenados")
+                else:
+                    print(f"  [Pipeline {definition_id}]   ✓ Sin cambios de orden necesarios")
+                
+                definition['environments'] = new_environments
+                metadata = template_parser.get_metadata()
+                success = azdo_client.update_release_definition(
+                    definition_id, definition,
+                    comment=metadata.comment
+                )
+                print(f"  [Pipeline {definition_id}]   ✓ Definicion guardada exitosamente")
+                
+                duration = time.time() - start_time
+                
+                return UpdateResult(
+                    definition_id=definition_id,
+                    success=success,
+                    snapshot_id=snapshot_id,
+                    matches_found=len(matches),
+                    changes_applied=len(changes),
+                    changes=changes,
                     error=None,
                     duration=duration
                 )
