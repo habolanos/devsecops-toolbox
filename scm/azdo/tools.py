@@ -380,6 +380,16 @@ TOOLS: Dict = {
         "group":       "health",
         "status":      "ready",
     },
+    "27": {
+        "name":        "Pipeline CD Backup & Restore",
+        "description": "Backup/restore completo de definiciones de Pipeline CD. Individual (max 500 IDs), masivo, restore, crear desde backup, diff y conversion JSON→YAML. Submenú interactivo.",
+        "path":        "pipeline_cd_backup_restore.py",
+        "args":        ["--org", "--project", "--pat", "--mode", "--pipeline-ids",
+                        "--backup-files", "--backup-file", "--new-name", "--path-filter",
+                        "--format", "--workers", "--dry-run", "--interactive", "--output"],
+        "group":       "updatepipe",
+        "status":      "ready",
+    },
     "41": {
         "name":        "Pipeline Updater Template",
         "description": "Actualización masiva de pipelines CD usando templates YAML. Define búsquedas y cambios de forma declarativa. Soporta ejecución paralela, snapshots automáticos y rollback.",

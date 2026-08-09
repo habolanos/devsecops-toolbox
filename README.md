@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.7.22-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.7.26-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -206,6 +206,7 @@ Herramientas para gestión de repositorios, pipelines y releases en Azure DevOps
 - **[21] Pipeline Updater** - Actualización masiva de pipelines con templates YAML
 - **[22] Pipeline Rollback** - Rollback con 3 métodos (Full Backup, Hybrid, Manual Revision)
   - **Opción 6: Redo** ⭐ NUEVO - Volver a versión previa del pipeline basado en definition_id
+- **[27] Pipeline CD Backup & Restore** ⭐ NUEVO - Backup/restore completo de definiciones CD (individual máx 500, masivo, restore, crear desde backup, diff, conversión JSON→YAML)
 - **[40] Health Probe Masivo Validator** ⭐ NUEVO
 
 ```bash
@@ -1005,8 +1006,9 @@ devsecops-toolbox/
 │   ├── main.py                   # Launcher principal (ejecuta wizard en 1a ejecucion)
 │   ├── setup/                    # Wizard de configuracion inicial
 │   ├── gcp/                      # Herramientas GCP
-│   ├── azdo/                     # Herramientas AZDO (27 herramientas)
+│   ├── azdo/                     # Herramientas AZDO (28 herramientas)
 │   │   ├── azdo_pipeline_history.py  # Tool 26: Evolución histórica de Pipeline CD (HTML interactivo)
+│   │   ├── pipeline_cd_backup_restore.py  # Tool 27: Backup & Restore completo de Pipeline CD
 │   │   └── ...
 │   ├── aws/                      # Herramientas AWS
 │   ├── terminal/                 # Scripts universales (agnostic cloud)
