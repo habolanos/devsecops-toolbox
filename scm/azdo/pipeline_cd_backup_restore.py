@@ -56,8 +56,10 @@ import urllib.request
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt, Confirm
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
+from rich.text import Text
 
 try:
     import yaml
@@ -140,13 +142,17 @@ def normalize_org(org: str) -> str:
 def prompt_with_default(prompt_text: str, default_value: str, required: bool = False) -> str:
     default_str = str(default_value) if default_value is not None else ""
     if default_str:
-        full_prompt = f"{Colors.BOLD}{prompt_text} [{Colors.CYAN}{default_str}{Colors.ENDC}{Colors.BOLD}]: {Colors.ENDC}"
+        if prompt_text == "PAT":
+            display_default = "****"
+        else:
+            display_default = default_str
+        value = Prompt.ask(f"[bold]{prompt_text}[/bold]", default=display_default)
     else:
-        full_prompt = f"{Colors.BOLD}{prompt_text}: {Colors.ENDC}"
-    value = input(full_prompt).strip()
-    if not value:
+        value = Prompt.ask(f"[bold]{prompt_text}[/bold]")
+    value = value.strip()
+    if not value or (default_str and value == "****" and prompt_text == "PAT"):
         if required and not default_str:
-            print(f"{Colors.RED}Este campo es requerido{Colors.ENDC}")
+            console.print("[red]Este campo es requerido[/red]")
             return prompt_with_default(prompt_text, default_value, required)
         return default_str
     return value
@@ -418,13 +424,13 @@ def backup_all_pipelines(
         definitions = get_all_release_definitions(org, project, pat, path_filter)
 
     if dry_run:
-        print(f"{Colors.YELLOW}DRY-RUN: {len(definitions)} pipelines serian respaldados{Colors.ENDC}")
+        console.print(f"[yellow]DRY-RUN: {len(definitions)} pipelines serian respaldados[/yellow]")
         for d in definitions:
-            print(f"  ID: {d.get('id'):>6}  Name: {d.get('name', 'N/A')}")
+            console.print(f"  ID: {d.get('id'):>6}  Name: {d.get('name', 'N/A')}")
         return {"total": len(definitions), "successful": 0, "failed": 0, "backups": []}
 
     if not definitions:
-        print(f"{Colors.YELLOW}No se encontraron pipelines{Colors.ENDC}")
+        console.print("[yellow]No se encontraron pipelines[/yellow]")
         return {"total": 0, "successful": 0, "failed": 0, "backups": []}
 
     pipeline_ids = [d["id"] for d in definitions]
@@ -927,7 +933,7 @@ def list_backups(backup_dir: Path = None) -> List[Dict]:
 
 def print_backups_table(backups: List[Dict]) -> None:
     if not backups:
-        print(f"{Colors.YELLOW}No hay backups disponibles en {BACKUP_DIR}{Colors.ENDC}")
+        console.print(f"[yellow]No hay backups disponibles en {BACKUP_DIR}[/yellow]")
         return
 
     tbl = Table(title="Backups Disponibles", show_lines=True)
@@ -1010,20 +1016,21 @@ def print_backup_results(results: List[Dict]) -> None:
 
     ok = sum(1 for r in results if r["status"] == "ok")
     fail = sum(1 for r in results if r["status"] != "ok")
-    print(f"\n{Colors.GREEN}Exitosos: {ok} | {Colors.RED}Fallidos: {fail} | {Colors.CYAN}Total: {len(results)}{Colors.ENDC}")
+    console.print(f"\n[green]Exitosos: {ok}[/green] | [red]Fallidos: {fail}[/red] | [cyan]Total: {len(results)}[/cyan]")
 
 
 def print_backup_all_results(result: Dict) -> None:
-    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.BOLD}  RESUMEN DE BACKUP MASIVO{Colors.ENDC}")
-    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
-    print(f"{Colors.CYAN}Total pipelines:    {result['total']}{Colors.ENDC}")
-    print(f"{Colors.GREEN}Exitosos:           {result['successful']}{Colors.ENDC}")
-    print(f"{Colors.RED}Fallidos:           {result['failed']}{Colors.ENDC}")
-    print(f"{Colors.YELLOW}Duracion:           {result['duration']}{Colors.ENDC}")
-    if result.get("index_file"):
-        print(f"{Colors.CYAN}Indice:             {result['index_file']}{Colors.ENDC}")
-    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    console.print()
+    console.print(Panel(
+        f"[bold]RESUMEN DE BACKUP MASIVO[/bold]\n\n"
+        f"[cyan]Total pipelines:[/cyan]    {result['total']}\n"
+        f"[green]Exitosos:[/green]           {result['successful']}\n"
+        f"[red]Fallidos:[/red]           {result['failed']}\n"
+        f"[yellow]Duracion:[/yellow]           {result['duration']}"
+        + (f"\n[cyan]Indice:[/cyan]             {result['index_file']}" if result.get("index_file") else ""),
+        border_style="cyan",
+        expand=False,
+    ))
 
     print_backup_results(result["backups"])
 
@@ -1034,25 +1041,39 @@ def print_backup_all_results(result: Dict) -> None:
 def interactive_mode() -> int:
     config = load_config()
 
-    print(f"\n{Colors.BOLD}{'='*60}{Colors.ENDC}")
-    print(f"{Colors.BOLD}  Pipeline CD Backup & Restore v{__version__}{Colors.ENDC}")
-    print(f"{Colors.BOLD}{'='*60}{Colors.ENDC}\n")
+    console.print()
+    console.print(Panel(
+        f"[bold cyan]Pipeline CD Backup & Restore[/bold cyan] [dim]v{__version__}[/dim]",
+        border_style="cyan",
+        expand=False,
+    ))
+    console.print()
 
     org = prompt_with_default("Organizacion", config.get('organization', 'Coppel-Retail'))
     project = prompt_with_default("Proyecto", config.get('project', ''))
     pat = prompt_with_default("PAT", config.get('pat', ''), required=True)
 
+    menu_options = [
+        ("1", "Backup Completo (uno o varios)", "cyan"),
+        ("2", "Restore Definicion", "cyan"),
+        ("3", "Crear Pipeline desde Backup", "cyan"),
+        ("4", "Comparar Backup vs Actual (Diff)", "cyan"),
+        ("5", "Listar Backups Disponibles", "cyan"),
+        ("6", "Backup Masivo (todos los pipelines)", "cyan"),
+        ("7", "Convertir Backup JSON -> YAML", "cyan"),
+        ("Q", "Volver", "red"),
+    ]
+
     while True:
-        print(f"\n{Colors.BOLD}--- Submenu ---{Colors.ENDC}")
-        print(f"  {Colors.CYAN}1.{Colors.ENDC} Backup Completo (uno o varios)")
-        print(f"  {Colors.CYAN}2.{Colors.ENDC} Restore Definicion")
-        print(f"  {Colors.CYAN}3.{Colors.ENDC} Crear Pipeline desde Backup")
-        print(f"  {Colors.CYAN}4.{Colors.ENDC} Comparar Backup vs Actual (Diff)")
-        print(f"  {Colors.CYAN}5.{Colors.ENDC} Listar Backups Disponibles")
-        print(f"  {Colors.CYAN}6.{Colors.ENDC} Backup Masivo (todos los pipelines)")
-        print(f"  {Colors.CYAN}7.{Colors.ENDC} Convertir Backup JSON -> YAML")
-        print(f"  {Colors.RED}Q.{Colors.ENDC} Volver")
-        choice = input(f"\n{Colors.BOLD}Seleccione opcion: {Colors.ENDC}").strip().lower()
+        menu_table = Table(show_header=False, box=None, padding=(0, 2))
+        menu_table.add_column("Key", style="bold", width=4)
+        menu_table.add_column("Opcion")
+        for key, label, color in menu_options:
+            menu_table.add_row(f"[{color}]{key}[/{color}]", label)
+
+        console.print()
+        console.print(Panel(menu_table, title="[bold]Submenu[/bold]", border_style="cyan", expand=False))
+        choice = Prompt.ask("[bold]Seleccione opcion[/bold]").strip().lower()
 
         if choice == 'q':
             return 0
@@ -1063,7 +1084,7 @@ def interactive_mode() -> int:
                 continue
             ids = [int(x.strip()) for x in ids_str.split(",") if x.strip()]
             if len(ids) > MAX_PIPELINE_IDS:
-                print(f"{Colors.RED}Maximo {MAX_PIPELINE_IDS} IDs{Colors.ENDC}")
+                console.print(f"[red]Maximo {MAX_PIPELINE_IDS} IDs[/red]")
                 continue
             fmt = prompt_with_default("Formato (json/yaml/both)", "json")
             workers = int(prompt_with_default("Workers", str(DEFAULT_WORKERS)))
@@ -1073,7 +1094,7 @@ def interactive_mode() -> int:
         elif choice == '2':
             bfiles_str = prompt_with_default("Archivo(s) de backup (separados por coma)", "", required=True)
             bfiles = [f.strip() for f in bfiles_str.split(",") if f.strip()]
-            dry = input("Dry-run? (S/N): ").strip().lower() in ('s', 'si', 'y', 'yes')
+            dry = Confirm.ask("Dry-run?", default=False)
             for bf in bfiles:
                 try:
                     with console.status(f"[cyan]Cargando backup: {Path(bf).name}...", spinner="dots"):
@@ -1089,35 +1110,35 @@ def interactive_mode() -> int:
                     print_diff_table(diffs, meta.get("pipelineName", "N/A"))
 
                     if secrets:
-                        print(f"\n{Colors.YELLOW}Secrets detectados ({len(secrets)}):{Colors.ENDC}")
+                        console.print(f"\n[yellow]Secrets detectados ({len(secrets)}):[/yellow]")
                         for s in secrets:
-                            print(f"  - {s['name']} ({s['scope']}/{s.get('env', 'N/A')})")
+                            console.print(f"  - {s['name']} ({s['scope']}/{s.get('env', 'N/A')})")
                         secret_values = {}
                         if not dry:
                             for s in secrets:
-                                val = input(f"  Valor para {s['name']} (Enter=skip): ").strip()
+                                val = Prompt.ask(f"  Valor para {s['name']}", default="")
                                 if val:
                                     secret_values[s["name"]] = val
                     else:
                         secret_values = None
 
                     if not dry:
-                        confirm = input(f"Confirmar restore? (S/N): ").strip().lower()
-                        if confirm not in ('s', 'si', 'y', 'yes'):
-                            print(f"{Colors.YELLOW}Skip{Colors.ENDC}")
+                        confirm = Confirm.ask("Confirmar restore?", default=False)
+                        if not confirm:
+                            console.print("[yellow]Skip[/yellow]")
                             continue
 
                     with console.status(f"[cyan]Restaurando definicion del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
                         result = restore_definition(backup, org, project, pat, dry, secret_values)
                     status = result.get("status")
                     if status == "ok":
-                        print(f"{Colors.GREEN}Restore exitoso para pipeline {result['pipeline_id']}{Colors.ENDC}")
+                        console.print(f"[green]Restore exitoso para pipeline {result['pipeline_id']}[/green]")
                     elif status == "dry_run":
-                        print(f"{Colors.YELLOW}Dry-run: no se aplicaron cambios{Colors.ENDC}")
+                        console.print("[yellow]Dry-run: no se aplicaron cambios[/yellow]")
                     else:
-                        print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                        console.print(f"[red]Error: {result}[/red]")
                 except Exception as e:
-                    print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
+                    console.print(f"[red]Error: {e}[/red]")
 
         elif choice == '3':
             bf = prompt_with_default("Archivo de backup", "", required=True)
@@ -1127,9 +1148,9 @@ def interactive_mode() -> int:
                     backup = load_backup(bf, str(BACKUP_DIR))
                 with console.status("[cyan]Creando nuevo pipeline desde backup...", spinner="dots"):
                     result = create_from_backup(backup, org, project, pat, new_name)
-                print(f"{Colors.GREEN}Pipeline creado: ID={result['new_id']}, Name={result['new_name']}{Colors.ENDC}")
+                console.print(f"[green]Pipeline creado: ID={result['new_id']}, Name={result['new_name']}[/green]")
             except Exception as e:
-                print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
+                console.print(f"[red]Error: {e}[/red]")
 
         elif choice == '4':
             bfiles_str = prompt_with_default("Archivo(s) de backup (separados por coma)", "", required=True)
@@ -1145,7 +1166,7 @@ def interactive_mode() -> int:
                         diffs = diff_definitions(backup.get("definition", {}), current_def)
                     print_diff_table(diffs, meta.get("pipelineName", "N/A"))
                 except Exception as e:
-                    print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
+                    console.print(f"[red]Error: {e}[/red]")
 
         elif choice == '5':
             with console.status("[cyan]Escaneando directorio de backups...", spinner="dots"):
@@ -1156,7 +1177,7 @@ def interactive_mode() -> int:
             path_filter = prompt_with_default("Filtro por carpeta (Enter=todos)", "")
             fmt = prompt_with_default("Formato (json/yaml/both)", "json")
             workers = int(prompt_with_default("Workers", str(DEFAULT_WORKERS)))
-            dry = input("Dry-run? (S/N): ").strip().lower() in ('s', 'si', 'y', 'yes')
+            dry = Confirm.ask("Dry-run?", default=False)
             result = backup_all_pipelines(org, project, pat, path_filter, fmt, workers, dry)
             if not dry:
                 print_backup_all_results(result)
@@ -1168,15 +1189,15 @@ def interactive_mode() -> int:
             else:
                 bfiles = [str(f) for f in BACKUP_DIR.glob("backup_def_*.json")] if BACKUP_DIR.exists() else []
             if not bfiles:
-                print(f"{Colors.YELLOW}No hay archivos para convertir{Colors.ENDC}")
+                console.print("[yellow]No hay archivos para convertir[/yellow]")
                 continue
             if len(bfiles) == 1:
                 with console.status(f"[cyan]Convirtiendo {Path(bfiles[0]).name} a YAML...", spinner="dots"):
                     result = convert_json_to_yaml(bfiles[0])
                 if result["status"] == "ok":
-                    print(f"{Colors.GREEN}OK: {result['yaml_file']} ({result['lines']} lineas, {result['size_kb']} KB){Colors.ENDC}")
+                    console.print(f"[green]OK: {result['yaml_file']} ({result['lines']} lineas, {result['size_kb']} KB)[/green]")
                 else:
-                    print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                    console.print(f"[red]Error: {result}[/red]")
             else:
                 with Progress(
                     SpinnerColumn(),
@@ -1190,12 +1211,12 @@ def interactive_mode() -> int:
                         result = convert_json_to_yaml(bf)
                         prog.update(task, advance=1, description=f"[cyan]Convirtiendo: {Path(bf).name}")
                         if result["status"] != "ok":
-                            print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                            console.print(f"[red]Error: {result}[/red]")
                     prog.update(task, description="[green]Conversion completada")
-                print(f"{Colors.GREEN}Convertidos {len(bfiles)} archivos a YAML{Colors.ENDC}")
+                console.print(f"[green]Convertidos {len(bfiles)} archivos a YAML[/green]")
 
         else:
-            print(f"{Colors.RED}Opcion invalida{Colors.ENDC}")
+            console.print("[red]Opcion invalida[/red]")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1232,7 +1253,7 @@ def main():
         return interactive_mode()
 
     if not args.mode:
-        print(f"{Colors.RED}Especifique --mode o --interactive{Colors.ENDC}")
+        console.print("[red]Especifique --mode o --interactive[/red]")
         return 1
 
     org = normalize_org(args.org)
@@ -1251,15 +1272,15 @@ def main():
         elif BACKUP_DIR.exists():
             bfiles = [str(f) for f in BACKUP_DIR.glob("backup_def_*.json")]
         else:
-            print(f"{Colors.RED}No hay archivos para convertir{Colors.ENDC}")
+            console.print("[red]No hay archivos para convertir[/red]")
             return 1
         if len(bfiles) == 1:
             with console.status(f"[cyan]Convirtiendo {Path(bfiles[0]).name} a YAML...", spinner="dots"):
                 result = convert_json_to_yaml(bfiles[0], args.output)
             if result["status"] == "ok":
-                print(f"{Colors.GREEN}OK: {result['yaml_file']} ({result['lines']} lineas, {result['size_kb']} KB){Colors.ENDC}")
+                console.print(f"[green]OK: {result['yaml_file']} ({result['lines']} lineas, {result['size_kb']} KB)[/green]")
             else:
-                print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                console.print(f"[red]Error: {result}[/red]")
         else:
             with Progress(
                 SpinnerColumn(),
@@ -1273,31 +1294,31 @@ def main():
                     result = convert_json_to_yaml(bf, args.output)
                     prog.update(task, advance=1, description=f"[cyan]Convirtiendo: {Path(bf).name}")
                     if result["status"] != "ok":
-                        print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                        console.print(f"[red]Error: {result}[/red]")
                 prog.update(task, description="[green]Conversion completada")
-            print(f"{Colors.GREEN}Convertidos {len(bfiles)} archivos a YAML{Colors.ENDC}")
+            console.print(f"[green]Convertidos {len(bfiles)} archivos a YAML[/green]")
         return 0
 
     if not pat:
         config = load_config()
         pat = config.get('pat', '')
         if not pat:
-            print(f"{Colors.RED}PAT requerido{Colors.ENDC}")
+            console.print("[red]PAT requerido[/red]")
             return 1
     if not project:
         config = load_config()
         project = config.get('project', '')
         if not project:
-            print(f"{Colors.RED}Project requerido{Colors.ENDC}")
+            console.print("[red]Project requerido[/red]")
             return 1
 
     if args.mode == 'backup':
         if not args.pipeline_ids:
-            print(f"{Colors.RED}--pipeline-ids requerido para backup{Colors.ENDC}")
+            console.print("[red]--pipeline-ids requerido para backup[/red]")
             return 1
         ids = [int(x.strip()) for x in args.pipeline_ids.split(",") if x.strip()]
         if len(ids) > MAX_PIPELINE_IDS:
-            print(f"{Colors.RED}Maximo {MAX_PIPELINE_IDS} IDs{Colors.ENDC}")
+            console.print(f"[red]Maximo {MAX_PIPELINE_IDS} IDs[/red]")
             return 1
         results = backup_pipelines(ids, org, project, pat, args.format, args.workers)
         print_backup_results(results)
@@ -1329,41 +1350,41 @@ def main():
                 print_diff_table(diffs, meta.get("pipelineName", "N/A"))
 
                 if not args.dry_run:
-                    confirm = input(f"Confirmar restore? (S/N): ").strip().lower()
-                    if confirm not in ('s', 'si', 'y', 'yes'):
-                        print(f"{Colors.YELLOW}Skip{Colors.ENDC}")
+                    confirm = Confirm.ask("Confirmar restore?", default=False)
+                    if not confirm:
+                        console.print("[yellow]Skip[/yellow]")
                         continue
 
                 with console.status(f"[cyan]Restaurando definicion del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
                     result = restore_definition(backup, org, project, pat, args.dry_run)
                 status = result.get("status")
                 if status == "ok":
-                    print(f"{Colors.GREEN}Restore exitoso para pipeline {result['pipeline_id']}{Colors.ENDC}")
+                    console.print(f"[green]Restore exitoso para pipeline {result['pipeline_id']}[/green]")
                 elif status == "dry_run":
-                    print(f"{Colors.YELLOW}Dry-run: no se aplicaron cambios{Colors.ENDC}")
+                    console.print("[yellow]Dry-run: no se aplicaron cambios[/yellow]")
                 else:
-                    print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                    console.print(f"[red]Error: {result}[/red]")
             except Exception as e:
-                print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
+                console.print(f"[red]Error: {e}[/red]")
         return 0
 
     if args.mode == 'create':
         if not args.backup_file:
-            print(f"{Colors.RED}--backup-file requerido para create{Colors.ENDC}")
+            console.print("[red]--backup-file requerido para create[/red]")
             return 1
         try:
             with console.status(f"[cyan]Cargando backup: {Path(args.backup_file).name}...", spinner="dots"):
                 backup = load_backup(args.backup_file, str(BACKUP_DIR))
             with console.status("[cyan]Creando nuevo pipeline desde backup...", spinner="dots"):
                 result = create_from_backup(backup, org, project, pat, args.new_name)
-            print(f"{Colors.GREEN}Pipeline creado: ID={result['new_id']}, Name={result['new_name']}{Colors.ENDC}")
+            console.print(f"[green]Pipeline creado: ID={result['new_id']}, Name={result['new_name']}[/green]")
         except Exception as e:
-            print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
+            console.print(f"[red]Error: {e}[/red]")
         return 0
 
     if args.mode == 'diff':
         if not args.backup_files:
-            print(f"{Colors.RED}--backup-files requerido para diff{Colors.ENDC}")
+            console.print("[red]--backup-files requerido para diff[/red]")
             return 1
         bfiles = [f.strip() for f in args.backup_files.split(",") if f.strip()]
         for bf in bfiles:
@@ -1377,7 +1398,7 @@ def main():
                     diffs = diff_definitions(backup.get("definition", {}), current_def)
                 print_diff_table(diffs, meta.get("pipelineName", "N/A"))
             except Exception as e:
-                print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
+                console.print(f"[red]Error: {e}[/red]")
         return 0
 
     return 0
@@ -1387,5 +1408,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main() or 0)
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}Proceso interrumpido{Colors.ENDC}")
+        console.print("\n[yellow]Proceso interrumpido[/yellow]")
         sys.exit(130)
