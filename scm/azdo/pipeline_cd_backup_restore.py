@@ -380,9 +380,10 @@ def backup_pipelines(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
+        TextColumn("[cyan]{task.completed}/{task.total}"),
         console=console,
     ) as progress:
-        task = progress.add_task("Backing up pipelines...", total=len(pipeline_ids))
+        task = progress.add_task("[cyan]Backing up pipelines...", total=len(pipeline_ids))
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
@@ -390,9 +391,16 @@ def backup_pipelines(
                 for pid in pipeline_ids
             }
             for future in as_completed(futures):
-                result = future.result()
+                pid = futures[future]
+                try:
+                    result = future.result()
+                except Exception as e:
+                    result = {"pipeline_id": pid, "name": "", "revision": 0,
+                              "secrets_count": 0, "status": f"error: {e}", "files": []}
                 results.append(result)
-                progress.update(task, advance=1)
+                status_icon = "OK" if result["status"] == "ok" else "ERR"
+                progress.update(task, advance=1,
+                                description=f"[cyan]Backing up pipelines... [{status_icon}] ID {pid}")
 
     return results
 
@@ -406,8 +414,8 @@ def backup_all_pipelines(
     workers: int = DEFAULT_WORKERS,
     dry_run: bool = False,
 ) -> Dict:
-    print(f"{Colors.CYAN}>>> Obteniendo lista de pipelines...{Colors.ENDC}")
-    definitions = get_all_release_definitions(org, project, pat, path_filter)
+    with console.status("[cyan]Obteniendo lista de pipelines...", spinner="dots"):
+        definitions = get_all_release_definitions(org, project, pat, path_filter)
 
     if dry_run:
         print(f"{Colors.YELLOW}DRY-RUN: {len(definitions)} pipelines serian respaldados{Colors.ENDC}")
@@ -420,7 +428,7 @@ def backup_all_pipelines(
         return {"total": 0, "successful": 0, "failed": 0, "backups": []}
 
     pipeline_ids = [d["id"] for d in definitions]
-    print(f"{Colors.CYAN}>>> {len(pipeline_ids)} pipelines encontrados. Iniciando backup...{Colors.ENDC}")
+    console.print(f"[cyan]>>> {len(pipeline_ids)} pipelines encontrados. Iniciando backup...[/cyan]")
 
     start_time = time.time()
     results = backup_pipelines(pipeline_ids, org, project, pat, fmt, workers)
@@ -1068,13 +1076,16 @@ def interactive_mode() -> int:
             dry = input("Dry-run? (S/N): ").strip().lower() in ('s', 'si', 'y', 'yes')
             for bf in bfiles:
                 try:
-                    backup = load_backup(bf, str(BACKUP_DIR))
+                    with console.status(f"[cyan]Cargando backup: {Path(bf).name}...", spinner="dots"):
+                        backup = load_backup(bf, str(BACKUP_DIR))
                     meta = backup.get("metadata", {})
                     secrets = backup.get("secrets_list", [])
-                    print(f"\n{Colors.CYAN}Pipeline: {meta.get('pipelineName', 'N/A')} (ID: {meta.get('pipelineId', 'N/A')}){Colors.ENDC}")
+                    console.print(f"\n[cyan]Pipeline: {meta.get('pipelineName', 'N/A')} (ID: {meta.get('pipelineId', 'N/A')})[/cyan]")
 
-                    current_def = get_release_definition(org, project, meta["pipelineId"], pat)
-                    diffs = diff_definitions(backup.get("definition", {}), current_def)
+                    with console.status(f"[cyan]Obteniendo definicion actual del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
+                        current_def = get_release_definition(org, project, meta["pipelineId"], pat)
+                    with console.status("[cyan]Comparando backup vs definicion actual...", spinner="dots"):
+                        diffs = diff_definitions(backup.get("definition", {}), current_def)
                     print_diff_table(diffs, meta.get("pipelineName", "N/A"))
 
                     if secrets:
@@ -1096,7 +1107,8 @@ def interactive_mode() -> int:
                             print(f"{Colors.YELLOW}Skip{Colors.ENDC}")
                             continue
 
-                    result = restore_definition(backup, org, project, pat, dry, secret_values)
+                    with console.status(f"[cyan]Restaurando definicion del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
+                        result = restore_definition(backup, org, project, pat, dry, secret_values)
                     status = result.get("status")
                     if status == "ok":
                         print(f"{Colors.GREEN}Restore exitoso para pipeline {result['pipeline_id']}{Colors.ENDC}")
@@ -1111,8 +1123,10 @@ def interactive_mode() -> int:
             bf = prompt_with_default("Archivo de backup", "", required=True)
             new_name = prompt_with_default("Nuevo nombre del pipeline", "")
             try:
-                backup = load_backup(bf, str(BACKUP_DIR))
-                result = create_from_backup(backup, org, project, pat, new_name)
+                with console.status(f"[cyan]Cargando backup: {Path(bf).name}...", spinner="dots"):
+                    backup = load_backup(bf, str(BACKUP_DIR))
+                with console.status("[cyan]Creando nuevo pipeline desde backup...", spinner="dots"):
+                    result = create_from_backup(backup, org, project, pat, new_name)
                 print(f"{Colors.GREEN}Pipeline creado: ID={result['new_id']}, Name={result['new_name']}{Colors.ENDC}")
             except Exception as e:
                 print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
@@ -1122,16 +1136,20 @@ def interactive_mode() -> int:
             bfiles = [f.strip() for f in bfiles_str.split(",") if f.strip()]
             for bf in bfiles:
                 try:
-                    backup = load_backup(bf, str(BACKUP_DIR))
+                    with console.status(f"[cyan]Cargando backup: {Path(bf).name}...", spinner="dots"):
+                        backup = load_backup(bf, str(BACKUP_DIR))
                     meta = backup.get("metadata", {})
-                    current_def = get_release_definition(org, project, meta["pipelineId"], pat)
-                    diffs = diff_definitions(backup.get("definition", {}), current_def)
+                    with console.status(f"[cyan]Obteniendo definicion actual del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
+                        current_def = get_release_definition(org, project, meta["pipelineId"], pat)
+                    with console.status("[cyan]Comparando backup vs definicion actual...", spinner="dots"):
+                        diffs = diff_definitions(backup.get("definition", {}), current_def)
                     print_diff_table(diffs, meta.get("pipelineName", "N/A"))
                 except Exception as e:
                     print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
 
         elif choice == '5':
-            backups = list_backups()
+            with console.status("[cyan]Escaneando directorio de backups...", spinner="dots"):
+                backups = list_backups()
             print_backups_table(backups)
 
         elif choice == '6':
@@ -1152,12 +1170,29 @@ def interactive_mode() -> int:
             if not bfiles:
                 print(f"{Colors.YELLOW}No hay archivos para convertir{Colors.ENDC}")
                 continue
-            for bf in bfiles:
-                result = convert_json_to_yaml(bf)
+            if len(bfiles) == 1:
+                with console.status(f"[cyan]Convirtiendo {Path(bfiles[0]).name} a YAML...", spinner="dots"):
+                    result = convert_json_to_yaml(bfiles[0])
                 if result["status"] == "ok":
                     print(f"{Colors.GREEN}OK: {result['yaml_file']} ({result['lines']} lineas, {result['size_kb']} KB){Colors.ENDC}")
                 else:
                     print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+            else:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    console=console,
+                ) as prog:
+                    task = prog.add_task("[cyan]Convirtiendo JSON a YAML...", total=len(bfiles))
+                    for bf in bfiles:
+                        result = convert_json_to_yaml(bf)
+                        prog.update(task, advance=1, description=f"[cyan]Convirtiendo: {Path(bf).name}")
+                        if result["status"] != "ok":
+                            print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                    prog.update(task, description="[green]Conversion completada")
+                print(f"{Colors.GREEN}Convertidos {len(bfiles)} archivos a YAML{Colors.ENDC}")
 
         else:
             print(f"{Colors.RED}Opcion invalida{Colors.ENDC}")
@@ -1205,7 +1240,8 @@ def main():
     pat = args.pat
 
     if args.mode == 'list':
-        backups = list_backups()
+        with console.status("[cyan]Escaneando directorio de backups...", spinner="dots"):
+            backups = list_backups()
         print_backups_table(backups)
         return 0
 
@@ -1217,12 +1253,29 @@ def main():
         else:
             print(f"{Colors.RED}No hay archivos para convertir{Colors.ENDC}")
             return 1
-        for bf in bfiles:
-            result = convert_json_to_yaml(bf, args.output)
+        if len(bfiles) == 1:
+            with console.status(f"[cyan]Convirtiendo {Path(bfiles[0]).name} a YAML...", spinner="dots"):
+                result = convert_json_to_yaml(bfiles[0], args.output)
             if result["status"] == "ok":
                 print(f"{Colors.GREEN}OK: {result['yaml_file']} ({result['lines']} lineas, {result['size_kb']} KB){Colors.ENDC}")
             else:
                 print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+            ) as prog:
+                task = prog.add_task("[cyan]Convirtiendo JSON a YAML...", total=len(bfiles))
+                for bf in bfiles:
+                    result = convert_json_to_yaml(bf, args.output)
+                    prog.update(task, advance=1, description=f"[cyan]Convirtiendo: {Path(bf).name}")
+                    if result["status"] != "ok":
+                        print(f"{Colors.RED}Error: {result}{Colors.ENDC}")
+                prog.update(task, description="[green]Conversion completada")
+            print(f"{Colors.GREEN}Convertidos {len(bfiles)} archivos a YAML{Colors.ENDC}")
         return 0
 
     if not pat:
@@ -1263,13 +1316,16 @@ def main():
         bfiles = [f.strip() for f in args.backup_files.split(",") if f.strip()]
         for bf in bfiles:
             try:
-                backup = load_backup(bf, str(BACKUP_DIR))
+                with console.status(f"[cyan]Cargando backup: {Path(bf).name}...", spinner="dots"):
+                    backup = load_backup(bf, str(BACKUP_DIR))
                 meta = backup.get("metadata", {})
                 secrets = backup.get("secrets_list", [])
-                print(f"\n{Colors.CYAN}Pipeline: {meta.get('pipelineName', 'N/A')} (ID: {meta.get('pipelineId', 'N/A')}){Colors.ENDC}")
+                console.print(f"\n[cyan]Pipeline: {meta.get('pipelineName', 'N/A')} (ID: {meta.get('pipelineId', 'N/A')})[/cyan]")
 
-                current_def = get_release_definition(org, project, meta["pipelineId"], pat)
-                diffs = diff_definitions(backup.get("definition", {}), current_def)
+                with console.status(f"[cyan]Obteniendo definicion actual del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
+                    current_def = get_release_definition(org, project, meta["pipelineId"], pat)
+                with console.status("[cyan]Comparando backup vs definicion actual...", spinner="dots"):
+                    diffs = diff_definitions(backup.get("definition", {}), current_def)
                 print_diff_table(diffs, meta.get("pipelineName", "N/A"))
 
                 if not args.dry_run:
@@ -1278,7 +1334,8 @@ def main():
                         print(f"{Colors.YELLOW}Skip{Colors.ENDC}")
                         continue
 
-                result = restore_definition(backup, org, project, pat, args.dry_run)
+                with console.status(f"[cyan]Restaurando definicion del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
+                    result = restore_definition(backup, org, project, pat, args.dry_run)
                 status = result.get("status")
                 if status == "ok":
                     print(f"{Colors.GREEN}Restore exitoso para pipeline {result['pipeline_id']}{Colors.ENDC}")
@@ -1295,8 +1352,10 @@ def main():
             print(f"{Colors.RED}--backup-file requerido para create{Colors.ENDC}")
             return 1
         try:
-            backup = load_backup(args.backup_file, str(BACKUP_DIR))
-            result = create_from_backup(backup, org, project, pat, args.new_name)
+            with console.status(f"[cyan]Cargando backup: {Path(args.backup_file).name}...", spinner="dots"):
+                backup = load_backup(args.backup_file, str(BACKUP_DIR))
+            with console.status("[cyan]Creando nuevo pipeline desde backup...", spinner="dots"):
+                result = create_from_backup(backup, org, project, pat, args.new_name)
             print(f"{Colors.GREEN}Pipeline creado: ID={result['new_id']}, Name={result['new_name']}{Colors.ENDC}")
         except Exception as e:
             print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
@@ -1309,10 +1368,13 @@ def main():
         bfiles = [f.strip() for f in args.backup_files.split(",") if f.strip()]
         for bf in bfiles:
             try:
-                backup = load_backup(bf, str(BACKUP_DIR))
+                with console.status(f"[cyan]Cargando backup: {Path(bf).name}...", spinner="dots"):
+                    backup = load_backup(bf, str(BACKUP_DIR))
                 meta = backup.get("metadata", {})
-                current_def = get_release_definition(org, project, meta["pipelineId"], pat)
-                diffs = diff_definitions(backup.get("definition", {}), current_def)
+                with console.status(f"[cyan]Obteniendo definicion actual del pipeline {meta.get('pipelineId', 'N/A')}...", spinner="dots"):
+                    current_def = get_release_definition(org, project, meta["pipelineId"], pat)
+                with console.status("[cyan]Comparando backup vs definicion actual...", spinner="dots"):
+                    diffs = diff_definitions(backup.get("definition", {}), current_def)
                 print_diff_table(diffs, meta.get("pipelineName", "N/A"))
             except Exception as e:
                 print(f"{Colors.RED}Error: {e}{Colors.ENDC}")
