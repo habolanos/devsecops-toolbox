@@ -475,6 +475,7 @@ def process_pipeline(
 ) -> Optional[Dict]:
     def_id = summary["id"]
     name   = summary.get("name", f"pipeline-{def_id}")
+    folder = summary.get("path", "\\") or "\\"
 
     detail = get_release_def_detail(org, project, def_id, headers, debug)
     if not detail:
@@ -499,6 +500,7 @@ def process_pipeline(
     return {
         "id":               def_id,
         "name":             name,
+        "folder":           folder,
         "stages":           s_names,
         "stages_norm":      s_norm,
         "prod_stage":       prod_stage,
@@ -533,6 +535,7 @@ def print_rich_table(console: "Console", rows: List[Dict], tz_name: str):
     tbl.add_column("#",             style="dim",        width=4,  justify="right")
     tbl.add_column("Def ID",        style="cyan",       width=8,  justify="right")
     tbl.add_column("Pipeline CD",   style="bold white", min_width=26)
+    tbl.add_column("Folder",        style="dim cyan",   min_width=14, max_width=30)
     tbl.add_column("Stages",        min_width=28, max_width=52)
     tbl.add_column("Consistencia",  justify="center",   width=14)
     tbl.add_column("Stage PROD",    justify="center",   width=14)
@@ -557,6 +560,7 @@ def print_rich_table(console: "Console", rows: List[Dict], tz_name: str):
             str(idx),
             str(row["id"]),
             row["name"],
+            row.get("folder", "\\"),
             fmt_stages_rich(row["stages"]),
             cons_cell_rich(row["consistency"]),
             prod_cell,
@@ -800,6 +804,7 @@ def generate_html_dashboard(
         table_data.append({
             "id":            r["id"],
             "name":          html_escape(r["name"]),
+            "folder":        html_escape(r.get("folder") or "\\"),
             "stages":        html_escape(" → ".join(r["stages"])),
             "stage_count":   len(r["stages"]),
             "prod_stage":    html_escape(r["prod_stage"] or "—"),
@@ -955,14 +960,15 @@ tbody tr:hover {{ background:#1e293b; }}
             <th onclick="sortTable(0)"># <span class="sort-arrow"></span></th>
             <th onclick="sortTable(1)">Def ID <span class="sort-arrow"></span></th>
             <th onclick="sortTable(2)">Pipeline CD <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(3)">Stages <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(4)">Consistencia <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(5)">Stage PROD <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(6)">Último PROD <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(7)">Intentos <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(8)">Score <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(9)">Rating <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(10)">Disabled <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(3)">Folder <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(4)">Stages <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(5)">Consistencia <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(6)">Stage PROD <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(7)">Último PROD <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(8)">Intentos <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(9)">Score <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(10)">Rating <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(11)">Disabled <span class="sort-arrow"></span></th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -1001,6 +1007,7 @@ function renderTable(data) {{
       <td>${{i+1}}</td>
       <td>${{r.id}}</td>
       <td><strong>${{r.name}}</strong></td>
+      <td><span style="color:#94a3b8">${{r.folder}}</span></td>
       <td>${{r.stages}}</td>
       <td>${{consPill}}</td>
       <td>${{r.prod_stage}}</td>
@@ -1019,7 +1026,7 @@ function applyFilters() {{
   const fDis = document.getElementById('filterDisabled').value;
   const fRat = document.getElementById('filterRating').value;
   let filtered = DATA.filter(r => {{
-    if (q && !r.name.toLowerCase().includes(q) && !String(r.id).includes(q) && !r.stages.toLowerCase().includes(q)) return false;
+    if (q && !r.name.toLowerCase().includes(q) && !String(r.id).includes(q) && !r.stages.toLowerCase().includes(q) && !r.folder.toLowerCase().includes(q)) return false;
     if (fDis === 'true' && !r.is_disabled) return false;
     if (fDis === 'false' && r.is_disabled) return false;
     if (fRat && r.rating !== fRat) return false;
@@ -1030,7 +1037,7 @@ function applyFilters() {{
 }}
 
 function sortData(data, col, asc) {{
-  const keys = ['id','id','name','stages','consistency','prod_stage','last_prod','attempts','score','rating','is_disabled'];
+  const keys = ['id','id','name','folder','stages','consistency','prod_stage','last_prod','attempts','score','rating','is_disabled'];
   const key = keys[col];
   return data.slice().sort((a, b) => {{
     let va = a[key], vb = b[key];
@@ -1097,6 +1104,7 @@ def export_results(
     flat = [{
         "id":                            r["id"],
         "pipeline_name":                 r["name"],
+        "folder":                        r.get("folder", "\\"),
         "stages":                        " → ".join(r["stages"]),
         "stage_count":                   len(r["stages"]),
         "prod_stage_detected":           r["prod_stage"] or "",
@@ -1296,14 +1304,15 @@ def main():
         if args.diagram:
             print_pipeline_diagrams(console, rows, tz_name)
     else:
-        hdr = f"{'#':>4}  {'ID':>7}  {'Pipeline':<35} {'Stages':<32} {'Cons':^10} {'Último PROD':^20} {'Int':^5} {'Score':>6}  Rating      Dis"
+        hdr = f"{'#':>4}  {'ID':>7}  {'Pipeline':<35} {'Folder':<20} {'Stages':<32} {'Cons':^10} {'Último PROD':^20} {'Int':^5} {'Score':>6}  Rating      Dis"
         print(f"\n{'='*len(hdr)}\n{hdr}\n{'='*len(hdr)}")
         for idx, row in enumerate(rows, 1):
             stg = " → ".join(row["stages"])[:30]
+            fld = (row.get("folder") or "\\")[:18]
             dt  = row["last_prod_dt"].strftime("%Y-%m-%d") if row["last_prod_dt"] else "Nunca"
             att = str(row["prod_attempts"]) if row["prod_attempts"] is not None else "—"
             dis = "⛔ Sí" if row.get("is_disabled") else "✅ No"
-            print(f"{idx:>4}  {row['id']:>7}  {row['name']:<35} {stg:<32} {row['consistency']:^10} "
+            print(f"{idx:>4}  {row['id']:>7}  {row['name']:<35} {fld:<20} {stg:<32} {row['consistency']:^10} "
                   f"{dt:^20} {att:^5} {row['score']:>6}  {row['rating_emoji']} {row['rating_label']}  {dis}")
         avg = round(sum(r["score"] for r in rows) / len(rows)) if rows else 0
         print(f"\nTotal: {total_defs} | Score promedio: {avg}/100 | Tiempo: {elapsed:.2f}s\n")

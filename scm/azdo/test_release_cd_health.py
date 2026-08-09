@@ -100,6 +100,38 @@ class TestIsDisabledInProcessPipeline(unittest.TestCase):
         )
         self.assertFalse(result["is_disabled"])
 
+    @patch.object(mod, "get_latest_releases")
+    @patch.object(mod, "get_release_def_detail")
+    def test_process_pipeline_captures_folder(self, mock_detail, mock_releases):
+        """Verifica que process_pipeline captura el folder/path del summary."""
+        mock_detail.return_value = self._make_detail()
+        mock_releases.return_value = []
+        result = mod.process_pipeline(
+            summary={"id": 42, "name": "Test-Pipeline", "path": "\\Release\\Prod"},
+            org="https://dev.azure.com/test",
+            project="test-proj",
+            headers={"Authorization": "Basic test"},
+            top=5,
+            debug=False,
+        )
+        self.assertEqual(result["folder"], "\\Release\\Prod")
+
+    @patch.object(mod, "get_latest_releases")
+    @patch.object(mod, "get_release_def_detail")
+    def test_process_pipeline_default_folder(self, mock_detail, mock_releases):
+        """Verifica que process_pipeline usa \\ como folder por defecto."""
+        mock_detail.return_value = self._make_detail()
+        mock_releases.return_value = []
+        result = mod.process_pipeline(
+            summary={"id": 42, "name": "Test-Pipeline"},
+            org="https://dev.azure.com/test",
+            project="test-proj",
+            headers={"Authorization": "Basic test"},
+            top=5,
+            debug=False,
+        )
+        self.assertEqual(result["folder"], "\\")
+
 
 class TestIsDisabledInExportResults(unittest.TestCase):
     """Tests para verificar que is_disabled esta en los datos exportados."""
@@ -113,6 +145,7 @@ class TestIsDisabledInExportResults(unittest.TestCase):
             rows.append({
                 "id": 100 + i,
                 "name": f"Pipeline-{i}",
+                "folder": f"\\Release\\Folder-{i}",
                 "stages": ["DEV", "QA", "Production"],
                 "stages_norm": ["dev", "qa", "production"],
                 "prod_stage": "Production",
@@ -168,6 +201,7 @@ class TestHtmlDashboard(unittest.TestCase):
             rows.append({
                 "id": 100 + i,
                 "name": f"Pipeline-{i}",
+                "folder": f"\\Release\\Folder-{i}",
                 "stages": ["DEV", "QA", "Production"],
                 "stages_norm": ["dev", "qa", "production"],
                 "prod_stage": "Production",
@@ -269,6 +303,34 @@ class TestHtmlDashboard(unittest.TestCase):
                 self.assertIn("searchInput", content)
                 self.assertIn("filterDisabled", content)
                 self.assertIn("filterRating", content)
+
+    def test_html_contains_folder_column(self):
+        """Verifica que el HTML contiene la columna Folder."""
+        rows = self._make_rows()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(mod, "get_output_dir", return_value=Path(tmpdir)):
+                filepath = mod.generate_html_dashboard(rows, "UTC")
+                with open(filepath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.assertIn("Folder", content)
+                self.assertIn("folder", content)
+
+    def test_flat_data_contains_folder(self):
+        """Verifica que el flat data de export_results incluye folder."""
+        rows = self._make_rows(count=2)
+        import azdo_release_cd_health as mod_fresh
+        mock_manager = MagicMock()
+        mock_manager.export_json.return_value = "/tmp/test.json"
+        with patch.object(mod_fresh, "EXPORT_MANAGER_AVAILABLE", True), \
+             patch.object(mod_fresh, "ExportManager", return_value=mock_manager, create=True):
+            mod_fresh.export_results(
+                rows, "json",
+                str(Path(__file__).parent),
+                "UTC",
+            )
+            call_args = mock_manager.export_json.call_args
+            flat_data = call_args[0][0]
+            self.assertIn("folder", flat_data[0])
 
 
 if __name__ == "__main__":
