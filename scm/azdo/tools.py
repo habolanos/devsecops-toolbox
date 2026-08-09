@@ -1460,6 +1460,26 @@ def run_tool(tool_key: str):
         input("\nPresione Enter para continuar...")
         return
     
+    # ── Caso especial: Pipeline CD Backup & Restore (tool 27) usa modo interactivo ──
+    if tool_key == "27":
+        cmd = [str(venv_python), str(script_path), "--interactive"]
+
+        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+        try:
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+
+            if result.returncode == 0:
+                print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+            elif result.returncode == 1:
+                print(f"\n{Colors.WARNING}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
+            else:
+                print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+
+        input("\nPresione Enter para continuar...")
+        return
+
     # ── Caso especial: Pipeline Updater Template (tool 41) ──────────────────────
     if tool_key == "41":
         while True:
