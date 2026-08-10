@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.7.30-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.7.31-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -571,6 +571,88 @@ update:
 python scm/main.py
 # Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
 # Ingresar: scm/templates/pipe_cd_move_to_folder.yaml
+```
+
+---
+
+#### **8. pipe_cd_copy_stage_from_pipeline.yaml** 📋
+Copiar un stage desde otro pipeline (cross-pipeline) e insertarlo con un nuevo nombre.
+
+**Caso de uso**: Copiar un stage "QA" desde un pipeline origen e insertarlo en otro pipeline como "QA-Copia"
+
+```yaml
+metadata:
+  name: "Copiar stage desde otro pipeline"
+  comment: "Copia cross-pipeline de stage"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758    # Pipeline origen
+      source_stage: "QA"            # Stage a copiar
+      new_name: "QA-Copia"          # Nombre en el destino
+      position: "after"             # after | before | start | end
+      reference_stage: "Develop"    # Ancla en el destino
+      task_updates:                 # Modificar tasks del stage copiado
+        - task_name: "Deploy to QA"
+          fields:
+            - path: "inputs.namespace"
+              new_value: "qa-copia"
+```
+
+**Cómo funciona**:
+1. Descarga el pipeline origen (`source_definition_id`)
+2. Extrae el stage (`source_stage`)
+3. Lo inserta en el pipeline destino con `new_name`
+4. Aplica `task_updates` al stage copiado (opcional)
+5. Reasigna ranks consecutivamente
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_copy_stage_from_pipeline.yaml
+```
+
+---
+
+#### **9. pipe_cd_autosort_stages.yaml** 🔢
+Auto-ordenar stages alfanuméricamente con stages fijos.
+
+**Caso de uso**: Reordenar stages numerados (01-cedis, 02-cedis, ...) manteniendo fijos los stages no numerados (Develop, QA, Production)
+
+```yaml
+metadata:
+  name: "Auto-ordenar stages numericos alfanumerico"
+  comment: "Ordena stages numericos asc, fijos por rank declarado"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "autosort_stages"
+    fixed_stages:
+      - name: "Develop"
+        rank: 1
+      - name: "QA"
+        rank: 2
+      - name: "Production"
+        rank: 3
+    sort_pattern: "^\\d{2}-.*"
+    sort_order: "asc"
+```
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Ingresar: scm/templates/pipe_cd_autosort_stages.yaml
 ```
 
 ---

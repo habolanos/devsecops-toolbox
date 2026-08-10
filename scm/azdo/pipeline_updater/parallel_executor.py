@@ -2,6 +2,7 @@
 Ejecutor paralelo para Pipeline Updater
 """
 
+import copy
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -82,12 +83,13 @@ class ParallelExecutor:
                     if on_progress:
                         on_progress(completed, total, None)
         
-        # Contar solo resultados exitosos
+        # Contar resultados exitosos y fallidos
         successful_count = sum(1 for r in self.results if r.success)
+        failed_count = sum(1 for r in self.results if not r.success) + len(self.errors)
         
         return {
             'success': successful_count,
-            'failed': len(self.errors),
+            'failed': failed_count,
             'total': len(definition_ids),
             'results': self.results,
             'errors': self.errors
@@ -310,6 +312,12 @@ class ParallelExecutor:
             update_rules = template_parser.get_update_rules()
             template_options = template_parser.get_template_options()
             
+            # Pre-procesar reglas copy_from: descargar pipeline origen y
+            # convertir a action:add con definition embebida
+            update_rules = self._resolve_copy_from_rules(
+                update_rules, azdo_client, definition_id
+            )
+            
             update_engine = UpdateEngine(
                 definition,
                 matches,
@@ -377,6 +385,106 @@ class ParallelExecutor:
     def get_errors(self) -> List[Dict]:
         """Obtener errores"""
         return self.errors
+    
+    def _resolve_copy_from_rules(
+        self,
+        update_rules: Dict,
+        azdo_client,
+        target_definition_id: int
+    ) -> Dict:
+        """
+        Pre-procesar reglas de stage con action: 'copy_from'.
+        
+        Descarga el pipeline origen (source_definition_id), extrae el stage
+        fuente (source_stage), y lo convierte en una regla action:'add' con
+        la definicion embebida. Asi el UpdateEngine lo procesa normalmente.
+        
+        Formato de regla copy_from en el template:
+          - action: "copy_from"
+            source_definition_id: 2758
+            source_stage: "QA"
+            new_name: "QA-Copia"
+            position: "after"
+            reference_stage: "Production"
+            task_updates:
+              - task_name: "Deploy to QA"
+                fields:
+                  - path: "inputs.namespace"
+                    new_value: "qa-copia"
+        
+        Args:
+            update_rules: Reglas de actualizacion del template
+            azdo_client: Cliente de Azure DevOps
+            target_definition_id: ID del pipeline destino (para logging)
+        
+        Returns:
+            Reglas de actualizacion con copy_from resueltas como add
+        """
+        stage_rules = update_rules.get('stages', [])
+        if not stage_rules:
+            return update_rules
+        
+        new_stage_rules = []
+        for rule in stage_rules:
+            if rule.get('action') != 'copy_from':
+                new_stage_rules.append(rule)
+                continue
+            
+            source_def_id = rule.get('source_definition_id')
+            source_stage_name = rule.get('source_stage')
+            new_name = rule.get('new_name') or rule.get('name')
+            
+            if not source_def_id or not source_stage_name or not new_name:
+                raise ValueError(
+                    "action 'copy_from' requiere 'source_definition_id', "
+                    "'source_stage' y 'new_name'"
+                )
+            
+            print(f"  [Pipeline {target_definition_id}]   "
+                  f"Descargando pipeline origen {source_def_id}...")
+            
+            source_definition = azdo_client.get_release_definition(source_def_id)
+            source_environments = source_definition.get('environments', [])
+            
+            source_stage = None
+            for stage in source_environments:
+                if stage.get('name', '') == source_stage_name:
+                    source_stage = stage
+                    break
+            
+            if source_stage is None:
+                raise ValueError(
+                    f"source_stage '{source_stage_name}' no encontrado en "
+                    f"pipeline {source_def_id}"
+                )
+            
+            stage_def = copy.deepcopy(source_stage)
+            
+            new_rule = {
+                'action': 'add',
+                'name': new_name,
+                'definition': stage_def,
+                'position': rule.get('position', 'after'),
+            }
+            
+            if rule.get('reference_stage'):
+                new_rule['reference_stage'] = rule['reference_stage']
+            if rule.get('after_stage'):
+                new_rule['after_stage'] = rule['after_stage']
+            if rule.get('before_stage'):
+                new_rule['before_stage'] = rule['before_stage']
+            if rule.get('task_updates'):
+                new_rule['task_updates'] = rule['task_updates']
+            
+            new_stage_rules.append(new_rule)
+            
+            print(f"  [Pipeline {target_definition_id}]   "
+                  f"✓ Stage '{source_stage_name}' copiado desde pipeline "
+                  f"{source_def_id} como '{new_name}'")
+        
+        update_rules = dict(update_rules)
+        update_rules['stages'] = new_stage_rules
+        return update_rules
     
     def get_summary(self) -> Dict:
         """Obtener resumen de ejecución"""

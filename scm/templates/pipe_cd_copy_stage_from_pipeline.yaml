@@ -1,0 +1,53 @@
+metadata:
+  name: "Copiar stage desde otro pipeline"
+  version: "1.0"
+  description: |
+    Copia un stage desde un pipeline origen (source_definition_id) y lo
+    inserta en el pipeline destino con un nuevo nombre. Permite modificar
+    atributos de las tasks del stage copiado.
+  comment: |
+    Copia cross-pipeline de stage
+
+    Comportamiento:
+    1. Descarga el pipeline origen (source_definition_id).
+    2. Extrae el stage fuente (source_stage).
+    3. Lo inserta en el pipeline destino con new_name.
+    4. Aplica task_updates al stage copiado (opcional).
+    5. Reasigna ranks consecutivamente.
+
+    Ejemplo:
+      Pipeline 2758 tiene stage "QA" con tasks de deploy.
+      Pipeline 2760 no tiene ese stage.
+      Se copia "QA" de 2758 a 2760 como "QA-Copia" despues de "Develop".
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-10
+
+search:
+  # El wildcard "*" coincide con cualquier stage.
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      # Pipeline origen del cual copiar el stage
+      source_definition_id: 2758
+      # Nombre del stage a copiar en el pipeline origen
+      source_stage: "QA"
+      # Nombre del nuevo stage en el pipeline destino
+      new_name: "QA-Copia"
+      # Posicion: after | before | start | end (default: after)
+      position: "after"
+      # Stage ancla para after/before en el pipeline destino
+      reference_stage: "Develop"
+      # Modificaciones de atributos de tasks dentro del stage copiado
+      task_updates:
+        - task_name: "Deploy to QA"
+          fields:
+            - path: "inputs.namespace"
+              new_value: "qa-copia"
+
+options:
+  dry_run: false
+  rollback_on_error: true

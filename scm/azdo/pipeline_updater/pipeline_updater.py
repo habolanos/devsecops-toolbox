@@ -8,11 +8,17 @@ import sys
 from typing import Dict, List, Optional
 from pathlib import Path
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt, Confirm
+
 from .template_parser import TemplateParser
 from .validator import TemplateValidator
 from .azdo_client import AzureDevOpsClient, AzureDevOpsError
 from .parallel_executor import ParallelExecutor
 from .reporter import Reporter
+
+console = Console()
 
 
 class PipelineUpdater:
@@ -96,22 +102,26 @@ class PipelineUpdater:
         
         # 3. Confirmación
         if not dry_run:
-            print(f"\n[3/5] Confirmación requerida")
-            print(f"  ⚠  Se procederá a actualizar {len(definition_ids)} pipelines")
-            print(f"  ⚠  Los cambios serán PERMANENTES")
-            print(f"  ℹ  Se crearán snapshots automáticos para rollback")
+            console.print("\n[bold cyan][3/5] Confirmación requerida[/]")
+            console.print(f"  [yellow]⚠  Se procederá a actualizar {len(definition_ids)} pipelines[/]")
+            console.print(f"  [yellow]⚠  Los cambios serán PERMANENTES[/]")
+            console.print(f"  [blue]ℹ  Se crearán snapshots automáticos para rollback[/]")
             
-            response = input("\n  ¿Deseas continuar? (SI/S/Y/YES para confirmar): ").strip()
+            response = Prompt.ask(
+                "\n  ¿Deseas continuar?",
+                default="n",
+                console=console
+            )
             
-            if response.upper() not in ('SI', 'S', 'Y', 'YES'):
-                print(f"\n  ✗ Operación cancelada por el usuario\n")
+            if response.strip().upper() not in ('SI', 'S', 'Y', 'YES'):
+                console.print("\n  [red]✗ Operación cancelada por el usuario[/]\n")
                 return {
                     'success': False,
                     'error': 'Operación cancelada',
                     'cancelled': True
                 }
         else:
-            print(f"\n[3/5] Modo DRY-RUN (sin cambios)")
+            console.print("\n[bold cyan][3/5] Modo DRY-RUN (sin cambios)[/]")
         
         # 4. Ejecutar actualización
         print(f"\n[4/5] Ejecutando actualización en paralelo...")
@@ -143,14 +153,16 @@ class PipelineUpdater:
         print(f"    - HTML: {html_file}")
         
         # Resumen final
-        print(f"\n" + "="*70)
-        print(f"  RESUMEN DE EJECUCIÓN")
-        print(f"="*70)
-        print(f"  Total pipelines: {execution_results['total']}")
-        print(f"  Exitosos: {execution_results['success']}")
-        print(f"  Fallidos: {execution_results['failed']}")
-        print(f"  Tasa de éxito: {execution_results['success']/execution_results['total']*100:.1f}%")
-        print(f"="*70 + "\n")
+        console.print(f"\n[bold]{'='*70}[/]")
+        console.print(f"[bold]  RESUMEN DE EJECUCIÓN[/]")
+        console.print(f"[bold]{'='*70}[/]")
+        console.print(f"  Total pipelines: [cyan]{execution_results['total']}[/]")
+        console.print(f"  Exitosos: [green]{execution_results['success']}[/]")
+        console.print(f"  Fallidos: [red]{execution_results['failed']}[/]")
+        if execution_results['total'] > 0:
+            rate = execution_results['success'] / execution_results['total'] * 100
+            console.print(f"  Tasa de éxito: [cyan]{rate:.1f}%[/]")
+        console.print(f"[bold]{'='*70}[/]\n")
         
         return {
             'success': execution_results['failed'] == 0,

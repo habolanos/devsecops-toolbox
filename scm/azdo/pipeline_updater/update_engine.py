@@ -246,7 +246,7 @@ class UpdateEngine:
         })
     
     def _add_stage(self, rule: Dict):
-        """Insertar un stage nuevo a partir de una definición embebida."""
+        """Insertar un stage nuevo a partir de una definicion embebida."""
         environments = self.definition.get('environments', [])
         
         definition = rule.get('definition')
@@ -258,6 +258,11 @@ class UpdateEngine:
         new_stage = copy.deepcopy(definition)
         new_stage['name'] = new_name
         new_stage['id'] = self._next_environment_id(environments)
+        
+        # Aplicar modificaciones de tasks al stage insertado (opcional)
+        task_updates = rule.get('task_updates', [])
+        if task_updates:
+            self._apply_task_updates_to_stage(new_stage, task_updates, new_name)
         
         insert_index = self._resolve_insert_index(
             environments, rule, rule.get('after_stage')

@@ -1563,32 +1563,36 @@ def run_tool(tool_key: str):
             
             # Opción 1: Actualizar pipelines
             elif option == "1":
-                print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
-                print(f"{Colors.BOLD}  🆙 Pipeline Updater Template - Actualización Masiva{Colors.ENDC}")
-                print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+                console.print(f"\n[bold]{'='*70}[/]")
+                console.print(f"[bold]  🆙 Pipeline Updater Template - Actualización Masiva[/]")
+                console.print(f"[bold]{'='*70}[/]\n")
                 
                 # Solicitar definition IDs
-                print(f"{Colors.BOLD}Definition IDs (separados por coma, ej: 2758,2759,2760):{Colors.ENDC} ", end="")
-                definition_ids_str = input().strip()
+                definition_ids_str = Prompt.ask(
+                    "[bold]Definition IDs[/bold] (separados por coma, ej: 2758,2759,2760)",
+                    console=console
+                ).strip()
                 
                 if not definition_ids_str:
-                    print(f"{Colors.RED}❌ Definition IDs requeridos.{Colors.ENDC}")
+                    console.print("[red]❌ Definition IDs requeridos.[/]")
                     input("\nPresione Enter para continuar...")
                     continue
                 
                 try:
                     definition_ids = [int(x.strip()) for x in definition_ids_str.split(',')]
                 except ValueError:
-                    print(f"{Colors.RED}❌ Definition IDs deben ser números separados por coma.{Colors.ENDC}")
+                    console.print("[red]❌ Definition IDs deben ser números separados por coma.[/]")
                     input("\nPresione Enter para continuar...")
                     continue
                 
                 # Solicitar ruta del template
-                print(f"{Colors.BOLD}Ruta del template YAML (ej: scm/templates/example_template.yaml):{Colors.ENDC} ", end="")
-                template_path_input = input().strip()
+                template_path_input = Prompt.ask(
+                    "[bold]Ruta del template YAML[/bold] (ej: scm/templates/example_template.yaml)",
+                    console=console
+                ).strip()
                 
                 if not template_path_input:
-                    print(f"{Colors.RED}❌ Ruta del template requerida.{Colors.ENDC}")
+                    console.print("[red]❌ Ruta del template requerida.[/]")
                     input("\nPresione Enter para continuar...")
                     continue
                 
@@ -1614,7 +1618,7 @@ def run_tool(tool_key: str):
                 
                 # Verificar que el template existe
                 if not template_full_path.exists():
-                    print(f"{Colors.RED}❌ Template no encontrado: {template_full_path}{Colors.ENDC}")
+                    console.print(f"[red]❌ Template no encontrado: {template_full_path}[/]")
                     input("\nPresione Enter para continuar...")
                     continue
                 
@@ -1628,16 +1632,22 @@ def run_tool(tool_key: str):
                     continue
                 
                 # Solicitar número de workers
-                print(f"{Colors.BOLD}Número de workers paralelos [5]:{Colors.ENDC} ", end="")
-                workers_str = input().strip() or "5"
+                workers_str = Prompt.ask(
+                    "[bold]Número de workers paralelos[/]",
+                    default="5",
+                    console=console
+                ).strip()
                 try:
                     workers = int(workers_str)
                 except ValueError:
                     workers = 5
                 
                 # Preguntar si es dry-run
-                print(f"{Colors.BOLD}¿Modo dry-run (simulación sin cambios)? (s/n) [n]:{Colors.ENDC} ", end="")
-                dry_run = input().strip().lower() == "s"
+                dry_run = Confirm.ask(
+                    "[bold]¿Modo dry-run?[/bold] (simulación sin cambios)",
+                    default=False,
+                    console=console
+                )
                 
                 # Construir comando
                 # Ejecutar como módulo para evitar problemas con imports relativos
@@ -1655,18 +1665,18 @@ def run_tool(tool_key: str):
                 if dry_run:
                     cmd.append("--dry-run")
                 
-                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                console.print(f"\n[cyan]▶ Ejecutando: {' '.join(cmd[:3])} ...[/]\n")
                 try:
                     # Ejecutar desde la raíz del proyecto para que los imports funcionen
                     project_root = BASE_DIR.parent.parent
                     result = subprocess.run(cmd, cwd=project_root)
                     
                     if result.returncode == 0:
-                        print(f"\n{Colors.GREEN}✅ Actualización completada exitosamente.{Colors.ENDC}")
+                        console.print(f"\n[green]✅ Actualización completada exitosamente.[/]")
                     else:
-                        print(f"\n{Colors.RED}✗ Actualización falló (exit {result.returncode}){Colors.ENDC}")
+                        console.print(f"\n[red]✗ Actualización falló (exit {result.returncode})[/]")
                 except Exception as e:
-                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                    console.print(f"[red]Error al ejecutar: {e}[/]")
                 
                 input("\nPresione Enter para continuar...")
                 continue
