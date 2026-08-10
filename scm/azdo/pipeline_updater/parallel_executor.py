@@ -218,27 +218,39 @@ class ParallelExecutor:
                 )
             
             if pipeline_action == 'autosort_stages':
-                # Flujo de auto-ordenamiento: separar stages fijos de stages
-                # numericos, ordenar los numericos alfanumericamente, y
-                # renumerar todos los ranks consecutivamente.
+                # Flujo de auto-ordenamiento: ordenar los stages fijos segun
+                # el orden declarado en fixed_stages (por rank), ordenar los
+                # stages numericos alfanumericamente, y renumerar todos los
+                # ranks consecutivamente.
                 sort_config = template_parser.get_pipeline_sort_config()
                 fixed_stages = sort_config.get('fixed_stages', [])
+                fixed_stage_names = sort_config.get('fixed_stage_names', set())
                 sort_pattern = sort_config.get('sort_pattern', r'^\d+')
                 sort_order = sort_config.get('sort_order', 'asc')
                 
                 environments = definition.get('environments', [])
                 
-                # Separar stages en fijos, ordenables y otros
+                # Mapear stages por nombre para busqueda rapida
+                env_map = {}
+                for stage in environments:
+                    env_map[stage.get('name', '')] = stage
+                
+                # Construir lista de stages fijos en el orden declarado (por rank)
                 fixed = []
+                for fs in fixed_stages:
+                    name = fs['name']
+                    if name in env_map:
+                        fixed.append(env_map[name])
+                
+                # Separar stages ordenables y otros (excluyendo los fijos)
                 sortable = []
                 others = []
-                fixed_set = set(fixed_stages)
                 compiled_pattern = re.compile(sort_pattern)
                 
                 for stage in environments:
                     name = stage.get('name', '')
-                    if name in fixed_set:
-                        fixed.append(stage)
+                    if name in fixed_stage_names:
+                        continue
                     elif compiled_pattern.search(name):
                         sortable.append(stage)
                     else:
@@ -248,7 +260,7 @@ class ParallelExecutor:
                 reverse = (sort_order == 'desc')
                 sortable.sort(key=lambda s: s.get('name', ''), reverse=reverse)
                 
-                # Construir nuevo orden: fijos (en su orden original) +
+                # Construir nuevo orden: fijos (en orden declarado) +
                 # ordenables (sorted) + otros (en su orden original)
                 new_environments = fixed + sortable + others
                 

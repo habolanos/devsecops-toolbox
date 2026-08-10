@@ -101,9 +101,9 @@ class PipelineUpdater:
             print(f"  ⚠  Los cambios serán PERMANENTES")
             print(f"  ℹ  Se crearán snapshots automáticos para rollback")
             
-            response = input("\n  ¿Deseas continuar? (escribe 'SI' para confirmar): ").strip()
+            response = input("\n  ¿Deseas continuar? (SI/S/Y/YES para confirmar): ").strip()
             
-            if response != 'SI':
+            if response.upper() not in ('SI', 'S', 'Y', 'YES'):
                 print(f"\n  ✗ Operación cancelada por el usuario\n")
                 return {
                     'success': False,

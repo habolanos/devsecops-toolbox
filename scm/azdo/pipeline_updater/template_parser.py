@@ -111,17 +111,48 @@ class TemplateParser:
         r"""
         Obtener configuracion para la accion 'autosort_stages'.
 
+        Acepta dos formatos para fixed_stages:
+
+        1. Lista simple de strings (orden = orden de la lista):
+           fixed_stages:
+             - "Develop"
+             - "QA"
+             - "Production"
+
+        2. Lista de dicts con name y rank (orden = por rank ascendente):
+           fixed_stages:
+             - name: "SCM Inspection"
+               rank: 1
+             - name: "Develop"
+               rank: 2
+
         Returns:
             Diccionario con:
-              - fixed_stages: lista de nombres de stages fijos (default: [])
+              - fixed_stages: lista de dicts [{'name': str, 'rank': int}, ...]
+                ordenados por rank. Si no hay rank, se asigna por posicion.
+              - fixed_stage_names: set de nombres de stages fijos
               - sort_pattern: regex para identificar stages a ordenar (default: r'^\d+')
               - sort_order: 'asc' o 'desc' (default: 'asc')
         """
         pipeline = self.update_rules.get('pipeline', {})
         if not isinstance(pipeline, dict):
             return {}
+
+        raw_fixed = pipeline.get('fixed_stages', [])
+        fixed_stages = []
+        for idx, item in enumerate(raw_fixed):
+            if isinstance(item, str):
+                fixed_stages.append({'name': item, 'rank': idx + 1})
+            elif isinstance(item, dict):
+                name = item.get('name', '')
+                rank = item.get('rank', idx + 1)
+                fixed_stages.append({'name': name, 'rank': rank})
+
+        fixed_stages.sort(key=lambda x: x['rank'])
+
         return {
-            'fixed_stages': pipeline.get('fixed_stages', []),
+            'fixed_stages': fixed_stages,
+            'fixed_stage_names': {fs['name'] for fs in fixed_stages},
             'sort_pattern': pipeline.get('sort_pattern', r'^\d+'),
             'sort_order': pipeline.get('sort_order', 'asc')
         }

@@ -2,22 +2,21 @@ metadata:
   name: "Auto-ordenar stages numericos alfanumerico"
   version: "1.0"
   description: |
-    Reordena los stages fijos segun el orden declarado en fixed_stages (por rank),
-    y los stages numericos alfanumericamente. Todos los ranks se renumeran
-    consecutivamente (1..N).
+    Reordena los stages fijos (SCM Inspection, Develop, QA, Production) segun el
+    rank declarado en fixed_stages, y los stages numericos alfanumericamente.
+    Todos los ranks se renumeran consecutivamente (1..N).
   comment: |
-    Auto-ordenamiento de stages numericos
+    Auto-ordenamiento de stages numericos + reorden de fijos
 
     Comportamiento:
     1. Los stages listados en fixed_stages se ordenan segun su rank.
-    2. Los stages que coinciden con sort_pattern (default: empiezan con numero)
-       se ordenan alfanumericamente de forma ascendente.
+    2. Los stages que coinciden con sort_pattern se ordenan alfanumericamente.
     3. Los stages numericos se colocan despues de los stages fijos.
     4. Todos los ranks se renumeran consecutivamente (1..N).
 
     Ejemplo:
-      Antes:  Production, Develop, QA, 03-Laguna, 01-Culiacan, 02-Leon
-      Despues: Develop, QA, Production, 01-Culiacan, 02-Leon, 03-Laguna
+      Antes:  QA, Production, Develop, SCM Inspection, 03-Laguna, 01-Culiacan, 02-Leon
+      Despues: SCM Inspection, Develop, QA, Production, 01-Culiacan, 02-Leon, 03-Laguna
 
     Realizado por: Harold Adrian
     Fecha: 2026-08-10
@@ -32,12 +31,14 @@ update:
     action: "autosort_stages"
     # Stages fijos que se ordenan segun el rank declarado
     fixed_stages:
-      - name: "Develop"
+      - name: "SCM Inspection"
         rank: 1
-      - name: "QA"
+      - name: "Develop"
         rank: 2
-      - name: "Production"
+      - name: "QA"
         rank: 3
+      - name: "Production"
+        rank: 4
     # Patron regex para identificar stages a ordenar
     # Default: stages que empiezan con numero
     sort_pattern: "^\\d{2}-.*"

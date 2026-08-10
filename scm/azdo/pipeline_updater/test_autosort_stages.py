@@ -108,7 +108,17 @@ class TestTemplateParserAutosortAction(unittest.TestCase):
 
     def test_get_pipeline_sort_config_fixed_stages(self):
         config = self.parser.get_pipeline_sort_config()
-        self.assertEqual(config['fixed_stages'], ['Develop', 'QA', 'Production'])
+        names = [fs['name'] for fs in config['fixed_stages']]
+        self.assertEqual(names, ['Develop', 'QA', 'Production'])
+        # Verificar que se asignan ranks por posicion
+        ranks = [fs['rank'] for fs in config['fixed_stages']]
+        self.assertEqual(ranks, [1, 2, 3])
+
+    def test_get_pipeline_sort_config_fixed_stage_names(self):
+        config = self.parser.get_pipeline_sort_config()
+        self.assertIn('Develop', config['fixed_stage_names'])
+        self.assertIn('QA', config['fixed_stage_names'])
+        self.assertIn('Production', config['fixed_stage_names'])
 
     def test_get_pipeline_sort_config_pattern(self):
         config = self.parser.get_pipeline_sort_config()
@@ -125,8 +135,85 @@ class TestTemplateParserAutosortAction(unittest.TestCase):
         parser = TemplateParser(path)
         config = parser.get_pipeline_sort_config()
         self.assertEqual(config['fixed_stages'], [])
+        self.assertEqual(config['fixed_stage_names'], set())
         self.assertEqual(config['sort_pattern'], r'^\d+')
         self.assertEqual(config['sort_order'], 'asc')
+
+    def test_get_pipeline_sort_config_dict_format(self):
+        """fixed_stages con formato dict name/rank se parsea correctamente"""
+        dict_template = """\
+metadata:
+  name: "Dict format test"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "autosort_stages"
+    fixed_stages:
+      - name: "SCM Inspection"
+        rank: 1
+      - name: "Develop"
+        rank: 2
+      - name: "QA"
+        rank: 3
+      - name: "Production"
+        rank: 4
+    sort_pattern: "^\\\\d{2}-.*"
+    sort_order: "asc"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'dict_format_template.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(dict_template)
+        parser = TemplateParser(path)
+        config = parser.get_pipeline_sort_config()
+        names = [fs['name'] for fs in config['fixed_stages']]
+        ranks = [fs['rank'] for fs in config['fixed_stages']]
+        self.assertEqual(names, ['SCM Inspection', 'Develop', 'QA', 'Production'])
+        self.assertEqual(ranks, [1, 2, 3, 4])
+        self.assertIn('SCM Inspection', config['fixed_stage_names'])
+
+    def test_get_pipeline_sort_config_dict_format_unordered_ranks(self):
+        """fixed_stages con ranks desordenados se ordenan por rank"""
+        dict_template = """\
+metadata:
+  name: "Unordered ranks test"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "autosort_stages"
+    fixed_stages:
+      - name: "Production"
+        rank: 4
+      - name: "SCM Inspection"
+        rank: 1
+      - name: "QA"
+        rank: 3
+      - name: "Develop"
+        rank: 2
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'unordered_ranks_template.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(dict_template)
+        parser = TemplateParser(path)
+        config = parser.get_pipeline_sort_config()
+        names = [fs['name'] for fs in config['fixed_stages']]
+        # Deben quedar ordenados por rank: 1,2,3,4
+        self.assertEqual(names, ['SCM Inspection', 'Develop', 'QA', 'Production'])
 
 
 class TestValidatorAcceptsAutosortAction(unittest.TestCase):
@@ -188,7 +275,7 @@ class TestParallelExecutorAutosortFlow(unittest.TestCase):
         return client
 
     def test_autosort_separates_fixed_from_numeric(self):
-        """Los stages fijos deben mantener su posicion antes de los numericos"""
+        """Los stages fijos deben aparecer antes de los numericos"""
         client = self._mock_azdo_client()
         executor = ParallelExecutor(max_workers=1)
 
@@ -199,6 +286,87 @@ class TestParallelExecutorAutosortFlow(unittest.TestCase):
         envs = sent_def['environments']
         names = [e['name'] for e in envs]
         self.assertEqual(names[:3], ['Develop', 'QA', 'Production'])
+
+    def test_autosort_fixed_stages_follow_declared_order(self):
+        """Los stages fijos deben ordenarse segun el orden declarado en fixed_stages,
+        no segun su posicion actual en el pipeline"""
+        environments = [
+            {'id': 3, 'name': 'Production', 'rank': 1},
+            {'id': 1, 'name': 'Develop', 'rank': 2},
+            {'id': 2, 'name': 'QA', 'rank': 3},
+            {'id': 4, 'name': '03-Laguna', 'rank': 4},
+            {'id': 5, 'name': '01-Culiacan', 'rank': 5},
+            {'id': 6, 'name': '02-Leon', 'rank': 6},
+        ]
+        client = self._mock_azdo_client(environments=environments)
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2016, self.parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        envs = sent_def['environments']
+        names = [e['name'] for e in envs]
+        # El template declara: Develop, QA, Production
+        # El pipeline tenia: Production, Develop, QA
+        # Resultado: Develop, QA, Production (orden declarado)
+        self.assertEqual(names[:3], ['Develop', 'QA', 'Production'])
+
+    def test_autosort_fixed_stages_with_scm_inspection(self):
+        """Test con SCM Inspection como primer stage fijo"""
+        scm_template = """\
+metadata:
+  name: "Auto-sort con SCM"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  pipeline:
+    action: "autosort_stages"
+    fixed_stages:
+      - "SCM Inspection"
+      - "Develop"
+      - "QA"
+      - "Production"
+    sort_pattern: "^\\\\d{2}-.*"
+    sort_order: "asc"
+
+options:
+  dry_run: false
+"""
+        template_path = os.path.join(self.tmpdir, 'scm_autosort_template.yaml')
+        with open(template_path, 'w', encoding='utf-8') as f:
+            f.write(scm_template)
+        scm_parser = TemplateParser(template_path)
+
+        environments = [
+            {'id': 1, 'name': 'QA', 'rank': 1},
+            {'id': 2, 'name': 'Production', 'rank': 2},
+            {'id': 3, 'name': 'Develop', 'rank': 3},
+            {'id': 4, 'name': 'SCM Inspection', 'rank': 4},
+            {'id': 5, 'name': '03-Laguna', 'rank': 5},
+            {'id': 6, 'name': '01-Culiacan', 'rank': 6},
+            {'id': 7, 'name': '02-Leon', 'rank': 7},
+        ]
+        client = self._mock_azdo_client(environments=environments)
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2016, scm_parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        envs = sent_def['environments']
+        names = [e['name'] for e in envs]
+        # Orden declarado: SCM Inspection, Develop, QA, Production
+        self.assertEqual(names[:4], ['SCM Inspection', 'Develop', 'QA', 'Production'])
+        # Numericos ordenados despues
+        self.assertEqual(names[4:], ['01-Culiacan', '02-Leon', '03-Laguna'])
+        # Ranks consecutivos
+        ranks = [e['rank'] for e in envs]
+        self.assertEqual(ranks, [1, 2, 3, 4, 5, 6, 7])
 
     def test_autosort_sorts_numeric_stages_ascending(self):
         """Los stages numericos deben quedar en orden ascendente"""
@@ -393,9 +561,9 @@ class TestAutosortTemplateRealFile(unittest.TestCase):
         template_path = str(self.templates_dir / "pipe_cd_autosort_stages.yaml")
         parser = TemplateParser(template_path)
         config = parser.get_pipeline_sort_config()
-        self.assertIn('Develop', config['fixed_stages'])
-        self.assertIn('QA', config['fixed_stages'])
-        self.assertIn('Production', config['fixed_stages'])
+        self.assertIn('Develop', config['fixed_stage_names'])
+        self.assertIn('QA', config['fixed_stage_names'])
+        self.assertIn('Production', config['fixed_stage_names'])
         self.assertEqual(config['sort_order'], 'asc')
 
     def test_real_template_validator_passes(self):
