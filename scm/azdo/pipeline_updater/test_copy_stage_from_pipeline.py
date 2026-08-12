@@ -293,6 +293,386 @@ options:
         self.assertTrue(client.create_snapshot.called)
         self.assertTrue(result.snapshot_id)
 
+    def test_copy_from_trigger_after_release(self):
+        """trigger: after_release debe setear condition ReleaseStarted"""
+        template = """\
+metadata:
+  name: "Copy with trigger"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "QA-Copia"
+      position: "start"
+      trigger: "after_release"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'trigger_template.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        copia_stage = next(e for e in sent_def['environments'] if e['name'] == 'QA-Copia')
+        conditions = copia_stage.get('conditions', [])
+        event_conds = [c for c in conditions if c.get('conditionType') == 'event']
+        self.assertEqual(len(event_conds), 1)
+        self.assertEqual(event_conds[0]['name'], 'ReleaseStarted')
+
+    def test_copy_from_trigger_after_stage(self):
+        """trigger: after_stage debe setear dependency a reference_stage"""
+        template = """\
+metadata:
+  name: "Copy with trigger after_stage"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "QA-Copia"
+      position: "after"
+      reference_stage: "Develop"
+      trigger: "after_stage"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'trigger_after_stage.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        copia_stage = next(e for e in sent_def['environments'] if e['name'] == 'QA-Copia')
+        conditions = copia_stage.get('conditions', [])
+        state_conds = [c for c in conditions if c.get('conditionType') == 'environmentState']
+        self.assertEqual(len(state_conds), 1)
+        self.assertEqual(state_conds[0]['name'], 'Develop')
+
+    def test_copy_from_trigger_none(self):
+        """trigger: none debe dejar conditions vacias (excepto artifact filters)"""
+        template = """\
+metadata:
+  name: "Copy with trigger none"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "QA-Copia"
+      position: "start"
+      trigger: "none"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'trigger_none.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        copia_stage = next(e for e in sent_def['environments'] if e['name'] == 'QA-Copia')
+        conditions = copia_stage.get('conditions', [])
+        # No debe haber conditions de tipo event o environmentState
+        non_artifact = [c for c in conditions if c.get('conditionType') != 'artifact']
+        self.assertEqual(len(non_artifact), 0)
+
+    def test_copy_from_trigger_preserves_artifact_filters(self):
+        """trigger override debe preservar artifact filters"""
+        client = MagicMock()
+
+        source_stage = {
+            'id': 2,
+            'name': 'QA',
+            'rank': 2,
+            'conditions': [
+                {'name': 'Develop', 'conditionType': 'environmentState', 'value': '4', 'result': None},
+                {'name': '_artifact', 'conditionType': 'artifact', 'value': '{"sourceBranch":"develop"}', 'result': None},
+            ],
+            'deployPhases': [{'deploymentInput': {'tasks': []}}],
+        }
+
+        client.get_release_definition.side_effect = lambda def_id: {
+            2760: {
+                'id': 2760, 'name': 'Target', 'revision': 1,
+                'environments': [
+                    {'id': 1, 'name': 'Develop', 'rank': 1, 'conditions': []},
+                ]
+            },
+            2758: {
+                'id': 2758, 'name': 'Source', 'revision': 1,
+                'environments': [source_stage],
+            }
+        }.get(def_id, {})
+
+        client.create_snapshot.return_value = 'snap_123'
+        client.update_release_definition.return_value = True
+
+        template = """\
+metadata:
+  name: "Copy with artifact preservation"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "QA-Copia"
+      position: "start"
+      trigger: "after_release"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'trigger_artifact.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        executor = ParallelExecutor(max_workers=1)
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        copia_stage = next(e for e in sent_def['environments'] if e['name'] == 'QA-Copia')
+        conditions = copia_stage.get('conditions', [])
+        artifact_conds = [c for c in conditions if c.get('conditionType') == 'artifact']
+        self.assertEqual(len(artifact_conds), 1)
+        self.assertEqual(artifact_conds[0]['name'], '_artifact')
+
+    def test_copy_from_make_dependents(self):
+        """make_dependents debe hacer que otros stages dependan del copiado"""
+        template = """\
+metadata:
+  name: "Copy with make_dependents"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "SCM Inspection"
+      position: "start"
+      trigger: "after_release"
+      make_dependents:
+        - stage: "Develop"
+        - stage: "Production"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'make_dependents.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        envs = sent_def['environments']
+
+        for dep_name in ('Develop', 'Production'):
+            dep_stage = next(e for e in envs if e['name'] == dep_name)
+            conditions = dep_stage.get('conditions', [])
+            state_conds = [c for c in conditions if c.get('conditionType') == 'environmentState']
+            self.assertEqual(len(state_conds), 1, f'{dep_name} should depend on SCM Inspection')
+            self.assertEqual(state_conds[0]['name'], 'SCM Inspection')
+
+    def test_copy_from_make_dependents_preserves_artifact_filters(self):
+        """make_dependents debe preservar artifact filters de los stages dependientes"""
+        client = MagicMock()
+
+        source_stage = {
+            'id': 2, 'name': 'SCM Inspection', 'rank': 1,
+            'conditions': [{'name': 'ReleaseStarted', 'conditionType': 'event', 'value': '', 'result': None}],
+            'deployPhases': [{'deploymentInput': {'tasks': []}}],
+        }
+
+        client.get_release_definition.side_effect = lambda def_id: {
+            2760: {
+                'id': 2760, 'name': 'Target', 'revision': 1,
+                'environments': [
+                    {
+                        'id': 1, 'name': 'Develop', 'rank': 1,
+                        'conditions': [
+                            {'name': 'ReleaseStarted', 'conditionType': 'event', 'value': '', 'result': None},
+                            {'name': '_artifact', 'conditionType': 'artifact', 'value': '{"sourceBranch":"develop"}', 'result': None},
+                        ],
+                    },
+                ]
+            },
+            2758: {
+                'id': 2758, 'name': 'Source', 'revision': 1,
+                'environments': [source_stage],
+            }
+        }.get(def_id, {})
+
+        client.create_snapshot.return_value = 'snap_123'
+        client.update_release_definition.return_value = True
+
+        template = """\
+metadata:
+  name: "Copy with make_dependents artifact"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "SCM Inspection"
+      new_name: "SCM Inspection"
+      position: "start"
+      trigger: "after_release"
+      make_dependents:
+        - stage: "Develop"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'make_deps_artifact.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        executor = ParallelExecutor(max_workers=1)
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        develop_stage = next(e for e in sent_def['environments'] if e['name'] == 'Develop')
+        conditions = develop_stage.get('conditions', [])
+        artifact_conds = [c for c in conditions if c.get('conditionType') == 'artifact']
+        self.assertEqual(len(artifact_conds), 1)
+        self.assertEqual(artifact_conds[0]['name'], '_artifact')
+
+    def test_copy_from_trigger_invalid_raises(self):
+        """trigger invalido debe fallar"""
+        template = """\
+metadata:
+  name: "Copy with bad trigger"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "QA-Copia"
+      position: "start"
+      trigger: "invalid_trigger"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'bad_trigger.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertFalse(result.success)
+
+    def test_copy_from_trigger_after_stage_without_reference_raises(self):
+        """trigger after_stage sin reference_stage debe fallar"""
+        template = """\
+metadata:
+  name: "Copy after_stage no ref"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "QA-Copia"
+      position: "start"
+      trigger: "after_stage"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'after_stage_no_ref.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = self._mock_azdo_client()
+        executor = ParallelExecutor(max_workers=1)
+
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertFalse(result.success)
+
 
 class TestCopyFromTemplateRealFile(unittest.TestCase):
     """Tests con el archivo real de template"""

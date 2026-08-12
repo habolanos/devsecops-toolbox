@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.7.31-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.7.32-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -576,14 +576,14 @@ python scm/main.py
 ---
 
 #### **8. pipe_cd_copy_stage_from_pipeline.yaml** 📋
-Copiar un stage desde otro pipeline (cross-pipeline) e insertarlo con un nuevo nombre.
+Copiar un stage desde otro pipeline (cross-pipeline) e insertarlo con un nuevo nombre. Soporta sobrescribir el trigger del stage copiado y hacer que otros stages dependan del copiado.
 
-**Caso de uso**: Copiar un stage "QA" desde un pipeline origen e insertarlo en otro pipeline como "QA-Copia"
+**Caso de uso**: Copiar un stage "SCM Inspection" desde un pipeline origen e insertarlo al inicio del pipeline destino con trigger `after_release`, haciendo que Develop, QA y Staging dependan de él.
 
 ```yaml
 metadata:
   name: "Copiar stage desde otro pipeline"
-  comment: "Copia cross-pipeline de stage"
+  comment: "Copia cross-pipeline con triggers y dependencias"
 
 search:
   stages:
@@ -593,23 +593,40 @@ update:
   stages:
     - action: "copy_from"
       source_definition_id: 2758    # Pipeline origen
-      source_stage: "QA"            # Stage a copiar
-      new_name: "QA-Copia"          # Nombre en el destino
-      position: "after"             # after | before | start | end
-      reference_stage: "Develop"    # Ancla en el destino
-      task_updates:                 # Modificar tasks del stage copiado
+      source_stage: "SCM Inspection" # Stage a copiar
+      new_name: "SCM Inspection"    # Nombre en el destino
+      position: "start"             # after | before | start | end
+      trigger: "after_release"      # after_release | after_stage | none
+      make_dependents:              # Stages que dependen del copiado
+        - stage: "Develop"
+        - stage: "QA"
+        - stage: "Staging"
+      task_updates:                 # Modificar tasks del stage copiado (opcional)
         - task_name: "Deploy to QA"
           fields:
             - path: "inputs.namespace"
               new_value: "qa-copia"
 ```
 
+**Opciones de `trigger`**:
+
+| Valor | Descripción |
+|-------|-------------|
+| `after_release` | Inicia automáticamente al crear el release (`ReleaseStarted`) |
+| `after_stage` | Depende de `reference_stage` (requiere `reference_stage` o `after_stage`) |
+| `none` | Sin conditions (ejecución manual) |
+| *(omitido)* | Hereda las conditions del stage origen |
+
+**`make_dependents`**: Reemplaza las conditions de tipo `environmentState` y `event` de los stages listados por una dependencia al stage copiado. Preserva artifact filters.
+
 **Cómo funciona**:
 1. Descarga el pipeline origen (`source_definition_id`)
 2. Extrae el stage (`source_stage`)
-3. Lo inserta en el pipeline destino con `new_name`
-4. Aplica `task_updates` al stage copiado (opcional)
-5. Reasigna ranks consecutivamente
+3. Sobrescribe el trigger del stage copiado (`trigger`, opcional)
+4. Lo inserta en el pipeline destino con `new_name`
+5. Aplica `task_updates` al stage copiado (opcional)
+6. Hace que otros stages dependan del copiado (`make_dependents`, opcional)
+7. Reasigna ranks consecutivamente
 
 **Uso**:
 ```bash

@@ -324,7 +324,19 @@ class ParallelExecutor:
                 update_rules,
                 template_options
             )
-            update_engine.apply_updates()
+            success = update_engine.apply_updates()
+            if not success:
+                duration = time.time() - start_time
+                return UpdateResult(
+                    definition_id=definition_id,
+                    success=False,
+                    snapshot_id=snapshot_id,
+                    matches_found=len(matches),
+                    changes_applied=0,
+                    changes=[],
+                    error='apply_updates failed (ver logs arriba)',
+                    duration=duration
+                )
             changes_count = update_engine.get_changes_count()
             print(f"  [Pipeline {definition_id}]   ✓ Cambios aplicados: {changes_count}")
             
@@ -475,6 +487,10 @@ class ParallelExecutor:
                 new_rule['before_stage'] = rule['before_stage']
             if rule.get('task_updates'):
                 new_rule['task_updates'] = rule['task_updates']
+            if rule.get('trigger') is not None:
+                new_rule['trigger'] = rule['trigger']
+            if rule.get('make_dependents'):
+                new_rule['make_dependents'] = rule['make_dependents']
             
             new_stage_rules.append(new_rule)
             

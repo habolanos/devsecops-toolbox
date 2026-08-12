@@ -264,6 +264,11 @@ class UpdateEngine:
         if task_updates:
             self._apply_task_updates_to_stage(new_stage, task_updates, new_name)
         
+        # Sobrescribir el trigger del stage copiado (opcional)
+        trigger = rule.get('trigger')
+        if trigger is not None:
+            self._apply_trigger_override(new_stage, trigger, rule, new_name)
+        
         insert_index = self._resolve_insert_index(
             environments, rule, rule.get('after_stage')
         )
@@ -271,6 +276,11 @@ class UpdateEngine:
         
         self._resequence_ranks(environments)
         self.definition['environments'] = environments
+        
+        # Hacer que otros stages dependan del nuevo stage (opcional)
+        make_dependents = rule.get('make_dependents', [])
+        if make_dependents:
+            self._apply_make_dependents(environments, make_dependents, new_name)
         
         self.changes.append({
             'type': 'stage_add',
@@ -754,6 +764,97 @@ class UpdateEngine:
         """Reasignar ranks secuenciales (1..N) según el orden actual del array."""
         for idx, stage in enumerate(environments):
             stage['rank'] = idx + 1
+    
+    def _apply_trigger_override(self, stage: Dict, trigger: str, rule: Dict, stage_name: str):
+        """
+        Sobrescribir las conditions[] (trigger) del stage copiado.
+        
+        Opciones:
+          - "after_release": trigger automático al iniciar el release.
+          - "after_stage":   depende de reference_stage (o after_stage).
+          - "none":          sin conditions (ejecución manual).
+        
+        Preserva artifact filters (conditionType: "artifact").
+        """
+        artifact_conditions = [
+            c for c in stage.get('conditions', [])
+            if c.get('conditionType') == 'artifact'
+        ]
+        
+        if trigger == 'after_release':
+            new_conditions = [{
+                'name': 'ReleaseStarted',
+                'conditionType': 'event',
+                'value': '',
+                'result': None
+            }]
+        elif trigger == 'after_stage':
+            ref = rule.get('reference_stage') or rule.get('after_stage', '')
+            if not ref:
+                raise ValueError(
+                    "trigger 'after_stage' requiere 'reference_stage' "
+                    "o 'after_stage' en la regla"
+                )
+            new_conditions = [{
+                'name': ref,
+                'conditionType': 'environmentState',
+                'value': '4',
+                'result': None
+            }]
+        elif trigger == 'none':
+            new_conditions = []
+        else:
+            raise ValueError(
+                f"trigger '{trigger}' no válido. "
+                "Usar: after_release | after_stage | none"
+            )
+        
+        new_conditions.extend(artifact_conditions)
+        stage['conditions'] = new_conditions
+        
+        self.changes.append({
+            'type': 'stage_trigger_override',
+            'stage': stage_name,
+            'trigger': trigger,
+            'reference': rule.get('reference_stage') or rule.get('after_stage', '')
+        })
+    
+    def _apply_make_dependents(self, environments: List[Dict], make_dependents: List[Dict], new_stage_name: str):
+        """
+        Hacer que stages existentes dependan del stage recién insertado.
+        
+        Reemplaza las conditions de tipo 'environmentState' y 'event' por una
+        dependencia al nuevo stage. Preserva artifact filters.
+        """
+        for dep in make_dependents:
+            target_stage_name = dep.get('stage')
+            if not target_stage_name:
+                continue
+            
+            for stage in environments:
+                if stage.get('name', '') != target_stage_name:
+                    continue
+                
+                artifact_conditions = [
+                    c for c in stage.get('conditions', [])
+                    if c.get('conditionType') == 'artifact'
+                ]
+                
+                stage['conditions'] = [{
+                    'name': new_stage_name,
+                    'conditionType': 'environmentState',
+                    'value': '4',
+                    'result': None
+                }] + artifact_conditions
+                
+                self.changes.append({
+                    'type': 'stage_dependency_update',
+                    'stage': target_stage_name,
+                    'field': 'conditions',
+                    'old_ref': '(replaced)',
+                    'new_ref': new_stage_name
+                })
+                break
     
     def _apply_task_updates_to_stage(self, stage: Dict, task_updates: List[Dict], stage_name: str):
         """
