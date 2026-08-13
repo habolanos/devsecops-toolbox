@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.7.32-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.7.33-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -576,14 +576,14 @@ python scm/main.py
 ---
 
 #### **8. pipe_cd_copy_stage_from_pipeline.yaml** 📋
-Copiar un stage desde otro pipeline (cross-pipeline) e insertarlo con un nuevo nombre. Soporta sobrescribir el trigger del stage copiado y hacer que otros stages dependan del copiado.
+Copiar un stage desde otro pipeline (cross-pipeline) e insertarlo con un nuevo nombre. Soporta sobrescribir el trigger, agregar artifact filters y hacer que otros stages dependan del copiado.
 
-**Caso de uso**: Copiar un stage "SCM Inspection" desde un pipeline origen e insertarlo al inicio del pipeline destino con trigger `after_release`, haciendo que Develop, QA y Staging dependan de él.
+**Caso de uso**: Copiar un stage "SCM Inspection" desde un pipeline origen e insertarlo al inicio del pipeline destino con trigger `after_release`, artifact filters para branches develop/QA/release/*, y haciendo que Develop, QA y Staging dependan de él.
 
 ```yaml
 metadata:
   name: "Copiar stage desde otro pipeline"
-  comment: "Copia cross-pipeline con triggers y dependencias"
+  comment: "Copia cross-pipeline con triggers, artifact filters y dependencias"
 
 search:
   stages:
@@ -597,6 +597,13 @@ update:
       new_name: "SCM Inspection"    # Nombre en el destino
       position: "start"             # after | before | start | end
       trigger: "after_release"      # after_release | after_stage | none
+      artifact_filters:             # Filtros de artifact (opcional)
+        - artifact: "$auto:Git"     # Token $auto:Git = primer Git artifact
+          type: "include"           # include | exclude
+          branches:
+            - "develop"
+            - "QA"
+            - "release/*"
       make_dependents:              # Stages que dependen del copiado
         - stage: "Develop"
         - stage: "QA"
@@ -619,14 +626,23 @@ update:
 
 **`make_dependents`**: Reemplaza las conditions de tipo `environmentState` y `event` de los stages listados por una dependencia al stage copiado. Preserva artifact filters.
 
+**`artifact_filters`**: Agrega conditions de tipo `artifact` al stage copiado para filtrar por branches. Cada filtro especifica:
+
+| Campo | Descripción | Default |
+|-------|-------------|---------|
+| `artifact` | Alias del artifact o token `$auto` / `$auto:Git` | `$auto:Git` |
+| `type` | `include` o `exclude` | `include` |
+| `branches` | Lista de branches (ej: `develop`, `QA`, `release/*`) | `[]` |
+
 **Cómo funciona**:
 1. Descarga el pipeline origen (`source_definition_id`)
 2. Extrae el stage (`source_stage`)
 3. Sobrescribe el trigger del stage copiado (`trigger`, opcional)
-4. Lo inserta en el pipeline destino con `new_name`
-5. Aplica `task_updates` al stage copiado (opcional)
-6. Hace que otros stages dependan del copiado (`make_dependents`, opcional)
-7. Reasigna ranks consecutivamente
+4. Agrega artifact filters (`artifact_filters`, opcional)
+5. Lo inserta en el pipeline destino con `new_name`
+6. Aplica `task_updates` al stage copiado (opcional)
+7. Hace que otros stages dependan del copiado (`make_dependents`, opcional)
+8. Reasigna ranks consecutivamente
 
 **Uso**:
 ```bash

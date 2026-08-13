@@ -1,0 +1,35 @@
+metadata:
+  name: "Reordenar 3 stages: Develop, QA, Production"
+  version: "1.0"
+  description: "Reordenar 3 stages: Develop → QA → Production"
+  comment: |
+    Reordenamiento de stages.
+
+    Nuevo orden de ejecución:
+    1. Develop
+    2. QA
+    3. Production
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-12
+
+search:
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - name: "Production"
+
+update:
+  stages:
+    # Nuevo orden: Develop → QA → Production
+    - name: "Develop"
+      rank: 1
+    
+    - name: "QA"
+      rank: 2
+
+    - name: "Production"
+      rank: 3
+options:
+  dry_run: false
+  rollback_on_error: true

@@ -1,0 +1,38 @@
+metadata:
+  name: "Reordenar 4 stages: SCM Inspection, Develop, QA, Production"
+  version: "1.0"
+  description: "Reordenar 4 stages: SCM Inspection → Develop → QA → Production"
+  comment: |
+    Reordenamiento de stages.
+    Aplica a pipelines que contengan los stages SCM Inspection, Develop, QA y Production.
+
+    Nuevo orden de ejecución:
+    1. SCM Inspection
+    2. Develop
+    3. QA
+    4. Production
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-12
+
+search:
+  stages:
+    - name: "SCM Inspection"
+    - name: "Develop"
+    - name: "QA"
+    - name: "Production"
+
+update:
+  stages:
+    # Nuevo orden: SCM Inspection → Develop → QA → Production
+    - name: "SCM Inspection"
+      rank: 1
+    - name: "Develop"
+      rank: 2
+    - name: "QA"
+      rank: 3
+    - name: "Production"
+      rank: 4
+options:
+  dry_run: false
+  rollback_on_error: true

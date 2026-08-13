@@ -1,0 +1,49 @@
+metadata:
+  name: "Normalizar stages regionales"
+  version: "1.1"
+  description: "Normaliza nombres de 9 stages regionales (agrega cero a numeros de un digito)"
+  comment:  |
+    Renombrado de stage en pipeline CD.
+
+    Cambios realizados:
+    1. Normalizacion de Stages Regionales
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-08-12
+  author: "Harold Adrian"
+  created_at: "2026-08-12"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "rename"
+      source_stage: "2-Leon"
+      new_name: "02-Leon"
+    - action: "rename"
+      source_stage: "3-Laguna"
+      new_name: "03-Laguna"
+    - action: "rename"
+      source_stage: "4-Mexicali"
+      new_name: "04-Mexicali"
+    - action: "rename"
+      source_stage: "5-Nogales"
+      new_name: "05-Nogales"
+    - action: "rename"
+      source_stage: "6-Monterrey"
+      new_name: "06-Monterrey"
+    - action: "rename"
+      source_stage: "7-Guadalajara"
+      new_name: "07-Guadalajara"
+    - action: "rename"
+      source_stage: "8-Azcapozalco"
+      new_name: "08-Azcapozalco"
+    - action: "rename"
+      source_stage: "9-Nuevo Laredo"
+      new_name: "09-Nuevo Laredo"
+
+options:
+  dry_run: false
+  rollback_on_error: true

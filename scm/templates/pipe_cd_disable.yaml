@@ -6,7 +6,7 @@ metadata:
     Setea isDisabled=true via PUT: el pipeline permanece visible en la UI
     pero no permite crear nuevos releases. Es reversible: un PUT con
     isDisabled=false lo re-habilita. Se crea snapshot automatico para rollback.
-  comment: "Pipeline deshabilitado via pipeline_updater - isDisabled=true"
+  comment: "MINSAIT's Pipeline deshabilitado via pipeline_updater - isDisabled=true"
   author: "Harold Adrian"
   created_at: "2026-07-31"
 

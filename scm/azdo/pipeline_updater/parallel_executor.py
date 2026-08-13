@@ -491,6 +491,8 @@ class ParallelExecutor:
                 new_rule['trigger'] = rule['trigger']
             if rule.get('make_dependents'):
                 new_rule['make_dependents'] = rule['make_dependents']
+            if rule.get('artifact_filters'):
+                new_rule['artifact_filters'] = rule['artifact_filters']
             
             new_stage_rules.append(new_rule)
             

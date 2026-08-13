@@ -673,6 +673,237 @@ options:
 
         self.assertFalse(result.success)
 
+    def test_copy_from_artifact_filters(self):
+        """artifact_filters debe agregar conditions de tipo artifact al stage copiado"""
+        template = """\
+metadata:
+  name: "Copy with artifact_filters"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "SCM Inspection"
+      position: "start"
+      trigger: "after_release"
+      artifact_filters:
+        - artifact: "$auto:Git"
+          type: "include"
+          branches:
+            - "develop"
+            - "QA"
+            - "release/*"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'artifact_filters.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = MagicMock()
+
+        source_stage = {
+            'id': 2, 'name': 'QA', 'rank': 2,
+            'conditions': [{'name': 'Develop', 'conditionType': 'environmentState', 'value': '4', 'result': None}],
+            'deployPhases': [{'deploymentInput': {'tasks': []}}],
+        }
+
+        client.get_release_definition.side_effect = lambda def_id: {
+            2760: {
+                'id': 2760, 'name': 'Target', 'revision': 1,
+                'artifacts': [{'alias': '_repo', 'type': 'Git'}],
+                'environments': [
+                    {'id': 1, 'name': 'Develop', 'rank': 1, 'conditions': []},
+                    {'id': 2, 'name': 'Production', 'rank': 2, 'conditions': []},
+                ]
+            },
+            2758: {
+                'id': 2758, 'name': 'Source', 'revision': 1,
+                'environments': [source_stage],
+            }
+        }.get(def_id, {})
+
+        client.create_snapshot.return_value = 'snap_123'
+        client.update_release_definition.return_value = True
+
+        executor = ParallelExecutor(max_workers=1)
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        scm_stage = next(e for e in sent_def['environments'] if e['name'] == 'SCM Inspection')
+        conditions = scm_stage.get('conditions', [])
+
+        # Debe tener 1 event condition (ReleaseStarted) + 3 artifact conditions
+        event_conds = [c for c in conditions if c.get('conditionType') == 'event']
+        self.assertEqual(len(event_conds), 1)
+        self.assertEqual(event_conds[0]['name'], 'ReleaseStarted')
+
+        artifact_conds = [c for c in conditions if c.get('conditionType') == 'artifact']
+        self.assertEqual(len(artifact_conds), 3)
+        # Verificar que todas tienen el alias resuelto
+        for ac in artifact_conds:
+            self.assertEqual(ac['name'], '_repo')
+        # Verificar branches en el value (JSON)
+        import json as _json
+        branches = [_json.loads(ac['value'])['sourceBranch'] for ac in artifact_conds]
+        self.assertIn('develop', branches)
+        self.assertIn('QA', branches)
+        self.assertIn('release/*', branches)
+
+    def test_copy_from_artifact_filters_preserves_event_conditions(self):
+        """artifact_filters debe preservar conditions de tipo event/environmentState"""
+        template = """\
+metadata:
+  name: "Copy artifact_filters preserve event"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "SCM Inspection"
+      position: "start"
+      trigger: "after_release"
+      artifact_filters:
+        - artifact: "$auto:Git"
+          branches:
+            - "develop"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'artifact_filters_preserve.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = MagicMock()
+
+        source_stage = {
+            'id': 2, 'name': 'QA', 'rank': 2,
+            'conditions': [
+                {'name': 'ReleaseStarted', 'conditionType': 'event', 'value': '', 'result': None},
+                {'name': '_oldartifact', 'conditionType': 'artifact', 'value': '{}', 'result': None},
+            ],
+            'deployPhases': [{'deploymentInput': {'tasks': []}}],
+        }
+
+        client.get_release_definition.side_effect = lambda def_id: {
+            2760: {
+                'id': 2760, 'name': 'Target', 'revision': 1,
+                'artifacts': [{'alias': '_repo', 'type': 'Git'}],
+                'environments': [
+                    {'id': 1, 'name': 'Develop', 'rank': 1, 'conditions': []},
+                ]
+            },
+            2758: {
+                'id': 2758, 'name': 'Source', 'revision': 1,
+                'environments': [source_stage],
+            }
+        }.get(def_id, {})
+
+        client.create_snapshot.return_value = 'snap_123'
+        client.update_release_definition.return_value = True
+
+        executor = ParallelExecutor(max_workers=1)
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        scm_stage = next(e for e in sent_def['environments'] if e['name'] == 'SCM Inspection')
+        conditions = scm_stage.get('conditions', [])
+
+        # Debe tener 1 event (ReleaseStarted del trigger override) + 1 artifact (nuevo)
+        event_conds = [c for c in conditions if c.get('conditionType') == 'event']
+        self.assertEqual(len(event_conds), 1)
+
+        artifact_conds = [c for c in conditions if c.get('conditionType') == 'artifact']
+        self.assertEqual(len(artifact_conds), 1)
+        self.assertEqual(artifact_conds[0]['name'], '_repo')
+
+    def test_copy_from_artifact_filters_no_artifact_skips(self):
+        """artifact_filters sin artifacts en el pipeline debe omitir el filtro y continuar"""
+        template = """\
+metadata:
+  name: "Copy artifact_filters no artifact"
+  version: "1.0"
+
+search:
+  stages:
+    - name: "*"
+
+update:
+  stages:
+    - action: "copy_from"
+      source_definition_id: 2758
+      source_stage: "QA"
+      new_name: "SCM Inspection"
+      position: "start"
+      trigger: "after_release"
+      artifact_filters:
+        - artifact: "$auto:Git"
+          branches:
+            - "develop"
+
+options:
+  dry_run: false
+"""
+        path = os.path.join(self.tmpdir, 'artifact_filters_no_art.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(template)
+        parser = TemplateParser(path)
+
+        client = MagicMock()
+
+        source_stage = {
+            'id': 2, 'name': 'QA', 'rank': 2,
+            'conditions': [],
+            'deployPhases': [{'deploymentInput': {'tasks': []}}],
+        }
+
+        client.get_release_definition.side_effect = lambda def_id: {
+            2760: {
+                'id': 2760, 'name': 'Target', 'revision': 1,
+                'artifacts': [],  # Sin artifacts
+                'environments': [
+                    {'id': 1, 'name': 'Develop', 'rank': 1, 'conditions': []},
+                ]
+            },
+            2758: {
+                'id': 2758, 'name': 'Source', 'revision': 1,
+                'environments': [source_stage],
+            }
+        }.get(def_id, {})
+
+        client.create_snapshot.return_value = 'snap_123'
+        client.update_release_definition.return_value = True
+
+        executor = ParallelExecutor(max_workers=1)
+        result = executor._process_pipeline(2760, parser, client)
+
+        self.assertTrue(result.success)
+        sent_def = client.update_release_definition.call_args.args[1]
+        scm_stage = next(e for e in sent_def['environments'] if e['name'] == 'SCM Inspection')
+        conditions = scm_stage.get('conditions', [])
+
+        # No debe tener artifact conditions (se omitieron), solo event
+        artifact_conds = [c for c in conditions if c.get('conditionType') == 'artifact']
+        self.assertEqual(len(artifact_conds), 0)
+
 
 class TestCopyFromTemplateRealFile(unittest.TestCase):
     """Tests con el archivo real de template"""
@@ -689,7 +920,7 @@ class TestCopyFromTemplateRealFile(unittest.TestCase):
     def test_real_template_loads(self):
         path = os.path.join(
             self.templates_dir,
-            'pipe_cd_copy_stage_from_pipeline.yaml'
+            'pipe_cd_copy_stage_from_pipeline_1_scm_incpection.yaml'
         )
         self.assertTrue(os.path.exists(path))
         parser = TemplateParser(path)
@@ -699,7 +930,7 @@ class TestCopyFromTemplateRealFile(unittest.TestCase):
     def test_real_template_has_copy_from_action(self):
         path = os.path.join(
             self.templates_dir,
-            'pipe_cd_copy_stage_from_pipeline.yaml'
+            'pipe_cd_copy_stage_from_pipeline_1_scm_incpection.yaml'
         )
         parser = TemplateParser(path)
         stages = parser.get_update_rules().get('stages', [])
@@ -709,7 +940,7 @@ class TestCopyFromTemplateRealFile(unittest.TestCase):
     def test_real_template_validator_passes(self):
         path = os.path.join(
             self.templates_dir,
-            'pipe_cd_copy_stage_from_pipeline.yaml'
+            'pipe_cd_copy_stage_from_pipeline_1_scm_incpection.yaml'
         )
         parser = TemplateParser(path)
         validator = TemplateValidator(parser.to_dict())

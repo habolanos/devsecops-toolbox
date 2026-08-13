@@ -4,6 +4,7 @@ Motor de actualización para Pipeline Updater
 
 import copy
 import fnmatch
+import json
 import re
 from typing import Dict, List, Any
 from .models import Match, TemplateOptions
@@ -268,6 +269,11 @@ class UpdateEngine:
         trigger = rule.get('trigger')
         if trigger is not None:
             self._apply_trigger_override(new_stage, trigger, rule, new_name)
+        
+        # Agregar artifact filters al stage copiado (opcional)
+        artifact_filters = rule.get('artifact_filters', [])
+        if artifact_filters:
+            self._apply_artifact_filters(new_stage, artifact_filters, new_name)
         
         insert_index = self._resolve_insert_index(
             environments, rule, rule.get('after_stage')
@@ -752,13 +758,12 @@ class UpdateEngine:
         return ref_index + 1
     
     def _next_environment_id(self, environments: List[Dict]) -> int:
-        """Obtener un id único para un nuevo environment (max existente + 1)."""
-        max_id = 0
-        for stage in environments:
-            sid = stage.get('id')
-            if isinstance(sid, int) and sid > max_id:
-                max_id = sid
-        return max_id + 1
+        """Obtener un id para un nuevo environment.
+        
+        Azure DevOps requiere que los stages nuevos tengan id < 1.
+        El servidor asigna el id real al guardar la definicion.
+        """
+        return 0
     
     def _resequence_ranks(self, environments: List[Dict]):
         """Reasignar ranks secuenciales (1..N) según el orden actual del array."""
@@ -855,6 +860,61 @@ class UpdateEngine:
                     'new_ref': new_stage_name
                 })
                 break
+    
+    def _apply_artifact_filters(self, stage: Dict, artifact_filters: List[Dict], stage_name: str):
+        """
+        Agregar artifact filters (conditions de tipo artifact) al stage copiado.
+        
+        Cada filtro especifica:
+          - artifact: alias del artifact o token $auto / $auto:Git
+          - type: "include" | "exclude" (default: "include")
+          - branches: lista de nombres de branch (ej: ["develop", "QA", "release/*"])
+        
+        Las branches con wildcards (ej: release/*) se expanden a formato
+        Azure DevOps: +refs/heads/release/*
+        
+        Si el stage ya tiene artifact conditions, se reemplazan por las nuevas.
+        Las conditions de tipo event/environmentState se preservan.
+        """
+        non_artifact_conditions = [
+            c for c in stage.get('conditions', [])
+            if c.get('conditionType') != 'artifact'
+        ]
+        
+        new_artifact_conditions = []
+        
+        for filt in artifact_filters:
+            artifact_token = filt.get('artifact', '$auto:Git')
+            filter_type = filt.get('type', 'include')
+            branches = filt.get('branches', [])
+            
+            alias = self._resolve_artifact_name(artifact_token)
+            if not alias:
+                print(f"  ⚠ artifact_filters: no se encontro artifact para "
+                      f"token '{artifact_token}' en el pipeline, se omite el filtro")
+                continue
+            
+            for branch in branches:
+                condition_value = json.dumps({
+                    'sourceBranch': branch,
+                    'alias': alias
+                })
+                new_artifact_conditions.append({
+                    'name': alias,
+                    'conditionType': 'artifact',
+                    'value': condition_value,
+                    'result': None
+                })
+            
+            self.changes.append({
+                'type': 'stage_artifact_filter',
+                'stage': stage_name,
+                'artifact': alias,
+                'filter_type': filter_type,
+                'branches': branches
+            })
+        
+        stage['conditions'] = non_artifact_conditions + new_artifact_conditions
     
     def _apply_task_updates_to_stage(self, stage: Dict, task_updates: List[Dict], stage_name: str):
         """
