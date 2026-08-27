@@ -1,10 +1,12 @@
 metadata:
-  name: "Actualizar branchConfig en todos los stages del release"
-  version: "1.0"
-  description: "Busca la variable branchConfig con valor config-cadenaSuministro en todos los stages y la actualiza a feature/feature-amad"
+  name: "Actualizar branchConfig y path_pipelineConfig en release"
+  version: "1.1"
+  description: "Busca branchConfig=config-cadenaSuministro en todos los stages y actualiza a feature/feature-amad. Ademas busca path_pipelineConfig en el script de la task 'get file k8-manifest' y lo reemplaza por path_pipelineConfigYml"
   comment: |
-    Cambios: variable branchConfig config-cadenaSuministro → feature/feature-amad
-    Razon: Promocion a feature branch
+    Cambios:
+    1. Variable branchConfig: config-cadenaSuministro → feature/feature-amad (todos los stages)
+    2. Task "get file k8-manifest": path_pipelineConfig → path_pipelineConfigYml en inputs.script
+    Razon: Promocion a feature branch y renombrado de variable de configuracion
     Aprobado por: DevOps Lead
     Fecha: 2026-08-27
   author: "DevOps Team"
@@ -22,9 +24,16 @@ update:
       search_value: "config-cadenaSuministro"
       value: "feature/feature-amad"
 
+  tasks:
+    - name: "get file k8-manifest"
+      fields:
+        - path: "inputs.script"
+          old_value: "path_pipelineConfig"
+          new_value: "path_pipelineConfigYml"
+
   abandon: false
 
-  description: "Actualizacion branchConfig: config-cadenaSuministro → feature/feature-amad"
+  description: "Actualizacion branchConfig: config-cadenaSuministro → feature/feature-amad + path_pipelineConfig → path_pipelineConfigYml"
 
 options:
   dry_run: true

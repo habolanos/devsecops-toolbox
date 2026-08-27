@@ -253,23 +253,15 @@ python scm/main.py
 ```
 
 #### **release_update_branchconfig.yaml** 🆕
-Busca la variable `branchConfig` con valor `config-cadenaSuministro` en **todos los stages** del release y la actualiza a `feature/feature-amad`. Usa `stage: "*"` (wildcard) y `search_value` para filtrar solo los stages que tienen el valor antiguo.
+Template unificado que realiza dos cambios en una sola operacion:
+1. Busca la variable `branchConfig` con valor `config-cadenaSuministro` en **todos los stages** del release y la actualiza a `feature/feature-amad` (usa `stage: "*"` y `search_value`).
+2. Busca la task "get file k8-manifest" y reemplaza `path_pipelineConfig` por `path_pipelineConfigYml` en `inputs.script`.
 
 **Uso**:
 ```bash
 python scm/main.py
 # Seleccionar: Azure DevOps → Tool 42
 # Ingresar: --template scm/templates/release_update_branchconfig.yaml --release-id 987 --pat TOKEN
-```
-
-#### **pipe_cd_update_path_pipelineConfig.yaml** 🆕 (Tool 41)
-Busca la task "get file k8-manifest" en todos los stages y reemplaza el texto `path_pipelineConfig` por `path_pipelineConfigYml` en `inputs.script`.
-
-**Uso**:
-```bash
-python scm/main.py
-# Seleccionar: Azure DevOps → Tool 41
-# Ingresar: scm/templates/pipe_cd_update_path_pipelineConfig.yaml
 ```
 
 ### **Estructura de Templates Tool 42**
@@ -295,6 +287,12 @@ update:
       name: "branchConfig"
       search_value: "old-value"     # Solo actualiza si el valor actual coincide
       value: "new-value"
+  tasks:                            # Actualizar campos de tasks en release environments
+    - name: "get file k8-manifest"  # displayName de la task (case-insensitive)
+      fields:
+        - path: "inputs.script"     # Path anidado dentro de la task
+          old_value: "old_text"     # Texto a buscar (reemplazo parcial)
+          new_value: "new_text"     # Texto de reemplazo
   abandon: false
   description: "Nueva descripcion"
 
@@ -309,6 +307,8 @@ options:
 - `--pat` es siempre requerido (via CLI o config.json)
 - `stage: "*"` aplica la variable a todos los stages del release
 - `search_value` es opcional: si se especifica, solo se actualizan los stages donde el valor actual coincide
+- `tasks` busca en `deployPhases[].workflowTasks[]` de cada environment por `displayName` (case-insensitive)
+- El reemplazo en tasks es parcial: busca `old_value` dentro del valor actual y lo reemplaza por `new_value`
 
 ---
 

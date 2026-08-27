@@ -111,19 +111,62 @@ class TestBuildPatchPayload(unittest.TestCase):
                     "variables": {
                         "DEBUG": {"value": "true", "allowOverride": True},
                         "branchConfig": {"value": "config-cadenaSuministro", "allowOverride": True},
-                    }
+                    },
+                    "deployPhases": [
+                        {
+                            "name": "QA",
+                            "workflowTasks": [
+                                {
+                                    "displayName": "get file k8-manifest",
+                                    "inputs": {
+                                        "script": "echo $path_pipelineConfig && kubectl apply -f $path_pipelineConfig"
+                                    }
+                                },
+                                {
+                                    "displayName": "Deploy",
+                                    "inputs": {"command": "apply"}
+                                }
+                            ]
+                        }
+                    ]
                 },
                 {
                     "id": 2, "name": "PROD", "status": "inProgress",
                     "variables": {
                         "branchConfig": {"value": "config-cadenaSuministro", "allowOverride": True},
-                    }
+                    },
+                    "deployPhases": [
+                        {
+                            "name": "PROD",
+                            "workflowTasks": [
+                                {
+                                    "displayName": "get file k8-manifest",
+                                    "inputs": {
+                                        "script": "cat $path_pipelineConfig/deploy.yaml"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
                 },
                 {
                     "id": 3, "name": "Staging", "status": "notStarted",
                     "variables": {
                         "branchConfig": {"value": "other-branch", "allowOverride": True},
-                    }
+                    },
+                    "deployPhases": [
+                        {
+                            "name": "Staging",
+                            "workflowTasks": [
+                                {
+                                    "displayName": "get file k8-manifest",
+                                    "inputs": {
+                                        "script": "echo no_config_here"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
                 },
             ]
         }
@@ -319,6 +362,83 @@ class TestBuildPatchPayload(unittest.TestCase):
         for c in env_var_changes:
             self.assertIsNone(c["old"])
             self.assertEqual(c["new"], "value")
+
+    def test_task_update_replaces_in_script(self):
+        """Task field update should replace old_value with new_value in script."""
+        task_updates = [
+            {"name": "get file k8-manifest", "fields": [
+                {"path": "inputs.script", "old_value": "path_pipelineConfig", "new_value": "path_pipelineConfigYml"}
+            ]}
+        ]
+        payload, changes = mod.build_patch_payload(
+            self.release, [], [], False, "", task_updates=task_updates
+        )
+        task_changes = [c for c in changes if c["type"] == "task_field"]
+        self.assertEqual(len(task_changes), 2)  # QA and PROD have the old_value
+        stages_changed = [c["stage"] for c in task_changes]
+        self.assertIn("QA", stages_changed)
+        self.assertIn("PROD", stages_changed)
+        for c in task_changes:
+            self.assertIn("path_pipelineConfigYml", c["new"])
+            self.assertNotIn("path_pipelineConfig\n", c["new"])
+            self.assertIn("path_pipelineConfig", c["old"])
+
+    def test_task_update_no_match_skips(self):
+        """Task field update should skip stages where old_value not found."""
+        task_updates = [
+            {"name": "get file k8-manifest", "fields": [
+                {"path": "inputs.script", "old_value": "nonexistent_text", "new_value": "replacement"}
+            ]}
+        ]
+        payload, changes = mod.build_patch_payload(
+            self.release, [], [], False, "", task_updates=task_updates
+        )
+        task_changes = [c for c in changes if c["type"] == "task_field"]
+        self.assertEqual(len(task_changes), 0)
+
+    def test_task_update_case_insensitive_name(self):
+        """Task name matching should be case-insensitive."""
+        task_updates = [
+            {"name": "GET FILE K8-MANIFEST", "fields": [
+                {"path": "inputs.script", "old_value": "path_pipelineConfig", "new_value": "path_pipelineConfigYml"}
+            ]}
+        ]
+        payload, changes = mod.build_patch_payload(
+            self.release, [], [], False, "", task_updates=task_updates
+        )
+        task_changes = [c for c in changes if c["type"] == "task_field"]
+        self.assertEqual(len(task_changes), 2)
+
+    def test_task_update_not_found_no_changes(self):
+        """Task not found in any stage should produce no task changes."""
+        task_updates = [
+            {"name": "Nonexistent Task", "fields": [
+                {"path": "inputs.script", "old_value": "x", "new_value": "y"}
+            ]}
+        ]
+        payload, changes = mod.build_patch_payload(
+            self.release, [], [], False, "", task_updates=task_updates
+        )
+        task_changes = [c for c in changes if c["type"] == "task_field"]
+        self.assertEqual(len(task_changes), 0)
+
+    def test_combined_env_vars_and_task_updates(self):
+        """Combined env_vars with search_value and task_updates should both work."""
+        task_updates = [
+            {"name": "get file k8-manifest", "fields": [
+                {"path": "inputs.script", "old_value": "path_pipelineConfig", "new_value": "path_pipelineConfigYml"}
+            ]}
+        ]
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["*,branchConfig=feature/feature-amad"], False, "",
+            env_var_search_values=["config-cadenaSuministro"],
+            task_updates=task_updates
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        task_changes = [c for c in changes if c["type"] == "task_field"]
+        self.assertEqual(len(env_var_changes), 2)  # QA and PROD
+        self.assertEqual(len(task_changes), 2)     # QA and PROD
+        self.assertIn("environments", payload)
 
 
 class TestNormalizeOrg(unittest.TestCase):

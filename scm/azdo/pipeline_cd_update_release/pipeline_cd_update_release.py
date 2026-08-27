@@ -156,6 +156,8 @@ def load_template(template_path: str) -> Dict:
         env_vars.append(f"{stage},{name}={value}")
         env_var_search_values.append(search_value)
 
+    task_updates = update_section.get('tasks', [])
+
     abandon = update_section.get('abandon', False)
     description = update_section.get('description', '')
     dry_run = options_section.get('dry_run', False)
@@ -167,6 +169,7 @@ def load_template(template_path: str) -> Dict:
     print(f"{Colors.CYAN}  Release IDs: {', '.join(release_ids) if release_ids else '(via CLI)'}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Variables globales: {len(global_vars)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Variables por env: {len(env_vars)}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Task updates: {len(task_updates)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Abandonar: {abandon}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Dry-run: {dry_run}{Colors.ENDC}")
 
@@ -175,6 +178,7 @@ def load_template(template_path: str) -> Dict:
         'global_vars': global_vars,
         'env_vars': env_vars,
         'env_var_search_values': env_var_search_values,
+        'task_updates': task_updates,
         'abandon': abandon,
         'description': description,
         'dry_run': dry_run,
@@ -357,10 +361,32 @@ def build_var_entry(value: str) -> Dict:
     return {"value": value, "allowOverride": True}
 
 
+def _get_nested_value(obj: Dict, path: str) -> any:
+    keys = path.split('.')
+    current = obj
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return None
+    return current
+
+
+def _set_nested_value(obj: Dict, path: str, value: any) -> None:
+    keys = path.split('.')
+    current = obj
+    for key in keys[:-1]:
+        if key not in current or not isinstance(current[key], dict):
+            current[key] = {}
+        current = current[key]
+    current[keys[-1]] = value
+
+
 def build_patch_payload(
     release: Dict, global_vars: List[str], env_vars: List[str],
     abandon: bool, description: str,
     env_var_search_values: Optional[List[Optional[str]]] = None,
+    task_updates: Optional[List[Dict]] = None,
 ) -> Tuple[Dict, List[Dict]]:
     payload: Dict = {}
     changes: List[Dict] = []
@@ -406,6 +432,30 @@ def build_patch_payload(
                 else:
                     changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": stage_name,
                                     "error": f"Stage '{stage_name}' no encontrado en el release"})
+        payload['environments'] = environments
+    if task_updates:
+        environments = copy.deepcopy(release.get('environments', []))
+        for task_spec in task_updates:
+            task_name = task_spec.get('name', '')
+            fields = task_spec.get('fields', [])
+            for env in environments:
+                env_name = env.get('name', '')
+                for phase in env.get('deployPhases', []):
+                    for task in phase.get('workflowTasks', []):
+                        if task.get('displayName', '').lower() == task_name.lower():
+                            for field in fields:
+                                field_path = field.get('path', '')
+                                old_val = field.get('old_value', '')
+                                new_val = field.get('new_value', '')
+                                current_val = _get_nested_value(task, field_path)
+                                if current_val is not None and old_val in str(current_val):
+                                    new_field_val = str(current_val).replace(old_val, new_val)
+                                    _set_nested_value(task, field_path, new_field_val)
+                                    changes.append({
+                                        "type": "task_field", "task": task_name,
+                                        "path": field_path, "old": current_val,
+                                        "new": new_field_val, "stage": env_name,
+                                    })
         payload['environments'] = environments
     if abandon:
         changes.append({"type": "status", "key": "status", "old": release.get('status'), "new": "abandoned"})
@@ -561,6 +611,7 @@ def main():
         if not args.set_env_var and tpl['env_vars']:
             args.set_env_var = tpl['env_vars']
         args.env_var_search_values = tpl.get('env_var_search_values', [])
+        args.task_updates = tpl.get('task_updates', [])
         if not args.abandon and tpl['abandon']:
             args.abandon = tpl['abandon']
         if not args.description and tpl['description']:
@@ -591,11 +642,13 @@ def main():
         args.backup_path = params['backup_path']
         args.dry_run = params['dry_run']
         args.env_var_search_values = []
+        args.task_updates = []
     else:
         if not args.release_id or not args.pat:
             print(f"{Colors.RED}✗ Error: --release-id y --pat son requeridos cuando no se usa --interactive{Colors.ENDC}")
             sys.exit(1)
         args.env_var_search_values = []
+        args.task_updates = []
 
     release_ids = [rid.strip() for rid in str(args.release_id).split(',')]
 
@@ -634,7 +687,8 @@ def main():
             print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
             payload, changes = build_patch_payload(
                 release, args.set_var, args.set_env_var, args.abandon, args.description,
-                getattr(args, 'env_var_search_values', [])
+                getattr(args, 'env_var_search_values', []),
+                getattr(args, 'task_updates', [])
             )
             show_changes(changes)
 
