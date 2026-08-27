@@ -1515,14 +1515,15 @@ def run_tool(tool_key: str):
                 print(f"{Colors.BOLD}  🆙 Update Release - {'Dry-Run' if is_dry_run else 'Actualizar'} Release{Colors.ENDC}")
                 print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
 
-                # Preguntar si usar template YAML
-                print(f"{Colors.BOLD}¿Usar template YAML? (s/n) [n]:{Colors.ENDC} ", end="")
-                use_template = input().strip().lower() in ('s', 'si', 'yes', 'y')
+                # Preguntar si usar template YAML (default: si)
+                print(f"{Colors.BOLD}¿Usar template YAML? (S/n) [S]:{Colors.ENDC} ", end="")
+                tpl_input = input().strip().lower()
+                use_template = tpl_input in ('', 's', 'si', 'yes', 'y')
 
                 template_path = None
                 if use_template:
-                    # Listar templates disponibles
-                    templates_dir = BASE_DIR / "scm" / "templates"
+                    # Listar templates disponibles (scm/templates/ desde la raiz del repo)
+                    templates_dir = SCM_ROOT / "templates"
                     release_templates = sorted(templates_dir.glob("release_*.yaml"))
                     if release_templates:
                         print(f"\n{Colors.CYAN}Templates disponibles:{Colors.ENDC}")
@@ -1532,39 +1533,58 @@ def run_tool(tool_key: str):
                         print(f"\n{Colors.BOLD}Seleccione template (número) o 0 para ruta manual:{Colors.ENDC} ", end="")
                         tpl_choice = input().strip()
                         if tpl_choice == "0":
+                            print(f"{Colors.DIM}Ej: scm/templates/release_update_branchconfig.yaml{Colors.ENDC}")
                             print(f"{Colors.BOLD}Ruta del template:{Colors.ENDC} ", end="")
                             template_path = input().strip()
                         elif tpl_choice.isdigit() and 1 <= int(tpl_choice) <= len(release_templates):
-                            template_path = str(release_templates[int(tpl_choice) - 1])
+                            # Ruta relativa desde la raiz del repo
+                            template_path = str(Path("scm") / "templates" / release_templates[int(tpl_choice) - 1].name)
                         else:
                             print(f"{Colors.RED}❌ Selección inválida.{Colors.ENDC}")
                             input("\nPresione Enter para continuar...")
                             continue
-                        if template_path and not Path(template_path).exists():
-                            print(f"{Colors.RED}❌ Template no encontrado: {template_path}{Colors.ENDC}")
-                            input("\nPresione Enter para continuar...")
-                            continue
+                        if template_path:
+                            # Resolver ruta relativa desde la raiz del repo
+                            tpl_full = SCM_ROOT.parent / template_path if not Path(template_path).is_absolute() else Path(template_path)
+                            if not tpl_full.exists():
+                                print(f"{Colors.RED}❌ Template no encontrado: {template_path}{Colors.ENDC}")
+                                input("\nPresione Enter para continuar...")
+                                continue
                     else:
                         print(f"{Colors.YELLOW}No se encontraron templates en {templates_dir}{Colors.ENDC}")
+                        print(f"{Colors.DIM}Ej: scm/templates/release_update_branchconfig.yaml{Colors.ENDC}")
                         print(f"{Colors.BOLD}Ruta del template (Enter para cancelar):{Colors.ENDC} ", end="")
                         template_path = input().strip()
                         if not template_path:
                             continue
-                        if not Path(template_path).exists():
+                        tpl_full = SCM_ROOT.parent / template_path if not Path(template_path).is_absolute() else Path(template_path)
+                        if not tpl_full.exists():
                             print(f"{Colors.RED}❌ Template no encontrado: {template_path}{Colors.ENDC}")
                             input("\nPresione Enter para continuar...")
                             continue
 
-                # Solicitar parámetros específicos
+                # Parametros de conexion (informativos, ya precargados de config.json)
                 cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
                 if cfg_org.startswith("https://"):
                     cfg_org = cfg_org.split('/')[-1]
+                cfg_project = config_get(cfg, "azdo", "project", default="Cadena_de_Suministros")
+                cfg_pat = config_get(cfg, "azdo", "pat", default="")
 
-                org = prompt("Organización", default=cfg_org)
-                if not org.startswith("https://"):
-                    org = f"https://dev.azure.com/{org}"
+                print(f"{Colors.DIM}Organización: {cfg_org} (precargado){Colors.ENDC}")
+                print(f"{Colors.DIM}Proyecto: {cfg_project} (precargado){Colors.ENDC}")
+                if cfg_pat:
+                    print(f"{Colors.DIM}PAT: **** (precargado){Colors.ENDC}")
 
-                project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+                org = f"https://dev.azure.com/{cfg_org}"
+                project = cfg_project
+                pat = cfg_pat
+
+                if not pat:
+                    pat = prompt("Personal Access Token (PAT)", default="", secret=True)
+                    if not pat:
+                        print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
+                        input("\nPresione Enter para continuar...")
+                        continue
 
                 print(f"{Colors.BOLD}Release IDs a actualizar (obligatorio, separados por coma):{Colors.ENDC} ", end="")
                 release_ids_input = input().strip()
@@ -1625,15 +1645,6 @@ def run_tool(tool_key: str):
                     print(f"{Colors.BOLD}Nueva descripción (Enter para mantener):{Colors.ENDC} ", end="")
                     description = input().strip()
 
-                # PAT
-                pat = prompt("Personal Access Token (PAT)",
-                            default=config_get(cfg, "azdo", "pat", default=""),
-                            secret=True)
-                if not pat:
-                    print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
-                    input("\nPresione Enter para continuar...")
-                    continue
-
                 backup_path = prompt("Carpeta de backups",
                                     default=tool_defaults.get("backup_path", "./outcome/backups"))
 
@@ -1648,7 +1659,9 @@ def run_tool(tool_key: str):
                 ]
 
                 if template_path:
-                    cmd += ["--template", template_path]
+                    # Resolver a ruta absoluta para el subprocess (cwd=BASE_DIR=scm/azdo/)
+                    tpl_abs = SCM_ROOT.parent / template_path if not Path(template_path).is_absolute() else Path(template_path)
+                    cmd += ["--template", str(tpl_abs)]
 
                 for var in global_vars:
                     cmd += ["--set-var", var]
