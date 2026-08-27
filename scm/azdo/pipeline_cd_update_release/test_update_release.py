@@ -440,6 +440,28 @@ class TestBuildPatchPayload(unittest.TestCase):
         self.assertEqual(len(task_changes), 2)     # QA and PROD
         self.assertIn("environments", payload)
 
+    def test_global_var_with_search_value_match(self):
+        """Global var with matching search_value should be updated."""
+        payload, changes = mod.build_patch_payload(
+            self.release, ["EXISTING_VAR=new_value"], [], False, "",
+            global_var_search_values=["old_value"]
+        )
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["type"], "global_var")
+        self.assertEqual(changes[0]["key"], "EXISTING_VAR")
+        self.assertEqual(changes[0]["old"], "old_value")
+        self.assertEqual(changes[0]["new"], "new_value")
+
+    def test_global_var_with_search_value_no_match(self):
+        """Global var with non-matching search_value should report error."""
+        payload, changes = mod.build_patch_payload(
+            self.release, ["EXISTING_VAR=new_value"], [], False, "",
+            global_var_search_values=["wrong_value"]
+        )
+        self.assertEqual(len(changes), 1)
+        self.assertIn("error", changes[0])
+        self.assertNotIn("variables", payload)
+
 
 class TestColorsAttributes(unittest.TestCase):
     """Tests para verificar que Colors tiene todos los atributos usados."""
@@ -873,6 +895,31 @@ class TestLoadTemplate(unittest.TestCase):
         self.assertEqual(len(result["env_vars"]), 1)
         self.assertIn("QA,DEBUG=true", result["env_vars"])
         self.assertEqual(result["env_var_search_values"][0], "false")
+
+    def test_load_template_with_search_global_scope(self):
+        """Search variable with scope: global should produce global_vars with search_value."""
+        template = {
+            "metadata": {"name": "Global Scope", "version": "1.2"},
+            "search": {
+                "stages": [{"name": "*"}],
+                "variables": [{"name": "branchConfig", "value": "config-cadena", "scope": "global"}],
+            },
+            "release": {"ids": []},
+            "update": {
+                "global_vars": [],
+                "env_vars": [{"name": "branchConfig", "value": "feature/new"}],
+                "abandon": False,
+                "description": "",
+            },
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(len(result["global_vars"]), 1)
+        self.assertIn("branchConfig=feature/new", result["global_vars"])
+        self.assertEqual(len(result["env_vars"]), 0)
+        self.assertEqual(result["global_var_search_values"][0], "config-cadena")
 
 
 if __name__ == "__main__":

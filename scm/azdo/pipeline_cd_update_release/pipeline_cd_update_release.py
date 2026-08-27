@@ -164,10 +164,12 @@ def load_template(template_path: str) -> Dict:
 
     global_var_list = update_section.get('global_vars', [])
     global_vars = []
+    global_var_search_values = []
     for var in global_var_list:
         name = var.get('name', '')
         value = var.get('value', '')
         global_vars.append(f"{name}={value}")
+        global_var_search_values.append(None)
 
     env_var_list = update_section.get('env_vars', [])
     env_vars = []
@@ -177,15 +179,23 @@ def load_template(template_path: str) -> Dict:
     if search_section:
         search_stages = [s.get('name', '*') for s in search_section.get('stages', [{'name': '*'}])]
         search_vars = {}
+        search_scopes = {}
         for v in search_section.get('variables', []):
             search_vars[v.get('name', '')] = v.get('value')
+            search_scopes[v.get('name', '')] = v.get('scope', 'env')  # default: env
         for var in env_var_list:
             name = var.get('name', '')
             value = var.get('value', '')
             sv = search_vars.get(name)
-            for stage in search_stages:
-                env_vars.append(f"{stage},{name}={value}")
-                env_var_search_values.append(sv)
+            scope = search_scopes.get(name, 'env')
+            if scope == 'global':
+                # Variable global con search_value
+                global_vars.append(f"{name}={value}")
+                global_var_search_values.append(sv)
+            else:
+                for stage in search_stages:
+                    env_vars.append(f"{stage},{name}={value}")
+                    env_var_search_values.append(sv)
     else:
         for var in env_var_list:
             stage = var.get('stage', '')
@@ -216,6 +226,7 @@ def load_template(template_path: str) -> Dict:
     return {
         'release_ids': release_ids,
         'global_vars': global_vars,
+        'global_var_search_values': global_var_search_values,
         'env_vars': env_vars,
         'env_var_search_values': env_var_search_values,
         'task_updates': task_updates,
@@ -429,18 +440,28 @@ def build_patch_payload(
     env_var_search_values: Optional[List[Optional[str]]] = None,
     task_updates: Optional[List[Dict]] = None,
     search_stages: Optional[List[str]] = None,
+    global_var_search_values: Optional[List[Optional[str]]] = None,
 ) -> Tuple[Dict, List[Dict]]:
     payload: Dict = {}
     changes: List[Dict] = []
     if global_vars:
         current_vars = release.get('variables', {})
         new_vars = copy.deepcopy(current_vars)
-        for var_str in global_vars:
+        global_changed = False
+        for idx, var_str in enumerate(global_vars):
             key, value = parse_var(var_str)
             old_value = current_vars.get(key, {}).get('value')
+            search_value = global_var_search_values[idx] if global_var_search_values and idx < len(global_var_search_values) else None
+            if search_value is not None:
+                if old_value != search_value:
+                    changes.append({"type": "global_var", "key": key, "old": old_value, "new": value,
+                                    "error": f"Variable global '{key}' no tiene valor '{search_value}' (actual: '{old_value}')"})
+                    continue
             changes.append({"type": "global_var", "key": key, "old": old_value, "new": value})
             new_vars[key] = build_var_entry(value)
-        payload['variables'] = new_vars
+            global_changed = True
+        if global_changed:
+            payload['variables'] = new_vars
     if env_vars:
         environments = copy.deepcopy(release.get('environments', []))
         for idx, env_var_str in enumerate(env_vars):
@@ -657,14 +678,14 @@ def main():
         if not args.set_env_var and tpl['env_vars']:
             args.set_env_var = tpl['env_vars']
         args.env_var_search_values = tpl.get('env_var_search_values', [])
+        args.global_var_search_values = tpl.get('global_var_search_values', [])
         args.task_updates = tpl.get('task_updates', [])
         args.search_stages = tpl.get('search_stages', ['*'])
         if not args.abandon and tpl['abandon']:
             args.abandon = tpl['abandon']
         if not args.description and tpl['description']:
             args.description = tpl['description']
-        if not args.dry_run and tpl['dry_run']:
-            args.dry_run = tpl['dry_run']
+        args.tpl_dry_run = tpl.get('dry_run', False)
         if args.backup_path == './outcome/backups' and tpl['backup_path'] != './outcome/backups':
             args.backup_path = tpl['backup_path']
         if not args.pat:
@@ -689,6 +710,7 @@ def main():
         args.backup_path = params['backup_path']
         args.dry_run = params['dry_run']
         args.env_var_search_values = []
+        args.global_var_search_values = []
         args.task_updates = []
         args.search_stages = ['*']
     else:
@@ -696,6 +718,7 @@ def main():
             print(f"{Colors.RED}✗ Error: --release-id y --pat son requeridos cuando no se usa --interactive{Colors.ENDC}")
             sys.exit(1)
         args.env_var_search_values = []
+        args.global_var_search_values = []
         args.task_updates = []
         args.search_stages = ['*']
 
@@ -711,7 +734,8 @@ def main():
     print(f"  Variables globales: {len(args.set_var)}")
     print(f"  Variables por env: {len(args.set_env_var)}")
     print(f"  Abandonar: {'Si' if args.abandon else 'No'}")
-    print(f"  Dry-run: {'Si' if args.dry_run else 'No'}")
+    dry_run_active = getattr(args, 'dry_run', False) or getattr(args, 'tpl_dry_run', False)
+    print(f"  Dry-run: {'Si' if dry_run_active else 'No'}")
     print(f"  Carpeta backups: {args.backup_path}\n")
 
     results = []
@@ -738,7 +762,8 @@ def main():
                 release, args.set_var, args.set_env_var, args.abandon, args.description,
                 getattr(args, 'env_var_search_values', []),
                 getattr(args, 'task_updates', []),
-                getattr(args, 'search_stages', ['*'])
+                getattr(args, 'search_stages', ['*']),
+                getattr(args, 'global_var_search_values', [])
             )
             show_changes(changes)
 
@@ -747,7 +772,8 @@ def main():
                 results.append({'status': 'skipped', 'release_id': release_id, 'changes': 0})
                 continue
 
-            if args.dry_run:
+            dry_run_active = getattr(args, 'dry_run', False) or getattr(args, 'tpl_dry_run', False)
+            if dry_run_active:
                 print(f"\n{Colors.YELLOW}🔍 DRY-RUN: No se aplicaron cambios.{Colors.ENDC}")
                 results.append({'status': 'dry_run', 'release_id': release_id, 'changes': len(changes)})
                 continue

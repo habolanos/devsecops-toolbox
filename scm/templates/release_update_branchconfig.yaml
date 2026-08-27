@@ -18,6 +18,7 @@ search:
   variables:
     - name: "branchConfig"
       value: "config-cadenaSuministro"
+      scope: "global"
 
 release:
   ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
@@ -39,5 +40,5 @@ update:
   abandon: false
 
 options:
-  dry_run: true
+  dry_run: false
   backup_path: "./outcome/backups"

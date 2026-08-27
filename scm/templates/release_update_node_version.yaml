@@ -27,5 +27,5 @@ update:
   abandon: false
 
 options:
-  dry_run: true
+  dry_run: false
   backup_path: "./outcome/backups"

@@ -1648,6 +1648,12 @@ def run_tool(tool_key: str):
                 backup_path = prompt("Carpeta de backups",
                                     default=tool_defaults.get("backup_path", "./outcome/backups"))
 
+                # Preguntar dry-run (solo opcion 1; opcion 2 ya es dry-run)
+                if not is_dry_run:
+                    print(f"{Colors.BOLD}¿Modo dry-run (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
+                    dry_input = input().strip().lower()
+                    is_dry_run = dry_input in ('s', 'si', 'yes', 'y')
+
                 # Construir comando
                 cmd = [
                     str(venv_python), str(script_path),
