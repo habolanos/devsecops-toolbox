@@ -1,9 +1,76 @@
 # 📊 Guía de Monitoreo DevSecOps - Índice
 
-**Versión:** 1.1.0  
-**Fecha:** 8 de Julio de 2026  
-**Última actualización:** 8 de Julio de 2026 (v1.1.0)  
-**Objetivo:** Guía completa de monitoreo multi-cloud (GCP, AWS, AZDO) con 25 herramientas integradas
+**Versión:** 1.2.0  
+**Fecha:** 27 de Agosto de 2026  
+**Última actualización:** 27 de Agosto de 2026 (v1.2.0)  
+**Objetivo:** Guía completa de monitoreo multi-cloud (GCP, Azure, AWS, AZDO) con herramientas integradas
+
+---
+
+## 🧭 Cómo Navegar en el DevSecOps Toolbox
+
+El punto de entrada único para todas las herramientas es:
+
+```bash
+python scm/main.py
+```
+
+Al ejecutar este comando se muestra el **menú principal** con las siguientes opciones:
+
+| Opción | Plataforma | Descripción |
+|--------|-----------|-------------|
+| **1** | ☁️ GCP (Google Cloud Platform) | Herramientas SRE: monitoreo, IAM, networking, K8s, Cloud Run, inventario |
+| **2** | ☁️ AZURE (Azure Cloud Platform) | Herramientas: monitoreo, IAM, AKS, App Service, SQL, networking |
+| **3** | ☁️ AWS (Amazon Web Services) | IAM, RDS, VPC, EKS, ECR, EC2, Lambda, CloudWatch |
+| **4** | 🔷 AZDO (Azure DevOps) | PRs, políticas de rama, releases, drift, inventario, health score |
+| **5** | 🐧 TERMINAL | Scripts shell agnósticos: TLS, DB, K8s deployments |
+| **6** | 📊 KPI Analyzer Pro | Análisis KPI, Health Score DORA, Dashboards |
+| **Q** | 🚪 Salir | Salir del launcher |
+
+### Ruta de Navegación para Herramientas de Monitoreo
+
+Para llegar a cualquier herramienta de monitoreo, sigue esta ruta:
+
+```
+python scm/main.py
+    │
+    ├─ Selecciona: 1 (GCP)  →  Selecciona el número de herramienta GCP
+    ├─ Selecciona: 2 (AZURE) →  Selecciona el número de herramienta Azure
+    ├─ Selecciona: 3 (AWS)  →  Selecciona el número de herramienta AWS
+    └─ Selecciona: 4 (AZDO) →  Selecciona el número de herramienta AZDO
+```
+
+### Tabla de Navegación Rápida — Herramientas de Monitoreo
+
+| Herramienta | Plataforma | Ruta en el Menú |
+|-------------|-----------|-----------------|
+| Monitoreo de Recursos GCP | GCP | `main.py → 1 (GCP) → 1` |
+| GKE Cluster Checker | GCP | `main.py → 1 (GCP) → 14` |
+| GKE Node Resources Monitor | GCP | `main.py → 1 (GCP) → 24` |
+| GKE Pod Resources Monitor | GCP | `main.py → 1 (GCP) → 25` |
+| Certificate Manager Checker | GCP | `main.py → 1 (GCP) → 5` |
+| Cloud SQL Disk Monitor | GCP | `main.py → 1 (GCP) → 7` |
+| IP Addresses Checker | GCP | `main.py → 1 (GCP) → 13` |
+| Cloud Run Health Analyzer | GCP | `main.py → 1 (GCP) → 28` |
+| Deployments Off Analyzer | GCP | `main.py → 1 (GCP) → 40` |
+| Event Tracker | GCP | `main.py → 1 (GCP) → 39` |
+| Pub/Sub Monitor | GCP | `main.py → 1 (GCP) → 41` |
+| Release CD Health | AZDO | `main.py → 4 (AZDO) → 3` |
+| Pipeline Drift Analyzer | AZDO | `main.py → 4 (AZDO) → 4` |
+| CICD Inventory | AZDO | `main.py → 4 (AZDO) → 9` |
+| Pending Approvals | AZDO | `main.py → 4 (AZDO) → 11` |
+| Pipeline Health Score | AZDO | `main.py → 4 (AZDO) → 16` |
+| Pipeline Status | AZDO | `main.py → 4 (AZDO) → 18` |
+| IAM Users & Policies Checker | AWS | `main.py → 3 (AWS) → 1` |
+| CloudWatch Alarms Checker | AWS | `main.py → 3 (AWS) → 13` |
+| CloudWatch Metrics Monitor | AWS | `main.py → 3 (AWS) → 20` |
+| AWS Inventory Generator | AWS | `main.py → 3 (AWS) → 19` |
+
+> **💡 Tip:** También puedes ejecutar directamente el launcher de cada plataforma:
+> - `python scm/gcp/tools.py` — Herramientas GCP
+> - `python scm/azure/tools.py` — Herramientas Azure
+> - `python scm/aws/tools.py` — Herramientas AWS
+> - `python scm/azdo/tools.py` — Herramientas AZDO
 
 ---
 
@@ -14,8 +81,8 @@
 **Objetivo:** Entender qué herramientas tenemos y cómo usarlas
 
 **Contenido:**
-- ✅ Inventario de 38 herramientas GCP
-- ✅ Inventario de 25 herramientas AZDO
+- ✅ Inventario de herramientas GCP (40+ herramientas)
+- ✅ Inventario de 21 herramientas AZDO
 - ✅ Matriz de cobertura DevSecOps
 - ✅ Escenarios de monitoreo integrado
 - ✅ Casos de uso por grupo de herramientas
@@ -61,9 +128,9 @@
 - ✅ Interpretación de resultados
 
 **Herramientas Usadas (25 herramientas):**
-- **GCP (10):** Tool 1, 5, 7, 13, 14, 24, 25, 28, 40
-- **AWS (5):** Tool 1, 5, 13, 15, 19
-- **AZDO (5):** Tool 3, 4, 9, 11, 18
+- **GCP (10):** Tool 1, 5, 7, 13, 14, 24, 25, 28, 40 — Navegación: `main.py → 1 (GCP) → <tool>`
+- **AWS (5):** Tool 1, 5, 13, 15, 19 — Navegación: `main.py → 3 (AWS) → <tool>`
+- **AZDO (5):** Tool 3, 4, 9, 11, 18 — Navegación: `main.py → 4 (AZDO) → <tool>`
 
 **Cuándo usar:**
 - Todos los días
@@ -428,11 +495,11 @@ Documento: 02 (Auditoría Semanal)
 ## 📚 Referencias
 
 ### Documentos Relacionados
-- `docs/monitoring/00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md`
-- `docs/monitoring/01_GUIA_MONITOREO_DIARIO.md`
-- `docs/monitoring/02_GUIA_AUDITORIA_SEMANAL.md`
-- `docs/monitoring/03_GUIA_PRE_DEPLOY_VALIDATION.md`
-- `docs/monitoring/04_ANALISIS_HERRAMIENTAS_AWS.md`
+- `operation/monitoring/00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md`
+- `operation/monitoring/01_GUIA_MONITOREO_DIARIO.md`
+- `operation/monitoring/02_GUIA_AUDITORIA_SEMANAL.md`
+- `operation/monitoring/03_GUIA_PRE_DEPLOY_VALIDATION.md`
+- `operation/monitoring/04_ANALISIS_HERRAMIENTAS_AWS.md`
 
 ### Herramientas GCP
 - `scm/gcp/tools.py` - Launcher de herramientas GCP
@@ -495,8 +562,16 @@ Para preguntas o sugerencias sobre esta guía:
 
 ---
 
-**Guía de Monitoreo DevSecOps v1.1.0**  
-**Última actualización:** 8 de Julio de 2026  
+**Guía de Monitoreo DevSecOps v1.2.0**  
+**Última actualización:** 27 de Agosto de 2026  
+**Cambios en v1.2.0:**
+- ✅ Agregada sección "Cómo Navegar en el DevSecOps Toolbox" con tabla de navegación rápida
+- ✅ Agregada tabla de navegación rápida para todas las herramientas de monitoreo
+- ✅ Actualizadas referencias a Tool 21 (removida del AZDO)
+- ✅ Actualizado conteo de herramientas AZDO (25 → 21)
+- ✅ Corregidos paths de documentos (`docs/monitoring/` → `operation/monitoring/`)
+- ✅ Agregada plataforma Azure Cloud (opción 2 del menú principal)
+
 **Cambios en v1.1.0:**
 - ✅ Agregadas 8 herramientas GCP nuevas (5, 7, 8, 13, 28, 40)
 - ✅ Agregada herramienta AWS Tool 19 (AWS Inventory)
@@ -504,9 +579,5 @@ Para preguntas o sugerencias sobre esta guía:
 - ✅ Actualizado Monitoreo Matutino: 25 min → 60 min (11 pasos)
 - ✅ Actualizado Monitoreo Vespertino: 10 min → 35 min (9 pasos)
 - ✅ Actualizado Monitoreo Nocturno: 10 min → 40 min (8 pasos)
-- ✅ Agregadas descripciones fundamentales de cada monitoreo
-- ✅ Agregado "Qué busca prevenir" para cada monitoreo
-- ✅ Actualizado Checklist Diario con 28 pasos detallados
-- ✅ Agregados reportes JSON consolidados
 
-**Próxima revisión:** 8 de Octubre de 2026
+**Próxima revisión:** 27 de Noviembre de 2026

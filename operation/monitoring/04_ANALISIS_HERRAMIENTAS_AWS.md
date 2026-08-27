@@ -1,24 +1,43 @@
 # ☁️ Análisis de Herramientas AWS DevSecOps
 
-**Fecha:** 8 de Julio de 2026  
-**Versión:** 1.0.0  
+**Fecha:** 27 de Agosto de 2026  
+**Versión:** 1.1.0  
 **Objetivo:** Integrar AWS al sistema de monitoreo DevSecOps
+
+---
+
+## 🧭 Cómo Llegar a las Herramientas AWS
+
+El punto de entrada único es:
+
+```bash
+python scm/main.py
+```
+
+| Opción | Plataforma | Herramientas |
+|--------|-----------|-------------|
+| **3** | ☁️ AWS | 40 herramientas DevSecOps |
+
+> **Navegación:** `python scm/main.py` → 3 (AWS) → Selecciona número de herramienta
+> **Directo:** `python scm/aws/tools.py`
 
 ---
 
 ## 📋 Resumen Ejecutivo
 
-El DevSecOps Toolbox contiene **19 herramientas AWS** que cubren:
+El DevSecOps Toolbox contiene **40 herramientas AWS** que cubren:
 
-- ✅ **IAM & Security** (AWS: 3 herramientas)
-- ✅ **Bases de Datos** (AWS: 3 herramientas)
-- ✅ **Networking** (AWS: 4 herramientas)
-- ✅ **Kubernetes** (AWS: 3 herramientas)
-- ✅ **Artifacts** (AWS: 1 herramienta)
-- ✅ **Compute** (AWS: 2 herramientas)
-- ✅ **Monitoreo** (AWS: 1 herramienta)
-- ✅ **Inventario** (AWS: 1 herramienta)
-- ✅ **Security Avanzada** (AWS: 1 herramienta)
+- ✅ **IAM & Security** (AWS: 5 herramientas: 1, 2, 3, 37, 38)
+- ✅ **Security** (AWS: 1 herramienta: 17)
+- ✅ **Bases de Datos** (AWS: 5 herramientas: 4, 5, 14, 22, 23)
+- ✅ **Networking** (AWS: 6 herramientas: 6, 7, 8, 18, 24, 25)
+- ✅ **Kubernetes** (AWS: 7 herramientas: 9, 15, 16, 21, 26, 27, 35, 39)
+- ✅ **Artifacts** (AWS: 2 herramientas: 10, 29)
+- ✅ **Compute** (AWS: 6 herramientas: 11, 12, 28, 31, 34, 36)
+- ✅ **Monitoreo** (AWS: 2 herramientas: 13, 20)
+- ✅ **Inventario** (AWS: 2 herramientas: 19, 40)
+- ✅ **Reportes** (AWS: 1 herramienta: 30)
+- ✅ **Consolidación** (AWS: 2 herramientas: 32, 33)
 
 **Potencial:** Integrar AWS con GCP y AZDO para **Visibilidad Multi-Cloud 360°**
 
@@ -413,10 +432,10 @@ AZDO Tool 18 (Pipeline)     │
 ## 📋 Herramientas AWS por Documento
 
 ### 00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md
-- AWS: Todas (1-19)
+- AWS: Todas (1-40)
 
 ### 01_GUIA_MONITOREO_DIARIO.md
-- AWS: 1, 4, 9, 13, 15
+- AWS: 1, 5, 13, 15, 19
 
 ### 02_GUIA_AUDITORIA_SEMANAL.md
 - AWS: 1, 2, 3, 6, 7, 14, 17, 18, 19
@@ -424,8 +443,8 @@ AZDO Tool 18 (Pipeline)     │
 ### 03_GUIA_PRE_DEPLOY_VALIDATION.md
 - AWS: 7, 9, 16
 
-### 04_ANALISIS_HERRAMIENTAS_AWS.md (NUEVO)
-- AWS: Todas (1-19)
+### 04_ANALISIS_HERRAMIENTAS_AWS.md
+- AWS: Todas (1-40)
 
 ---
 
@@ -440,5 +459,5 @@ AZDO Tool 18 (Pipeline)     │
 
 ---
 
-**Análisis de Herramientas AWS Completado**  
+**Análisis de Herramientas AWS v1.1.0**  
 **Próximo:** Integración en Guías de Monitoreo

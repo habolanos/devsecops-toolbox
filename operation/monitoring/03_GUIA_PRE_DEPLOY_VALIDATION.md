@@ -1,7 +1,26 @@
 # 🚀 Guía de Pre-Deploy Validation DevSecOps
 
-**Versión:** 1.0.0  
+**Versión:** 1.1.0  
 **Objetivo:** Validar que un deployment es seguro antes de ejecutarlo
+
+---
+
+## 🧭 Cómo Navegar a las Herramientas
+
+Todas las herramientas se acceden desde el **menú principal**:
+
+```bash
+python scm/main.py
+```
+
+| Plataforma | Opción del Menú |
+|-----------|----------------|
+| GCP | `main.py → 1 (GCP) → <número de herramienta>` |
+| Azure | `main.py → 2 (AZURE) → <número de herramienta>` |
+| AWS | `main.py → 3 (AWS) → <número de herramienta>` |
+| AZDO | `main.py → 4 (AZDO) → <número de herramienta>` |
+
+> **💡 Tip:** También puedes ejecutar directamente: `python scm/gcp/tools.py`, `python scm/aws/tools.py`, `python scm/azdo/tools.py`
 
 ---
 
@@ -27,9 +46,8 @@ Validar que la configuración del deployment es correcta
 
 #### Paso 1: Validar Secrets y ConfigMaps
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [15] - Secrets & ConfigMaps Checker
+# Navegación: python scm/main.py → 1 (GCP) → 15
+# Herramienta: Secrets & ConfigMaps Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Cluster: gke-corp-cial-prod-01
 # Output: json
@@ -67,9 +85,8 @@ python tools.py
 
 #### Paso 2: Validar Deployment Validator
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [19] - Deployment Validator
+# Navegación: python scm/main.py → 1 (GCP) → 19
+# Herramienta: Deployment Validator
 # Proyecto: cpl-corp-cial-prod-17042024
 # Cluster: gke-corp-cial-prod-01
 # Deployment: [nombre del deployment]
@@ -118,9 +135,8 @@ Validar que el deployment cumple con estándares de seguridad
 
 #### Paso 1: Validar Imagen de Contenedor
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [18] - Cloud Run Checker (o revisar manualmente)
+# Navegación: python scm/main.py → 1 (GCP) → 18
+# Herramienta: Cloud Run Checker (o revisar manualmente)
 # Proyecto: cpl-corp-cial-prod-17042024
 # View: security
 # Output: json
@@ -164,10 +180,8 @@ python tools.py
 
 #### Paso 2: Validar IAM y Permisos
 ```bash
-# Revisar manualmente o usar Tool 3
-cd scm/gcp
-python tools.py
-# Seleccionar [3] - Reporte de Roles y Permisos IAM
+# Navegación: python scm/main.py → 1 (GCP) → 3
+# Herramienta: Reporte de Roles y Permisos IAM
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -204,9 +218,8 @@ python tools.py
 
 #### Paso 3: Validar Networking
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [10] - VPC Networks Checker
+# Navegación: python scm/main.py → 1 (GCP) → 10
+# Herramienta: VPC Networks Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -250,9 +263,8 @@ Validar que el deployment puede conectarse a sus dependencias
 
 #### Paso 1: Validar Conectividad a BD
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [16] - Pod Connectivity Checker
+# Navegación: python scm/main.py → 1 (GCP) → 16
+# Herramienta: Pod Connectivity Checker
 # Deployment: [nombre del deployment]
 # SQL Instance: [nombre de instancia Cloud SQL]
 # Output: json
@@ -297,9 +309,8 @@ python tools.py
 
 #### Paso 2: Validar Dependencias de Deployment
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [17] - Deploy Dependency Checker
+# Navegación: python scm/main.py → 1 (GCP) → 17
+# Herramienta: Deploy Dependency Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Cluster: gke-corp-cial-prod-01
 # Deployment: [nombre del deployment]
@@ -354,9 +365,8 @@ Validar que el código y configuración cumplen con estándares de calidad
 
 #### Paso 1: Validar Cambios de Código
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [20] - Repo Branch Diff
+# Navegación: python scm/main.py → 4 (AZDO) → 20
+# Herramienta: Repo Branch Diff
 # Proyecto: [proyecto]
 # Repo: [repositorio]
 # Source: develop
@@ -402,9 +412,8 @@ python tools.py
 
 #### Paso 2: Validar Task Validator AZDO
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [6] - Task Validator
+# Navegación: python scm/main.py → 4 (AZDO) → 6
+# Herramienta: Task Validator
 # Release ID: [ID del release]
 # Output: json
 ```
@@ -572,16 +581,13 @@ kubectl rollout status deployment/[nombre] -n production
 
 #### Paso 2: Monitorear Deployment
 ```bash
-# Monitorear pods
-cd scm/gcp
-python tools.py
-# Seleccionar [25] - GKE Pod Resources Monitor
+# Navegación: python scm/main.py → 1 (GCP) → 25
+# Herramienta: GKE Pod Resources Monitor
 # Namespace: production
 # Top: 10
 
-# Monitorear recursos
-python tools.py
-# Seleccionar [1] - Monitoreo de Recursos GCP
+# Navegación: python scm/main.py → 1 (GCP) → 1
+# Herramienta: Monitoreo de Recursos GCP
 ```
 
 **Checklist:**
@@ -721,5 +727,5 @@ EOF
 
 ---
 
-**Guía de Pre-Deploy Validation Completada**  
+**Guía de Pre-Deploy Validation v1.1.0**  
 **Próximo:** Documento Índice de Monitoreo

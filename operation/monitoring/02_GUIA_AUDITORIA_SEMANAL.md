@@ -1,7 +1,26 @@
 # 📅 Guía de Auditoría Semanal DevSecOps
 
-**Versión:** 1.0.0  
+**Versión:** 1.1.0  
 **Objetivo:** Auditoría completa de seguridad, compliance y governance
+
+---
+
+## 🧭 Cómo Navegar a las Herramientas
+
+Todas las herramientas se acceden desde el **menú principal**:
+
+```bash
+python scm/main.py
+```
+
+| Plataforma | Opción del Menú |
+|-----------|----------------|
+| GCP | `main.py → 1 (GCP) → <número de herramienta>` |
+| Azure | `main.py → 2 (AZURE) → <número de herramienta>` |
+| AWS | `main.py → 3 (AWS) → <número de herramienta>` |
+| AZDO | `main.py → 4 (AZDO) → <número de herramienta>` |
+
+> **💡 Tip:** También puedes ejecutar directamente: `python scm/gcp/tools.py`, `python scm/aws/tools.py`, `python scm/azdo/tools.py`
 
 ---
 
@@ -25,9 +44,8 @@ Validar que el acceso y permisos cumplen con principios de seguridad
 
 #### Paso 1: Roles y Permisos IAM (15 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [3] - Reporte de Roles y Permisos IAM
+# Navegación: python scm/main.py → 1 (GCP) → 3
+# Herramienta: Reporte de Roles y Permisos IAM
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -72,9 +90,8 @@ RECOMENDACIÓN:
 
 #### Paso 2: Service Accounts Audit (15 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [4] - Service Account Checker
+# Navegación: python scm/main.py → 1 (GCP) → 4
+# Herramienta: Service Account Checker
 # Output: json
 ```
 
@@ -125,9 +142,8 @@ RECOMENDACIÓN:
 
 #### Paso 3: Cloud Armor Audit (15 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [6] - Cloud Armor Checker
+# Navegación: python scm/main.py → 1 (GCP) → 6
+# Herramienta: Cloud Armor Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # View: audit
 # Output: json
@@ -181,9 +197,8 @@ RECOMENDACIÓN:
 
 #### Paso 4: Branch Policies Audit (15 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [2] - Branch Policy Checker
+# Navegación: python scm/main.py → 4 (AZDO) → 2
+# Herramienta: Branch Policy Checker
 # Output: json
 ```
 
@@ -267,9 +282,8 @@ Validar que la infraestructura cumple con políticas y estándares
 
 #### Paso 1: Certificados SSL/TLS (15 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [5] - Certificate Manager Checker
+# Navegación: python scm/main.py → 1 (GCP) → 5
+# Herramienta: Certificate Manager Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -323,9 +337,8 @@ RECOMENDACIÓN:
 
 #### Paso 2: Cloud Run Security (15 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [29] - Cloud Run Security Auditor
+# Navegación: python scm/main.py → 1 (GCP) → 29
+# Herramienta: Cloud Run Security Auditor
 # Proyecto: cpl-corp-cial-prod-17042024
 # Severity: critical
 # Output: json
@@ -380,9 +393,8 @@ RECOMENDACIÓN:
 
 #### Paso 3: Pipeline Logs Scanner (15 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [7] - Pipeline Logs Scanner
+# Navegación: python scm/main.py → 4 (AZDO) → 7
+# Herramienta: Pipeline Logs Scanner
 # Search terms: axios,crypto-js,vulnerable
 # Top runs: 50
 # Output: json
@@ -429,9 +441,8 @@ RECOMENDACIÓN:
 
 #### Paso 4: Repo Vulnerabilities Scanner (15 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [8] - Repo Vulnerabilities Scanner
+# Navegación: python scm/main.py → 4 (AZDO) → 8
+# Herramienta: Repo Vulnerabilities Scanner
 # Branches: main,develop,master
 # Output: json
 ```
@@ -506,9 +517,8 @@ Validar governance, generar reporte ejecutivo y planificar mejoras
 
 #### Paso 1: CICD Inventory (15 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [9] - CICD Inventory
+# Navegación: python scm/main.py → 4 (AZDO) → 9
+# Herramienta: CICD Inventory
 # Output: json
 ```
 
@@ -561,9 +571,8 @@ RECOMENDACIÓN:
 
 #### Paso 2: Pipeline Health Score (15 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [16] - Pipeline Health Score
+# Navegación: python scm/main.py → 4 (AZDO) → 16
+# Herramienta: Pipeline Health Score
 # Output: json
 ```
 
@@ -752,5 +761,5 @@ PRESENTACIÓN VIERNES 15:00:
 
 ---
 
-**Guía de Auditoría Semanal Completada**  
+**Guía de Auditoría Semanal v1.1.0**  
 **Próximo:** Guía de Pre-Deploy Validation

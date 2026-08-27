@@ -1,7 +1,26 @@
 # 📅 Guía de Monitoreo Diario DevSecOps
 
-**Versión:** 1.0.0  
-**Objetivo:** Ejecutar monitoreo diario de ambientes GCP y AZDO con interpretación DevSecOps
+**Versión:** 1.1.0  
+**Objetivo:** Ejecutar monitoreo diario de ambientes GCP, Azure, AWS y AZDO con interpretación DevSecOps
+
+---
+
+## 🧭 Cómo Navegar a las Herramientas
+
+ Todas las herramientas se acceden desde el **menú principal**:
+
+```bash
+python scm/main.py
+```
+
+| Plataforma | Opción del Menú |
+|-----------|----------------|
+| GCP | `main.py → 1 (GCP) → <número de herramienta>` |
+| Azure | `main.py → 2 (AZURE) → <número de herramienta>` |
+| AWS | `main.py → 3 (AWS) → <número de herramienta>` |
+| AZDO | `main.py → 4 (AZDO) → <número de herramienta>` |
+
+> **💡 Tip:** También puedes ejecutar directamente: `python scm/gcp/tools.py`, `python scm/aws/tools.py`, `python scm/azdo/tools.py`
 
 ---
 
@@ -63,10 +82,9 @@ El monitoreo matutino es el punto de partida del día. Se ejecuta a primera hora
 
 #### Paso 1: Recursos GCP (5 min)
 ```bash
-# Terminal 1: Monitoreo de recursos GCP
-cd scm/gcp
-python tools.py
-# Seleccionar [1] - Monitoreo de Recursos GCP
+# Navegación: python scm/main.py → 1 (GCP) → 1
+# O directo: python scm/gcp/tools.py → 1
+# Herramienta: Monitoreo de Recursos GCP
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -99,10 +117,9 @@ SI DISCO > 90%:
 
 #### Paso 2: Clusters GKE (5 min)
 ```bash
-# Terminal 2: Monitoreo de clusters GKE
-cd scm/gcp
-python tools.py
-# Seleccionar [14] - GKE Cluster Checker
+# Navegación: python scm/main.py → 1 (GCP) → 14
+# O directo: python scm/gcp/tools.py → 14
+# Herramienta: GKE Cluster Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -137,10 +154,8 @@ SI VERSIÓN DESACTUALIZADA:
 
 #### Paso 3: Certificados SSL/TLS (3 min)
 ```bash
-# Terminal 3: Monitoreo de certificados
-cd scm/gcp
-python tools.py
-# Seleccionar [5] - Certificate Manager Checker
+# Navegación: python scm/main.py → 1 (GCP) → 5
+# Herramienta: Certificate Manager Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -175,9 +190,8 @@ SI MÚLTIPLES CERTIFICADOS VENCIENDO:
 
 #### Paso 4: Cloud SQL Disk Monitor (3 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [7] - Cloud SQL Disk Monitor
+# Navegación: python scm/main.py → 1 (GCP) → 7
+# Herramienta: Cloud SQL Disk Monitor
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -211,9 +225,8 @@ SI ESPACIO CRÍTICO:
 
 #### Paso 5: IP Addresses Checker (3 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [13] - IP Addresses Checker
+# Navegación: python scm/main.py → 1 (GCP) → 13
+# Herramienta: IP Addresses Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Cluster: prod-gke-cluster
 # Region: us-central1
@@ -250,9 +263,8 @@ SI DISTRIBUCIÓN DESIGUAL:
 
 #### Paso 6: Cloud Run Health Analyzer (5 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [28] - Cloud Run Health Analyzer
+# Navegación: python scm/main.py → 1 (GCP) → 28
+# Herramienta: Cloud Run Health Analyzer
 # Proyecto: cpl-corp-cial-prod-17042024
 # Region: us-central1
 # Output: json
@@ -295,10 +307,8 @@ SI RECURSOS > 80%:
 
 #### Paso 7: Pipeline Status AZDO (5 min)
 ```bash
-# Terminal 4: Estado de pipelines
-cd scm/azdo
-python tools.py
-# Seleccionar [18] - Pipeline Status
+# Navegación: python scm/main.py → 4 (AZDO) → 18
+# Herramienta: Pipeline Status
 # Output: json
 ```
 
@@ -333,10 +343,8 @@ SI PIPELINES INACTIVOS > 20%:
 
 #### Paso 8: Release Health (5 min)
 ```bash
-# Terminal 5: Salud de releases
-cd scm/azdo
-python tools.py
-# Seleccionar [3] - Release CD Health
+# Navegación: python scm/main.py → 4 (AZDO) → 3
+# Herramienta: Release CD Health
 # Output: json
 ```
 
@@ -372,10 +380,8 @@ SI SIN RELEASES RECIENTES:
 
 #### Paso 9: Monitoreo AWS (5 min)
 ```bash
-# Terminal 5: Monitoreo de AWS
-cd scm/aws
-python tools.py
-# Seleccionar [1] - IAM Users & Policies Checker
+# Navegación: python scm/main.py → 3 (AWS) → 1
+# Herramienta: IAM Users & Policies Checker
 # Profile: default
 # Output: json
 ```
@@ -402,7 +408,8 @@ SI ACCESS KEY > 90 DÍAS:
 
 Luego ejecutar:
 ```bash
-# Seleccionar [13] - CloudWatch Alarms Checker
+# Navegación: python scm/main.py → 3 (AWS) → 13
+# Herramienta: CloudWatch Alarms Checker
 # Profile: default
 # Output: json
 ```
@@ -507,9 +514,8 @@ El monitoreo vespertino se ejecuta a mitad del día para detectar anomalías que
 
 #### Paso 1: Pods con Alto Uso (5 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [25] - GKE Pod Resources Monitor
+# Navegación: python scm/main.py → 1 (GCP) → 25
+# Herramienta: GKE Pod Resources Monitor
 # Proyecto: cpl-corp-cial-prod-17042024
 # Namespace: production
 # Sort: cpu
@@ -550,9 +556,8 @@ SI MÚLTIPLES PODS AFECTADOS:
 
 #### Paso 2: Aprobaciones Pendientes (3 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [11] - Pending Approvals
+# Navegación: python scm/main.py → 4 (AZDO) → 11
+# Herramienta: Pending Approvals
 # Output: json
 ```
 
@@ -582,9 +587,8 @@ SI MÚLTIPLES APROBACIONES PENDIENTES:
 
 #### Paso 3: Anomalías de Recursos (5 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [24] - GKE Node Resources Monitor
+# Navegación: python scm/main.py → 1 (GCP) → 24
+# Herramienta: GKE Node Resources Monitor
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: html
 ```
@@ -620,9 +624,8 @@ SI NODO NUEVO CON BAJO USO:
 
 #### Paso 4: Deployments No Running (5 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [40] - Deployments Off Analyzer
+# Navegación: python scm/main.py → 1 (GCP) → 40
+# Herramienta: Deployments Off Analyzer
 # Proyecto: cpl-corp-cial-prod-17042024
 # Cluster: prod-gke-cluster
 # Namespace: production
@@ -662,9 +665,8 @@ CAUSAS COMUNES:
 
 #### Paso 5: Cloud SQL Disk Monitor (3 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [7] - Cloud SQL Disk Monitor
+# Navegación: python scm/main.py → 1 (GCP) → 7
+# Herramienta: Cloud SQL Disk Monitor
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -699,9 +701,8 @@ SI ESPACIO CRÍTICO:
 
 #### Paso 6: IP Addresses Checker (3 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [13] - IP Addresses Checker
+# Navegación: python scm/main.py → 1 (GCP) → 13
+# Herramienta: IP Addresses Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Cluster: prod-gke-cluster
 # Region: us-central1
@@ -738,9 +739,8 @@ SI DISTRIBUCIÓN DESIGUAL:
 
 #### Paso 7: Monitoreo AWS Vespertino (3 min)
 ```bash
-cd scm/aws
-python tools.py
-# Seleccionar [5] - RDS Storage Monitor
+# Navegación: python scm/main.py → 3 (AWS) → 5
+# Herramienta: RDS Storage Monitor
 # Profile: default
 # Output: json
 ```
@@ -751,7 +751,8 @@ python tools.py
 
 Luego:
 ```bash
-# Seleccionar [15] - EKS Pod Monitor
+# Navegación: python scm/main.py → 3 (AWS) → 15
+# Herramienta: EKS Pod Monitor
 # Profile: default
 # Cluster: [nombre del cluster]
 # Output: json
@@ -853,9 +854,8 @@ El monitoreo nocturno se ejecuta al final del día para auditar todos los cambio
 
 #### Paso 1: Service Accounts (5 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [4] - Service Account Checker
+# Navegación: python scm/main.py → 1 (GCP) → 4
+# Herramienta: Service Account Checker
 # Output: json
 ```
 
@@ -891,9 +891,8 @@ SI SA CON PERMISOS EXCESIVOS:
 
 #### Paso 2: Cloud SQL Database Checker (3 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [8] - Cloud SQL Database Checker
+# Navegación: python scm/main.py → 1 (GCP) → 8
+# Herramienta: Cloud SQL Database Checker
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
 ```
@@ -929,9 +928,8 @@ SI MÚLTIPLES BASES DE DATOS:
 
 #### Paso 3: Inventario CICD (5 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [9] - CICD Inventory
+# Navegación: python scm/main.py → 4 (AZDO) → 9
+# Herramienta: CICD Inventory
 # Output: json
 ```
 
@@ -966,9 +964,8 @@ SI REPO OBSOLETO:
 
 #### Paso 4: Cambios y Drift (5 min)
 ```bash
-cd scm/azdo
-python tools.py
-# Seleccionar [4] - Pipeline Drift Analyzer
+# Navegación: python scm/main.py → 4 (AZDO) → 4
+# Herramienta: Pipeline Drift Analyzer
 # Output: json
 ```
 
@@ -1005,9 +1002,8 @@ SI DRIFT RECURRENTE:
 
 #### Paso 5: Cloud Run Health Analyzer (5 min)
 ```bash
-cd scm/gcp
-python tools.py
-# Seleccionar [28] - Cloud Run Health Analyzer
+# Navegación: python scm/main.py → 1 (GCP) → 28
+# Herramienta: Cloud Run Health Analyzer
 # Proyecto: cpl-corp-cial-prod-17042024
 # Region: us-central1
 # Output: json
@@ -1050,9 +1046,8 @@ SI RECURSOS > 80%:
 
 #### Paso 6: Auditoría AWS Nocturna (5 min)
 ```bash
-cd scm/aws
-python tools.py
-# Seleccionar [1] - IAM Users & Policies Checker
+# Navegación: python scm/main.py → 3 (AWS) → 1
+# Herramienta: IAM Users & Policies Checker
 # Profile: default
 # Output: json
 ```
@@ -1064,7 +1059,8 @@ python tools.py
 
 Luego:
 ```bash
-# Seleccionar [19] - AWS Inventory Generator
+# Navegación: python scm/main.py → 3 (AWS) → 19
+# Herramienta: AWS Inventory Generator
 # Profile: default
 # Output: json
 ```

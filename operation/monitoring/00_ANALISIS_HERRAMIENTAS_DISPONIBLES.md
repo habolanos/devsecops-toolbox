@@ -1,14 +1,36 @@
 # 📊 Análisis de Herramientas DevSecOps Toolbox
 
-**Fecha:** 8 de Julio de 2026  
-**Versión:** 1.0.0  
-**Objetivo:** Extraer máximo valor de las herramientas GCP y AZDO para monitoreo de ambientes
+**Fecha:** 27 de Agosto de 2026  
+**Versión:** 1.1.0  
+**Objetivo:** Extraer máximo valor de las herramientas GCP, Azure, AWS y AZDO para monitoreo de ambientes
 
 ---
 
-## 📋 Resumen Ejecutivo
+## 🧭 Cómo Llegar a las Herramientas
 
-El DevSecOps Toolbox contiene **38 herramientas GCP** y **25 herramientas AZDO** que cubren:
+El punto de entrada único es:
+
+```bash
+python scm/main.py
+```
+
+| Opción | Plataforma | Herramientas |
+|--------|-----------|-------------|
+| **1** | ☁️ GCP | 40+ herramientas SRE |
+| **2** | ☁️ AZURE | 25 herramientas cloud |
+| **3** | ☁️ AWS | 21 herramientas DevSecOps |
+| **4** | � AZDO | 21 herramientas CI/CD |
+| **5** | 🐧 TERMINAL | 6 scripts shell |
+| **6** | 📊 KPI Analyzer Pro | 16 herramientas análisis |
+| **Q** | 🚪 Salir | — |
+
+> **Navegación:** `python scm/main.py` → Selecciona plataforma → Selecciona número de herramienta
+
+---
+
+## �📋 Resumen Ejecutivo
+
+El DevSecOps Toolbox contiene **40+ herramientas GCP**, **25 herramientas Azure**, **21 herramientas AWS** y **21 herramientas AZDO** que cubren:
 
 - ✅ **Monitoreo de Infraestructura** (GCP: 4 herramientas)
 - ✅ **Seguridad & IAM** (GCP: 7 herramientas, AZDO: 2 herramientas)
@@ -17,9 +39,10 @@ El DevSecOps Toolbox contiene **38 herramientas GCP** y **25 herramientas AZDO**
 - ✅ **Kubernetes** (GCP: 6 herramientas)
 - ✅ **Cloud Run** (GCP: 7 herramientas)
 - ✅ **Consolidación de Infraestructura** (GCP: 3 herramientas)
-- ✅ **CI/CD Pipelines** (AZDO: 16 herramientas)
+- ✅ **CI/CD Pipelines** (AZDO: 13 herramientas)
 - ✅ **Pull Requests & Branches** (AZDO: 3 herramientas)
 - ✅ **Health Scoring** (AZDO: 3 herramientas)
+- ✅ **Azure Cloud Platform** (25 herramientas: monitoreo, IAM, AKS, SQL, networking)
 
 **Potencial:** Crear un **Sistema Integral de Monitoreo DevSecOps** que combine datos de GCP + AZDO para visibilidad 360°
 
@@ -376,19 +399,20 @@ Quality Gate:
 
 ---
 
-### Grupo: UPDATE PIPELINE (4 herramientas)
+### Grupo: UPDATE PIPELINE (3 herramientas)
 
 | ID | Herramienta | Descripción | Valor DevSecOps |
 |----|-------------|-------------|-----------------|
-| **21** | Pipeline Updater | Actualiza variables y scripts | ⭐⭐⭐⭐ Operacional |
 | **22** | Pipeline Rollback | Revierte cambios (3 métodos) | ⭐⭐⭐⭐⭐ Disaster recovery |
 | **23** | Refresh Release | Nuevo release desde existente | ⭐⭐⭐⭐ Operacional |
 | **24** | Pipeline Restore Release | Restaura desde backup | ⭐⭐⭐⭐⭐ Disaster recovery |
 
+> **Nota:** Tool 21 (Pipeline Updater) fue removida en v1.7.38. Su funcionalidad fue reemplazada por **Tool 41 (Pipeline Updater Template)** que ofrece actualización masiva vía templates YAML con más capacidades.
+
 **Caso de Uso Integrado:**
 ```
 Pipeline Management:
-1. Tool 21 → Actualizar variables
+1. Tool 41 (Pipeline Updater Template) → Actualizar variables y estructura vía YAML
 2. Tool 22 → Rollback si es necesario
 3. Tool 23 → Refresh de release
 4. Tool 24 → Restore desde backup
@@ -488,5 +512,5 @@ DESPUÉS DE DEPLOY:
 
 ---
 
-**Documento de Análisis Completado**  
+**Documento de Análisis v1.1.0**  
 **Próximo:** Guía de Monitoreo Diario
