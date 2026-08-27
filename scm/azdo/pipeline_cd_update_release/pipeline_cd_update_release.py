@@ -338,10 +338,10 @@ def get_release(org: str, project: str, release_id: int, pat: str) -> Dict:
 def update_release(org: str, project: str, release_id: int, payload: Dict, pat: str) -> Dict:
     url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{release_id}?api-version={API_VERSION}"
     headers = {'Authorization': create_auth_header(pat), 'Content-Type': 'application/json'}
-    print(f"{Colors.CYAN}>>> Aplicando PATCH al Release #{release_id}...{Colors.ENDC}")
+    print(f"{Colors.CYAN}>>> Aplicando PUT al Release #{release_id}...{Colors.ENDC}")
     try:
         body = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(url, data=body, headers=headers, method='PATCH')
+        req = urllib.request.Request(url, data=body, headers=headers, method='PUT')
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode('utf-8'))
             print(f"{Colors.GREEN}✓ Release actualizado exitosamente{Colors.ENDC}")
@@ -529,8 +529,6 @@ def build_patch_payload(
     if abandon:
         changes.append({"type": "status", "key": "status", "old": release.get('status'), "new": "abandoned"})
         payload['status'] = 'abandoned'
-    elif payload:
-        payload['status'] = release.get('status', 'active')
     if description:
         changes.append({"type": "description", "key": "description", "old": release.get('description'), "new": description})
         payload['description'] = description
@@ -790,11 +788,14 @@ def main():
             print(f"{Colors.GREEN}✓ Backup guardado: {backup_file}{Colors.ENDC}")
             print(f"{Colors.YELLOW}  Version: {version_label}{Colors.ENDC}")
 
-            # FASE 4: Aplicar PATCH
+            # FASE 4: Aplicar PUT
             print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-            print(f"{Colors.BOLD}FASE 4: Aplicar PATCH{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 4: Aplicar PUT{Colors.ENDC}")
             print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
-            updated = update_release(args.org, args.project, int(release_id), payload, args.pat)
+            # Fusionar payload con el release completo para PUT
+            full_payload = copy.deepcopy(release)
+            full_payload.update(payload)
+            updated = update_release(args.org, args.project, int(release_id), full_payload, args.pat)
 
             # Resumen
             print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
