@@ -26,8 +26,6 @@ update:
 
   abandon: false
 
-  description: "Actualizacion NODE_VERSION: QA=18, PROD=20"
-
 options:
   dry_run: true
   backup_path: "./outcome/backups"

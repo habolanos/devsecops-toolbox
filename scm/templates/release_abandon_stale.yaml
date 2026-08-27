@@ -20,8 +20,6 @@ update:
 
   abandon: true
 
-  description: "Release abandonado por limpieza trimestral"
-
 options:
   dry_run: true
   backup_path: "./outcome/backups"
