@@ -209,6 +209,8 @@ def load_template(template_path: str) -> Dict:
 
     abandon = update_section.get('abandon', False)
     description = update_section.get('description', '')
+    if not description and metadata.get('comment'):
+        description = metadata['comment'].strip()
     dry_run = options_section.get('dry_run', False)
     backup_path = options_section.get('backup_path', './outcome/backups')
 
