@@ -406,5 +406,117 @@ class TestUpdateRelease(unittest.TestCase):
             mod.update_release("Org", "Proj", 987, {"status": "abandoned"}, "fake_pat")
 
 
+class TestLoadTemplate(unittest.TestCase):
+    """Tests para load_template."""
+
+    def setUp(self):
+        if not mod.YAML_AVAILABLE:
+            self.skipTest("PyYAML no instalado")
+
+    def _write_template(self, tmpdir, template_dict):
+        import yaml as _yaml
+        path = os.path.join(tmpdir, "test_template.yaml")
+        with open(path, "w", encoding="utf-8") as f:
+            _yaml.dump(template_dict, f)
+        return path
+
+    def test_load_valid_template_with_global_vars(self):
+        template = {
+            "metadata": {"name": "Test Template", "version": "1.0"},
+            "release": {"ids": [123, 456]},
+            "update": {
+                "global_vars": [
+                    {"name": "GIT_USER", "value": "deploy"},
+                    {"name": "GIT_PASS", "value": "secret"},
+                ],
+                "env_vars": [],
+                "abandon": False,
+                "description": "Test update",
+            },
+            "options": {"dry_run": True, "backup_path": "./outcome/backups"},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["release_ids"], ["123", "456"])
+        self.assertEqual(len(result["global_vars"]), 2)
+        self.assertIn("GIT_USER=deploy", result["global_vars"])
+        self.assertIn("GIT_PASS=secret", result["global_vars"])
+        self.assertEqual(result["env_vars"], [])
+        self.assertFalse(result["abandon"])
+        self.assertEqual(result["description"], "Test update")
+        self.assertTrue(result["dry_run"])
+
+    def test_load_template_with_env_vars(self):
+        template = {
+            "metadata": {"name": "Env Vars Test", "version": "1.0"},
+            "release": {"ids": "789, 990"},
+            "update": {
+                "global_vars": [],
+                "env_vars": [
+                    {"stage": "QA", "name": "NODE_VERSION", "value": "18"},
+                    {"stage": "PROD", "name": "NODE_VERSION", "value": "20"},
+                ],
+                "abandon": False,
+                "description": "",
+            },
+            "options": {"dry_run": False},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["release_ids"], ["789", "990"])
+        self.assertEqual(len(result["env_vars"]), 2)
+        self.assertIn("QA,NODE_VERSION=18", result["env_vars"])
+        self.assertIn("PROD,NODE_VERSION=20", result["env_vars"])
+
+    def test_load_template_abandon(self):
+        template = {
+            "metadata": {"name": "Abandon Test", "version": "1.0"},
+            "release": {"ids": [111]},
+            "update": {
+                "global_vars": [],
+                "env_vars": [],
+                "abandon": True,
+                "description": "Abandoned for cleanup",
+            },
+            "options": {"dry_run": True},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertTrue(result["abandon"])
+        self.assertEqual(result["description"], "Abandoned for cleanup")
+
+    def test_load_template_empty_ids(self):
+        template = {
+            "metadata": {"name": "Empty IDs", "version": "1.0"},
+            "release": {"ids": []},
+            "update": {"global_vars": [], "env_vars": [], "abandon": False, "description": ""},
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["release_ids"], [])
+        self.assertEqual(result["backup_path"], "./outcome/backups")
+
+    def test_load_template_not_found_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            mod.load_template("/nonexistent/path/template.yaml")
+
+    def test_load_template_string_ids(self):
+        template = {
+            "metadata": {"name": "String IDs", "version": "1.0"},
+            "release": {"ids": "100,200,300"},
+            "update": {"global_vars": [], "env_vars": [], "abandon": False, "description": ""},
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["release_ids"], ["100", "200", "300"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.7.38-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.7.39-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
@@ -207,6 +207,8 @@ Herramientas para gestión de repositorios, pipelines y releases en Azure DevOps
   - **Opción 6: Redo** ⭐ NUEVO - Volver a versión previa del pipeline basado en definition_id
 - **[27] Pipeline CD Backup & Restore** ⭐ NUEVO - Backup/restore completo de definiciones CD (individual máx 500, masivo, restore, crear desde backup, diff, conversión JSON→YAML)
 - **[40] Health Probe Masivo Validator** ⭐ NUEVO
+- **[41] Pipeline Updater Template** - Actualizacion masiva de pipelines CD via templates YAML declarativos
+- **[42] Release Updater Template** ⭐ NUEVO - Actualiza releases existentes via PATCH API con templates YAML (variables globales, env vars, abandonar, descripcion)
 
 ```bash
 # Acceso directo
@@ -780,11 +782,81 @@ update:
 
 ---
 
+## 📋 Templates para Release Updater (Tool 42)
+
+La carpeta `scm/templates/` tambien contiene templates YAML para actualizar **releases existentes** (no definiciones) via PATCH API usando **Release Updater Template (Tool 42)**.
+
+### 📁 Templates Disponibles para Tool 42
+
+#### **release_update_git_credentials.yaml** 🔑
+Renueva credenciales Git (GIT_USER, GIT_PASS) en releases existentes.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 4 (AZDO) → 42 (Release Updater Template)
+# --template scm/templates/release_update_git_credentials.yaml --release-id 987 --pat TOKEN
+```
+
+#### **release_update_node_version.yaml** 📦
+Actualiza NODE_VERSION por environment (QA=18, PROD=20).
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 4 (AZDO) → 42 (Release Updater Template)
+# --template scm/templates/release_update_node_version.yaml --release-id 987 --pat TOKEN
+```
+
+#### **release_abandon_stale.yaml** 🗑️
+Marca releases como abandoned para limpieza trimestral.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: 4 (AZDO) → 42 (Release Updater Template)
+# --template scm/templates/release_abandon_stale.yaml --release-id 987,988 --pat TOKEN
+```
+
+### 📊 Estructura de Template YAML (Tool 42)
+
+```yaml
+metadata:
+  name: "Nombre del template"
+  version: "1.0"
+  description: "Descripcion"
+
+release:
+  ids: []  # IDs de releases, o vacio para usar --release-id
+
+update:
+  global_vars:
+    - name: "VAR_NAME"
+      value: "new_value"
+  env_vars:
+    - stage: "QA"
+      name: "NODE_VERSION"
+      value: "18"
+  abandon: false
+  description: "Nueva descripcion"
+
+options:
+  dry_run: true
+  backup_path: "./outcome/backups"
+```
+
+**Notas**:
+- Los flags CLI sobrescriben los valores del template
+- `--release-id` es requerido si el template no tiene `release.ids`
+- `--pat` es siempre requerido (via CLI o config.json)
+
+---
+
 ### ✅ Checklist Antes de Ejecutar
 
 - [ ] Personalicé el template con mis valores
 - [ ] Verifiqué nombres exactos de stages/tasks
-- [ ] Preparé lista de definition-ids
+- [ ] Preparé lista de definition-ids (Tool 41) o release-ids (Tool 42)
 - [ ] Guardé el archivo en `scm/templates/`
 - [ ] Leí la documentación completa
 - [ ] Tengo backup de los pipelines

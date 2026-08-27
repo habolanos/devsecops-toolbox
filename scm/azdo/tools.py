@@ -396,7 +396,8 @@ TOOLS: Dict = {
         "description": "Actualiza un Release existente por releaseId via PATCH API usando templates YAML. Modifica variables globales, variables por environment, status (abandonar) y descripcion. Incluye backup automatico, dry-run y soporte multi-release.",
         "path":        "pipeline_cd_update_release/pipeline_cd_update_release.py",
         "args":        ["--org", "--project", "--release-id", "--set-var", "--set-env-var",
-                        "--abandon", "--description", "--pat", "--backup-path", "--dry-run"],
+                        "--abandon", "--description", "--pat", "--backup-path", "--dry-run",
+                        "--template", "--interactive"],
         "defaults":    {
             "org": "Coppel-Retail",
             "project": "Cadena_de_Suministros",

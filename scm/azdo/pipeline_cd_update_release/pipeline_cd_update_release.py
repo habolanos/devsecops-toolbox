@@ -25,6 +25,12 @@ from typing import Dict, List, Optional, Tuple
 import urllib.request
 import urllib.error
 
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -76,6 +82,100 @@ def load_config() -> Dict:
         except Exception as e:
             print(f"{Colors.YELLOW}⚠ No se pudo cargar config.json: {e}{Colors.ENDC}")
     return {}
+
+
+def load_template(template_path: str) -> Dict:
+    """
+    Carga un template YAML para actualizacion de releases.
+
+    Estructura esperada del template:
+        metadata:
+          name: "..."
+          version: "1.0"
+          description: "..."
+        release:
+          ids: []  # opcional, separados por coma
+        update:
+          global_vars:
+            - name: "VAR_NAME"
+              value: "new_value"
+          env_vars:
+            - stage: "QA"
+              name: "NODE_VERSION"
+              value: "18"
+          abandon: false
+          description: "..."
+        options:
+          dry_run: false
+          backup_path: "./outcome/backups"
+
+    Returns:
+        Dict con keys: release_ids, global_vars, env_vars, abandon, description, dry_run, backup_path
+    """
+    if not YAML_AVAILABLE:
+        raise ImportError("PyYAML no esta instalado. Instala con: pip install pyyaml")
+
+    path = Path(template_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Template no encontrado: {template_path}")
+
+    content = path.read_text(encoding='utf-8')
+    template = yaml.safe_load(content)
+
+    if not isinstance(template, dict):
+        raise ValueError("Template invalido: debe ser un diccionario YAML")
+
+    metadata = template.get('metadata', {})
+    release_section = template.get('release', {})
+    update_section = template.get('update', {})
+    options_section = template.get('options', {})
+
+    release_ids_raw = release_section.get('ids', [])
+    if isinstance(release_ids_raw, list):
+        release_ids = [str(rid) for rid in release_ids_raw]
+    elif isinstance(release_ids_raw, str):
+        release_ids = [rid.strip() for rid in release_ids_raw.split(',') if rid.strip()]
+    else:
+        release_ids = []
+
+    global_var_list = update_section.get('global_vars', [])
+    global_vars = []
+    for var in global_var_list:
+        name = var.get('name', '')
+        value = var.get('value', '')
+        global_vars.append(f"{name}={value}")
+
+    env_var_list = update_section.get('env_vars', [])
+    env_vars = []
+    for var in env_var_list:
+        stage = var.get('stage', '')
+        name = var.get('name', '')
+        value = var.get('value', '')
+        env_vars.append(f"{stage},{name}={value}")
+
+    abandon = update_section.get('abandon', False)
+    description = update_section.get('description', '')
+    dry_run = options_section.get('dry_run', False)
+    backup_path = options_section.get('backup_path', './outcome/backups')
+
+    print(f"{Colors.GREEN}✓ Template cargado: {metadata.get('name', 'Unknown')} v{metadata.get('version', '1.0')}{Colors.ENDC}")
+    if metadata.get('description'):
+        print(f"{Colors.DIM}  {metadata['description']}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Release IDs: {', '.join(release_ids) if release_ids else '(via CLI)'}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Variables globales: {len(global_vars)}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Variables por env: {len(env_vars)}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Abandonar: {abandon}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Dry-run: {dry_run}{Colors.ENDC}")
+
+    return {
+        'release_ids': release_ids,
+        'global_vars': global_vars,
+        'env_vars': env_vars,
+        'abandon': abandon,
+        'description': description,
+        'dry_run': dry_run,
+        'backup_path': backup_path,
+    }
 
 
 def prompt_with_default(prompt_text: str, default_value: any, required: bool = False) -> str:
@@ -421,6 +521,8 @@ Ejemplos:
     parser.add_argument('--backup-path', default='./outcome/backups', help='Carpeta de backups')
     parser.add_argument('--dry-run', action='store_true', help='Modo simulacion (sin cambios)')
     parser.add_argument('--interactive', '-i', action='store_true', help='Modo interactivo')
+    parser.add_argument('--template', type=str, default=None,
+                        help='Ruta a template YAML con configuracion de actualizacion')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     return parser.parse_args()
 
@@ -429,7 +531,32 @@ def main():
     args = get_args()
     args.org = normalize_org(args.org)
 
-    if args.interactive:
+    if args.template:
+        tpl = load_template(args.template)
+        if not args.release_id and tpl['release_ids']:
+            args.release_id = ','.join(tpl['release_ids'])
+        if not args.set_var and tpl['global_vars']:
+            args.set_var = tpl['global_vars']
+        if not args.set_env_var and tpl['env_vars']:
+            args.set_env_var = tpl['env_vars']
+        if not args.abandon and tpl['abandon']:
+            args.abandon = tpl['abandon']
+        if not args.description and tpl['description']:
+            args.description = tpl['description']
+        if not args.dry_run and tpl['dry_run']:
+            args.dry_run = tpl['dry_run']
+        if args.backup_path == './outcome/backups' and tpl['backup_path'] != './outcome/backups':
+            args.backup_path = tpl['backup_path']
+        if not args.pat:
+            config = load_config()
+            args.pat = config.get('pat', '')
+        if not args.release_id:
+            print(f"{Colors.RED}✗ Error: --release-id es requerido (no encontrado en template ni CLI){Colors.ENDC}")
+            sys.exit(1)
+        if not args.pat:
+            print(f"{Colors.RED}✗ Error: --pat es requerido (no encontrado en config.json ni CLI){Colors.ENDC}")
+            sys.exit(1)
+    elif args.interactive:
         params = interactive_mode()
         args.org = params['org']
         args.project = params['project']

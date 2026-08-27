@@ -1,0 +1,27 @@
+metadata:
+  name: "Abandonar Releases Obsoletos"
+  version: "1.0"
+  description: "Marca releases como abandoned para limpieza de pipelines CD"
+  comment: |
+    Cambios: Abandonar releases inactivos
+    Razon: Limpieza trimestral de releases obsoletos
+    Aprobado por: DevOps Lead
+    Fecha: 2026-08-27
+  author: "DevOps Team"
+  created_at: "2026-08-27"
+
+release:
+  ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
+
+update:
+  global_vars: []
+
+  env_vars: []
+
+  abandon: true
+
+  description: "Release abandonado por limpieza trimestral"
+
+options:
+  dry_run: true
+  backup_path: "./outcome/backups"

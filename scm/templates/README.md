@@ -214,6 +214,78 @@ Después: Develop → QA → Production → 01-Culiacan → 02-Leon → 03-Lagun
 
 ## 🚀 Cómo Usar
 
+### **Templates para Tool 41 (Pipeline Updater Template)**
+
+Estos templates modifican **definiciones** de pipelines CD (Release Definitions).
+
+### **Templates para Tool 42 (Release Updater Template)** 🆕
+
+Estos templates modifican **releases existentes** (por releaseId) via PATCH API.
+
+#### **release_update_git_credentials.yaml**
+Renueva credenciales Git (GIT_USER, GIT_PASS) en releases existentes.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 42
+# Ingresar: --template scm/templates/release_update_git_credentials.yaml --release-id 987 --pat TOKEN
+```
+
+#### **release_update_node_version.yaml**
+Actualiza NODE_VERSION por environment (QA=18, PROD=20).
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 42
+# Ingresar: --template scm/templates/release_update_node_version.yaml --release-id 987 --pat TOKEN
+```
+
+#### **release_abandon_stale.yaml**
+Marca releases como abandoned para limpieza trimestral.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 42
+# Ingresar: --template scm/templates/release_abandon_stale.yaml --release-id 987,988 --pat TOKEN
+```
+
+### **Estructura de Templates Tool 42**
+
+```yaml
+metadata:
+  name: "Nombre del template"
+  version: "1.0"
+  description: "Descripcion"
+
+release:
+  ids: []  # IDs de releases, o vacio para usar --release-id
+
+update:
+  global_vars:
+    - name: "VAR_NAME"
+      value: "new_value"
+  env_vars:
+    - stage: "QA"
+      name: "NODE_VERSION"
+      value: "18"
+  abandon: false
+  description: "Nueva descripcion"
+
+options:
+  dry_run: true
+  backup_path: "./outcome/backups"
+```
+
+**Notas**:
+- Los flags CLI (`--set-var`, `--abandon`, etc.) sobrescriben los valores del template
+- `--release-id` es requerido si el template no tiene `release.ids`
+- `--pat` es siempre requerido (via CLI o config.json)
+
+---
+
 ### **Paso 1: Personalizar Template**
 
 Copia uno de los templates y personaliza los valores:

@@ -1,0 +1,33 @@
+metadata:
+  name: "Actualizar NODE_VERSION por Environment"
+  version: "1.0"
+  description: "Actualiza la variable NODE_VERSION en cada environment del release"
+  comment: |
+    Cambios: NODE_VERSION QA=18, PROD=20
+    Razon: Migracion a Node 20 en produccion
+    Aprobado por: DevOps Lead
+    Fecha: 2026-08-27
+  author: "DevOps Team"
+  created_at: "2026-08-27"
+
+release:
+  ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
+
+update:
+  global_vars: []
+
+  env_vars:
+    - stage: "QA"
+      name: "NODE_VERSION"
+      value: "18"
+    - stage: "PROD"
+      name: "NODE_VERSION"
+      value: "20"
+
+  abandon: false
+
+  description: "Actualizacion NODE_VERSION: QA=18, PROD=20"
+
+options:
+  dry_run: true
+  backup_path: "./outcome/backups"
