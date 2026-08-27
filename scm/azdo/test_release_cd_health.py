@@ -16,7 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from zoneinfo import ZoneInfo
@@ -32,7 +32,7 @@ import azdo_release_cd_health as mod
 class TestIsDisabledInProcessPipeline(unittest.TestCase):
     """Tests para verificar que is_disabled se captura correctamente en process_pipeline."""
 
-    def _make_detail(self, is_disabled=False, stages=None):
+    def _make_detail(self, is_disabled=False, stages=None, modified_on=None):
         """Crea un detail de pipeline mock."""
         if stages is None:
             stages = [
@@ -40,12 +40,15 @@ class TestIsDisabledInProcessPipeline(unittest.TestCase):
                 {"name": "QA", "rank": 2},
                 {"name": "Production", "rank": 3},
             ]
-        return {
+        detail = {
             "id": 42,
             "name": "Test-Pipeline",
             "isDisabled": is_disabled,
             "environments": stages,
         }
+        if modified_on:
+            detail["modifiedOn"] = modified_on
+        return detail
 
     @patch.object(mod, "get_latest_releases")
     @patch.object(mod, "get_release_def_detail")
@@ -154,9 +157,12 @@ class TestIsDisabledInExportResults(unittest.TestCase):
                 "ever_deployed": True,
                 "last_release_id": 200 + i,
                 "score": 85,
-                "score_recency": 60,
-                "score_stability": 25,
+                "score_recency": 35,
+                "score_stability": 20,
+                "score_definition": 30,
                 "days_since": 30,
+                "days_modified": 200,
+                "modified_on": datetime(2025, 1, 15, tzinfo=timezone.utc),
                 "rating_emoji": "🟢",
                 "rating_label": "Bueno",
                 "consistency": mod.CONS_OK,
@@ -210,9 +216,12 @@ class TestHtmlDashboard(unittest.TestCase):
                 "ever_deployed": i > 0,
                 "last_release_id": 200 + i,
                 "score": 85 - i * 20,
-                "score_recency": 60,
-                "score_stability": 25,
+                "score_recency": 35,
+                "score_stability": 20,
+                "score_definition": 30,
                 "days_since": 30,
+                "days_modified": 200,
+                "modified_on": datetime(2025, 1, 15, tzinfo=timezone.utc) if i > 0 else None,
                 "rating_emoji": "🟢",
                 "rating_label": "Bueno" if i > 0 else "Nunca",
                 "consistency": mod.CONS_OK if i > 0 else mod.CONS_UNIQUE,
@@ -331,6 +340,82 @@ class TestHtmlDashboard(unittest.TestCase):
             call_args = mock_manager.export_json.call_args
             flat_data = call_args[0][0]
             self.assertIn("folder", flat_data[0])
+
+
+class TestComputeScore(unittest.TestCase):
+    """Tests para la nueva formula de compute_score con 3 componentes."""
+
+    def test_never_deployed_returns_zero(self):
+        """Pipeline sin deploy a produccion debe retornar score 0."""
+        result = mod.compute_score(None, None)
+        self.assertEqual(result["total"], 0)
+        self.assertEqual(result["recency"], 0)
+        self.assertEqual(result["stability"], 0)
+        self.assertEqual(result["definition"], 0)
+
+    def test_recent_deploy_one_attempt_old_definition(self):
+        """Deploy reciente, 1 intento, definicion sin modificar por 180+ dias."""
+        now = datetime.now(timezone.utc)
+        last_deploy = now - timedelta(days=10)
+        modified = now - timedelta(days=200)
+        result = mod.compute_score(last_deploy, 1, modified)
+        # Recency: 50 * (1 - 10/365) = ~48.6 -> 49
+        # Stability: 20 - 0 = 20
+        # Definition: min(30, 30 * 200/180) = 30
+        # Total: 49 + 20 + 30 = 99
+        self.assertEqual(result["recency"], 49)
+        self.assertEqual(result["stability"], 20)
+        self.assertEqual(result["definition"], 30)
+        self.assertEqual(result["total"], 99)
+
+    def test_old_deploy_many_attempts_recent_definition(self):
+        """Deploy antiguo, muchos intentos, definicion modificada recientemente."""
+        now = datetime.now(timezone.utc)
+        last_deploy = now - timedelta(days=300)
+        modified = now - timedelta(days=5)
+        result = mod.compute_score(last_deploy, 4, modified)
+        # Recency: 50 * (1 - 300/365) = ~8.9 -> 9
+        # Stability: 20 - 3*7 = -1 -> max(0, -1) = 0
+        # Definition: min(30, 30 * 5/180) = ~0.83 -> 1
+        # Total: 9 + 0 + 1 = 10
+        self.assertEqual(result["recency"], 9)
+        self.assertEqual(result["stability"], 0)
+        self.assertEqual(result["definition"], 1)
+        self.assertEqual(result["total"], 10)
+
+    def test_no_modified_on_definition_zero(self):
+        """Sin modifiedOn, definition debe ser 0."""
+        now = datetime.now(timezone.utc)
+        last_deploy = now - timedelta(days=30)
+        result = mod.compute_score(last_deploy, 1, None)
+        self.assertEqual(result["definition"], 0)
+        self.assertIsNone(result["days_modified"])
+
+    def test_two_attempts_stability(self):
+        """2 intentos deben dar estabilidad 13."""
+        now = datetime.now(timezone.utc)
+        last_deploy = now - timedelta(days=30)
+        modified = now - timedelta(days=90)
+        result = mod.compute_score(last_deploy, 2, modified)
+        # Stability: 20 - 1*7 = 13
+        self.assertEqual(result["stability"], 13)
+
+    def test_definition_caps_at_30(self):
+        """Definition no debe exceder 30 pts."""
+        now = datetime.now(timezone.utc)
+        last_deploy = now - timedelta(days=10)
+        modified = now - timedelta(days=365)
+        result = mod.compute_score(last_deploy, 1, modified)
+        self.assertEqual(result["definition"], 30)
+
+    def test_total_capped_at_100(self):
+        """Total no debe exceder 100."""
+        now = datetime.now(timezone.utc)
+        last_deploy = now  # 0 dias
+        modified = now - timedelta(days=365)
+        result = mod.compute_score(last_deploy, 1, modified)
+        # Recency: 50, Stability: 20, Definition: 30 = 100
+        self.assertEqual(result["total"], 100)
 
 
 if __name__ == "__main__":

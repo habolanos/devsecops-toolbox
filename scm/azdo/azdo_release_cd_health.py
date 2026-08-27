@@ -9,9 +9,10 @@ Analiza todos los Release Pipelines CD de un proyecto Azure DevOps:
   ✦ Consistencia de stages entre todos los pipelines del proyecto
   ✦ Detección automática del stage de producción
   ✦ ¿El stage de producción fue ejecutado? ¿Cuándo por última vez?
-  ✦ Score de salud 0-100 basado en:
-       Recencia    (0-70 pts) — deploy reciente = puntaje alto; escala lineal 365 días
-       Estabilidad (0-30 pts) — 1 intento=30, 2=20, 3=10, 4+=0 (último release)
+  ✦ Score de salud 0-100 basado en 3 componentes:
+       Recencia           (0-50 pts) — deploy reciente = puntaje alto; escala lineal 365 días
+       Estabilidad Deploy (0-20 pts) — 1 intento=20, 2=13, 3=6, 4+=0 (último release)
+       Estabilidad Def.   (0-30 pts) — más tiempo sin modificar la definición = más puntos; escala 180 días
 
 Rating:
   🟢 Excelente   90-100
@@ -374,28 +375,39 @@ def analyze_releases(releases: List[Dict], prod_stage: Optional[str]) -> Dict[st
 def compute_score(
     last_prod_deploy: Optional[datetime],
     prod_attempts: Optional[int],
+    modified_on: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """
-    Score 0-100:
-      Recencia   (0-70): max(0, 70 * (1 - days/365))   → más reciente = mayor
-      Estabilidad (0-30): 1=30, 2=20, 3=10, 4+=0       → menos intentos = mayor
+    Score 0-100 con 3 componentes:
+      Recencia           (0-50): max(0, 50 * (1 - days_deploy/365))   → más reciente = mayor
+      Estabilidad Deploy (0-20): 20 - (intentos-1) * 7                → menos intentos = mayor
+      Estabilidad Def.   (0-30): min(30, 30 * days_sin_modificar/180) → más tiempo sin cambios = mayor
     Si nunca desplegado: 0.
     """
     if last_prod_deploy is None:
-        return {"total": 0, "recency": 0, "stability": 0, "days": None}
+        return {"total": 0, "recency": 0, "stability": 0, "definition": 0, "days": None, "days_modified": None}
 
-    days      = max(0, (datetime.now(timezone.utc) - last_prod_deploy).days)
-    recency   = max(0.0, 70.0 * (1.0 - days / 365.0))
-    attempts  = max(1, prod_attempts or 1)
-    # Cada intento adicional resta ~33% de los 30 puntos de estabilidad
-    stability = max(0.0, 30.0 - (attempts - 1) * 10.0)
-    total     = min(100, round(recency + stability))
+    days        = max(0, (datetime.now(timezone.utc) - last_prod_deploy).days)
+    recency     = max(0.0, 50.0 * (1.0 - days / 365.0))
+    attempts    = max(1, prod_attempts or 1)
+    stability   = max(0.0, 20.0 - (attempts - 1) * 7.0)
+
+    if modified_on:
+        days_mod    = max(0, (datetime.now(timezone.utc) - modified_on).days)
+        definition  = min(30.0, 30.0 * days_mod / 180.0)
+    else:
+        days_mod    = None
+        definition  = 0.0
+
+    total = min(100, round(recency + stability + definition))
 
     return {
-        "total":     total,
-        "recency":   round(recency),
-        "stability": round(stability),
-        "days":      days,
+        "total":      total,
+        "recency":    round(recency),
+        "stability":  round(stability),
+        "definition": round(definition),
+        "days":       days,
+        "days_modified": days_mod,
     }
 
 
@@ -489,9 +501,19 @@ def process_pipeline(
     releases = get_latest_releases(org, project, def_id, top, headers, debug)
     rel_info = analyze_releases(releases, prod_stage)
 
+    # Extraer modifiedOn de la definicion
+    modified_on = None
+    mod_str = detail.get("modifiedOn")
+    if mod_str:
+        try:
+            modified_on = parse_azdo_date(mod_str)
+        except Exception:
+            modified_on = None
+
     score_data = compute_score(
         rel_info["last_prod_deploy"],
         rel_info["last_release_prod_attempts"],
+        modified_on,
     )
     r_emoji, r_label = get_rating(score_data["total"], rel_info["prod_ever_deployed"])
 
@@ -508,10 +530,13 @@ def process_pipeline(
         "prod_attempts":    rel_info["last_release_prod_attempts"],
         "ever_deployed":    rel_info["prod_ever_deployed"],
         "last_release_id":  rel_info["last_release_id"],
+        "modified_on":      modified_on,
         "score":            score_data["total"],
         "score_recency":    score_data["recency"],
         "score_stability":  score_data["stability"],
+        "score_definition": score_data["definition"],
         "days_since":       score_data["days"],
+        "days_modified":    score_data["days_modified"],
         "rating_emoji":     r_emoji,
         "rating_label":     r_label,
         "consistency":      CONS_UNIQUE,   # se completa en el paso global
@@ -607,8 +632,9 @@ def print_rich_summary(console: "Console", rows: List[Dict], majority: Tuple, el
         f"[bold]⛔ Pipelines Disabled:[/]\n"
         f"  [red]⛔ Disabled:  [/] {disabled}  /  [green]✅ Active: [/] {total - disabled}\n\n"
         f"[bold]📐 Fórmula Score:[/]\n"
-        f"[dim]  Recencia (0-70): 70 × (1 - días/365)[/]\n"
-        f"[dim]  Estabilidad (0-30): 30 - (intentos-1) × 10[/]\n\n"
+        f"[dim]  Recencia (0-50): 50 × (1 - días_deploy/365)[/]\n"
+        f"[dim]  Estabilidad Deploy (0-20): 20 - (intentos-1) × 7[/]\n"
+        f"[dim]  Estabilidad Def. (0-30): min(30, 30 × días_sin_mod/180)[/]\n\n"
         f"[dim]⏱️  Tiempo total: {elapsed:.2f}s[/]",
         title="📊 Resumen de Salud — Release Pipelines",
         border_style="blue",
@@ -812,6 +838,10 @@ def generate_html_dashboard(
             "last_prod":     dt_str,
             "attempts":      r["prod_attempts"] if r["prod_attempts"] is not None else "—",
             "score":         r["score"],
+            "score_recency":    r.get("score_recency", 0),
+            "score_stability":  r.get("score_stability", 0),
+            "score_definition": r.get("score_definition", 0),
+            "days_modified":    r.get("days_modified"),
             "rating":        r["rating_label"],
             "rating_emoji":  r["rating_emoji"],
             "is_disabled":   r.get("is_disabled", False),
@@ -1118,6 +1148,9 @@ def export_results(
         "score_total":                   r["score"],
         "score_recency":                 r["score_recency"],
         "score_stability":               r["score_stability"],
+        "score_definition":              r.get("score_definition", 0),
+        "days_since_modified":           r.get("days_modified") if r.get("days_modified") is not None else "",
+        "modified_on":                   r["modified_on"].isoformat() if r.get("modified_on") else "",
         "rating":                        r["rating_label"],
         "is_disabled":                   r.get("is_disabled", False),
     } for r in rows]
@@ -1203,7 +1236,7 @@ def main():
             f"[dim]🕐 {rev_time}[/]\n"
             f"[dim]🏢 Org:      {args.org}[/]\n"
             f"[dim]📁 Proyecto: {args.project}[/]\n"
-            f"[dim]📐 Score:    Recencia (70pt) + Estabilidad (30pt) = 100pt[/]\n"
+            f"[dim]📐 Score:    Recencia (50pt) + Deploy (20pt) + Definición (30pt) = 100pt[/]\n"
             f"[dim]📅 Ventana:  últimos 365 días · últimos {args.top} releases/pipeline[/]",
             border_style="cyan", expand=False,
         ))
