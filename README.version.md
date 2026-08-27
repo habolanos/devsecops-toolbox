@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.35`** — 2026-08-27
+**`1.7.36`** — 2026-08-27
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-08-27 | **1.7.36** | **Feat Release CD Health: Redistribucion de pesos score (60+20+20)**: Ajuste de pesos de la formula de score: Recencia 50→60 pts, Estabilidad Definicion 30→20 pts. Estabilidad Deploy se mantiene en 20 pts. La recencia ahora domina con 60% del score. Formula: `60 × (1 - dias/365)` + `20 - (intentos-1) × 7` + `min(20, 20 × dias_sin_mod/180)`. Tests actualizados. 276 tests en verde. | `scm/azdo/azdo_release_cd_health.py`, `scm/azdo/test_release_cd_health.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-08-27 | **1.7.35** | **Feat Release CD Health: Columnas informativas de ultimo release en reportes**: Agrega 3 columnas al HTML dashboard y export (JSON/CSV/Excel): `last_release_id`, `last_release_name`, `last_release_date`. Estas columnas muestran el ultimo release global (independiente de stage production). `analyze_releases` ahora extrae nombre y fecha del ultimo release antes del check de `prod_stage`. Tabla Rich y fallback print sin cambios. 276 tests en verde. | `scm/azdo/azdo_release_cd_health.py`, `scm/azdo/test_release_cd_health.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-08-27 | **1.7.34** | **Feat Release CD Health: 3-component score formula**: Nueva formula de score con 3 componentes para `azdo_release_cd_health.py`: (1) **Recencia** (0-50 pts): `50 × (1 - dias_deploy/365)` — deploy reciente = mas puntos. (2) **Estabilidad Deploy** (0-20 pts): `20 - (intentos-1) × 7` — menos intentos = mas puntos. (3) **Estabilidad Definicion** (0-30 pts): `min(30, 30 × dias_sin_modificar/180)` — mas tiempo sin cambios en la definicion = mas puntos. Extrae `modifiedOn` de la Release Definition via API. Formula anterior era 2 componentes (Recencia 70 + Estabilidad 30). 7 tests nuevos para `compute_score`. Export flat data y HTML dashboard actualizados con `score_definition`, `days_modified`, `modified_on`. 276 tests total en verde. | `scm/azdo/azdo_release_cd_health.py`, `scm/azdo/test_release_cd_health.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-08-12 | **1.7.33** | **Feat copy_from artifact_filters**: (1) **Feat artifact_filters**: Nuevo campo opcional `artifact_filters` en reglas `copy_from` que agrega conditions de tipo artifact al stage copiado para filtrar por branches. Soporta token `$auto:Git` para resolver automaticamente el primer Git artifact. Cada filtro especifica `artifact`, `type` (include/exclude) y `branches`. Las branches se expanden a formato Azure DevOps (`+refs/heads/{branch}`). `update_engine.py` `_add_stage` ahora llama `_apply_artifact_filters`. Preserva conditions de tipo event/environmentState. (2) **Template**: `pipe_cd_copy_stage_from_pipeline.yaml` actualizado v1.2 con ejemplo de artifact_filters para branches develop, QA, release/*. (3) **Tests**: 3 tests nuevos (artifact_filters basico, preservacion de event conditions, error sin artifact). 186 tests total en verde. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/parallel_executor.py`, `scm/azdo/pipeline_updater/test_copy_stage_from_pipeline.py`, `scm/templates/pipe_cd_copy_stage_from_pipeline.yaml`, `VERSION`, `README.md`, `README.version.md` |

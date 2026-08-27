@@ -10,9 +10,9 @@ Analiza todos los Release Pipelines CD de un proyecto Azure DevOps:
   ✦ Detección automática del stage de producción
   ✦ ¿El stage de producción fue ejecutado? ¿Cuándo por última vez?
   ✦ Score de salud 0-100 basado en 3 componentes:
-       Recencia           (0-50 pts) — deploy reciente = puntaje alto; escala lineal 365 días
+       Recencia           (0-60 pts) — deploy reciente = puntaje alto; escala lineal 365 días
        Estabilidad Deploy (0-20 pts) — 1 intento=20, 2=13, 3=6, 4+=0 (último release)
-       Estabilidad Def.   (0-30 pts) — más tiempo sin modificar la definición = más puntos; escala 180 días
+       Estabilidad Def.   (0-20 pts) — más tiempo sin modificar la definición = más puntos; escala 180 días
 
 Rating:
   🟢 Excelente   90-100
@@ -390,22 +390,22 @@ def compute_score(
 ) -> Dict[str, Any]:
     """
     Score 0-100 con 3 componentes:
-      Recencia           (0-50): max(0, 50 * (1 - days_deploy/365))   → más reciente = mayor
+      Recencia           (0-60): max(0, 60 * (1 - days_deploy/365))   → más reciente = mayor
       Estabilidad Deploy (0-20): 20 - (intentos-1) * 7                → menos intentos = mayor
-      Estabilidad Def.   (0-30): min(30, 30 * days_sin_modificar/180) → más tiempo sin cambios = mayor
+      Estabilidad Def.   (0-20): min(20, 20 * days_sin_modificar/180) → más tiempo sin cambios = mayor
     Si nunca desplegado: 0.
     """
     if last_prod_deploy is None:
         return {"total": 0, "recency": 0, "stability": 0, "definition": 0, "days": None, "days_modified": None}
 
     days        = max(0, (datetime.now(timezone.utc) - last_prod_deploy).days)
-    recency     = max(0.0, 50.0 * (1.0 - days / 365.0))
+    recency     = max(0.0, 60.0 * (1.0 - days / 365.0))
     attempts    = max(1, prod_attempts or 1)
     stability   = max(0.0, 20.0 - (attempts - 1) * 7.0)
 
     if modified_on:
         days_mod    = max(0, (datetime.now(timezone.utc) - modified_on).days)
-        definition  = min(30.0, 30.0 * days_mod / 180.0)
+        definition  = min(20.0, 20.0 * days_mod / 180.0)
     else:
         days_mod    = None
         definition  = 0.0
@@ -645,9 +645,9 @@ def print_rich_summary(console: "Console", rows: List[Dict], majority: Tuple, el
         f"[bold]⛔ Pipelines Disabled:[/]\n"
         f"  [red]⛔ Disabled:  [/] {disabled}  /  [green]✅ Active: [/] {total - disabled}\n\n"
         f"[bold]📐 Fórmula Score:[/]\n"
-        f"[dim]  Recencia (0-50): 50 × (1 - días_deploy/365)[/]\n"
+        f"[dim]  Recencia (0-60): 60 × (1 - días_deploy/365)[/]\n"
         f"[dim]  Estabilidad Deploy (0-20): 20 - (intentos-1) × 7[/]\n"
-        f"[dim]  Estabilidad Def. (0-30): min(30, 30 × días_sin_mod/180)[/]\n\n"
+        f"[dim]  Estabilidad Def. (0-20): min(20, 20 × días_sin_mod/180)[/]\n\n"
         f"[dim]⏱️  Tiempo total: {elapsed:.2f}s[/]",
         title="📊 Resumen de Salud — Release Pipelines",
         border_style="blue",
@@ -1260,7 +1260,7 @@ def main():
             f"[dim]🕐 {rev_time}[/]\n"
             f"[dim]🏢 Org:      {args.org}[/]\n"
             f"[dim]📁 Proyecto: {args.project}[/]\n"
-            f"[dim]📐 Score:    Recencia (50pt) + Deploy (20pt) + Definición (30pt) = 100pt[/]\n"
+            f"[dim]📐 Score:    Recencia (60pt) + Deploy (20pt) + Definición (20pt) = 100pt[/]\n"
             f"[dim]📅 Ventana:  últimos 365 días · últimos {args.top} releases/pipeline[/]",
             border_style="cyan", expand=False,
         ))

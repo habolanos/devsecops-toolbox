@@ -159,9 +159,9 @@ class TestIsDisabledInExportResults(unittest.TestCase):
                 "last_release_name": f"Release-{200 + i}",
                 "last_release_date": datetime(2025, 1, 15, tzinfo=timezone.utc),
                 "score": 85,
-                "score_recency": 35,
+                "score_recency": 42,
                 "score_stability": 20,
-                "score_definition": 30,
+                "score_definition": 20,
                 "days_since": 30,
                 "days_modified": 200,
                 "modified_on": datetime(2025, 1, 15, tzinfo=timezone.utc),
@@ -220,9 +220,9 @@ class TestHtmlDashboard(unittest.TestCase):
                 "last_release_name": f"Release-{200 + i}",
                 "last_release_date": datetime(2025, 1, 15, tzinfo=timezone.utc) if i > 0 else None,
                 "score": 85 - i * 20,
-                "score_recency": 35,
+                "score_recency": 42,
                 "score_stability": 20,
-                "score_definition": 30,
+                "score_definition": 20,
                 "days_since": 30,
                 "days_modified": 200,
                 "modified_on": datetime(2025, 1, 15, tzinfo=timezone.utc) if i > 0 else None,
@@ -363,14 +363,14 @@ class TestComputeScore(unittest.TestCase):
         last_deploy = now - timedelta(days=10)
         modified = now - timedelta(days=200)
         result = mod.compute_score(last_deploy, 1, modified)
-        # Recency: 50 * (1 - 10/365) = ~48.6 -> 49
+        # Recency: 60 * (1 - 10/365) = ~58.4 -> 58
         # Stability: 20 - 0 = 20
-        # Definition: min(30, 30 * 200/180) = 30
-        # Total: 49 + 20 + 30 = 99
-        self.assertEqual(result["recency"], 49)
+        # Definition: min(20, 20 * 200/180) = 20
+        # Total: 58 + 20 + 20 = 98
+        self.assertEqual(result["recency"], 58)
         self.assertEqual(result["stability"], 20)
-        self.assertEqual(result["definition"], 30)
-        self.assertEqual(result["total"], 99)
+        self.assertEqual(result["definition"], 20)
+        self.assertEqual(result["total"], 98)
 
     def test_old_deploy_many_attempts_recent_definition(self):
         """Deploy antiguo, muchos intentos, definicion modificada recientemente."""
@@ -378,14 +378,14 @@ class TestComputeScore(unittest.TestCase):
         last_deploy = now - timedelta(days=300)
         modified = now - timedelta(days=5)
         result = mod.compute_score(last_deploy, 4, modified)
-        # Recency: 50 * (1 - 300/365) = ~8.9 -> 9
+        # Recency: 60 * (1 - 300/365) = ~10.68
         # Stability: 20 - 3*7 = -1 -> max(0, -1) = 0
-        # Definition: min(30, 30 * 5/180) = ~0.83 -> 1
-        # Total: 9 + 0 + 1 = 10
-        self.assertEqual(result["recency"], 9)
+        # Definition: min(20, 20 * 5/180) = ~0.56
+        # Total: round(10.68 + 0 + 0.56) = round(11.24) = 11
+        self.assertEqual(result["recency"], 11)
         self.assertEqual(result["stability"], 0)
         self.assertEqual(result["definition"], 1)
-        self.assertEqual(result["total"], 10)
+        self.assertEqual(result["total"], 11)
 
     def test_no_modified_on_definition_zero(self):
         """Sin modifiedOn, definition debe ser 0."""
@@ -404,13 +404,13 @@ class TestComputeScore(unittest.TestCase):
         # Stability: 20 - 1*7 = 13
         self.assertEqual(result["stability"], 13)
 
-    def test_definition_caps_at_30(self):
-        """Definition no debe exceder 30 pts."""
+    def test_definition_caps_at_20(self):
+        """Definition no debe exceder 20 pts."""
         now = datetime.now(timezone.utc)
         last_deploy = now - timedelta(days=10)
         modified = now - timedelta(days=365)
         result = mod.compute_score(last_deploy, 1, modified)
-        self.assertEqual(result["definition"], 30)
+        self.assertEqual(result["definition"], 20)
 
     def test_total_capped_at_100(self):
         """Total no debe exceder 100."""
@@ -418,7 +418,7 @@ class TestComputeScore(unittest.TestCase):
         last_deploy = now  # 0 dias
         modified = now - timedelta(days=365)
         result = mod.compute_score(last_deploy, 1, modified)
-        # Recency: 50, Stability: 20, Definition: 30 = 100
+        # Recency: 60, Stability: 20, Definition: 20 = 100
         self.assertEqual(result["total"], 100)
 
 
