@@ -308,14 +308,6 @@ TOOLS: Dict = {
         "group":       "quality",
         "status":      "ready",
     },
-    "21": {
-        "name":        "Pipeline Updater",
-        "description": "Actualiza variable branchConfig y scripts de tareas en Release Pipelines vía API REST. Modo interactivo con config.json.",
-        "path":        "pipeline-cd-update-branchconfig.py",
-        "args":        ["--interactive"],
-        "group":       "updatepipe",
-        "status":      "ready",
-    },
     "22": {
         "name":        "Pipeline Rollback",
         "description": "Revierte cambios en Release Pipelines con 3 métodos: (1) Full Backup Restore (máxima seguridad), (2) Hybrid Rollback (revisión del backup desde Azure DevOps), (3) Manual Revision (rollback a revisión específica). Incluye listado de backups/revisiones, validación y dry-run.",
@@ -399,8 +391,8 @@ TOOLS: Dict = {
         "group":       "updatepipe",
         "status":      "ready",
     },
-    "28": {
-        "name":        "Update Release",
+    "42": {
+        "name":        "Release Updater Template",
         "description": "Actualiza un Release existente por releaseId via PATCH API usando templates YAML. Modifica variables globales, variables por environment, status (abandonar) y descripcion. Incluye backup automatico, dry-run y soporte multi-release.",
         "path":        "pipeline_cd_update_release/pipeline_cd_update_release.py",
         "args":        ["--org", "--project", "--release-id", "--set-var", "--set-env-var",
@@ -944,27 +936,6 @@ def run_tool(tool_key: str):
 
     cfg    = load_config()
     
-    # ── Caso especial: Pipeline Updater (tool 21) usa modo interactivo ────────
-    if tool_key == "21":
-        # Pipeline Updater maneja sus propios parámetros en modo interactivo
-        cmd = [str(venv_python), str(script_path), "--interactive"]
-        
-        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
-        try:
-            result = subprocess.run(cmd, cwd=BASE_DIR)
-            
-            if result.returncode == 0:
-                print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
-            elif result.returncode == 1:
-                print(f"\n{Colors.WARNING}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
-            else:
-                print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
-        except Exception as e:
-            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
-        
-        input("\nPresione Enter para continuar...")
-        return
-    
     # ── Caso especial: Pipeline Rollback (tool 22) ────────────────────────────
     if tool_key == "22":
         while True:
@@ -1497,8 +1468,8 @@ def run_tool(tool_key: str):
         input("\nPresione Enter para continuar...")
         return
 
-    # ── Caso especial: Update Release (tool 28) - Submenú ──────────────────────
-    if tool_key == "28":
+    # ── Caso especial: Update Release (tool 42) - Submenú ──────────────────────
+    if tool_key == "42":
         tool_defaults = tool.get("defaults", {})
 
         while True:
