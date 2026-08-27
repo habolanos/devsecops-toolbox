@@ -518,9 +518,16 @@ def build_patch_payload(
                 env_name = env.get('name', '')
                 if not is_wildcard and env_name.lower() not in [s.lower() for s in stage_filter]:
                     continue
-                for phase in env.get('deployPhases', []):
-                    for task in phase.get('workflowTasks', []):
-                        if task.get('displayName', '').lower() == task_name.lower():
+                env_phases = env.get('deployPhases', [])
+                if not env_phases:
+                    print(f"{Colors.YELLOW}  ⚠ Environment '{env_name}' no tiene deployPhases (keys: {list(env.keys())}){Colors.ENDC}")
+                for phase in env_phases:
+                    phase_tasks = phase.get('workflowTasks', [])
+                    if not phase_tasks:
+                        print(f"{Colors.YELLOW}  ⚠ Phase '{phase.get('name', '?')}' en '{env_name}' no tiene workflowTasks{Colors.ENDC}")
+                    for task in phase_tasks:
+                        task_display = task.get('displayName', '') or task.get('name', '')
+                        if task_display.lower() == task_name.lower():
                             task_found = True
                             for field in fields:
                                 field_path = field.get('path', '')
