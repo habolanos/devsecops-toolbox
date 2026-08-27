@@ -402,7 +402,7 @@ TOOLS: Dict = {
     "28": {
         "name":        "Update Release",
         "description": "Actualiza un Release existente por releaseId via PATCH API usando templates YAML. Modifica variables globales, variables por environment, status (abandonar) y descripcion. Incluye backup automatico, dry-run y soporte multi-release.",
-        "path":        "pipeline_cd_update_release.py",
+        "path":        "pipeline_cd_update_release/pipeline_cd_update_release.py",
         "args":        ["--org", "--project", "--release-id", "--set-var", "--set-env-var",
                         "--abandon", "--description", "--pat", "--backup-path", "--dry-run"],
         "defaults":    {
@@ -1497,129 +1497,196 @@ def run_tool(tool_key: str):
         input("\nPresione Enter para continuar...")
         return
 
-    # ── Caso especial: Update Release (tool 28) ────────────────────────────────
+    # ── Caso especial: Update Release (tool 28) - Submenú ──────────────────────
     if tool_key == "28":
         tool_defaults = tool.get("defaults", {})
 
-        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}  🆙 Update Release - Parámetros{Colors.ENDC}")
-        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+        while True:
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}  🆙 Update Release - Seleccione una opción{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Actualizar release (interactivo)")
+            print(f"{Colors.CYAN}[2]{Colors.ENDC} Dry-run (simular cambios sin aplicar)")
+            print(f"{Colors.CYAN}[3]{Colors.ENDC} Listar backups disponibles")
+            print(f"{Colors.CYAN}[4]{Colors.ENDC} Ejecutar desde CLI (argumentos directos)")
+            print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+            print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
 
-        # Solicitar parámetros específicos
-        cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
-        if cfg_org.startswith("https://"):
-            cfg_org = cfg_org.split('/')[-1]
+            option = input().strip()
 
-        org = prompt("Organización", default=cfg_org)
-        if not org.startswith("https://"):
-            org = f"https://dev.azure.com/{org}"
-
-        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
-
-        print(f"{Colors.BOLD}Release IDs a actualizar (obligatorio, separados por coma):{Colors.ENDC} ", end="")
-        release_ids_input = input().strip()
-        if not release_ids_input:
-            print(f"{Colors.RED}❌ El Release ID es obligatorio.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-
-        # Validar Release IDs
-        release_ids = []
-        for rid in release_ids_input.split(','):
-            rid = rid.strip()
-            if not rid or not rid.isdigit():
-                print(f"{Colors.RED}❌ Release ID inválido: '{rid}'. Debe ser un número entero.{Colors.ENDC}")
-                input("\nPresione Enter para continuar...")
+            # Opción 0: Volver
+            if option == "0":
                 return
-            release_ids.append(rid)
 
-        # Variables globales (opcional, repetible)
-        global_vars = []
-        print(f"\n{Colors.CYAN}--- Variables Globales (opcional) ---{Colors.ENDC}")
-        print(f"{Colors.DIM}Formato: NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
-        while True:
-            var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
-            if not var_input:
-                break
-            if '=' in var_input:
-                global_vars.append(var_input)
+            # Opción 3: Listar backups
+            elif option == "3":
+                backups_dir = BASE_DIR / "outcome" / "backups"
+                if backups_dir.exists():
+                    print(f"\n{Colors.CYAN}📁 Backups disponibles:{Colors.ENDC}\n")
+                    backups = sorted(backups_dir.glob("release_backup_UPD_REL_*.json"))
+                    if backups:
+                        for i, bk in enumerate(backups[-20:], 1):
+                            print(f"  {i}. {bk.name}")
+                    else:
+                        print(f"  {Colors.YELLOW}No hay backups de update release disponibles{Colors.ENDC}")
+                else:
+                    print(f"  {Colors.YELLOW}Directorio de backups no existe{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            # Opciones 1 y 2: Actualizar / Dry-run (misma lógica, dry-run opcional)
+            elif option in ("1", "2"):
+                is_dry_run = (option == "2")
+
+                print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+                print(f"{Colors.BOLD}  🆙 Update Release - {'Dry-Run' if is_dry_run else 'Actualizar'} Release{Colors.ENDC}")
+                print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+
+                # Solicitar parámetros específicos
+                cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+                if cfg_org.startswith("https://"):
+                    cfg_org = cfg_org.split('/')[-1]
+
+                org = prompt("Organización", default=cfg_org)
+                if not org.startswith("https://"):
+                    org = f"https://dev.azure.com/{org}"
+
+                project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+
+                print(f"{Colors.BOLD}Release IDs a actualizar (obligatorio, separados por coma):{Colors.ENDC} ", end="")
+                release_ids_input = input().strip()
+                if not release_ids_input:
+                    print(f"{Colors.RED}❌ El Release ID es obligatorio.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+
+                release_ids = []
+                valid = True
+                for rid in release_ids_input.split(','):
+                    rid = rid.strip()
+                    if not rid or not rid.isdigit():
+                        print(f"{Colors.RED}❌ Release ID inválido: '{rid}'. Debe ser un número entero.{Colors.ENDC}")
+                        valid = False
+                        break
+                    release_ids.append(rid)
+                if not valid:
+                    input("\nPresione Enter para continuar...")
+                    continue
+
+                # Variables globales (opcional, repetible)
+                global_vars = []
+                print(f"\n{Colors.CYAN}--- Variables Globales (opcional) ---{Colors.ENDC}")
+                print(f"{Colors.DIM}Formato: NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
+                while True:
+                    var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+                    if not var_input:
+                        break
+                    if '=' in var_input:
+                        global_vars.append(var_input)
+                    else:
+                        print(f"{Colors.RED}  ✗ Formato inválido. Use NOMBRE=VALOR{Colors.ENDC}")
+
+                # Variables por environment (opcional, repetible)
+                env_vars = []
+                print(f"\n{Colors.CYAN}--- Variables por Environment (opcional) ---{Colors.ENDC}")
+                print(f"{Colors.DIM}Formato: STAGE,NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
+                while True:
+                    var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+                    if not var_input:
+                        break
+                    if ',' in var_input and '=' in var_input:
+                        env_vars.append(var_input)
+                    else:
+                        print(f"{Colors.RED}  ✗ Formato inválido. Use STAGE,NOMBRE=VALOR{Colors.ENDC}")
+
+                # Abandonar release
+                print(f"\n{Colors.BOLD}¿Abandonar release(s)? (s/n) [n]:{Colors.ENDC} ", end="")
+                abandon = input().strip().lower() in ('s', 'si', 'yes', 'y')
+
+                # Descripción (opcional)
+                print(f"{Colors.BOLD}Nueva descripción (Enter para mantener):{Colors.ENDC} ", end="")
+                description = input().strip()
+
+                # PAT
+                pat = prompt("Personal Access Token (PAT)",
+                            default=config_get(cfg, "azdo", "pat", default=""),
+                            secret=True)
+                if not pat:
+                    print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+
+                backup_path = prompt("Carpeta de backups",
+                                    default=tool_defaults.get("backup_path", "./outcome/backups"))
+
+                # Construir comando
+                cmd = [
+                    str(venv_python), str(script_path),
+                    "--org", org,
+                    "--project", project,
+                    "--release-id", ",".join(release_ids),
+                    "--pat", pat,
+                    "--backup-path", backup_path
+                ]
+
+                for var in global_vars:
+                    cmd += ["--set-var", var]
+
+                for var in env_vars:
+                    cmd += ["--set-env-var", var]
+
+                if abandon:
+                    cmd.append("--abandon")
+
+                if description:
+                    cmd += ["--description", description]
+
+                if is_dry_run:
+                    cmd.append("--dry-run")
+
+                label = "Dry-Run" if is_dry_run else "Update"
+                print(f"\n{Colors.CYAN}▶ Ejecutando {label}...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ {label} completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ {label} falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+
+                input("\nPresione Enter para continuar...")
+                continue
+
+            # Opción 4: Ejecutar desde CLI (argumentos directos)
+            elif option == "4":
+                print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
+                print(f"{Colors.DIM}Ej: --release-id 987 --pat TOKEN --set-var FOO=bar --dry-run{Colors.ENDC}")
+                print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
+                cli_args = input().strip()
+                if not cli_args:
+                    print(f"{Colors.YELLOW}Sin argumentos. Cancelando...{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+
+                cmd = [str(venv_python), str(script_path)] + cli_args.split()
+                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+
+                input("\nPresione Enter para continuar...")
+                continue
+
             else:
-                print(f"{Colors.RED}  ✗ Formato inválido. Use NOMBRE=VALOR{Colors.ENDC}")
-
-        # Variables por environment (opcional, repetible)
-        env_vars = []
-        print(f"\n{Colors.CYAN}--- Variables por Environment (opcional) ---{Colors.ENDC}")
-        print(f"{Colors.DIM}Formato: STAGE,NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
-        while True:
-            var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
-            if not var_input:
-                break
-            if ',' in var_input and '=' in var_input:
-                env_vars.append(var_input)
-            else:
-                print(f"{Colors.RED}  ✗ Formato inválido. Use STAGE,NOMBRE=VALOR{Colors.ENDC}")
-
-        # Abandonar release
-        print(f"\n{Colors.BOLD}¿Abandonar release(s)? (s/n) [n]:{Colors.ENDC} ", end="")
-        abandon = input().strip().lower() in ('s', 'si', 'yes', 'y')
-
-        # Descripción (opcional)
-        print(f"{Colors.BOLD}Nueva descripción (Enter para mantener):{Colors.ENDC} ", end="")
-        description = input().strip()
-
-        # PAT
-        pat = prompt("Personal Access Token (PAT)",
-                    default=config_get(cfg, "azdo", "pat", default=""),
-                    secret=True)
-        if not pat:
-            print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
-            input("\nPresione Enter para continuar...")
-            return
-
-        backup_path = prompt("Carpeta de backups",
-                            default=tool_defaults.get("backup_path", "./outcome/backups"))
-
-        # Dry-run
-        print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
-        dry_run = input().strip().lower() in ('s', 'si', 'yes', 'y')
-
-        # Construir comando
-        cmd = [
-            str(venv_python), str(script_path),
-            "--org", org,
-            "--project", project,
-            "--release-id", ",".join(release_ids),
-            "--pat", pat,
-            "--backup-path", backup_path
-        ]
-
-        for var in global_vars:
-            cmd += ["--set-var", var]
-
-        for var in env_vars:
-            cmd += ["--set-env-var", var]
-
-        if abandon:
-            cmd.append("--abandon")
-
-        if description:
-            cmd += ["--description", description]
-
-        if dry_run:
-            cmd.append("--dry-run")
-
-        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
-        try:
-            result = subprocess.run(cmd, cwd=BASE_DIR)
-            if result.returncode == 0:
-                print(f"\n{Colors.GREEN}✅ Update completado exitosamente.{Colors.ENDC}")
-            else:
-                print(f"\n{Colors.RED}✗ Update falló (exit {result.returncode}){Colors.ENDC}")
-        except Exception as e:
-            print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
-
-        input("\nPresione Enter para continuar...")
-        return
+                print(f"{Colors.RED}✗ Opción inválida. Por favor seleccione 0-4.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
 
     # ── Caso especial: Pipeline Updater Template (tool 41) ──────────────────────
     if tool_key == "41":
