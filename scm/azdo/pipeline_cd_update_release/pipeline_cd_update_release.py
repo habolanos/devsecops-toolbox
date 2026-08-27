@@ -527,6 +527,8 @@ def build_patch_payload(
     if abandon:
         changes.append({"type": "status", "key": "status", "old": release.get('status'), "new": "abandoned"})
         payload['status'] = 'abandoned'
+    elif payload:
+        payload['status'] = release.get('status', 'active')
     if description:
         changes.append({"type": "description", "key": "description", "old": release.get('description'), "new": description})
         payload['description'] = description
