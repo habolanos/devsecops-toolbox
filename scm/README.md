@@ -186,7 +186,7 @@ En el menú principal:
 
 | # | Herramienta | Descripción |
 |---|-------------|-------------|
-| 22 | DevOps Tools | PRs, políticas, releases, drift, inventario, branches, pipeline management |
+| 21 | DevOps Tools | PRs, políticas, releases, drift, inventario, branches, pipeline management |
 
 **Grupos de herramientas:**
 - 📬 Pull Requests (2 herramientas)
@@ -200,7 +200,6 @@ En el menú principal:
 - 🎯 Calidad Deploy (2 herramientas)
 
 **🆕 Nuevas herramientas v1.6.10:**
-- **Pipeline Updater** (#21) - Actualización masiva de Release Pipelines con backup automático
 - **Pipeline Rollback** (#22) - Sistema completo de rollback con 3 métodos:
   - Full Backup Restore (máxima seguridad)
   - Hybrid Rollback (revisión del backup desde Azure DevOps)
@@ -321,7 +320,6 @@ scm/
 │   └── ...              # +15 directorios de herramientas
 ├── azdo/                # Azure DevOps
 │   ├── tools.py         # Launcher AZDO (v1.3.4)
-│   ├── update-pipeline-cd-branchconfig.py  # Pipeline Updater
 │   ├── rollback-pipeline.py                # Pipeline Rollback
 │   ├── azdo_pr_master_checker.py
 │   ├── azdo_branch_policy_checker.py

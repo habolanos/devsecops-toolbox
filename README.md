@@ -203,7 +203,6 @@ Herramientas para gestión de repositorios, pipelines y releases en Azure DevOps
 - Release CD Health
 - Pipeline Drift Analyzer
 - Task Validator
-- **[21] Pipeline Updater** - Actualización masiva de pipelines con templates YAML
 - **[22] Pipeline Rollback** - Rollback con 3 métodos (Full Backup, Hybrid, Manual Revision)
   - **Opción 6: Redo** ⭐ NUEVO - Volver a versión previa del pipeline basado en definition_id
 - **[27] Pipeline CD Backup & Restore** ⭐ NUEVO - Backup/restore completo de definiciones CD (individual máx 500, masivo, restore, crear desde backup, diff, conversión JSON→YAML)
@@ -325,7 +324,7 @@ python scm/kpi_analyzer/tools.py
 
 ## 📋 Templates para Pipeline Updater
 
-La carpeta `scm/templates/` contiene templates YAML predefinidos para actualizar masivamente pipelines CD en Azure DevOps usando la herramienta **Pipeline Updater (Tool 21)**.
+La carpeta `scm/templates/` contiene templates YAML predefinidos para actualizar masivamente pipelines CD en Azure DevOps usando la herramienta **Pipeline Updater Template (Tool 41)**.
 
 ### 🎯 ¿Qué son los Templates?
 
@@ -362,7 +361,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_update_docker.yaml
 ```
 
@@ -397,7 +396,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_update_kubernetes.yaml
 ```
 
@@ -426,7 +425,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_update_variables.yaml
 ```
 
@@ -458,7 +457,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_update_azure.yaml
 ```
 
@@ -490,7 +489,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_update_script.yaml
 ```
 
@@ -528,7 +527,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_update_migracion.yaml
 ```
 
@@ -569,7 +568,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_move_to_folder.yaml
 ```
 
@@ -647,7 +646,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_copy_stage_from_pipeline.yaml
 ```
 
@@ -684,7 +683,7 @@ update:
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: 3 (AZDO) → 21 (Pipeline Updater)
+# Seleccionar: 3 (AZDO) → 41 (Pipeline Updater Template)
 # Ingresar: scm/templates/pipe_cd_autosort_stages.yaml
 ```
 
@@ -718,7 +717,7 @@ python scm/main.py
 
 Luego sigue estos pasos:
 1. Selecciona: **3 (AZDO)**
-2. Selecciona: **21 (Pipeline Updater)**
+2. Selecciona: **41 (Pipeline Updater Template)**
 3. Ingresa: **definition-ids** (ej: 3388,3389,3390)
 4. Ingresa: **ruta del template** (ej: scm/templates/mi-cambio.yaml)
 5. Confirma: **Y** para ejecutar

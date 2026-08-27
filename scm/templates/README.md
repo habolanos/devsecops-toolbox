@@ -12,7 +12,7 @@ Cambiar imagen Docker en pipelines de producción.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_update_docker.yaml
 ```
 
@@ -24,7 +24,7 @@ Cambiar cluster Kubernetes y namespace.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_update_kubernetes.yaml
 ```
 
@@ -36,7 +36,7 @@ Cambiar variables de entorno (ENVIRONMENT, etc).
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_update_variables.yaml
 ```
 
@@ -48,7 +48,7 @@ Cambiar suscripción Azure en tasks.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_update_azure.yaml
 ```
 
@@ -60,7 +60,7 @@ Cambiar contenido de scripts PowerShell.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_update_script.yaml
 ```
 
@@ -72,7 +72,7 @@ Realizar múltiples cambios simultáneamente (imagen, cluster, variables).
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_update_migracion.yaml
 ```
 
@@ -84,7 +84,7 @@ Reordenar stages usando `rank` - Cambio de orden básico.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_reorder_stages_basic.yaml
 ```
 
@@ -102,7 +102,7 @@ Reordenar stages Y actualizar dependencias automáticamente.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_reorder_stages_with_dependencies.yaml
 ```
 
@@ -121,7 +121,7 @@ Insertar nuevo stage de seguridad en posición específica.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_insert_security_stage.yaml
 ```
 
@@ -139,7 +139,7 @@ Insertar un nuevo stage con N tasks, configurar triggers y artifact branch filte
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_insert_stage_with_n_tasks.yaml
 ```
 
@@ -171,7 +171,7 @@ Soporta el placeholder `{current}` para mover preservando el path relativo.
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_move_to_folder.yaml
 ```
 
@@ -195,7 +195,7 @@ Auto-ordenar stages numericos alfanumericamente, manteniendo fijos los stages no
 **Uso**:
 ```bash
 python scm/main.py
-# Seleccionar: Azure DevOps → Tool 21
+# Seleccionar: Azure DevOps → Tool 41
 # Ingresar: scm/templates/pipe_cd_autosort_stages.yaml
 ```
 
@@ -252,7 +252,7 @@ python scm/main.py
 
 Luego:
 1. Selecciona: **Azure DevOps**
-2. Selecciona: **Tool 21 (Pipeline Updater)**
+2. Selecciona: **Tool 41 (Pipeline Updater Template)**
 3. Ingresa: **definition-ids** (ej: 3388,3389,3390)
 4. Ingresa: **ruta del template** (ej: scm/templates/mi-cambio.yaml)
 5. Confirma: **Y**

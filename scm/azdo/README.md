@@ -1,6 +1,6 @@
 # Azure DevOps Tools — SCM Toolbox
 
-**22 herramientas Python** para auditoría, análisis y gestión de pipelines, políticas de ramas y pull requests en **Azure DevOps**. Incluye **Pipeline Updater** y **Pipeline Rollback** con 3 métodos de restauración. Todas las herramientas usan la API REST de AzDO v7.2 con autenticación por PAT y ofrecen salida enriquecida en consola (Rich) y exportación a JSON / CSV / Excel.
+**21 herramientas Python** para auditoría, análisis y gestión de pipelines, políticas de ramas y pull requests en **Azure DevOps**. Incluye **Pipeline Updater Template (Tool 41)** y **Pipeline Rollback** con 3 métodos de restauración. Todas las herramientas usan la API REST de AzDO v7.2 con autenticación por PAT y ofrecen salida enriquecida en consola (Rich) y exportación a JSON / CSV / Excel.
 
 ---
 
@@ -8,7 +8,7 @@
 
 ```
 devsecops-toolbox/scm/azdo/
-├── tools.py                       # Launcher interactivo unificado v1.3.4 (22 herramientas)
+├── tools.py                       # Launcher interactivo unificado v1.3.4 (21 herramientas)
 ├── azdo_pr_master_checker.py      # Herramienta 1 — PRs hacia master + validación CD
 ├── azdo_pr_pipeline_analyzer.py   # Herramienta 1b — Análisis PRs multi-rama + CD + releases
 ├── azdo_branch_policy_checker.py  # Herramienta 2 — Auditoría de políticas de ramas
@@ -21,7 +21,6 @@ devsecops-toolbox/scm/azdo/
 ├── cicd_inventory.py              # Herramienta 9 — Inventario completo repos ↔ CI ↔ CD
 ├── azdo_repo_properties_branch_diff.py # Herramienta 19 — Diff de configuración entre ramas
 ├── azdo_repo_branch_diff.py           # Herramienta 20 — Informe ejecutivo de impacto de cambios
-├── update-pipeline-cd-branchconfig.py  # Herramienta 21 — Pipeline Updater v1.0.6
 ├── rollback-pipeline.py                # Herramienta 22 — Pipeline Rollback v1.2.0
 ├── requirements.txt               # Dependencias Python compartidas
 └── outcome/                       # Carpeta autogenerada con los reportes exportados
