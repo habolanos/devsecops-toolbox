@@ -747,6 +747,117 @@ class TestLoadTemplate(unittest.TestCase):
         self.assertEqual(len(result["env_var_search_values"]), 1)
         self.assertEqual(result["env_var_search_values"][0], "config-cadenaSuministro")
 
+    def test_load_template_with_search_section_wildcard(self):
+        """New search section with wildcard stages and search variables."""
+        template = {
+            "metadata": {"name": "Search Section Test", "version": "1.2"},
+            "search": {
+                "stages": [{"name": "*"}],
+                "variables": [{"name": "branchConfig", "value": "config-cadenaSuministro"}],
+            },
+            "release": {"ids": [999]},
+            "update": {
+                "global_vars": [],
+                "env_vars": [{"name": "branchConfig", "value": "feature/feature-amad"}],
+                "abandon": False,
+                "description": "Update branchConfig",
+            },
+            "options": {"dry_run": True},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["search_stages"], ["*"])
+        self.assertEqual(len(result["env_vars"]), 1)
+        self.assertIn("*,branchConfig=feature/feature-amad", result["env_vars"])
+        self.assertEqual(len(result["env_var_search_values"]), 1)
+        self.assertEqual(result["env_var_search_values"][0], "config-cadenaSuministro")
+
+    def test_load_template_with_search_section_specific_stages(self):
+        """Search section with specific stages should generate env_vars per stage."""
+        template = {
+            "metadata": {"name": "Specific Stages Test", "version": "1.2"},
+            "search": {
+                "stages": [{"name": "QA"}, {"name": "PROD"}],
+                "variables": [{"name": "branchConfig", "value": "config-cadenaSuministro"}],
+            },
+            "release": {"ids": [999]},
+            "update": {
+                "global_vars": [],
+                "env_vars": [{"name": "branchConfig", "value": "feature/feature-amad"}],
+                "abandon": False,
+                "description": "",
+            },
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["search_stages"], ["QA", "PROD"])
+        self.assertEqual(len(result["env_vars"]), 2)
+        self.assertIn("QA,branchConfig=feature/feature-amad", result["env_vars"])
+        self.assertIn("PROD,branchConfig=feature/feature-amad", result["env_vars"])
+        self.assertEqual(len(result["env_var_search_values"]), 2)
+        self.assertEqual(result["env_var_search_values"][0], "config-cadenaSuministro")
+        self.assertEqual(result["env_var_search_values"][1], "config-cadenaSuministro")
+
+    def test_load_template_with_search_no_variables(self):
+        """Search section without variables should have None search_values."""
+        template = {
+            "metadata": {"name": "No Search Vars", "version": "1.2"},
+            "search": {"stages": [{"name": "*"}]},
+            "release": {"ids": [999]},
+            "update": {
+                "global_vars": [],
+                "env_vars": [{"name": "DEBUG", "value": "true"}],
+                "abandon": False,
+                "description": "",
+            },
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(len(result["env_vars"]), 1)
+        self.assertIn("*,DEBUG=true", result["env_vars"])
+        self.assertEqual(len(result["env_var_search_values"]), 1)
+        self.assertIsNone(result["env_var_search_values"][0])
+
+    def test_load_template_with_search_release_ids(self):
+        """Search section release_ids should be used when release.ids is empty."""
+        template = {
+            "metadata": {"name": "Search Release IDs", "version": "1.2"},
+            "search": {"stages": [{"name": "*"}], "release_ids": [111, 222]},
+            "release": {"ids": []},
+            "update": {"global_vars": [], "env_vars": [], "abandon": False, "description": ""},
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["release_ids"], ["111", "222"])
+
+    def test_load_template_backward_compatible_no_search(self):
+        """Old format without search section should still work."""
+        template = {
+            "metadata": {"name": "Old Format", "version": "1.0"},
+            "release": {"ids": [999]},
+            "update": {
+                "global_vars": [],
+                "env_vars": [{"stage": "QA", "name": "DEBUG", "value": "true", "search_value": "false"}],
+                "abandon": False,
+                "description": "",
+            },
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(result["search_stages"], ["*"])
+        self.assertEqual(len(result["env_vars"]), 1)
+        self.assertIn("QA,DEBUG=true", result["env_vars"])
+        self.assertEqual(result["env_var_search_values"][0], "false")
+
 
 if __name__ == "__main__":
     unittest.main()

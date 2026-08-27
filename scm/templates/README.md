@@ -254,8 +254,10 @@ python scm/main.py
 
 #### **release_update_branchconfig.yaml** 🆕
 Template unificado que realiza dos cambios en una sola operacion:
-1. Busca la variable `branchConfig` con valor `config-cadenaSuministro` en **todos los stages** del release y la actualiza a `feature/feature-amad` (usa `stage: "*"` y `search_value`).
+1. Busca la variable `branchConfig` con valor `config-cadenaSuministro` en **todos los stages** del release y la actualiza a `feature/feature-amad`.
 2. Busca la task "get file k8-manifest" y reemplaza `path_pipelineConfig` por `path_pipelineConfigYml` en `inputs.script`.
+
+Usa la nueva estructura `search` para separar criterios de busqueda de valores a actualizar.
 
 **Uso**:
 ```bash
@@ -266,11 +268,21 @@ python scm/main.py
 
 ### **Estructura de Templates Tool 42**
 
+**Estructura nueva (con search):**
+
 ```yaml
 metadata:
   name: "Nombre del template"
-  version: "1.0"
+  version: "1.2"
   description: "Descripcion"
+
+search:
+  stages:
+    - name: "*"                      # o "QA", "PROD", etc.
+  variables:                          # search_value: solo actualizar si el valor actual coincide
+    - name: "branchConfig"
+      value: "config-cadenaSuministro"
+  release_ids: []                     # alternativa a release.ids
 
 release:
   ids: []  # IDs de releases, o vacio para usar --release-id
@@ -279,20 +291,15 @@ update:
   global_vars:
     - name: "VAR_NAME"
       value: "new_value"
-  env_vars:
-    - stage: "QA"
-      name: "NODE_VERSION"
-      value: "18"
-    - stage: "*"                    # Wildcard: aplica a todos los stages
-      name: "branchConfig"
-      search_value: "old-value"     # Solo actualiza si el valor actual coincide
-      value: "new-value"
-  tasks:                            # Actualizar campos de tasks en release environments
-    - name: "get file k8-manifest"  # displayName de la task (case-insensitive)
+  env_vars:                           # solo name + value (stage viene de search.stages)
+    - name: "branchConfig"
+      value: "feature/feature-amad"
+  tasks:                              # Actualizar campos de tasks en release environments
+    - name: "get file k8-manifest"   # displayName de la task (case-insensitive)
       fields:
-        - path: "inputs.script"     # Path anidado dentro de la task
-          old_value: "old_text"     # Texto a buscar (reemplazo parcial)
-          new_value: "new_text"     # Texto de reemplazo
+        - path: "inputs.script"      # Path anidado dentro de la task
+          old_value: "old_text"      # Texto a buscar (reemplazo parcial)
+          new_value: "new_text"      # Texto de reemplazo
   abandon: false
   description: "Nueva descripcion"
 
@@ -301,14 +308,28 @@ options:
   backup_path: "./outcome/backups"
 ```
 
+**Estructura antigua (sin search, backward compatible):**
+
+```yaml
+update:
+  env_vars:
+    - stage: "QA"                    # stage inline
+      name: "NODE_VERSION"
+      value: "18"
+      search_value: "old_value"      # search_value inline
+```
+
 **Notas**:
 - Los flags CLI (`--set-var`, `--abandon`, etc.) sobrescriben los valores del template
-- `--release-id` es requerido si el template no tiene `release.ids`
+- `--release-id` es requerido si el template no tiene `release.ids` ni `search.release_ids`
 - `--pat` es siempre requerido (via CLI o config.json)
-- `stage: "*"` aplica la variable a todos los stages del release
-- `search_value` es opcional: si se especifica, solo se actualizan los stages donde el valor actual coincide
+- `search.stages` define en que stages aplicar los cambios (`*` = todos)
+- `search.variables` define el filtro: solo actualiza variables donde el valor actual coincide
+- `update.env_vars` solo tiene `name` + `value` (sin `stage` ni `search_value` cuando se usa `search`)
 - `tasks` busca en `deployPhases[].workflowTasks[]` de cada environment por `displayName` (case-insensitive)
+- `tasks` respeta `search.stages`: si no es `*`, solo actualiza tasks en los stages especificados
 - El reemplazo en tasks es parcial: busca `old_value` dentro del valor actual y lo reemplaza por `new_value`
+- **Backward compatible**: templates sin `search` siguen funcionando con `stage` y `search_value` inline en `env_vars`
 
 ---
 

@@ -88,29 +88,50 @@ def load_template(template_path: str) -> Dict:
     """
     Carga un template YAML para actualizacion de releases.
 
-    Estructura esperada del template:
+    Estructura nueva (con search):
         metadata:
           name: "..."
           version: "1.0"
           description: "..."
+        search:
+          stages:
+            - name: "*"          # o "QA", "PROD", etc.
+          variables:             # search_value: solo actualizar si coincide
+            - name: "branchConfig"
+              value: "config-cadenaSuministro"
+          release_ids: []        # alternativa a release.ids
         release:
-          ids: []  # opcional, separados por coma
+          ids: []
         update:
           global_vars:
             - name: "VAR_NAME"
               value: "new_value"
           env_vars:
-            - stage: "QA"
-              name: "NODE_VERSION"
+            - name: "NODE_VERSION"   # sin stage (viene de search.stages)
               value: "18"
+          tasks:
+            - name: "get file k8-manifest"
+              fields:
+                - path: "inputs.script"
+                  old_value: "old"
+                  new_value: "new"
           abandon: false
           description: "..."
         options:
           dry_run: false
           backup_path: "./outcome/backups"
 
+    Estructura antigua (sin search, backward compatible):
+        update:
+          env_vars:
+            - stage: "QA"
+              name: "NODE_VERSION"
+              value: "18"
+              search_value: "old_value"   # opcional
+
     Returns:
-        Dict con keys: release_ids, global_vars, env_vars, abandon, description, dry_run, backup_path
+        Dict con keys: release_ids, global_vars, env_vars, env_var_search_values,
+                       task_updates, search_stages, abandon, description, dry_run, backup_path
     """
     if not YAML_AVAILABLE:
         raise ImportError("PyYAML no esta instalado. Instala con: pip install pyyaml")
@@ -129,8 +150,11 @@ def load_template(template_path: str) -> Dict:
     release_section = template.get('release', {})
     update_section = template.get('update', {})
     options_section = template.get('options', {})
+    search_section = template.get('search', {})
 
     release_ids_raw = release_section.get('ids', [])
+    if not release_ids_raw and search_section.get('release_ids'):
+        release_ids_raw = search_section.get('release_ids', [])
     if isinstance(release_ids_raw, list):
         release_ids = [str(rid) for rid in release_ids_raw]
     elif isinstance(release_ids_raw, str):
@@ -148,13 +172,28 @@ def load_template(template_path: str) -> Dict:
     env_var_list = update_section.get('env_vars', [])
     env_vars = []
     env_var_search_values = []
-    for var in env_var_list:
-        stage = var.get('stage', '')
-        name = var.get('name', '')
-        value = var.get('value', '')
-        search_value = var.get('search_value', None)
-        env_vars.append(f"{stage},{name}={value}")
-        env_var_search_values.append(search_value)
+    search_stages = ['*']
+
+    if search_section:
+        search_stages = [s.get('name', '*') for s in search_section.get('stages', [{'name': '*'}])]
+        search_vars = {}
+        for v in search_section.get('variables', []):
+            search_vars[v.get('name', '')] = v.get('value')
+        for var in env_var_list:
+            name = var.get('name', '')
+            value = var.get('value', '')
+            sv = search_vars.get(name)
+            for stage in search_stages:
+                env_vars.append(f"{stage},{name}={value}")
+                env_var_search_values.append(sv)
+    else:
+        for var in env_var_list:
+            stage = var.get('stage', '')
+            name = var.get('name', '')
+            value = var.get('value', '')
+            search_value = var.get('search_value', None)
+            env_vars.append(f"{stage},{name}={value}")
+            env_var_search_values.append(search_value)
 
     task_updates = update_section.get('tasks', [])
 
@@ -169,6 +208,7 @@ def load_template(template_path: str) -> Dict:
     print(f"{Colors.CYAN}  Release IDs: {', '.join(release_ids) if release_ids else '(via CLI)'}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Variables globales: {len(global_vars)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Variables por env: {len(env_vars)}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Search stages: {', '.join(search_stages)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Task updates: {len(task_updates)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Abandonar: {abandon}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Dry-run: {dry_run}{Colors.ENDC}")
@@ -179,6 +219,7 @@ def load_template(template_path: str) -> Dict:
         'env_vars': env_vars,
         'env_var_search_values': env_var_search_values,
         'task_updates': task_updates,
+        'search_stages': search_stages,
         'abandon': abandon,
         'description': description,
         'dry_run': dry_run,
@@ -387,6 +428,7 @@ def build_patch_payload(
     abandon: bool, description: str,
     env_var_search_values: Optional[List[Optional[str]]] = None,
     task_updates: Optional[List[Dict]] = None,
+    search_stages: Optional[List[str]] = None,
 ) -> Tuple[Dict, List[Dict]]:
     payload: Dict = {}
     changes: List[Dict] = []
@@ -435,11 +477,15 @@ def build_patch_payload(
         payload['environments'] = environments
     if task_updates:
         environments = copy.deepcopy(release.get('environments', []))
+        stage_filter = search_stages if search_stages else ['*']
+        is_wildcard = '*' in stage_filter
         for task_spec in task_updates:
             task_name = task_spec.get('name', '')
             fields = task_spec.get('fields', [])
             for env in environments:
                 env_name = env.get('name', '')
+                if not is_wildcard and env_name.lower() not in [s.lower() for s in stage_filter]:
+                    continue
                 for phase in env.get('deployPhases', []):
                     for task in phase.get('workflowTasks', []):
                         if task.get('displayName', '').lower() == task_name.lower():
@@ -612,6 +658,7 @@ def main():
             args.set_env_var = tpl['env_vars']
         args.env_var_search_values = tpl.get('env_var_search_values', [])
         args.task_updates = tpl.get('task_updates', [])
+        args.search_stages = tpl.get('search_stages', ['*'])
         if not args.abandon and tpl['abandon']:
             args.abandon = tpl['abandon']
         if not args.description and tpl['description']:
@@ -643,12 +690,14 @@ def main():
         args.dry_run = params['dry_run']
         args.env_var_search_values = []
         args.task_updates = []
+        args.search_stages = ['*']
     else:
         if not args.release_id or not args.pat:
             print(f"{Colors.RED}✗ Error: --release-id y --pat son requeridos cuando no se usa --interactive{Colors.ENDC}")
             sys.exit(1)
         args.env_var_search_values = []
         args.task_updates = []
+        args.search_stages = ['*']
 
     release_ids = [rid.strip() for rid in str(args.release_id).split(',')]
 
@@ -688,7 +737,8 @@ def main():
             payload, changes = build_patch_payload(
                 release, args.set_var, args.set_env_var, args.abandon, args.description,
                 getattr(args, 'env_var_search_values', []),
-                getattr(args, 'task_updates', [])
+                getattr(args, 'task_updates', []),
+                getattr(args, 'search_stages', ['*'])
             )
             show_changes(changes)
 
