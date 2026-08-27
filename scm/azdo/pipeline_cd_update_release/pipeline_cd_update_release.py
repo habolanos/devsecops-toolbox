@@ -18,6 +18,7 @@ import base64
 import copy
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -436,6 +437,13 @@ def _set_nested_value(obj: Dict, path: str, value: any) -> None:
     current[keys[-1]] = value
 
 
+def _clean_value(v: Optional[str]) -> Optional[str]:
+    """Remove zero-width chars and strip whitespace for value comparison."""
+    if v is None:
+        return None
+    return re.sub(r'[\u200b\u200c\u200d\ufeff\u00a0]', '', v).strip()
+
+
 def build_patch_payload(
     release: Dict, global_vars: List[str], env_vars: List[str],
     abandon: bool, description: str,
@@ -455,7 +463,7 @@ def build_patch_payload(
             old_value = current_vars.get(key, {}).get('value')
             search_value = global_var_search_values[idx] if global_var_search_values and idx < len(global_var_search_values) else None
             if search_value is not None:
-                if old_value != search_value:
+                if _clean_value(old_value) != _clean_value(search_value):
                     changes.append({"type": "global_var", "key": key, "old": old_value, "new": value,
                                     "error": f"Variable global '{key}' no tiene valor '{search_value}' (actual: '{old_value}')"})
                     continue
@@ -478,7 +486,7 @@ def build_patch_payload(
                     env_vars_dict = env.get('variables', {})
                     old_value = env_vars_dict.get(key, {}).get('value')
                     if search_value is not None:
-                        if old_value != search_value:
+                        if _clean_value(old_value) != _clean_value(search_value):
                             continue
                     matched_stages.append(env_name)
                     changes.append({"type": "env_var", "key": key, "old": old_value, "new": value, "stage": env_name})
@@ -772,6 +780,15 @@ def main():
             if not changes:
                 print(f"{Colors.YELLOW}No hay cambios para aplicar. Saltando...{Colors.ENDC}")
                 results.append({'status': 'skipped', 'release_id': release_id, 'changes': 0})
+                continue
+
+            error_changes = [c for c in changes if 'error' in c]
+            valid_changes = [c for c in changes if 'error' not in c]
+            if error_changes:
+                print(f"{Colors.YELLOW}  ⚠ {len(error_changes)} cambio(s) con error (ver tabla arriba){Colors.ENDC}")
+            if not valid_changes:
+                print(f"{Colors.RED}✗ Todos los cambios tienen errores. No se aplica PUT.{Colors.ENDC}")
+                results.append({'status': 'error', 'release_id': release_id, 'changes': 0, 'errors': len(error_changes)})
                 continue
 
             dry_run_active = getattr(args, 'dry_run', False) or getattr(args, 'tpl_dry_run', False)
