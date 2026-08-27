@@ -318,13 +318,24 @@ def analyze_releases(releases: List[Dict], prod_stage: Optional[str]) -> Dict[st
       last_release_prod_attempts — # deploySteps en prod del ÚLTIMO release
       prod_ever_deployed         — bool
       last_release_id            — id del release más reciente
+      last_release_name          — nombre del release más reciente
+      last_release_date          — datetime del release más reciente
     """
     result: Dict[str, Any] = {
         "last_prod_deploy":           None,
         "last_release_prod_attempts": None,
         "prod_ever_deployed":         False,
         "last_release_id":            None,
+        "last_release_name":          None,
+        "last_release_date":          None,
     }
+
+    # Extraer info del ultimo release (independiente de prod_stage)
+    if releases:
+        latest = releases[0]
+        result["last_release_id"]   = latest.get("id")
+        result["last_release_name"] = latest.get("name")
+        result["last_release_date"] = parse_azdo_date(latest.get("createdOn"))
 
     if not releases or not prod_stage:
         return result
@@ -530,6 +541,8 @@ def process_pipeline(
         "prod_attempts":    rel_info["last_release_prod_attempts"],
         "ever_deployed":    rel_info["prod_ever_deployed"],
         "last_release_id":  rel_info["last_release_id"],
+        "last_release_name": rel_info["last_release_name"],
+        "last_release_date": rel_info["last_release_date"],
         "modified_on":      modified_on,
         "score":            score_data["total"],
         "score_recency":    score_data["recency"],
@@ -837,6 +850,9 @@ def generate_html_dashboard(
             "consistency":   r["consistency"],
             "last_prod":     dt_str,
             "attempts":      r["prod_attempts"] if r["prod_attempts"] is not None else "—",
+            "last_release_id":   r.get("last_release_id") or "—",
+            "last_release_name": html_escape(r.get("last_release_name") or "—"),
+            "last_release_date": r["last_release_date"].astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M") if r.get("last_release_date") else "—",
             "score":         r["score"],
             "score_recency":    r.get("score_recency", 0),
             "score_stability":  r.get("score_stability", 0),
@@ -996,9 +1012,12 @@ tbody tr:hover {{ background:#1e293b; }}
             <th onclick="sortTable(6)">Stage PROD <span class="sort-arrow"></span></th>
             <th onclick="sortTable(7)">Último PROD <span class="sort-arrow"></span></th>
             <th onclick="sortTable(8)">Intentos <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(9)">Score <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(10)">Rating <span class="sort-arrow"></span></th>
-            <th onclick="sortTable(11)">Disabled <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(9)">Release ID <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(10)">Release <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(11)">Fecha Release <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(12)">Score <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(13)">Rating <span class="sort-arrow"></span></th>
+            <th onclick="sortTable(14)">Disabled <span class="sort-arrow"></span></th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -1043,6 +1062,9 @@ function renderTable(data) {{
       <td>${{r.prod_stage}}</td>
       <td>${{r.last_prod}}</td>
       <td>${{attTxt}}</td>
+      <td>${{r.last_release_id}}</td>
+      <td>${{r.last_release_name}}</td>
+      <td>${{r.last_release_date}}</td>
       <td><div class="score-bar"><div class="score-bar-fill" style="width:${{r.score}}%;background:${{scoreColor}}"></div></div> ${{r.score}}</td>
       <td>${{r.rating_emoji}} ${{r.rating}}</td>
       <td>${{disPill}}</td>
@@ -1067,7 +1089,7 @@ function applyFilters() {{
 }}
 
 function sortData(data, col, asc) {{
-  const keys = ['id','id','name','folder','stages','consistency','prod_stage','last_prod','attempts','score','rating','is_disabled'];
+  const keys = ['id','id','name','folder','stages','consistency','prod_stage','last_prod','attempts','last_release_id','last_release_name','last_release_date','score','rating','is_disabled'];
   const key = keys[col];
   return data.slice().sort((a, b) => {{
     let va = a[key], vb = b[key];
@@ -1144,6 +1166,8 @@ def export_results(
         "last_prod_deploy":              r["last_prod_dt"].isoformat() if r["last_prod_dt"] else "",
         "days_since_last_prod":          r["days_since"] if r["days_since"] is not None else "",
         "last_release_id":               r["last_release_id"] or "",
+        "last_release_name":             r.get("last_release_name") or "",
+        "last_release_date":             r["last_release_date"].isoformat() if r.get("last_release_date") else "",
         "prod_attempts_in_last_release": r["prod_attempts"] if r["prod_attempts"] is not None else "",
         "score_total":                   r["score"],
         "score_recency":                 r["score_recency"],
