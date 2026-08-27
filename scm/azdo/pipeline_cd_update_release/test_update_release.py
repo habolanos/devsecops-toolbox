@@ -441,6 +441,22 @@ class TestBuildPatchPayload(unittest.TestCase):
         self.assertIn("environments", payload)
 
 
+class TestColorsAttributes(unittest.TestCase):
+    """Tests para verificar que Colors tiene todos los atributos usados."""
+
+    def test_colors_has_dim(self):
+        """Colors must have DIM attribute used in interactive_mode and load_template."""
+        self.assertTrue(hasattr(mod.Colors, 'DIM'),
+                        "Colors.DIM is missing but used in interactive_mode and load_template")
+
+    def test_colors_has_all_required(self):
+        """Colors must have all attributes used throughout the script."""
+        required = ['CYAN', 'GREEN', 'YELLOW', 'RED', 'ENDC', 'BOLD', 'DIM', 'MAGENTA']
+        for attr in required:
+            self.assertTrue(hasattr(mod.Colors, attr),
+                            f"Colors.{attr} is missing")
+
+
 class TestNormalizeOrg(unittest.TestCase):
     """Tests para normalize_org."""
 
