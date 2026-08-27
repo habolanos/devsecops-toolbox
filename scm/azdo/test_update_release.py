@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Tests unitarios para pipeline_cd_update_release.py
+
+Cubre:
+- parse_var: parsing de variables globales NOMBRE=VALOR
+- parse_env_var: parsing de variables por environment STAGE,NOMBRE=VALOR
+- build_var_entry: estructura de variable para PATCH
+- build_patch_payload: construccion del payload PATCH y deteccion de cambios
+- normalize_org: normalizacion de organizacion
+- create_auth_header: generacion de header Basic
+- create_backup: generacion de backup con metadata
+- export_report: generacion de reporte JSON
+"""
+
+import json
+import os
+import sys
+import tempfile
+import unittest
+from datetime import datetime
+from unittest.mock import patch, MagicMock, mock_open
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import pipeline_cd_update_release as mod
+
+
+class TestParseVar(unittest.TestCase):
+    """Tests para parse_var."""
+
+    def test_simple_var(self):
+        key, value = mod.parse_var("GIT_USER=deploy")
+        self.assertEqual(key, "GIT_USER")
+        self.assertEqual(value, "deploy")
+
+    def test_value_with_equals(self):
+        key, value = mod.parse_var("TOKEN=abc=def=ghi")
+        self.assertEqual(key, "TOKEN")
+        self.assertEqual(value, "abc=def=ghi")
+
+    def test_value_with_spaces(self):
+        key, value = mod.parse_var("NAME = value with spaces ")
+        self.assertEqual(key, "NAME")
+        self.assertEqual(value, "value with spaces")
+
+    def test_empty_value(self):
+        key, value = mod.parse_var("EMPTY=")
+        self.assertEqual(key, "EMPTY")
+        self.assertEqual(value, "")
+
+    def test_no_equals_raises(self):
+        with self.assertRaises(ValueError):
+            mod.parse_var("INVALID")
+
+
+class TestParseEnvVar(unittest.TestCase):
+    """Tests para parse_env_var."""
+
+    def test_simple_env_var(self):
+        stage, key, value = mod.parse_env_var("QA,NODE_VERSION=18")
+        self.assertEqual(stage, "QA")
+        self.assertEqual(key, "NODE_VERSION")
+        self.assertEqual(value, "18")
+
+    def test_value_with_equals(self):
+        stage, key, value = mod.parse_env_var("PROD,TOKEN=abc=123")
+        self.assertEqual(stage, "PROD")
+        self.assertEqual(key, "TOKEN")
+        self.assertEqual(value, "abc=123")
+
+    def test_no_comma_raises(self):
+        with self.assertRaises(ValueError):
+            mod.parse_env_var("NODE_VERSION=18")
+
+    def test_no_equals_raises(self):
+        with self.assertRaises(ValueError):
+            mod.parse_env_var("QA,NODE_VERSION")
+
+
+class TestBuildVarEntry(unittest.TestCase):
+    """Tests para build_var_entry."""
+
+    def test_basic_structure(self):
+        entry = mod.build_var_entry("my_value")
+        self.assertEqual(entry["value"], "my_value")
+        self.assertTrue(entry["allowOverride"])
+
+    def test_empty_value(self):
+        entry = mod.build_var_entry("")
+        self.assertEqual(entry["value"], "")
+        self.assertTrue(entry["allowOverride"])
+
+
+class TestBuildPatchPayload(unittest.TestCase):
+    """Tests para build_patch_payload."""
+
+    def setUp(self):
+        self.release = {
+            "id": 987,
+            "name": "Release-987",
+            "status": "active",
+            "description": "Original description",
+            "variables": {
+                "EXISTING_VAR": {"value": "old_value", "allowOverride": True},
+            },
+            "environments": [
+                {
+                    "id": 1, "name": "QA", "status": "succeeded",
+                    "variables": {"DEBUG": {"value": "true", "allowOverride": True}}
+                },
+                {
+                    "id": 2, "name": "PROD", "status": "inProgress",
+                    "variables": {}
+                },
+            ]
+        }
+
+    def test_no_changes_empty_payload(self):
+        payload, changes = mod.build_patch_payload(self.release, [], [], False, "")
+        self.assertEqual(payload, {})
+        self.assertEqual(changes, [])
+
+    def test_global_var_new(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, ["NEW_VAR=hello"], [], False, ""
+        )
+        self.assertIn("variables", payload)
+        self.assertIn("NEW_VAR", payload["variables"])
+        self.assertEqual(payload["variables"]["NEW_VAR"]["value"], "hello")
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["type"], "global_var")
+        self.assertEqual(changes[0]["key"], "NEW_VAR")
+        self.assertIsNone(changes[0]["old"])
+        self.assertEqual(changes[0]["new"], "hello")
+
+    def test_global_var_update_existing(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, ["EXISTING_VAR=new_value"], [], False, ""
+        )
+        self.assertEqual(payload["variables"]["EXISTING_VAR"]["value"], "new_value")
+        self.assertEqual(changes[0]["old"], "old_value")
+        self.assertEqual(changes[0]["new"], "new_value")
+
+    def test_multiple_global_vars(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, ["VAR_A=1", "VAR_B=2"], [], False, ""
+        )
+        self.assertEqual(payload["variables"]["VAR_A"]["value"], "1")
+        self.assertEqual(payload["variables"]["VAR_B"]["value"], "2")
+        self.assertEqual(len(changes), 2)
+
+    def test_env_var_update_existing(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["QA,DEBUG=false"], False, ""
+        )
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["type"], "env_var")
+        self.assertEqual(changes[0]["stage"], "QA")
+        self.assertEqual(changes[0]["key"], "DEBUG")
+        self.assertEqual(changes[0]["old"], "true")
+        self.assertEqual(changes[0]["new"], "false")
+        for env in payload["environments"]:
+            if env["name"] == "QA":
+                self.assertEqual(env["variables"]["DEBUG"]["value"], "false")
+
+    def test_env_var_new_in_existing_stage(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["PROD,NEW_KEY=value123"], False, ""
+        )
+        self.assertEqual(len(changes), 1)
+        self.assertIsNone(changes[0]["old"])
+        self.assertEqual(changes[0]["new"], "value123")
+        for env in payload["environments"]:
+            if env["name"] == "PROD":
+                self.assertEqual(env["variables"]["NEW_KEY"]["value"], "value123")
+
+    def test_env_var_stage_not_found(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["NONEXISTENT,FOO=bar"], False, ""
+        )
+        self.assertEqual(len(changes), 1)
+        self.assertIn("error", changes[0])
+        self.assertIn("NONEXISTENT", changes[0]["error"])
+
+    def test_env_var_case_insensitive_stage(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["prod,DEPLOY=true"], False, ""
+        )
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["stage"], "prod")
+        self.assertNotIn("error", changes[0])
+
+    def test_abandon_sets_status(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, [], [], True, ""
+        )
+        self.assertEqual(payload["status"], "abandoned")
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["type"], "status")
+        self.assertEqual(changes[0]["old"], "active")
+        self.assertEqual(changes[0]["new"], "abandoned")
+
+    def test_description_update(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, [], [], False, "New description here"
+        )
+        self.assertEqual(payload["description"], "New description here")
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["type"], "description")
+        self.assertEqual(changes[0]["old"], "Original description")
+        self.assertEqual(changes[0]["new"], "New description here")
+
+    def test_combined_changes(self):
+        payload, changes = mod.build_patch_payload(
+            self.release, ["VAR1=a"], ["QA,VAR2=b"], True, "Updated"
+        )
+        self.assertEqual(len(changes), 4)
+        types = [c["type"] for c in changes]
+        self.assertIn("global_var", types)
+        self.assertIn("env_var", types)
+        self.assertIn("status", types)
+        self.assertIn("description", types)
+        self.assertIn("variables", payload)
+        self.assertIn("environments", payload)
+        self.assertEqual(payload["status"], "abandoned")
+        self.assertEqual(payload["description"], "Updated")
+
+    def test_original_release_not_mutated(self):
+        original_vars = dict(self.release["variables"])
+        mod.build_patch_payload(self.release, ["NEW=x"], [], False, "")
+        self.assertEqual(self.release["variables"], original_vars)
+
+
+class TestNormalizeOrg(unittest.TestCase):
+    """Tests para normalize_org."""
+
+    def test_plain_name(self):
+        self.assertEqual(mod.normalize_org("Coppel-Retail"), "Coppel-Retail")
+
+    def test_url_extracts_name(self):
+        self.assertEqual(mod.normalize_org("https://dev.azure.com/Coppel-Retail"), "Coppel-Retail")
+
+    def test_url_with_trailing_slash(self):
+        self.assertEqual(mod.normalize_org("https://dev.azure.com/MyOrg/"), "MyOrg")
+
+
+class TestCreateAuthHeader(unittest.TestCase):
+    """Tests para create_auth_header."""
+
+    def test_returns_basic_prefix(self):
+        header = mod.create_auth_header("my_token")
+        self.assertTrue(header.startswith("Basic "))
+
+    def test_encodes_pat_correctly(self):
+        import base64
+        header = mod.create_auth_header("abc123")
+        encoded = header.split(" ")[1]
+        decoded = base64.b64decode(encoded).decode()
+        self.assertEqual(decoded, ":abc123")
+
+
+class TestCreateBackup(unittest.TestCase):
+    """Tests para create_backup."""
+
+    def test_backup_contains_metadata_and_snapshot(self):
+        release = {
+            "id": 123,
+            "name": "Release-123",
+            "status": "active",
+            "description": "Test release",
+            "releaseDefinition": {"id": 456, "name": "Pipeline CD"},
+            "createdOn": "2026-01-01",
+            "modifiedOn": "2026-01-02",
+            "createdBy": {"displayName": "testuser"},
+            "artifacts": [{"alias": "drop"}],
+            "variables": {"VAR1": {"value": "v1"}},
+            "environments": [
+                {"id": 1, "name": "QA", "status": "succeeded", "variables": {"X": {"value": "1"}}}
+            ]
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath, version_label = mod.create_backup(release, tmpdir)
+            self.assertTrue(os.path.exists(filepath))
+            self.assertTrue(version_label.startswith("UPD_REL_123_"))
+            with open(filepath, 'r', encoding='utf-8') as f:
+                backup = json.load(f)
+            self.assertEqual(backup["metadata"]["sourceReleaseId"], 123)
+            self.assertEqual(backup["metadata"]["backupType"], "pre_update")
+            self.assertEqual(backup["metadata"]["backedUpBy"], "pipeline_cd_update_release.py")
+            self.assertEqual(backup["releaseSnapshot"]["releaseName"], "Release-123")
+            self.assertEqual(backup["releaseSnapshot"]["originalStatus"], "active")
+            self.assertEqual(len(backup["releaseSnapshot"]["environments"]), 1)
+
+    def test_backup_creates_directory_if_not_exists(self):
+        release = {"id": 999, "variables": {}, "environments": []}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            backup_dir = os.path.join(tmpdir, "new_subdir", "backups")
+            filepath, _ = mod.create_backup(release, backup_dir)
+            self.assertTrue(os.path.exists(filepath))
+            self.assertTrue(os.path.isdir(backup_dir))
+
+
+class TestExportReport(unittest.TestCase):
+    """Tests para export_report."""
+
+    def test_report_contains_required_fields(self):
+        stats = {
+            "source_release_id": 987,
+            "source_release_name": "Release-987",
+            "source_release_status": "active",
+            "version_label": "UPD_REL_987_20260101",
+        }
+        args = MagicMock()
+        args.org = "Coppel-Retail"
+        args.project = "Cadena_de_Suministros"
+        args.release_id = "987"
+        args.dry_run = False
+        args.description = "Test update"
+        changes = [{"type": "global_var", "key": "FOO", "old": None, "new": "bar"}]
+        updated = {"id": 987, "name": "Release-987", "status": "active"}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = mod.export_report(stats, args, "/fake/backup.json", updated, changes, tmpdir)
+            self.assertTrue(os.path.exists(filepath))
+            with open(filepath, 'r', encoding='utf-8') as f:
+                report = json.load(f)
+            self.assertEqual(report["metadata"]["tool"], "Pipeline Update Release")
+            self.assertEqual(report["execution"]["source_release"]["id"], 987)
+            self.assertEqual(report["execution"]["changes_count"], 1)
+            self.assertEqual(report["execution"]["updated_release"]["id"], 987)
+
+    def test_report_with_none_updated_release(self):
+        stats = {"source_release_id": 1, "version_label": "VL1"}
+        args = MagicMock()
+        args.org = "Org"
+        args.project = "Proj"
+        args.release_id = "1"
+        args.dry_run = True
+        args.description = ""
+        changes = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = mod.export_report(stats, args, "/fake.json", None, changes, tmpdir)
+            with open(filepath, 'r', encoding='utf-8') as f:
+                report = json.load(f)
+            self.assertIsNone(report["execution"]["updated_release"])
+            self.assertTrue(report["configuration"]["dry_run"])
+
+
+class TestGetRelease(unittest.TestCase):
+    """Tests para get_release con mock de urllib."""
+
+    @patch('pipeline_cd_update_release.urllib.request.urlopen')
+    @patch('pipeline_cd_update_release.urllib.request.Request')
+    def test_get_release_success(self, mock_req, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "id": 987, "name": "Release-987", "status": "active"
+        }).encode('utf-8')
+        mock_urlopen.return_value.__enter__ = MagicMock(return_value=mock_response)
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = mod.get_release("Org", "Proj", 987, "fake_pat")
+        self.assertEqual(result["id"], 987)
+        self.assertEqual(result["name"], "Release-987")
+
+    @patch('pipeline_cd_update_release.urllib.request.urlopen')
+    @patch('pipeline_cd_update_release.urllib.request.Request')
+    def test_get_release_http_error_exits(self, mock_req, mock_urlopen):
+        import urllib.error
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="http://test", code=404, msg="Not Found",
+            hdrs={}, fp=MagicMock()
+        )
+        with self.assertRaises(SystemExit):
+            mod.get_release("Org", "Proj", 999, "fake_pat")
+
+
+class TestUpdateRelease(unittest.TestCase):
+    """Tests para update_release con mock de urllib."""
+
+    @patch('pipeline_cd_update_release.urllib.request.urlopen')
+    @patch('pipeline_cd_update_release.urllib.request.Request')
+    def test_update_release_success(self, mock_req, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "id": 987, "name": "Release-987", "status": "abandoned"
+        }).encode('utf-8')
+        mock_urlopen.return_value.__enter__ = MagicMock(return_value=mock_response)
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        payload = {"status": "abandoned"}
+        result = mod.update_release("Org", "Proj", 987, payload, "fake_pat")
+        self.assertEqual(result["status"], "abandoned")
+
+    @patch('pipeline_cd_update_release.urllib.request.urlopen')
+    @patch('pipeline_cd_update_release.urllib.request.Request')
+    def test_update_release_http_error_exits(self, mock_req, mock_urlopen):
+        import urllib.error
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="http://test", code=400, msg="Bad Request",
+            hdrs={}, fp=MagicMock()
+        )
+        with self.assertRaises(SystemExit):
+            mod.update_release("Org", "Proj", 987, {"status": "abandoned"}, "fake_pat")
+
+
+if __name__ == "__main__":
+    unittest.main()

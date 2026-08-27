@@ -399,6 +399,22 @@ TOOLS: Dict = {
         "group":       "updatepipe",
         "status":      "ready",
     },
+    "28": {
+        "name":        "Update Release",
+        "description": "Actualiza un Release existente por releaseId via PATCH API. Modifica variables globales, variables por environment, status (abandonar) y descripcion. Incluye backup automatico, dry-run y soporte multi-release.",
+        "path":        "pipeline_cd_update_release.py",
+        "args":        ["--org", "--project", "--release-id", "--set-var", "--set-env-var",
+                        "--abandon", "--description", "--pat", "--backup-path", "--dry-run"],
+        "defaults":    {
+            "org": "Coppel-Retail",
+            "project": "Cadena_de_Suministros",
+            "release_id": "",
+            "pat": "",
+            "backup_path": "./outcome/backups"
+        },
+        "group":       "updatepipe",
+        "status":      "ready",
+    },
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos",

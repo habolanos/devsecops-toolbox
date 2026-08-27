@@ -1,0 +1,571 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Azure DevOps Release Pipeline - Update Release
+
+Actualiza un Release existente por releaseId mediante PATCH API.
+Permite modificar variables globales, variables por environment, status y descripcion.
+Incluye backup automatico antes de modificar, dry-run y trazabilidad completa.
+
+Uso:
+    python pipeline_cd_update_release.py --release-id 987 --pat TOKEN \\
+        --set-var GIT_USER=deploy --set-var GIT_PASS=secret \\
+        --set-env-var QA,NODE_VERSION=18 --abandon --dry-run
+"""
+
+import argparse
+import base64
+import copy
+import json
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+import urllib.request
+import urllib.error
+
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+
+try:
+    from export_manager import ExportManager
+    EXPORT_MANAGER_AVAILABLE = True
+except ImportError:
+    EXPORT_MANAGER_AVAILABLE = False
+
+
+console = Console()
+
+__version__ = "1.0.0"
+__author__ = "Harold Adrian"
+
+API_VERSION = "7.0"
+
+
+class Colors:
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    MAGENTA = '\033[95m'
+
+
+def load_config() -> Dict:
+    """Carga configuracion desde scm/config.json si existe."""
+    config_file = Path(__file__).parent.parent / "config.json"
+    if config_file.exists():
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                azdo_config = config.get('azdo', {})
+                org_url = azdo_config.get('organization_url', '')
+                organization = org_url.split('/')[-1] if org_url else ''
+                base_config = {
+                    'organization': organization,
+                    'project': azdo_config.get('project', ''),
+                    'pat': azdo_config.get('pat', '')
+                }
+                pipeline_config = azdo_config.get('pipeline_update_release', {})
+                base_config.update(pipeline_config)
+                return base_config
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠ No se pudo cargar config.json: {e}{Colors.ENDC}")
+    return {}
+
+
+def prompt_with_default(prompt_text: str, default_value: any, required: bool = False) -> str:
+    default_str = str(default_value) if default_value is not None else ""
+    if default_str:
+        full_prompt = f"{Colors.BOLD}{prompt_text} [{Colors.CYAN}{default_str}{Colors.ENDC}{Colors.BOLD}]: {Colors.ENDC}"
+    else:
+        full_prompt = f"{Colors.BOLD}{prompt_text}: {Colors.ENDC}"
+    value = input(full_prompt).strip()
+    if not value:
+        if required and not default_str:
+            print(f"{Colors.RED}✗ Este campo es requerido{Colors.ENDC}")
+            return prompt_with_default(prompt_text, default_value, required)
+        return default_str
+    return value
+
+
+def interactive_mode() -> Dict:
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  Azure DevOps Pipeline Update Release - Modo Interactivo{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    config = load_config()
+    if config:
+        print(f"{Colors.GREEN}✓ Configuracion cargada desde config.json{Colors.ENDC}")
+    else:
+        print(f"{Colors.YELLOW}⚠ No se encontro config.json, usando valores por defecto{Colors.ENDC}")
+    print(f"{Colors.DIM}Presione Enter para aceptar el valor por defecto{Colors.ENDC}\n")
+    params = {}
+    params['org'] = prompt_with_default("Organizacion de Azure DevOps", config.get('organization', 'Coppel-Retail'))
+    params['project'] = prompt_with_default("Proyecto", config.get('project', 'Cadena_de_Suministros'))
+    params['release_id'] = prompt_with_default("ID del Release a actualizar (separados por coma si multiples)", config.get('release_id', ''), required=True)
+    print(f"\n{Colors.CYAN}--- Variables Globales ---{Colors.ENDC}")
+    print(f"{Colors.DIM}Formato: NOMBRE=VALOR (vacio para terminar){Colors.ENDC}")
+    global_vars = []
+    while True:
+        var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+        if not var_input:
+            break
+        if '=' in var_input:
+            global_vars.append(var_input)
+        else:
+            print(f"{Colors.RED}  ✗ Formato invalido. Use NOMBRE=VALOR{Colors.ENDC}")
+    params['set_var'] = global_vars
+    print(f"\n{Colors.CYAN}--- Variables por Environment ---{Colors.ENDC}")
+    print(f"{Colors.DIM}Formato: STAGE,NOMBRE=VALOR (vacio para terminar){Colors.ENDC}")
+    env_vars = []
+    while True:
+        var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+        if not var_input:
+            break
+        if ',' in var_input and '=' in var_input:
+            env_vars.append(var_input)
+        else:
+            print(f"{Colors.RED}  ✗ Formato invalido. Use STAGE,NOMBRE=VALOR{Colors.ENDC}")
+    params['set_env_var'] = env_vars
+    abandon_input = input(f"{Colors.BOLD}  Abandonar release? (S/N) [N]: {Colors.ENDC}").strip().lower()
+    params['abandon'] = abandon_input in ('s', 'si', 'yes', 'y')
+    params['description'] = prompt_with_default("Nueva descripcion (vacio para mantener)", "")
+    params['pat'] = prompt_with_default("Personal Access Token (PAT)", config.get('pat', ''), required=True)
+    params['backup_path'] = prompt_with_default("Carpeta de backups", config.get('backup_path', './outcome/backups'))
+    dry_input = input(f"{Colors.BOLD}  Modo dry-run (solo simular)? (S/N) [N]: {Colors.ENDC}").strip().lower()
+    params['dry_run'] = dry_input in ('s', 'si', 'yes', 'y')
+    return params
+
+
+def normalize_org(org: str) -> str:
+    if org.startswith("https://"):
+        return org.rstrip('/').split('/')[-1]
+    return org
+
+
+def create_auth_header(pat: str) -> str:
+    credentials = f":{pat}"
+    encoded = base64.b64encode(credentials.encode('ascii')).decode('ascii')
+    return f"Basic {encoded}"
+
+
+def get_release(org: str, project: str, release_id: int, pat: str) -> Dict:
+    url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{release_id}?api-version={API_VERSION}"
+    headers = {'Authorization': create_auth_header(pat), 'Content-Type': 'application/json'}
+    print(f"{Colors.CYAN}>>> Obteniendo Release #{release_id}...{Colors.ENDC}")
+    try:
+        req = urllib.request.Request(url, headers=headers, method='GET')
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            print(f"{Colors.GREEN}✓ Release obtenido: {data.get('name', 'N/A')} (status: {data.get('status', 'N/A')}){Colors.ENDC}")
+            return data
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        print(f"{Colors.RED}✗ Error HTTP {e.code}: {e.reason}{Colors.ENDC}")
+        print(f"{Colors.RED}  {error_body}{Colors.ENDC}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"{Colors.RED}✗ Error: {e}{Colors.ENDC}")
+        sys.exit(1)
+
+
+def update_release(org: str, project: str, release_id: int, payload: Dict, pat: str) -> Dict:
+    url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{release_id}?api-version={API_VERSION}"
+    headers = {'Authorization': create_auth_header(pat), 'Content-Type': 'application/json'}
+    print(f"{Colors.CYAN}>>> Aplicando PATCH al Release #{release_id}...{Colors.ENDC}")
+    try:
+        body = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=body, headers=headers, method='PATCH')
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            print(f"{Colors.GREEN}✓ Release actualizado exitosamente{Colors.ENDC}")
+            return data
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        print(f"{Colors.RED}✗ Error HTTP {e.code}: {e.reason}{Colors.ENDC}")
+        print(f"{Colors.RED}  {error_body}{Colors.ENDC}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"{Colors.RED}✗ Error: {e}{Colors.ENDC}")
+        sys.exit(1)
+
+
+def create_backup(release: Dict, backup_path: str) -> Tuple[str, str]:
+    os.makedirs(backup_path, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    release_id = release.get('id', 'unknown')
+    version_label = f"UPD_REL_{release_id}_{timestamp}"
+    filename = f"release_backup_{version_label}.json"
+    filepath = os.path.join(backup_path, filename)
+    backup_data = {
+        "metadata": {
+            "versionLabel": version_label,
+            "sourceReleaseId": release_id,
+            "backupDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "backedUpBy": "pipeline_cd_update_release.py",
+            "tool_version": __version__,
+            "backupType": "pre_update"
+        },
+        "releaseSnapshot": {
+            "releaseDefinitionId": release.get('releaseDefinition', {}).get('id'),
+            "releaseDefinitionName": release.get('releaseDefinition', {}).get('name'),
+            "releaseName": release.get('name'),
+            "originalDescription": release.get('description'),
+            "originalStatus": release.get('status'),
+            "createdOn": release.get('createdOn'),
+            "modifiedOn": release.get('modifiedOn'),
+            "createdBy": release.get('createdBy', {}).get('displayName'),
+            "artifacts": release.get('artifacts', []),
+            "variables": copy.deepcopy(release.get('variables', {})),
+            "environments": [
+                {"id": env.get('id'), "name": env.get('name'), "status": env.get('status'),
+                 "variables": copy.deepcopy(env.get('variables', {}))}
+                for env in release.get('environments', [])
+            ]
+        }
+    }
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(backup_data, f, indent=2, ensure_ascii=False)
+    return filepath, version_label
+
+
+def parse_var(var_str: str) -> Tuple[str, str]:
+    if '=' not in var_str:
+        raise ValueError(f"Formato invalido: '{var_str}'. Use NOMBRE=VALOR")
+    key, value = var_str.split('=', 1)
+    return key.strip(), value.strip()
+
+
+def parse_env_var(env_var_str: str) -> Tuple[str, str, str]:
+    if ',' not in env_var_str or '=' not in env_var_str:
+        raise ValueError(f"Formato invalido: '{env_var_str}'. Use STAGE,NOMBRE=VALOR")
+    parts = env_var_str.split(',', 1)
+    stage = parts[0].strip()
+    key, value = parse_var(parts[1])
+    return stage, key, value
+
+
+def build_var_entry(value: str) -> Dict:
+    return {"value": value, "allowOverride": True}
+
+
+def build_patch_payload(
+    release: Dict, global_vars: List[str], env_vars: List[str],
+    abandon: bool, description: str,
+) -> Tuple[Dict, List[Dict]]:
+    payload: Dict = {}
+    changes: List[Dict] = []
+    if global_vars:
+        current_vars = release.get('variables', {})
+        new_vars = copy.deepcopy(current_vars)
+        for var_str in global_vars:
+            key, value = parse_var(var_str)
+            old_value = current_vars.get(key, {}).get('value')
+            changes.append({"type": "global_var", "key": key, "old": old_value, "new": value})
+            new_vars[key] = build_var_entry(value)
+        payload['variables'] = new_vars
+    if env_vars:
+        environments = copy.deepcopy(release.get('environments', []))
+        for env_var_str in env_vars:
+            stage_name, key, value = parse_env_var(env_var_str)
+            found = False
+            for env in environments:
+                if env.get('name', '').lower() == stage_name.lower():
+                    found = True
+                    env_vars_dict = env.get('variables', {})
+                    old_value = env_vars_dict.get(key, {}).get('value')
+                    changes.append({"type": "env_var", "key": key, "old": old_value, "new": value, "stage": stage_name})
+                    env_vars_dict[key] = build_var_entry(value)
+                    env['variables'] = env_vars_dict
+                    break
+            if not found:
+                changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": stage_name,
+                                "error": f"Stage '{stage_name}' no encontrado en el release"})
+        payload['environments'] = environments
+    if abandon:
+        changes.append({"type": "status", "key": "status", "old": release.get('status'), "new": "abandoned"})
+        payload['status'] = 'abandoned'
+    if description:
+        changes.append({"type": "description", "key": "description", "old": release.get('description'), "new": description})
+        payload['description'] = description
+    return payload, changes
+
+
+def show_release_info(release: Dict) -> None:
+    table = Table(title=f"Release #{release.get('id')} - {release.get('name', 'N/A')}", show_header=False)
+    table.add_column("Campo", style="cyan", no_wrap=True)
+    table.add_column("Valor", style="white")
+    table.add_row("ID", str(release.get('id', 'N/A')))
+    table.add_row("Name", str(release.get('name', 'N/A')))
+    table.add_row("Status", str(release.get('status', 'N/A')))
+    table.add_row("Definition", str(release.get('releaseDefinition', {}).get('name', 'N/A')))
+    table.add_row("Created On", str(release.get('createdOn', 'N/A')))
+    table.add_row("Created By", str(release.get('createdBy', {}).get('displayName', 'N/A')))
+    table.add_row("Description", str(release.get('description', 'N/A') or '(none)'))
+    envs = release.get('environments', [])
+    env_summary = ", ".join([f"{e.get('name', '?')}:{e.get('status', '?')}" for e in envs])
+    table.add_row("Environments", env_summary)
+    vars_count = len(release.get('variables', {}))
+    table.add_row("Global Variables", f"{vars_count} variables")
+    console.print(table)
+
+
+def show_changes(changes: List[Dict]) -> None:
+    if not changes:
+        console.print("[yellow]No hay cambios para aplicar.[/]")
+        return
+    table = Table(title="Cambios a Aplicar", show_lines=True)
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Tipo", style="cyan", width=12)
+    table.add_column("Stage", style="magenta", width=12)
+    table.add_column("Variable", style="yellow", width=20)
+    table.add_column("Valor Anterior", style="red", width=20)
+    table.add_column("Valor Nuevo", style="green", width=20)
+    for i, change in enumerate(changes, 1):
+        stage = change.get('stage', '-')
+        key = change.get('key', '-')
+        old_val = change.get('old')
+        new_val = change.get('new')
+        old_display = "[dim](nueva)[/]" if old_val is None else str(old_val)[:40]
+        if change.get('error'):
+            new_display = f"[red]ERROR: {change['error']}[/]"
+        else:
+            new_display = str(new_val)[:40]
+        table.add_row(str(i), change['type'], stage, key, old_display, new_display)
+    console.print(table)
+
+
+def export_report(stats: Dict, args, backup_file: str, updated_release: Optional[Dict],
+                  changes: List[Dict], output_dir: str = "outcome") -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"update_release_report_{timestamp}.json"
+    filepath = os.path.join(output_dir, filename)
+    report = {
+        "metadata": {"tool": "Pipeline Update Release", "version": __version__,
+                      "execution_timestamp": datetime.now().isoformat()},
+        "configuration": {"organization": args.org, "project": args.project,
+                          "release_id": args.release_id, "dry_run": getattr(args, 'dry_run', False)},
+        "execution": {
+            "source_release": {"id": stats.get('source_release_id'), "name": stats.get('source_release_name'),
+                               "status": stats.get('source_release_status')},
+            "backup": {"file": backup_file, "version_label": stats.get('version_label')},
+            "changes": changes, "changes_count": len(changes),
+            "updated_release": {"id": updated_release.get('id'), "name": updated_release.get('name'),
+                                "status": updated_release.get('status')} if updated_release else None,
+            "comment": getattr(args, 'description', None),
+        }
+    }
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    return filepath
+
+
+def export_results(data, output_format: str = "json", output_dir: str = "outcome"):
+    from pathlib import Path as P
+    import csv
+    output_path = P(output_dir)
+    output_path.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not EXPORT_MANAGER_AVAILABLE:
+        if output_format == "json":
+            filepath = output_path / f"pipeline_cd_update_release_{ts}.json"
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump({"generated_at": datetime.now().isoformat(), "data": data}, f, indent=2, default=str)
+        elif output_format == "csv":
+            filepath = output_path / f"pipeline_cd_update_release_{ts}.csv"
+            if isinstance(data, list) and data and isinstance(data[0], dict):
+                with open(filepath, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=data[0].keys())
+                    writer.writeheader()
+                    writer.writerows(data)
+        else:
+            return None
+        print(f"✅ Resultados exportados a: {filepath}")
+        return str(filepath)
+    manager = ExportManager("pipeline_cd_update_release", "1.0.0")
+    summary = {"total_items": len(data) if isinstance(data, list) else 1}
+    if output_format == "json":
+        return manager.export_json(data if isinstance(data, list) else [data], summary=summary)
+    elif output_format == "csv":
+        return manager.export_csv(data if isinstance(data, list) else [data])
+    elif output_format == "excel":
+        return manager.export_excel(data if isinstance(data, list) else [data], sheet_name="Results", summary=summary)
+    return None
+
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description='Actualiza un Release existente por releaseId via PATCH API',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Ejemplos:
+  python pipeline_cd_update_release.py --interactive
+  python pipeline_cd_update_release.py --release-id 987 --pat TOKEN --set-var FOO=bar
+  python pipeline_cd_update_release.py --release-id 987 --pat TOKEN --set-env-var QA,NODE_VERSION=18
+  python pipeline_cd_update_release.py --release-id 987 --pat TOKEN --abandon
+  python pipeline_cd_update_release.py --release-id 987,988 --pat TOKEN --set-var FOO=bar --dry-run
+        """)
+    parser.add_argument('--org', '--organization', default='Coppel-Retail', help='Organizacion (default: Coppel-Retail)')
+    parser.add_argument('--project', default='Cadena_de_Suministros', help='Proyecto (default: Cadena_de_Suministros)')
+    parser.add_argument('--release-id', type=str, required=False, help='ID(s) del Release (separados por coma)')
+    parser.add_argument('--set-var', action='append', default=[], help='Variable global: NOMBRE=VALOR')
+    parser.add_argument('--set-env-var', action='append', default=[], help='Variable por environment: STAGE,NOMBRE=VALOR')
+    parser.add_argument('--abandon', action='store_true', help='Abandonar el release (status=abandoned)')
+    parser.add_argument('--description', default='', help='Nueva descripcion del release')
+    parser.add_argument('--pat', required=False, help='Personal Access Token')
+    parser.add_argument('--backup-path', default='./outcome/backups', help='Carpeta de backups')
+    parser.add_argument('--dry-run', action='store_true', help='Modo simulacion (sin cambios)')
+    parser.add_argument('--interactive', '-i', action='store_true', help='Modo interactivo')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
+    return parser.parse_args()
+
+
+def main():
+    args = get_args()
+    args.org = normalize_org(args.org)
+
+    if args.interactive:
+        params = interactive_mode()
+        args.org = params['org']
+        args.project = params['project']
+        args.release_id = params['release_id']
+        args.set_var = params['set_var']
+        args.set_env_var = params['set_env_var']
+        args.abandon = params['abandon']
+        args.description = params['description']
+        args.pat = params['pat']
+        args.backup_path = params['backup_path']
+        args.dry_run = params['dry_run']
+    else:
+        if not args.release_id or not args.pat:
+            print(f"{Colors.RED}✗ Error: --release-id y --pat son requeridos cuando no se usa --interactive{Colors.ENDC}")
+            sys.exit(1)
+
+    release_ids = [rid.strip() for rid in str(args.release_id).split(',')]
+
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  Azure DevOps Pipeline Update Release v{__version__}{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    print(f"{Colors.CYAN}Configuracion:{Colors.ENDC}")
+    print(f"  Organizacion: {args.org}")
+    print(f"  Proyecto: {args.project}")
+    print(f"  Release(s): {', '.join([f'#{rid}' for rid in release_ids])}")
+    print(f"  Variables globales: {len(args.set_var)}")
+    print(f"  Variables por env: {len(args.set_env_var)}")
+    print(f"  Abandonar: {'Si' if args.abandon else 'No'}")
+    print(f"  Dry-run: {'Si' if args.dry_run else 'No'}")
+    print(f"  Carpeta backups: {args.backup_path}\n")
+
+    results = []
+    total = len(release_ids)
+
+    for idx, release_id in enumerate(release_ids, 1):
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.CYAN}Procesando Release {idx}/{total}: #{release_id}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+
+        try:
+            # FASE 1: Obtener Release
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 1: Obtener Release{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            release = get_release(args.org, args.project, int(release_id), args.pat)
+            show_release_info(release)
+
+            # FASE 2: Construir payload de cambios
+            print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 2: Analizar Cambios{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            payload, changes = build_patch_payload(
+                release, args.set_var, args.set_env_var, args.abandon, args.description
+            )
+            show_changes(changes)
+
+            if not changes:
+                print(f"{Colors.YELLOW}No hay cambios para aplicar. Saltando...{Colors.ENDC}")
+                results.append({'status': 'skipped', 'release_id': release_id, 'changes': 0})
+                continue
+
+            if args.dry_run:
+                print(f"\n{Colors.YELLOW}🔍 DRY-RUN: No se aplicaron cambios.{Colors.ENDC}")
+                results.append({'status': 'dry_run', 'release_id': release_id, 'changes': len(changes)})
+                continue
+
+            # FASE 3: Backup
+            print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 3: Crear Backup{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            backup_file, version_label = create_backup(release, args.backup_path)
+            print(f"{Colors.GREEN}✓ Backup guardado: {backup_file}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}  Version: {version_label}{Colors.ENDC}")
+
+            # FASE 4: Aplicar PATCH
+            print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}FASE 4: Aplicar PATCH{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+            updated = update_release(args.org, args.project, int(release_id), payload, args.pat)
+
+            # Resumen
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.GREEN}✅ UPDATE EXITOSO (Release {idx}/{total}){Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.GREEN}Release ID:     #{updated.get('id')}{Colors.ENDC}")
+            print(f"{Colors.GREEN}Nombre:         {updated.get('name')}{Colors.ENDC}")
+            print(f"{Colors.GREEN}Status:         {updated.get('status')}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Backup:         {version_label}{Colors.ENDC}")
+            print(f"{Colors.CYAN}Cambios:        {len(changes)}{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+
+            stats = {
+                'source_release_id': release.get('id'),
+                'source_release_name': release.get('name'),
+                'source_release_status': release.get('status'),
+                'version_label': version_label,
+            }
+            report_path = export_report(stats, args, backup_file, updated, changes)
+            print(f"{Colors.CYAN}📄 Reporte exportado: {report_path}{Colors.ENDC}\n")
+
+            results.append({
+                'status': 'success', 'release_id': release_id,
+                'updated_id': updated.get('id'), 'changes': len(changes),
+                'backup': version_label
+            })
+
+        except KeyboardInterrupt:
+            print(f"\n{Colors.YELLOW}>>> Proceso interrumpido (Release {idx}/{total}){Colors.ENDC}")
+            results.append({'status': 'cancelled', 'release_id': release_id, 'error': 'Interrumpido'})
+        except Exception as e:
+            print(f"\n{Colors.RED}>>> ERROR en Release #{release_id}: {e}{Colors.ENDC}")
+            import traceback
+            traceback.print_exc()
+            results.append({'status': 'error', 'release_id': release_id, 'error': str(e)})
+
+    # Resumen final
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+    print(f"{Colors.BOLD}  RESUMEN FINAL{Colors.ENDC}")
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    successful = sum(1 for r in results if r['status'] == 'success')
+    failed = sum(1 for r in results if r['status'] == 'error')
+    cancelled = sum(1 for r in results if r['status'] == 'cancelled')
+    dry_run = sum(1 for r in results if r['status'] == 'dry_run')
+    skipped = sum(1 for r in results if r['status'] == 'skipped')
+    print(f"{Colors.GREEN}✅ Exitosos: {successful}/{total}{Colors.ENDC}")
+    if dry_run > 0:
+        print(f"{Colors.CYAN}🔍 Dry-run:  {dry_run}/{total}{Colors.ENDC}")
+    if skipped > 0:
+        print(f"{Colors.YELLOW}⏭  Saltados:  {skipped}/{total}{Colors.ENDC}")
+    if failed > 0:
+        print(f"{Colors.RED}❌ Errores:   {failed}/{total}{Colors.ENDC}")
+    if cancelled > 0:
+        print(f"{Colors.YELLOW}⏸  Cancelados: {cancelled}/{total}{Colors.ENDC}")
+    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    return 0 if failed == 0 and cancelled == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
