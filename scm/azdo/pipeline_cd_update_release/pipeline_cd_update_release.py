@@ -513,6 +513,7 @@ def build_patch_payload(
         for task_spec in task_updates:
             task_name = task_spec.get('name', '')
             fields = task_spec.get('fields', [])
+            task_found = False
             for env in environments:
                 env_name = env.get('name', '')
                 if not is_wildcard and env_name.lower() not in [s.lower() for s in stage_filter]:
@@ -520,12 +521,25 @@ def build_patch_payload(
                 for phase in env.get('deployPhases', []):
                     for task in phase.get('workflowTasks', []):
                         if task.get('displayName', '').lower() == task_name.lower():
+                            task_found = True
                             for field in fields:
                                 field_path = field.get('path', '')
                                 old_val = field.get('old_value', '')
                                 new_val = field.get('new_value', '')
                                 current_val = _get_nested_value(task, field_path)
-                                if current_val is not None and old_val in str(current_val):
+                                if current_val is None:
+                                    changes.append({
+                                        "type": "task_field", "task": task_name,
+                                        "path": field_path, "old": None, "new": new_val, "stage": env_name,
+                                        "error": f"Task '{task_name}' campo '{field_path}' no existe en stage '{env_name}'",
+                                    })
+                                elif old_val not in str(current_val):
+                                    changes.append({
+                                        "type": "task_field", "task": task_name,
+                                        "path": field_path, "old": current_val, "new": new_val, "stage": env_name,
+                                        "error": f"Task '{task_name}' campo '{field_path}' no contiene '{old_val}' (actual: '{current_val}')",
+                                    })
+                                else:
                                     new_field_val = str(current_val).replace(old_val, new_val)
                                     _set_nested_value(task, field_path, new_field_val)
                                     changes.append({
@@ -533,6 +547,12 @@ def build_patch_payload(
                                         "path": field_path, "old": current_val,
                                         "new": new_field_val, "stage": env_name,
                                     })
+            if not task_found:
+                changes.append({
+                    "type": "task_field", "task": task_name,
+                    "path": fields[0].get('path', '') if fields else '', "old": None, "new": None, "stage": "-",
+                    "error": f"Task '{task_name}' no encontrada en ningun environment",
+                })
         payload['environments'] = environments
     if abandon:
         changes.append({"type": "status", "key": "status", "old": release.get('status'), "new": "abandoned"})
@@ -571,14 +591,17 @@ def show_changes(changes: List[Dict]) -> None:
     table.add_column("Tipo", style="cyan", width=12)
     table.add_column("Stage", style="magenta", width=12)
     table.add_column("Variable", style="yellow", width=20)
-    table.add_column("Valor Anterior", style="red", width=20)
+    table.add_column("Valor Anterior", style="cyan", no_wrap=False)
     table.add_column("Valor Nuevo", style="green", width=20)
     for i, change in enumerate(changes, 1):
         stage = change.get('stage', '-')
-        key = change.get('key', '-')
+        if change['type'] == 'task_field':
+            key = f"{change.get('task', '-')} [{change.get('path', '-')}]"
+        else:
+            key = change.get('key', '-')
         old_val = change.get('old')
         new_val = change.get('new')
-        old_display = "[dim](nueva)[/]" if old_val is None else str(old_val)[:40]
+        old_display = "[dim](nueva)[/]" if old_val is None else str(old_val)
         if change.get('error'):
             new_display = f"[red]ERROR: {change['error']}[/]"
         else:

@@ -374,11 +374,14 @@ class TestBuildPatchPayload(unittest.TestCase):
             self.release, [], [], False, "", task_updates=task_updates
         )
         task_changes = [c for c in changes if c["type"] == "task_field"]
-        self.assertEqual(len(task_changes), 2)  # QA and PROD have the old_value
-        stages_changed = [c["stage"] for c in task_changes]
+        success_changes = [c for c in task_changes if "error" not in c]
+        error_changes = [c for c in task_changes if "error" in c]
+        self.assertEqual(len(success_changes), 2)  # QA and PROD have the old_value
+        self.assertEqual(len(error_changes), 1)    # Staging has no match
+        stages_changed = [c["stage"] for c in success_changes]
         self.assertIn("QA", stages_changed)
         self.assertIn("PROD", stages_changed)
-        for c in task_changes:
+        for c in success_changes:
             self.assertIn("path_pipelineConfigYml", c["new"])
             self.assertNotIn("path_pipelineConfig\n", c["new"])
             self.assertIn("path_pipelineConfig", c["old"])
@@ -394,7 +397,10 @@ class TestBuildPatchPayload(unittest.TestCase):
             self.release, [], [], False, "", task_updates=task_updates
         )
         task_changes = [c for c in changes if c["type"] == "task_field"]
-        self.assertEqual(len(task_changes), 0)
+        # Now produces error changes instead of silently skipping
+        self.assertEqual(len(task_changes), 3)  # 3 environments, all error
+        for c in task_changes:
+            self.assertIn("error", c)
 
     def test_task_update_case_insensitive_name(self):
         """Task name matching should be case-insensitive."""
@@ -407,7 +413,10 @@ class TestBuildPatchPayload(unittest.TestCase):
             self.release, [], [], False, "", task_updates=task_updates
         )
         task_changes = [c for c in changes if c["type"] == "task_field"]
-        self.assertEqual(len(task_changes), 2)
+        success_changes = [c for c in task_changes if "error" not in c]
+        error_changes = [c for c in task_changes if "error" in c]
+        self.assertEqual(len(success_changes), 2)  # QA and PROD
+        self.assertEqual(len(error_changes), 1)    # Staging
 
     def test_task_update_not_found_no_changes(self):
         """Task not found in any stage should produce no task changes."""
@@ -420,7 +429,9 @@ class TestBuildPatchPayload(unittest.TestCase):
             self.release, [], [], False, "", task_updates=task_updates
         )
         task_changes = [c for c in changes if c["type"] == "task_field"]
-        self.assertEqual(len(task_changes), 0)
+        # Task not found produces error change
+        self.assertEqual(len(task_changes), 1)
+        self.assertIn("error", task_changes[0])
 
     def test_combined_env_vars_and_task_updates(self):
         """Combined env_vars with search_value and task_updates should both work."""
@@ -436,8 +447,11 @@ class TestBuildPatchPayload(unittest.TestCase):
         )
         env_var_changes = [c for c in changes if c["type"] == "env_var"]
         task_changes = [c for c in changes if c["type"] == "task_field"]
+        task_success = [c for c in task_changes if "error" not in c]
+        task_errors = [c for c in task_changes if "error" in c]
         self.assertEqual(len(env_var_changes), 2)  # QA and PROD
-        self.assertEqual(len(task_changes), 2)     # QA and PROD
+        self.assertEqual(len(task_success), 2)     # QA and PROD
+        self.assertEqual(len(task_errors), 1)      # Staging
         self.assertIn("environments", payload)
 
     def test_global_var_with_search_value_match(self):
