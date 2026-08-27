@@ -1515,6 +1515,46 @@ def run_tool(tool_key: str):
                 print(f"{Colors.BOLD}  🆙 Update Release - {'Dry-Run' if is_dry_run else 'Actualizar'} Release{Colors.ENDC}")
                 print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
 
+                # Preguntar si usar template YAML
+                print(f"{Colors.BOLD}¿Usar template YAML? (s/n) [n]:{Colors.ENDC} ", end="")
+                use_template = input().strip().lower() in ('s', 'si', 'yes', 'y')
+
+                template_path = None
+                if use_template:
+                    # Listar templates disponibles
+                    templates_dir = BASE_DIR / "scm" / "templates"
+                    release_templates = sorted(templates_dir.glob("release_*.yaml"))
+                    if release_templates:
+                        print(f"\n{Colors.CYAN}Templates disponibles:{Colors.ENDC}")
+                        for i, tpl in enumerate(release_templates, 1):
+                            print(f"  {i}. {tpl.name}")
+                        print(f"  0. Ruta personalizada")
+                        print(f"\n{Colors.BOLD}Seleccione template (número) o 0 para ruta manual:{Colors.ENDC} ", end="")
+                        tpl_choice = input().strip()
+                        if tpl_choice == "0":
+                            print(f"{Colors.BOLD}Ruta del template:{Colors.ENDC} ", end="")
+                            template_path = input().strip()
+                        elif tpl_choice.isdigit() and 1 <= int(tpl_choice) <= len(release_templates):
+                            template_path = str(release_templates[int(tpl_choice) - 1])
+                        else:
+                            print(f"{Colors.RED}❌ Selección inválida.{Colors.ENDC}")
+                            input("\nPresione Enter para continuar...")
+                            continue
+                        if template_path and not Path(template_path).exists():
+                            print(f"{Colors.RED}❌ Template no encontrado: {template_path}{Colors.ENDC}")
+                            input("\nPresione Enter para continuar...")
+                            continue
+                    else:
+                        print(f"{Colors.YELLOW}No se encontraron templates en {templates_dir}{Colors.ENDC}")
+                        print(f"{Colors.BOLD}Ruta del template (Enter para cancelar):{Colors.ENDC} ", end="")
+                        template_path = input().strip()
+                        if not template_path:
+                            continue
+                        if not Path(template_path).exists():
+                            print(f"{Colors.RED}❌ Template no encontrado: {template_path}{Colors.ENDC}")
+                            input("\nPresione Enter para continuar...")
+                            continue
+
                 # Solicitar parámetros específicos
                 cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
                 if cfg_org.startswith("https://"):
@@ -1546,39 +1586,44 @@ def run_tool(tool_key: str):
                     input("\nPresione Enter para continuar...")
                     continue
 
-                # Variables globales (opcional, repetible)
+                # Si hay template, saltar variables manuales
                 global_vars = []
-                print(f"\n{Colors.CYAN}--- Variables Globales (opcional) ---{Colors.ENDC}")
-                print(f"{Colors.DIM}Formato: NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
-                while True:
-                    var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
-                    if not var_input:
-                        break
-                    if '=' in var_input:
-                        global_vars.append(var_input)
-                    else:
-                        print(f"{Colors.RED}  ✗ Formato inválido. Use NOMBRE=VALOR{Colors.ENDC}")
-
-                # Variables por environment (opcional, repetible)
                 env_vars = []
-                print(f"\n{Colors.CYAN}--- Variables por Environment (opcional) ---{Colors.ENDC}")
-                print(f"{Colors.DIM}Formato: STAGE,NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
-                while True:
-                    var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
-                    if not var_input:
-                        break
-                    if ',' in var_input and '=' in var_input:
-                        env_vars.append(var_input)
-                    else:
-                        print(f"{Colors.RED}  ✗ Formato inválido. Use STAGE,NOMBRE=VALOR{Colors.ENDC}")
+                abandon = False
+                description = ""
 
-                # Abandonar release
-                print(f"\n{Colors.BOLD}¿Abandonar release(s)? (s/n) [n]:{Colors.ENDC} ", end="")
-                abandon = input().strip().lower() in ('s', 'si', 'yes', 'y')
+                if not template_path:
+                    # Variables globales (opcional, repetible)
+                    print(f"\n{Colors.CYAN}--- Variables Globales (opcional) ---{Colors.ENDC}")
+                    print(f"{Colors.DIM}Formato: NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
+                    while True:
+                        var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+                        if not var_input:
+                            break
+                        if '=' in var_input:
+                            global_vars.append(var_input)
+                        else:
+                            print(f"{Colors.RED}  ✗ Formato inválido. Use NOMBRE=VALOR{Colors.ENDC}")
 
-                # Descripción (opcional)
-                print(f"{Colors.BOLD}Nueva descripción (Enter para mantener):{Colors.ENDC} ", end="")
-                description = input().strip()
+                    # Variables por environment (opcional, repetible)
+                    print(f"\n{Colors.CYAN}--- Variables por Environment (opcional) ---{Colors.ENDC}")
+                    print(f"{Colors.DIM}Formato: STAGE,NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
+                    while True:
+                        var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+                        if not var_input:
+                            break
+                        if ',' in var_input and '=' in var_input:
+                            env_vars.append(var_input)
+                        else:
+                            print(f"{Colors.RED}  ✗ Formato inválido. Use STAGE,NOMBRE=VALOR{Colors.ENDC}")
+
+                    # Abandonar release
+                    print(f"\n{Colors.BOLD}¿Abandonar release(s)? (s/n) [n]:{Colors.ENDC} ", end="")
+                    abandon = input().strip().lower() in ('s', 'si', 'yes', 'y')
+
+                    # Descripción (opcional)
+                    print(f"{Colors.BOLD}Nueva descripción (Enter para mantener):{Colors.ENDC} ", end="")
+                    description = input().strip()
 
                 # PAT
                 pat = prompt("Personal Access Token (PAT)",
@@ -1601,6 +1646,9 @@ def run_tool(tool_key: str):
                     "--pat", pat,
                     "--backup-path", backup_path
                 ]
+
+                if template_path:
+                    cmd += ["--template", template_path]
 
                 for var in global_vars:
                     cmd += ["--set-var", var]
