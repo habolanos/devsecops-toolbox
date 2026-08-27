@@ -147,11 +147,14 @@ def load_template(template_path: str) -> Dict:
 
     env_var_list = update_section.get('env_vars', [])
     env_vars = []
+    env_var_search_values = []
     for var in env_var_list:
         stage = var.get('stage', '')
         name = var.get('name', '')
         value = var.get('value', '')
+        search_value = var.get('search_value', None)
         env_vars.append(f"{stage},{name}={value}")
+        env_var_search_values.append(search_value)
 
     abandon = update_section.get('abandon', False)
     description = update_section.get('description', '')
@@ -171,6 +174,7 @@ def load_template(template_path: str) -> Dict:
         'release_ids': release_ids,
         'global_vars': global_vars,
         'env_vars': env_vars,
+        'env_var_search_values': env_var_search_values,
         'abandon': abandon,
         'description': description,
         'dry_run': dry_run,
@@ -356,6 +360,7 @@ def build_var_entry(value: str) -> Dict:
 def build_patch_payload(
     release: Dict, global_vars: List[str], env_vars: List[str],
     abandon: bool, description: str,
+    env_var_search_values: Optional[List[Optional[str]]] = None,
 ) -> Tuple[Dict, List[Dict]]:
     payload: Dict = {}
     changes: List[Dict] = []
@@ -370,21 +375,37 @@ def build_patch_payload(
         payload['variables'] = new_vars
     if env_vars:
         environments = copy.deepcopy(release.get('environments', []))
-        for env_var_str in env_vars:
+        for idx, env_var_str in enumerate(env_vars):
             stage_name, key, value = parse_env_var(env_var_str)
-            found = False
+            search_value = env_var_search_values[idx] if env_var_search_values and idx < len(env_var_search_values) else None
+            matched_stages = []
+            stage_found = False
             for env in environments:
-                if env.get('name', '').lower() == stage_name.lower():
-                    found = True
+                env_name = env.get('name', '')
+                if stage_name == '*' or env_name.lower() == stage_name.lower():
+                    stage_found = True
                     env_vars_dict = env.get('variables', {})
                     old_value = env_vars_dict.get(key, {}).get('value')
-                    changes.append({"type": "env_var", "key": key, "old": old_value, "new": value, "stage": stage_name})
+                    if search_value is not None:
+                        if old_value != search_value:
+                            continue
+                    matched_stages.append(env_name)
+                    changes.append({"type": "env_var", "key": key, "old": old_value, "new": value, "stage": env_name})
                     env_vars_dict[key] = build_var_entry(value)
                     env['variables'] = env_vars_dict
-                    break
-            if not found:
-                changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": stage_name,
-                                "error": f"Stage '{stage_name}' no encontrado en el release"})
+                    if stage_name != '*':
+                        break
+            if not matched_stages:
+                if stage_name == '*':
+                    changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": "*",
+                                    "error": f"Variable '{key}' no encontrada en ningun stage"
+                                             + (f" con valor '{search_value}'" if search_value else "")})
+                elif stage_found and search_value is not None:
+                    changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": stage_name,
+                                    "error": f"Variable '{key}' en stage '{stage_name}' no tiene valor '{search_value}'"})
+                else:
+                    changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": stage_name,
+                                    "error": f"Stage '{stage_name}' no encontrado en el release"})
         payload['environments'] = environments
     if abandon:
         changes.append({"type": "status", "key": "status", "old": release.get('status'), "new": "abandoned"})
@@ -539,6 +560,7 @@ def main():
             args.set_var = tpl['global_vars']
         if not args.set_env_var and tpl['env_vars']:
             args.set_env_var = tpl['env_vars']
+        args.env_var_search_values = tpl.get('env_var_search_values', [])
         if not args.abandon and tpl['abandon']:
             args.abandon = tpl['abandon']
         if not args.description and tpl['description']:
@@ -568,10 +590,12 @@ def main():
         args.pat = params['pat']
         args.backup_path = params['backup_path']
         args.dry_run = params['dry_run']
+        args.env_var_search_values = []
     else:
         if not args.release_id or not args.pat:
             print(f"{Colors.RED}✗ Error: --release-id y --pat son requeridos cuando no se usa --interactive{Colors.ENDC}")
             sys.exit(1)
+        args.env_var_search_values = []
 
     release_ids = [rid.strip() for rid in str(args.release_id).split(',')]
 
@@ -609,7 +633,8 @@ def main():
             print(f"{Colors.BOLD}FASE 2: Analizar Cambios{Colors.ENDC}")
             print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}")
             payload, changes = build_patch_payload(
-                release, args.set_var, args.set_env_var, args.abandon, args.description
+                release, args.set_var, args.set_env_var, args.abandon, args.description,
+                getattr(args, 'env_var_search_values', [])
             )
             show_changes(changes)
 

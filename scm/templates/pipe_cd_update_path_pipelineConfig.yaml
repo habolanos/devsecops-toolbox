@@ -1,0 +1,29 @@
+metadata:
+  name: "Actualizar path_pipelineConfig a path_pipelineConfigYml en task get file k8-manifest"
+  version: "1.0"
+  description: "Busca el texto path_pipelineConfig en el script de la task 'get file k8-manifest' y lo reemplaza por path_pipelineConfigYml en todos los stages"
+  comment: |
+    Cambios: path_pipelineConfig → path_pipelineConfigYml en task "get file k8-manifest"
+    Razon: Renombrado de variable de configuracion
+    Aprobado por: DevOps Lead
+    Fecha: 2026-08-27
+  author: "DevOps Team"
+  created_at: "2026-08-27"
+
+search:
+  stages:
+    - name: "*"
+  tasks:
+    - name: "get file k8-manifest"
+
+update:
+  tasks:
+    - name: "get file k8-manifest"
+      fields:
+        - path: "inputs.script"
+          old_value: "path_pipelineConfig"
+          new_value: "path_pipelineConfigYml"
+
+options:
+  dry_run: false
+  rollback_on_error: true

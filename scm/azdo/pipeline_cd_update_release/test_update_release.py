@@ -108,11 +108,22 @@ class TestBuildPatchPayload(unittest.TestCase):
             "environments": [
                 {
                     "id": 1, "name": "QA", "status": "succeeded",
-                    "variables": {"DEBUG": {"value": "true", "allowOverride": True}}
+                    "variables": {
+                        "DEBUG": {"value": "true", "allowOverride": True},
+                        "branchConfig": {"value": "config-cadenaSuministro", "allowOverride": True},
+                    }
                 },
                 {
                     "id": 2, "name": "PROD", "status": "inProgress",
-                    "variables": {}
+                    "variables": {
+                        "branchConfig": {"value": "config-cadenaSuministro", "allowOverride": True},
+                    }
+                },
+                {
+                    "id": 3, "name": "Staging", "status": "notStarted",
+                    "variables": {
+                        "branchConfig": {"value": "other-branch", "allowOverride": True},
+                    }
                 },
             ]
         }
@@ -189,7 +200,7 @@ class TestBuildPatchPayload(unittest.TestCase):
             self.release, [], ["prod,DEPLOY=true"], False, ""
         )
         self.assertEqual(len(changes), 1)
-        self.assertEqual(changes[0]["stage"], "prod")
+        self.assertEqual(changes[0]["stage"], "PROD")
         self.assertNotIn("error", changes[0])
 
     def test_abandon_sets_status(self):
@@ -231,6 +242,83 @@ class TestBuildPatchPayload(unittest.TestCase):
         original_vars = dict(self.release["variables"])
         mod.build_patch_payload(self.release, ["NEW=x"], [], False, "")
         self.assertEqual(self.release["variables"], original_vars)
+
+    def test_wildcard_stage_updates_all(self):
+        """Stage '*' should update variable in all stages."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["*,branchConfig=feature/feature-amad"], False, ""
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        self.assertEqual(len(env_var_changes), 3)
+        stages_updated = [c["stage"] for c in env_var_changes]
+        self.assertIn("QA", stages_updated)
+        self.assertIn("PROD", stages_updated)
+        self.assertIn("Staging", stages_updated)
+        for env in payload["environments"]:
+            self.assertEqual(env["variables"]["branchConfig"]["value"], "feature/feature-amad")
+
+    def test_wildcard_stage_with_search_value_filters(self):
+        """Stage '*' with search_value should only update stages where current value matches."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["*,branchConfig=feature/feature-amad"], False, "",
+            env_var_search_values=["config-cadenaSuministro"]
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        self.assertEqual(len(env_var_changes), 2)
+        stages_updated = [c["stage"] for c in env_var_changes]
+        self.assertIn("QA", stages_updated)
+        self.assertIn("PROD", stages_updated)
+        self.assertNotIn("Staging", stages_updated)
+        for env in payload["environments"]:
+            if env["name"] in ("QA", "PROD"):
+                self.assertEqual(env["variables"]["branchConfig"]["value"], "feature/feature-amad")
+            elif env["name"] == "Staging":
+                self.assertEqual(env["variables"]["branchConfig"]["value"], "other-branch")
+
+    def test_wildcard_stage_with_search_value_no_match(self):
+        """Stage '*' with search_value that doesn't match any stage should report error."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["*,branchConfig=new-value"], False, "",
+            env_var_search_values=["nonexistent-value"]
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        self.assertEqual(len(env_var_changes), 1)
+        self.assertIn("error", env_var_changes[0])
+        self.assertIn("nonexistent-value", env_var_changes[0]["error"])
+
+    def test_specific_stage_with_search_value_match(self):
+        """Specific stage with search_value that matches should update."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["QA,branchConfig=new-branch"], False, "",
+            env_var_search_values=["config-cadenaSuministro"]
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        self.assertEqual(len(env_var_changes), 1)
+        self.assertEqual(env_var_changes[0]["stage"], "QA")
+        self.assertEqual(env_var_changes[0]["old"], "config-cadenaSuministro")
+        self.assertEqual(env_var_changes[0]["new"], "new-branch")
+
+    def test_specific_stage_with_search_value_no_match(self):
+        """Specific stage with search_value that doesn't match should report error."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["Staging,branchConfig=new-branch"], False, "",
+            env_var_search_values=["config-cadenaSuministro"]
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        self.assertEqual(len(env_var_changes), 1)
+        self.assertIn("error", env_var_changes[0])
+        self.assertIn("config-cadenaSuministro", env_var_changes[0]["error"])
+
+    def test_wildcard_stage_var_not_found(self):
+        """Stage '*' with variable that doesn't exist creates it in all stages."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["*,NONEXISTENT=value"], False, ""
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        self.assertEqual(len(env_var_changes), 3)
+        for c in env_var_changes:
+            self.assertIsNone(c["old"])
+            self.assertEqual(c["new"], "value")
 
 
 class TestNormalizeOrg(unittest.TestCase):
@@ -516,6 +604,28 @@ class TestLoadTemplate(unittest.TestCase):
             path = self._write_template(tmpdir, template)
             result = mod.load_template(path)
         self.assertEqual(result["release_ids"], ["100", "200", "300"])
+
+    def test_load_template_with_search_value(self):
+        template = {
+            "metadata": {"name": "Search Value Test", "version": "1.0"},
+            "release": {"ids": [999]},
+            "update": {
+                "global_vars": [],
+                "env_vars": [
+                    {"stage": "*", "name": "branchConfig", "search_value": "config-cadenaSuministro", "value": "feature/feature-amad"},
+                ],
+                "abandon": False,
+                "description": "Update branchConfig",
+            },
+            "options": {"dry_run": True},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(len(result["env_vars"]), 1)
+        self.assertIn("*,branchConfig=feature/feature-amad", result["env_vars"])
+        self.assertEqual(len(result["env_var_search_values"]), 1)
+        self.assertEqual(result["env_var_search_values"][0], "config-cadenaSuministro")
 
 
 if __name__ == "__main__":

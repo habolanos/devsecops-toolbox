@@ -252,6 +252,26 @@ python scm/main.py
 # Ingresar: --template scm/templates/release_abandon_stale.yaml --release-id 987,988 --pat TOKEN
 ```
 
+#### **release_update_branchconfig.yaml** 🆕
+Busca la variable `branchConfig` con valor `config-cadenaSuministro` en **todos los stages** del release y la actualiza a `feature/feature-amad`. Usa `stage: "*"` (wildcard) y `search_value` para filtrar solo los stages que tienen el valor antiguo.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 42
+# Ingresar: --template scm/templates/release_update_branchconfig.yaml --release-id 987 --pat TOKEN
+```
+
+#### **pipe_cd_update_path_pipelineConfig.yaml** 🆕 (Tool 41)
+Busca la task "get file k8-manifest" en todos los stages y reemplaza el texto `path_pipelineConfig` por `path_pipelineConfigYml` en `inputs.script`.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 41
+# Ingresar: scm/templates/pipe_cd_update_path_pipelineConfig.yaml
+```
+
 ### **Estructura de Templates Tool 42**
 
 ```yaml
@@ -271,6 +291,10 @@ update:
     - stage: "QA"
       name: "NODE_VERSION"
       value: "18"
+    - stage: "*"                    # Wildcard: aplica a todos los stages
+      name: "branchConfig"
+      search_value: "old-value"     # Solo actualiza si el valor actual coincide
+      value: "new-value"
   abandon: false
   description: "Nueva descripcion"
 
@@ -283,6 +307,8 @@ options:
 - Los flags CLI (`--set-var`, `--abandon`, etc.) sobrescriben los valores del template
 - `--release-id` es requerido si el template no tiene `release.ids`
 - `--pat` es siempre requerido (via CLI o config.json)
+- `stage: "*"` aplica la variable a todos los stages del release
+- `search_value` es opcional: si se especifica, solo se actualizan los stages donde el valor actual coincide
 
 ---
 
