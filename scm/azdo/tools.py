@@ -401,7 +401,7 @@ TOOLS: Dict = {
     },
     "28": {
         "name":        "Update Release",
-        "description": "Actualiza un Release existente por releaseId via PATCH API. Modifica variables globales, variables por environment, status (abandonar) y descripcion. Incluye backup automatico, dry-run y soporte multi-release.",
+        "description": "Actualiza un Release existente por releaseId via PATCH API usando templates YAML. Modifica variables globales, variables por environment, status (abandonar) y descripcion. Incluye backup automatico, dry-run y soporte multi-release.",
         "path":        "pipeline_cd_update_release.py",
         "args":        ["--org", "--project", "--release-id", "--set-var", "--set-env-var",
                         "--abandon", "--description", "--pat", "--backup-path", "--dry-run"],
@@ -1493,6 +1493,130 @@ def run_tool(tool_key: str):
                 print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
         except Exception as e:
             print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+
+        input("\nPresione Enter para continuar...")
+        return
+
+    # ── Caso especial: Update Release (tool 28) ────────────────────────────────
+    if tool_key == "28":
+        tool_defaults = tool.get("defaults", {})
+
+        print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}  🆙 Update Release - Parámetros{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+
+        # Solicitar parámetros específicos
+        cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+        if cfg_org.startswith("https://"):
+            cfg_org = cfg_org.split('/')[-1]
+
+        org = prompt("Organización", default=cfg_org)
+        if not org.startswith("https://"):
+            org = f"https://dev.azure.com/{org}"
+
+        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+
+        print(f"{Colors.BOLD}Release IDs a actualizar (obligatorio, separados por coma):{Colors.ENDC} ", end="")
+        release_ids_input = input().strip()
+        if not release_ids_input:
+            print(f"{Colors.RED}❌ El Release ID es obligatorio.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+
+        # Validar Release IDs
+        release_ids = []
+        for rid in release_ids_input.split(','):
+            rid = rid.strip()
+            if not rid or not rid.isdigit():
+                print(f"{Colors.RED}❌ Release ID inválido: '{rid}'. Debe ser un número entero.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
+            release_ids.append(rid)
+
+        # Variables globales (opcional, repetible)
+        global_vars = []
+        print(f"\n{Colors.CYAN}--- Variables Globales (opcional) ---{Colors.ENDC}")
+        print(f"{Colors.DIM}Formato: NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
+        while True:
+            var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+            if not var_input:
+                break
+            if '=' in var_input:
+                global_vars.append(var_input)
+            else:
+                print(f"{Colors.RED}  ✗ Formato inválido. Use NOMBRE=VALOR{Colors.ENDC}")
+
+        # Variables por environment (opcional, repetible)
+        env_vars = []
+        print(f"\n{Colors.CYAN}--- Variables por Environment (opcional) ---{Colors.ENDC}")
+        print(f"{Colors.DIM}Formato: STAGE,NOMBRE=VALOR (Enter vacío para saltar){Colors.ENDC}")
+        while True:
+            var_input = input(f"{Colors.BOLD}  Variable (o Enter para saltar): {Colors.ENDC}").strip()
+            if not var_input:
+                break
+            if ',' in var_input and '=' in var_input:
+                env_vars.append(var_input)
+            else:
+                print(f"{Colors.RED}  ✗ Formato inválido. Use STAGE,NOMBRE=VALOR{Colors.ENDC}")
+
+        # Abandonar release
+        print(f"\n{Colors.BOLD}¿Abandonar release(s)? (s/n) [n]:{Colors.ENDC} ", end="")
+        abandon = input().strip().lower() in ('s', 'si', 'yes', 'y')
+
+        # Descripción (opcional)
+        print(f"{Colors.BOLD}Nueva descripción (Enter para mantener):{Colors.ENDC} ", end="")
+        description = input().strip()
+
+        # PAT
+        pat = prompt("Personal Access Token (PAT)",
+                    default=config_get(cfg, "azdo", "pat", default=""),
+                    secret=True)
+        if not pat:
+            print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+
+        backup_path = prompt("Carpeta de backups",
+                            default=tool_defaults.get("backup_path", "./outcome/backups"))
+
+        # Dry-run
+        print(f"{Colors.BOLD}¿Modo DRY-RUN (simular sin aplicar)? (s/n) [n]:{Colors.ENDC} ", end="")
+        dry_run = input().strip().lower() in ('s', 'si', 'yes', 'y')
+
+        # Construir comando
+        cmd = [
+            str(venv_python), str(script_path),
+            "--org", org,
+            "--project", project,
+            "--release-id", ",".join(release_ids),
+            "--pat", pat,
+            "--backup-path", backup_path
+        ]
+
+        for var in global_vars:
+            cmd += ["--set-var", var]
+
+        for var in env_vars:
+            cmd += ["--set-env-var", var]
+
+        if abandon:
+            cmd.append("--abandon")
+
+        if description:
+            cmd += ["--description", description]
+
+        if dry_run:
+            cmd.append("--dry-run")
+
+        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+        try:
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+            if result.returncode == 0:
+                print(f"\n{Colors.GREEN}✅ Update completado exitosamente.{Colors.ENDC}")
+            else:
+                print(f"\n{Colors.RED}✗ Update falló (exit {result.returncode}){Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
 
         input("\nPresione Enter para continuar...")
         return
