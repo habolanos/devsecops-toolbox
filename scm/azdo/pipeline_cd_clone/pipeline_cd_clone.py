@@ -550,6 +550,9 @@ def main():
         payload = build_clone_payload(definition, new_name, new_path)
 
     # Crear con barra de progreso
+    result = None
+    pool_replaced = False
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -563,11 +566,11 @@ def main():
             progress.update(task, advance=1, description="[green]✓ Pipeline creado")
         except urllib.error.HTTPError as e:
             progress.update(task, description=f"[red]✗ Error HTTP {e.code}")
-            console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
             if e.code == 403:
-                # Listar agent pools referenciados
                 pools = extract_agent_pools(payload)
                 if pools:
+                    progress.stop()
+                    console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
                     console.print(f"\n[yellow]  📋 Agent pools referenciados en la definición:[/yellow]")
                     for p in pools:
                         console.print(f"[dim]    • ID {p['id']} - {p['name']} (env: {p['env']}, scope: {p['scope']})[/dim]")
@@ -575,7 +578,6 @@ def main():
                     console.print(f"\n[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
                     console.print(f"[yellow]  No tienes permisos 'Use' sobre los agent pools listados.[/yellow]")
 
-                    # Preguntar pool de reemplazo
                     fallback_str = Prompt.ask(
                         f"[bold]ID del agent pool a usar como reemplazo[/bold]",
                         default=str(DEFAULT_FALLBACK_POOL_ID),
@@ -588,38 +590,54 @@ def main():
 
                     console.print(f"\n[cyan]  Reemplazando agent pools por pool #{fallback_pool_id} y reintentando...[/cyan]")
 
-                    # Reemplazar pools y reintentar
                     changes = replace_agent_pools(payload, fallback_pool_id)
                     for c in changes:
                         console.print(f"[dim]    • {c['env']}: pool {c['old_id']} → {c['new_id']}[/dim]")
 
-                    progress.update(task, description=f"[cyan]Reintentando con pool #{fallback_pool_id}...")
-                    try:
-                        result = create_release_definition(org, project, payload, pat)
-                        progress.update(task, advance=1, description=f"[green]✓ Pipeline creado (con pool #{fallback_pool_id})")
-                    except urllib.error.HTTPError as e2:
-                        progress.update(task, description=f"[red]✗ Error HTTP {e2.code}")
-                        console.print(f"\n[red]✗ Error HTTP {e2.code}: {e2.reason}[/red]")
-                        console.print(f"[yellow]  El reintento con pool #{fallback_pool_id} también falló.[/yellow]")
-                        console.print(f"[dim]    • Verifica que tienes permisos 'Use' sobre el pool #{fallback_pool_id}[/dim]")
-                        console.print(f"[dim]    • Contacta al administrador de Azure DevOps[/dim]")
-                        sys.exit(1)
-                    except Exception as e2:
-                        progress.update(task, description=f"[red]✗ Error")
-                        console.print(f"\n[red]✗ Error: {e2}[/red]")
-                        sys.exit(1)
+                    pool_replaced = True
                 else:
+                    console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
                     console.print(f"[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
                     console.print(f"[yellow]  No se encontraron agent pools en la definición.[/yellow]")
                     console.print(f"[dim]    • El PAT no tiene permisos de 'Create' en Release Definitions[/dim]")
                     console.print(f"[dim]    • Contacta al administrador de Azure DevOps[/dim]")
                     sys.exit(1)
             else:
+                console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
                 sys.exit(1)
         except Exception as e:
             progress.update(task, description=f"[red]✗ Error")
             console.print(f"\n[red]✗ Error: {e}[/red]")
             sys.exit(1)
+
+    # Reintento fuera del Progress (después de prompt)
+    if result is None and pool_replaced:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress2:
+            task2 = progress2.add_task(f"[cyan]Reintentando con pool #{fallback_pool_id}...", total=1)
+            try:
+                result = create_release_definition(org, project, payload, pat)
+                progress2.update(task2, advance=1, description=f"[green]✓ Pipeline creado (con pool #{fallback_pool_id})")
+            except urllib.error.HTTPError as e2:
+                progress2.update(task2, description=f"[red]✗ Error HTTP {e2.code}")
+                console.print(f"\n[red]✗ Error HTTP {e2.code}: {e2.reason}[/red]")
+                console.print(f"[yellow]  El reintento con pool #{fallback_pool_id} también falló.[/yellow]")
+                console.print(f"[dim]    • Verifica que tienes permisos 'Use' sobre el pool #{fallback_pool_id}[/dim]")
+                console.print(f"[dim]    • Contacta al administrador de Azure DevOps[/dim]")
+                sys.exit(1)
+            except Exception as e2:
+                progress2.update(task2, description=f"[red]✗ Error")
+                console.print(f"\n[red]✗ Error: {e2}[/red]")
+                sys.exit(1)
+
+    if result is None:
+        console.print(f"\n[red]✗ Error: No se pudo crear el pipeline.[/red]")
+        sys.exit(1)
 
     # Mostrar resultado
     show_result(result)
