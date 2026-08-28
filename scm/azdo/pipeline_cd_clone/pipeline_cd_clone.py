@@ -213,25 +213,40 @@ def build_clone_payload(definition: Dict, new_name: str, new_path: Optional[str]
 
 
 def extract_agent_pools(definition: Dict) -> List[Dict]:
-    """Extrae los agent pools referenciados en la definición (environments y deployPhases)."""
+    """Extrae los agent pools referenciados en la definición.
+
+    Busca queueId en:
+    - environments[].queueId (nivel environment)
+    - environments[].deployPhases[].deploymentInput.queueId (nivel deployPhase)
+    - environments[].deployPhases[].phaseInput.queueId (algunas definiciones)
+    """
     pools = []
     seen = set()
 
     for env in definition.get("environments", []):
+        env_name = env.get("name", "?")
+
         # environment-level queueId
         queue_id = env.get("queueId")
         if queue_id and queue_id not in seen:
             pool_name = env.get("queue", {}).get("name", f"pool-{queue_id}")
-            pools.append({"id": queue_id, "name": pool_name, "scope": "environment", "env": env.get("name", "?")})
+            pools.append({"id": queue_id, "name": pool_name, "scope": "environment", "env": env_name})
             seen.add(queue_id)
 
-        # deployPhases may have their own queueId
+        # deployPhases -> deploymentInput.queueId (estructura estándar de Azure DevOps)
         for phase in env.get("deployPhases", []):
-            phase_input = phase.get("phaseInput", {})
-            qid = phase_input.get("queueId")
+            deployment_input = phase.get("deploymentInput", {})
+            qid = deployment_input.get("queueId")
             if qid and qid not in seen:
-                pools.append({"id": qid, "name": f"pool-{qid}", "scope": "deployPhase", "env": env.get("name", "?")})
+                pools.append({"id": qid, "name": f"pool-{qid}", "scope": "deploymentInput", "env": env_name})
                 seen.add(qid)
+
+            # phaseInput.queueId (algunas definiciones usan esta estructura)
+            phase_input = phase.get("phaseInput", {})
+            qid2 = phase_input.get("queueId")
+            if qid2 and qid2 not in seen:
+                pools.append({"id": qid2, "name": f"pool-{qid2}", "scope": "phaseInput", "env": env_name})
+                seen.add(qid2)
 
     return pools
 
@@ -239,8 +254,10 @@ def extract_agent_pools(definition: Dict) -> List[Dict]:
 def replace_agent_pools(definition: Dict, fallback_pool_id: int) -> List[Dict]:
     """Reemplaza todos los agent pools por fallback_pool_id.
 
-    Fuerza queueId en todos los environments y deployPhases, incluso
-    si no tenian uno explicito (Azure DevOps usa 'Azure Pipelines' por defecto).
+    Busca y reemplaza queueId en:
+    - environments[].queueId
+    - environments[].deployPhases[].deploymentInput.queueId
+    - environments[].deployPhases[].phaseInput.queueId
 
     Returns lista de reemplazos hechos.
     """
@@ -249,19 +266,28 @@ def replace_agent_pools(definition: Dict, fallback_pool_id: int) -> List[Dict]:
     for env in definition.get("environments", []):
         env_name = env.get("name", "?")
 
+        # environment-level queueId
         old_id = env.get("queueId")
-        old_name = env.get("queue", {}).get("name", f"pool-{old_id}" if old_id else "Azure Pipelines (default)")
-        if old_id != fallback_pool_id:
+        if old_id is not None and old_id != fallback_pool_id:
+            old_name = env.get("queue", {}).get("name", f"pool-{old_id}")
             env["queueId"] = fallback_pool_id
             env.pop("queue", None)
-            changes.append({"env": env_name, "old_id": old_id or "(default)", "old_name": old_name, "new_id": fallback_pool_id})
+            changes.append({"env": env_name, "scope": "environment", "old_id": old_id, "old_name": old_name, "new_id": fallback_pool_id})
 
         for phase in env.get("deployPhases", []):
+            # deploymentInput.queueId (estructura estándar)
+            deployment_input = phase.get("deploymentInput", {})
+            old_id = deployment_input.get("queueId")
+            if old_id is not None and old_id != fallback_pool_id:
+                deployment_input["queueId"] = fallback_pool_id
+                changes.append({"env": env_name, "scope": "deploymentInput", "old_id": old_id, "new_id": fallback_pool_id})
+
+            # phaseInput.queueId (algunas definiciones)
             phase_input = phase.get("phaseInput", {})
-            old_id = phase_input.get("queueId")
-            if old_id != fallback_pool_id:
+            old_id2 = phase_input.get("queueId")
+            if old_id2 is not None and old_id2 != fallback_pool_id:
                 phase_input["queueId"] = fallback_pool_id
-                changes.append({"env": env_name, "scope": "deployPhase", "old_id": old_id or "(default)", "new_id": fallback_pool_id})
+                changes.append({"env": env_name, "scope": "phaseInput", "old_id": old_id2, "new_id": fallback_pool_id})
 
     return changes
 
