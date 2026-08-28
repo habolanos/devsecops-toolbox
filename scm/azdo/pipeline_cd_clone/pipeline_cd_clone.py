@@ -44,6 +44,8 @@ BACKUP_DIR = Path("outcome") / "backups" / "clone"
 DEFAULT_FALLBACK_POOL_ID = 5331
 DEFAULT_FALLBACK_POOL_NAME = "Agents-AutoScaling-Releases"
 
+_OUTPUT_DIR = None
+
 SYSTEM_FIELDS_TO_CLEAN = [
     "id", "revision", "createdOn", "modifiedOn", "createdBy", "modifiedBy",
     "createdBy@type", "modifiedBy@type", "_links", "url", "projectReference",
@@ -72,6 +74,7 @@ class Colors:
 # ═══════════════════════════════════════════════════════════════════════════════
 def load_config() -> Dict:
     """Carga configuración desde scm/config.json si existe."""
+    global _OUTPUT_DIR
     config_file = Path(__file__).parent.parent.parent / "config.json"
     if config_file.exists():
         try:
@@ -80,10 +83,16 @@ def load_config() -> Dict:
                 azdo = config.get('azdo', {})
                 org_url = azdo.get('organization_url', '')
                 organization = org_url.split('/')[-1] if org_url else ''
+                global_cfg = config.get('global', {})
+                output_dir = global_cfg.get('output_dir', 'outcome')
+                if not Path(output_dir).is_absolute():
+                    output_dir = str(config_file.parent / output_dir)
+                _OUTPUT_DIR = output_dir
                 return {
                     'organization': organization,
                     'project': azdo.get('project', ''),
                     'pat': azdo.get('pat', ''),
+                    'output_dir': output_dir,
                 }
         except Exception as e:
             print(f"{Colors.YELLOW}⚠ No se pudo cargar config.json: {e}{Colors.ENDC}")
@@ -449,7 +458,7 @@ def main():
     parser.add_argument('--pat', default='', help='Personal Access Token')
     parser.add_argument('--dry-run', action='store_true', help='Solo simular, no crear')
     parser.add_argument('--backup', action='store_true', default=True, help='Crear backup del origen antes de clonar')
-    parser.add_argument('--backup-path', default=str(BACKUP_DIR), help='Carpeta de backups')
+    parser.add_argument('--backup-path', default='', help='Carpeta de backups (default: {output_dir}/backups/clone)')
     parser.add_argument('--interactive', action='store_true', help='Modo interactivo')
     args = parser.parse_args()
 
@@ -543,8 +552,9 @@ def main():
 
     # Backup
     if args.backup:
+        backup_base = args.backup_path or str(Path(_OUTPUT_DIR or 'outcome') / 'backups' / 'clone')
         with console.status("[cyan]Creando backup del origen...[/cyan]", spinner="dots"):
-            backup_file = create_clone_backup(definition, source_id, args.backup_path)
+            backup_file = create_clone_backup(definition, source_id, backup_base)
         console.print(f"[green]✓ Backup guardado: {backup_file}[/green]")
 
     # Construir payload
@@ -661,7 +671,7 @@ def main():
         "backup_file": backup_file if args.backup else None,
     }
 
-    report_dir = Path("outcome")
+    report_dir = Path(_OUTPUT_DIR or 'outcome')
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"clone_report_{source_id}_to_{result.get('id', 'unknown')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(report_path, 'w', encoding='utf-8') as f:
