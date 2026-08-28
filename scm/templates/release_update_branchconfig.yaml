@@ -19,10 +19,10 @@ search:
   variables:
     - name: "branchConfig"
       value: "config-cadenaSuministro"
-      scope: "global"
+      scope: "release"
     - name: "k8ManifestPath"
       value: "GCP/K8/k8s-manifest-template-GCP-v2.yaml"
-      scope: "global"
+      scope: "release"
 
 release:
   ids: []  # Vacio: debe especificarse via --release-id o modo interactivo

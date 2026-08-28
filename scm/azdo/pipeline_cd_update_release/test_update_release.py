@@ -910,10 +910,35 @@ class TestLoadTemplate(unittest.TestCase):
         self.assertIn("QA,DEBUG=true", result["env_vars"])
         self.assertEqual(result["env_var_search_values"][0], "false")
 
-    def test_load_template_with_search_global_scope(self):
-        """Search variable with scope: global should produce global_vars with search_value."""
+    def test_load_template_with_search_release_scope(self):
+        """Search variable with scope: release should produce global_vars with search_value."""
         template = {
-            "metadata": {"name": "Global Scope", "version": "1.2"},
+            "metadata": {"name": "Release Scope", "version": "1.3"},
+            "search": {
+                "stages": [{"name": "*"}],
+                "variables": [{"name": "branchConfig", "value": "config-cadena", "scope": "release"}],
+            },
+            "release": {"ids": []},
+            "update": {
+                "global_vars": [],
+                "env_vars": [{"name": "branchConfig", "value": "feature/new"}],
+                "abandon": False,
+                "description": "",
+            },
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(len(result["global_vars"]), 1)
+        self.assertIn("branchConfig=feature/new", result["global_vars"])
+        self.assertEqual(len(result["env_vars"]), 0)
+        self.assertEqual(result["global_var_search_values"][0], "config-cadena")
+
+    def test_load_template_with_search_global_scope_backward_compat(self):
+        """Search variable with scope: global (legacy) should still work as release."""
+        template = {
+            "metadata": {"name": "Global Legacy", "version": "1.2"},
             "search": {
                 "stages": [{"name": "*"}],
                 "variables": [{"name": "branchConfig", "value": "config-cadena", "scope": "global"}],
@@ -934,6 +959,33 @@ class TestLoadTemplate(unittest.TestCase):
         self.assertIn("branchConfig=feature/new", result["global_vars"])
         self.assertEqual(len(result["env_vars"]), 0)
         self.assertEqual(result["global_var_search_values"][0], "config-cadena")
+
+    def test_load_template_with_search_wildcard_scope(self):
+        """Search variable with scope: '*' should produce both global_vars and env_vars."""
+        template = {
+            "metadata": {"name": "Wildcard Scope", "version": "1.3"},
+            "search": {
+                "stages": [{"name": "*"}],
+                "variables": [{"name": "branchConfig", "value": "config-cadena", "scope": "*"}],
+            },
+            "release": {"ids": []},
+            "update": {
+                "global_vars": [],
+                "env_vars": [{"name": "branchConfig", "value": "feature/new"}],
+                "abandon": False,
+                "description": "",
+            },
+            "options": {},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_template(tmpdir, template)
+            result = mod.load_template(path)
+        self.assertEqual(len(result["global_vars"]), 1)
+        self.assertIn("branchConfig=feature/new", result["global_vars"])
+        self.assertEqual(len(result["env_vars"]), 1)
+        self.assertIn("*,branchConfig=feature/new", result["env_vars"])
+        self.assertEqual(result["global_var_search_values"][0], "config-cadena")
+        self.assertEqual(result["env_var_search_values"][0], "config-cadena")
 
 
 if __name__ == "__main__":

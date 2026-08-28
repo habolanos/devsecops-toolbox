@@ -189,10 +189,17 @@ def load_template(template_path: str) -> Dict:
             value = var.get('value', '')
             sv = search_vars.get(name)
             scope = search_scopes.get(name, 'env')
-            if scope == 'global':
-                # Variable global con search_value
+            if scope in ('release', 'global'):  # 'global' kept for backward compat
+                # Variable de release (scope Release en Azure DevOps)
                 global_vars.append(f"{name}={value}")
                 global_var_search_values.append(sv)
+            elif scope == '*':
+                # Buscar y actualizar en ambos: release.variables y environments[].variables
+                global_vars.append(f"{name}={value}")
+                global_var_search_values.append(sv)
+                for stage in search_stages:
+                    env_vars.append(f"{stage},{name}={value}")
+                    env_var_search_values.append(sv)
             else:
                 for stage in search_stages:
                     env_vars.append(f"{stage},{name}={value}")
@@ -219,7 +226,7 @@ def load_template(template_path: str) -> Dict:
     if metadata.get('description'):
         print(f"{Colors.DIM}  {metadata['description']}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Release IDs: {', '.join(release_ids) if release_ids else '(via CLI)'}{Colors.ENDC}")
-    print(f"{Colors.CYAN}  Variables globales: {len(global_vars)}{Colors.ENDC}")
+    print(f"{Colors.CYAN}  Variables de release: {len(global_vars)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Variables por env: {len(env_vars)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Search stages: {', '.join(search_stages)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Task updates: {len(task_updates)}{Colors.ENDC}")
@@ -465,7 +472,7 @@ def build_patch_payload(
             if search_value is not None:
                 if _clean_value(old_value) != _clean_value(search_value):
                     changes.append({"type": "global_var", "key": key, "old": old_value, "new": value,
-                                    "error": f"Variable global '{key}' no tiene valor '{search_value}' (actual: '{old_value}')"})
+                                    "error": f"Variable de release '{key}' no tiene valor '{search_value}' (actual: '{old_value}')"})
                     continue
             changes.append({"type": "global_var", "key": key, "old": old_value, "new": value})
             new_vars[key] = build_var_entry(value)
@@ -779,7 +786,7 @@ def main():
     print(f"  Organizacion: {args.org}")
     print(f"  Proyecto: {args.project}")
     print(f"  Release(s): {', '.join([f'#{rid}' for rid in release_ids])}")
-    print(f"  Variables globales: {len(args.set_var)}")
+    print(f"  Variables de release: {len(args.set_var)}")
     print(f"  Variables por env: {len(args.set_env_var)}")
     print(f"  Abandonar: {'Si' if args.abandon else 'No'}")
     dry_run_active = getattr(args, 'dry_run', False) or getattr(args, 'tpl_dry_run', False)
