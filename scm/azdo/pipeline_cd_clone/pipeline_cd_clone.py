@@ -573,22 +573,35 @@ def main():
                         console.print(f"[dim]    • ID {p['id']} - {p['name']} (env: {p['env']}, scope: {p['scope']})[/dim]")
 
                     console.print(f"\n[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
-                    console.print(f"[yellow]  Reemplazando agent pools por pool #{DEFAULT_FALLBACK_POOL_ID} y reintentando...[/yellow]")
+                    console.print(f"[yellow]  No tienes permisos 'Use' sobre los agent pools listados.[/yellow]")
+
+                    # Preguntar pool de reemplazo
+                    fallback_str = Prompt.ask(
+                        f"[bold]ID del agent pool a usar como reemplazo[/bold]",
+                        default=str(DEFAULT_FALLBACK_POOL_ID),
+                    )
+                    try:
+                        fallback_pool_id = int(fallback_str)
+                    except ValueError:
+                        console.print(f"[red]✗ Error: El ID del pool debe ser un número entero[/red]")
+                        sys.exit(1)
+
+                    console.print(f"\n[cyan]  Reemplazando agent pools por pool #{fallback_pool_id} y reintentando...[/cyan]")
 
                     # Reemplazar pools y reintentar
-                    changes = replace_agent_pools(payload, DEFAULT_FALLBACK_POOL_ID)
+                    changes = replace_agent_pools(payload, fallback_pool_id)
                     for c in changes:
                         console.print(f"[dim]    • {c['env']}: pool {c['old_id']} → {c['new_id']}[/dim]")
 
-                    progress.update(task, description="[cyan]Reintentando con pool #{}...".format(DEFAULT_FALLBACK_POOL_ID))
+                    progress.update(task, description=f"[cyan]Reintentando con pool #{fallback_pool_id}...")
                     try:
                         result = create_release_definition(org, project, payload, pat)
-                        progress.update(task, advance=1, description="[green]✓ Pipeline creado (con pool fallback)")
+                        progress.update(task, advance=1, description=f"[green]✓ Pipeline creado (con pool #{fallback_pool_id})")
                     except urllib.error.HTTPError as e2:
                         progress.update(task, description=f"[red]✗ Error HTTP {e2.code}")
                         console.print(f"\n[red]✗ Error HTTP {e2.code}: {e2.reason}[/red]")
-                        console.print(f"[yellow]  El reintento con pool #{DEFAULT_FALLBACK_POOL_ID} también falló.[/yellow]")
-                        console.print(f"[dim]    • Verifica que tienes permisos 'Use' sobre el pool #{DEFAULT_FALLBACK_POOL_ID}[/dim]")
+                        console.print(f"[yellow]  El reintento con pool #{fallback_pool_id} también falló.[/yellow]")
+                        console.print(f"[dim]    • Verifica que tienes permisos 'Use' sobre el pool #{fallback_pool_id}[/dim]")
                         console.print(f"[dim]    • Contacta al administrador de Azure DevOps[/dim]")
                         sys.exit(1)
                     except Exception as e2:
