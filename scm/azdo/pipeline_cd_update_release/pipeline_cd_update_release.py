@@ -518,42 +518,50 @@ def build_patch_payload(
                 env_name = env.get('name', '')
                 if not is_wildcard and env_name.lower() not in [s.lower() for s in stage_filter]:
                     continue
+                # Release instances have workflowTasks directly on env or in deployPhasesSnapshot;
+                # release definitions have them inside deployPhases[].workflowTasks
+                all_tasks = []
                 env_phases = env.get('deployPhases', [])
-                if not env_phases:
-                    print(f"{Colors.YELLOW}  ⚠ Environment '{env_name}' no tiene deployPhases (keys: {list(env.keys())}){Colors.ENDC}")
-                for phase in env_phases:
-                    phase_tasks = phase.get('workflowTasks', [])
-                    if not phase_tasks:
-                        print(f"{Colors.YELLOW}  ⚠ Phase '{phase.get('name', '?')}' en '{env_name}' no tiene workflowTasks{Colors.ENDC}")
-                    for task in phase_tasks:
-                        task_display = task.get('displayName', '') or task.get('name', '')
-                        if task_display.lower() == task_name.lower():
-                            task_found = True
-                            for field in fields:
-                                field_path = field.get('path', '')
-                                old_val = field.get('old_value', '')
-                                new_val = field.get('new_value', '')
-                                current_val = _get_nested_value(task, field_path)
-                                if current_val is None:
-                                    changes.append({
-                                        "type": "task_field", "task": task_name,
-                                        "path": field_path, "old": None, "new": new_val, "stage": env_name,
-                                        "error": f"Task '{task_name}' campo '{field_path}' no existe en stage '{env_name}'",
-                                    })
-                                elif old_val not in str(current_val):
-                                    changes.append({
-                                        "type": "task_field", "task": task_name,
-                                        "path": field_path, "old": current_val, "new": new_val, "stage": env_name,
-                                        "error": f"Task '{task_name}' campo '{field_path}' no contiene '{old_val}' (actual: '{current_val}')",
-                                    })
-                                else:
-                                    new_field_val = str(current_val).replace(old_val, new_val)
-                                    _set_nested_value(task, field_path, new_field_val)
-                                    changes.append({
-                                        "type": "task_field", "task": task_name,
-                                        "path": field_path, "old": current_val,
-                                        "new": new_field_val, "stage": env_name,
-                                    })
+                if env_phases:
+                    for phase in env_phases:
+                        all_tasks.extend(phase.get('workflowTasks', []))
+                if not all_tasks:
+                    all_tasks = env.get('workflowTasks', [])
+                if not all_tasks:
+                    snapshot = env.get('deployPhasesSnapshot', [])
+                    for phase in snapshot:
+                        all_tasks.extend(phase.get('workflowTasks', []))
+                if not all_tasks:
+                    print(f"{Colors.YELLOW}  ⚠ Environment '{env_name}' sin workflowTasks (keys: {list(env.keys())}){Colors.ENDC}")
+                for task in all_tasks:
+                    task_display = task.get('displayName', '') or task.get('name', '')
+                    if task_display.lower() == task_name.lower():
+                        task_found = True
+                        for field in fields:
+                            field_path = field.get('path', '')
+                            old_val = field.get('old_value', '')
+                            new_val = field.get('new_value', '')
+                            current_val = _get_nested_value(task, field_path)
+                            if current_val is None:
+                                changes.append({
+                                    "type": "task_field", "task": task_name,
+                                    "path": field_path, "old": None, "new": new_val, "stage": env_name,
+                                    "error": f"Task '{task_name}' campo '{field_path}' no existe en stage '{env_name}'",
+                                })
+                            elif old_val not in str(current_val):
+                                changes.append({
+                                    "type": "task_field", "task": task_name,
+                                    "path": field_path, "old": current_val, "new": new_val, "stage": env_name,
+                                    "error": f"Task '{task_name}' campo '{field_path}' no contiene '{old_val}' (actual: '{current_val}')",
+                                })
+                            else:
+                                new_field_val = str(current_val).replace(old_val, new_val)
+                                _set_nested_value(task, field_path, new_field_val)
+                                changes.append({
+                                    "type": "task_field", "task": task_name,
+                                    "path": field_path, "old": current_val,
+                                    "new": new_field_val, "stage": env_name,
+                                })
             if not task_found:
                 changes.append({
                     "type": "task_field", "task": task_name,

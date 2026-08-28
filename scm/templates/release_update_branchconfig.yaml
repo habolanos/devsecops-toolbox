@@ -1,12 +1,13 @@
 metadata:
-  name: "Actualizar branchConfig y path_pipelineConfig en release"
-  version: "1.2"
-  description: "Busca branchConfig=config-cadenaSuministro en todos los stages y actualiza a feature/feature-amad. Ademas busca path_pipelineConfig en el script de la task 'get file k8-manifest' y lo reemplaza por path_pipelineConfigYml"
+  name: "Actualizar branchConfig, k8ManifestPath y path_pipelineConfig en release"
+  version: "1.3"
+  description: "Busca branchConfig=config-cadenaSuministro y k8ManifestPath=GCP/K8/k8s-manifest-template-GCP-v2.yaml en variables globales y los actualiza. Ademas busca path_pipelineConfig en el script de la task 'get file k8-manifest' y lo reemplaza por path_pipelineConfigYml"
   comment: |
     Cambios:
-    1. Variable branchConfig: config-cadenaSuministro → feature/feature-amad (todos los stages)
-    2. Task "get file k8-manifest": path_pipelineConfig → path_pipelineConfigYml en inputs.script
-    Razon: Promocion a feature branch y renombrado de variable de configuracion
+    1. Variable global branchConfig: config-cadenaSuministro → feature/feature-amad
+    2. Variable global k8ManifestPath: GCP/K8/k8s-manifest-template-GCP-v2.yaml → frameworks/k8Templates/k8s-manifest-template-GCP-v2.yaml
+    3. Task "get file k8-manifest": path_pipelineConfig → path_pipelineConfigYml en inputs.script
+    Razon: Promocion a feature branch, reubicacion de template k8s y renombrado de variable de configuracion
     Aprobado por: DevOps Lead
     Fecha: 2026-08-27
   author: "DevOps Team"
@@ -19,6 +20,9 @@ search:
     - name: "branchConfig"
       value: "config-cadenaSuministro"
       scope: "global"
+    - name: "k8ManifestPath"
+      value: "GCP/K8/k8s-manifest-template-GCP-v2.yaml"
+      scope: "global"
 
 release:
   ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
@@ -29,6 +33,8 @@ update:
   env_vars:
     - name: "branchConfig"
       value: "feature/feature-amad"
+    - name: "k8ManifestPath"
+      value: "frameworks/k8Templates/k8s-manifest-template-GCP-v2.yaml"
 
   tasks:
     - name: "get file k8-manifest"
