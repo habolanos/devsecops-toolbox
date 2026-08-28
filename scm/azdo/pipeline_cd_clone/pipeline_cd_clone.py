@@ -227,7 +227,10 @@ def extract_agent_pools(definition: Dict) -> List[Dict]:
 
 
 def replace_agent_pools(definition: Dict, fallback_pool_id: int) -> List[Dict]:
-    """Reemplaza todos los agent pools referenciados por fallback_pool_id.
+    """Reemplaza todos los agent pools por fallback_pool_id.
+
+    Fuerza queueId en todos los environments y deployPhases, incluso
+    si no tenian uno explicito (Azure DevOps usa 'Azure Pipelines' por defecto).
 
     Returns lista de reemplazos hechos.
     """
@@ -236,21 +239,19 @@ def replace_agent_pools(definition: Dict, fallback_pool_id: int) -> List[Dict]:
     for env in definition.get("environments", []):
         env_name = env.get("name", "?")
 
-        if env.get("queueId") is not None:
-            old_id = env["queueId"]
-            old_name = env.get("queue", {}).get("name", f"pool-{old_id}")
-            if old_id != fallback_pool_id:
-                env["queueId"] = fallback_pool_id
-                env.pop("queue", None)
-                changes.append({"env": env_name, "old_id": old_id, "old_name": old_name, "new_id": fallback_pool_id})
+        old_id = env.get("queueId")
+        old_name = env.get("queue", {}).get("name", f"pool-{old_id}" if old_id else "Azure Pipelines (default)")
+        if old_id != fallback_pool_id:
+            env["queueId"] = fallback_pool_id
+            env.pop("queue", None)
+            changes.append({"env": env_name, "old_id": old_id or "(default)", "old_name": old_name, "new_id": fallback_pool_id})
 
         for phase in env.get("deployPhases", []):
             phase_input = phase.get("phaseInput", {})
-            if phase_input.get("queueId") is not None:
-                old_id = phase_input["queueId"]
-                if old_id != fallback_pool_id:
-                    phase_input["queueId"] = fallback_pool_id
-                    changes.append({"env": env_name, "scope": "deployPhase", "old_id": old_id, "new_id": fallback_pool_id})
+            old_id = phase_input.get("queueId")
+            if old_id != fallback_pool_id:
+                phase_input["queueId"] = fallback_pool_id
+                changes.append({"env": env_name, "scope": "deployPhase", "old_id": old_id or "(default)", "new_id": fallback_pool_id})
 
     return changes
 
@@ -568,40 +569,37 @@ def main():
             progress.update(task, description=f"[red]✗ Error HTTP {e.code}")
             if e.code == 403:
                 pools = extract_agent_pools(payload)
+                progress.stop()
+                console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
+
                 if pools:
-                    progress.stop()
-                    console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
                     console.print(f"\n[yellow]  📋 Agent pools referenciados en la definición:[/yellow]")
                     for p in pools:
                         console.print(f"[dim]    • ID {p['id']} - {p['name']} (env: {p['env']}, scope: {p['scope']})[/dim]")
-
-                    console.print(f"\n[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
-                    console.print(f"[yellow]  No tienes permisos 'Use' sobre los agent pools listados.[/yellow]")
-
-                    fallback_str = Prompt.ask(
-                        f"[bold]ID del agent pool a usar como reemplazo[/bold]",
-                        default=str(DEFAULT_FALLBACK_POOL_ID),
-                    )
-                    try:
-                        fallback_pool_id = int(fallback_str)
-                    except ValueError:
-                        console.print(f"[red]✗ Error: El ID del pool debe ser un número entero[/red]")
-                        sys.exit(1)
-
-                    console.print(f"\n[cyan]  Reemplazando agent pools por pool #{fallback_pool_id} y reintentando...[/cyan]")
-
-                    changes = replace_agent_pools(payload, fallback_pool_id)
-                    for c in changes:
-                        console.print(f"[dim]    • {c['env']}: pool {c['old_id']} → {c['new_id']}[/dim]")
-
-                    pool_replaced = True
                 else:
-                    console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
-                    console.print(f"[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
-                    console.print(f"[yellow]  No se encontraron agent pools en la definición.[/yellow]")
-                    console.print(f"[dim]    • El PAT no tiene permisos de 'Create' en Release Definitions[/dim]")
-                    console.print(f"[dim]    • Contacta al administrador de Azure DevOps[/dim]")
+                    console.print(f"[yellow]  No se encontraron queueId explicitos en la definición.[/yellow]")
+                    console.print(f"[yellow]  Azure DevOps usa el pool 'Azure Pipelines' por defecto.[/yellow]")
+
+                console.print(f"\n[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
+                console.print(f"[yellow]  No tienes permisos 'Use' sobre el agent pool.[/yellow]")
+
+                fallback_str = Prompt.ask(
+                    f"[bold]ID del agent pool a usar como reemplazo[/bold]",
+                    default=str(DEFAULT_FALLBACK_POOL_ID),
+                )
+                try:
+                    fallback_pool_id = int(fallback_str)
+                except ValueError:
+                    console.print(f"[red]✗ Error: El ID del pool debe ser un número entero[/red]")
                     sys.exit(1)
+
+                console.print(f"\n[cyan]  Reemplazando agent pools por pool #{fallback_pool_id} y reintentando...[/cyan]")
+
+                changes = replace_agent_pools(payload, fallback_pool_id)
+                for c in changes:
+                    console.print(f"[dim]    • {c['env']}: pool {c['old_id']} → {c['new_id']}[/dim]")
+
+                pool_replaced = True
             else:
                 console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
                 sys.exit(1)

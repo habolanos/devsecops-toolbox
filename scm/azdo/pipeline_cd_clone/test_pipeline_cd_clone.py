@@ -334,6 +334,27 @@ class TestReplaceAgentPools(unittest.TestCase):
         changes = mod.replace_agent_pools(definition, 5331)
         self.assertEqual(len(changes), 0)
 
+    def test_force_queue_on_env_without_queueId(self):
+        definition = {
+            "environments": [
+                {"name": "DEV"},
+            ]
+        }
+        changes = mod.replace_agent_pools(definition, 5331)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["old_id"], "(default)")
+        self.assertEqual(definition["environments"][0]["queueId"], 5331)
+
+    def test_force_queue_on_env_with_none_queueId(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": None},
+            ]
+        }
+        changes = mod.replace_agent_pools(definition, 5331)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(definition["environments"][0]["queueId"], 5331)
+
     def test_no_environments(self):
         definition = {}
         changes = mod.replace_agent_pools(definition, 5331)
