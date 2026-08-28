@@ -363,6 +363,25 @@ class TestBuildPatchPayload(unittest.TestCase):
             self.assertIsNone(c["old"])
             self.assertEqual(c["new"], "value")
 
+    def test_wildcard_stage_var_not_in_any_env_with_search_value_skips(self):
+        """Stage '*' with search_value and var not in any env should skip silently (scope '*' from release-level var)."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], ["*,RELEASE_ONLY_VAR=new-value"], False, "",
+            env_var_search_values=["old-value"]
+        )
+        env_var_changes = [c for c in changes if c["type"] == "env_var"]
+        self.assertEqual(len(env_var_changes), 0)
+
+    def test_comment_in_payload(self):
+        """Comment should be included in payload and changes."""
+        payload, changes = mod.build_patch_payload(
+            self.release, [], [], False, "", comment="Test comment for release"
+        )
+        comment_changes = [c for c in changes if c["type"] == "comment"]
+        self.assertEqual(len(comment_changes), 1)
+        self.assertEqual(comment_changes[0]["new"], "Test comment for release")
+        self.assertEqual(payload["comment"], "Test comment for release")
+
     def test_task_update_replaces_in_script(self):
         """Task field update should replace old_value with new_value in script."""
         task_updates = [

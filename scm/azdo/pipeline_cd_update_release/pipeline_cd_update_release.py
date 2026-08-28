@@ -217,8 +217,7 @@ def load_template(template_path: str) -> Dict:
 
     abandon = update_section.get('abandon', False)
     description = update_section.get('description', '')
-    if not description and metadata.get('comment'):
-        description = metadata['comment'].strip()
+    comment = metadata.get('comment', '').strip() if metadata.get('comment') else ''
     dry_run = options_section.get('dry_run', False)
     backup_path = options_section.get('backup_path', './outcome/backups')
 
@@ -232,6 +231,8 @@ def load_template(template_path: str) -> Dict:
     print(f"{Colors.CYAN}  Task updates: {len(task_updates)}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Abandonar: {abandon}{Colors.ENDC}")
     print(f"{Colors.CYAN}  Dry-run: {dry_run}{Colors.ENDC}")
+    if comment:
+        print(f"{Colors.CYAN}  Comment: {comment[:80]}{'...' if len(comment) > 80 else ''}{Colors.ENDC}")
 
     return {
         'release_ids': release_ids,
@@ -243,6 +244,7 @@ def load_template(template_path: str) -> Dict:
         'search_stages': search_stages,
         'abandon': abandon,
         'description': description,
+        'comment': comment,
         'dry_run': dry_run,
         'backup_path': backup_path,
     }
@@ -458,6 +460,7 @@ def build_patch_payload(
     task_updates: Optional[List[Dict]] = None,
     search_stages: Optional[List[str]] = None,
     global_var_search_values: Optional[List[Optional[str]]] = None,
+    comment: str = '',
 ) -> Tuple[Dict, List[Dict]]:
     payload: Dict = {}
     changes: List[Dict] = []
@@ -503,9 +506,13 @@ def build_patch_payload(
                         break
             if not matched_stages:
                 if stage_name == '*':
-                    changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": "*",
-                                    "error": f"Variable '{key}' no encontrada en ningun stage"
-                                             + (f" con valor '{search_value}'" if search_value else "")})
+                    var_in_any_env = any(
+                        key in env.get('variables', {}) for env in environments
+                    )
+                    if var_in_any_env:
+                        changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": "*",
+                                        "error": f"Variable '{key}' no encontrada en ningun stage"
+                                                 + (f" con valor '{search_value}'" if search_value else "")})
                 elif stage_found and search_value is not None:
                     changes.append({"type": "env_var", "key": key, "old": None, "new": value, "stage": stage_name,
                                     "error": f"Variable '{key}' en stage '{stage_name}' no tiene valor '{search_value}'"})
@@ -582,6 +589,9 @@ def build_patch_payload(
     if description:
         changes.append({"type": "description", "key": "description", "old": release.get('description'), "new": description})
         payload['description'] = description
+    if comment:
+        changes.append({"type": "comment", "key": "comment", "old": release.get('comment'), "new": comment})
+        payload['comment'] = comment
     return payload, changes
 
 
@@ -740,6 +750,7 @@ def main():
             args.abandon = tpl['abandon']
         if not args.description and tpl['description']:
             args.description = tpl['description']
+        args.comment = tpl.get('comment', '')
         args.tpl_dry_run = tpl.get('dry_run', False)
         if args.backup_path == './outcome/backups' and tpl['backup_path'] != './outcome/backups':
             args.backup_path = tpl['backup_path']
@@ -768,6 +779,7 @@ def main():
         args.global_var_search_values = []
         args.task_updates = []
         args.search_stages = ['*']
+        args.comment = ''
     else:
         if not args.release_id or not args.pat:
             print(f"{Colors.RED}✗ Error: --release-id y --pat son requeridos cuando no se usa --interactive{Colors.ENDC}")
@@ -776,6 +788,7 @@ def main():
         args.global_var_search_values = []
         args.task_updates = []
         args.search_stages = ['*']
+        args.comment = ''
 
     release_ids = [rid.strip() for rid in str(args.release_id).split(',')]
 
@@ -818,7 +831,8 @@ def main():
                 getattr(args, 'env_var_search_values', []),
                 getattr(args, 'task_updates', []),
                 getattr(args, 'search_stages', ['*']),
-                getattr(args, 'global_var_search_values', [])
+                getattr(args, 'global_var_search_values', []),
+                getattr(args, 'comment', '')
             )
             show_changes(changes)
 
