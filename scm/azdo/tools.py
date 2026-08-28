@@ -409,6 +409,24 @@ TOOLS: Dict = {
         "group":       "updatepipe",
         "status":      "ready",
     },
+    "43": {
+        "name":        "Pipeline CD Clone",
+        "description": "Clona un Pipeline CD completo a partir de un definition ID existente. Pregunta nombre del nuevo pipeline (default: LAB-{nombre_actual}) y path (default: mismo que origen). Crea nueva definicion con limpieza de campos del sistema, backup previo, deteccion de secrets y dry-run.",
+        "path":        "pipeline_cd_clone/pipeline_cd_clone.py",
+        "args":        ["--org", "--project", "--source-id", "--new-name", "--new-path",
+                        "--pat", "--dry-run", "--backup", "--backup-path", "--interactive"],
+        "defaults":    {
+            "org": "Coppel-Retail",
+            "project": "Cadena_de_Suministros",
+            "source_id": "",
+            "new_name": "",
+            "new_path": "",
+            "pat": "",
+            "backup_path": "./outcome/backups/clone"
+        },
+        "group":       "updatepipe",
+        "status":      "ready",
+    },
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos",
