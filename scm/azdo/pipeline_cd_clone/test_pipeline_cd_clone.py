@@ -224,5 +224,33 @@ class TestColorsAttributes(unittest.TestCase):
             self.assertTrue(hasattr(mod.Colors, attr), f"Colors.{attr} is missing")
 
 
+class TestParseErrorBody(unittest.TestCase):
+    """Tests para _parse_error_body."""
+
+    def test_valid_json_with_message(self):
+        body = json.dumps({"$id": "1", "message": "Access denied.", "innerException": None})
+        result = mod._parse_error_body(body)
+        self.assertEqual(result, "Access denied.")
+
+    def test_valid_json_with_inner_exception(self):
+        body = json.dumps({"$id": "1", "message": "", "innerException": {"message": "Inner error"}})
+        result = mod._parse_error_body(body)
+        self.assertEqual(result, "Inner error")
+
+    def test_invalid_json_returns_raw(self):
+        body = "not json at all"
+        result = mod._parse_error_body(body)
+        self.assertEqual(result, "not json at all")
+
+    def test_empty_body_returns_empty(self):
+        result = mod._parse_error_body("")
+        self.assertEqual(result, "")
+
+    def test_json_without_message_returns_raw(self):
+        body = json.dumps({"$id": "1", "someField": "value"})
+        result = mod._parse_error_body(body)
+        self.assertIn("someField", result)
+
+
 if __name__ == '__main__':
     unittest.main()

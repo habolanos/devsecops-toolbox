@@ -102,14 +102,34 @@ def normalize_org(org: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 # API CALLS
 # ═══════════════════════════════════════════════════════════════════════════════
+def _parse_error_body(body: str) -> str:
+    """Extrae el mensaje de error de una respuesta HTTP de Azure DevOps."""
+    try:
+        err = json.loads(body)
+        msg = err.get('message', '')
+        if msg:
+            return msg
+        inner = err.get('innerException', {})
+        if inner and inner.get('message'):
+            return inner['message']
+    except Exception:
+        pass
+    return body[:500] if body else ''
+
+
 def api_get(url: str, pat: str) -> Dict:
     headers = {
         'Authorization': create_auth_header(pat),
         'Content-Type': 'application/json',
     }
     req = urllib.request.Request(url, headers=headers, method='GET')
-    with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode('utf-8'))
+    try:
+        with urllib.request.urlopen(req) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        msg = _parse_error_body(error_body)
+        raise urllib.error.HTTPError(e.url, e.code, f"{e.reason} - {msg}", e.headers, None)
 
 
 def api_post(url: str, pat: str, body: Dict) -> Dict:
@@ -119,8 +139,13 @@ def api_post(url: str, pat: str, body: Dict) -> Dict:
     }
     data = json.dumps(body).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers=headers, method='POST')
-    with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode('utf-8'))
+    try:
+        with urllib.request.urlopen(req) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        msg = _parse_error_body(error_body)
+        raise urllib.error.HTTPError(e.url, e.code, f"{e.reason} - {msg}", e.headers, None)
 
 
 def get_release_definition(org: str, project: str, def_id: int, pat: str) -> Dict:
@@ -303,11 +328,25 @@ def interactive_mode() -> Dict:
     if not pat:
         pat = Prompt.ask("[bold]PAT[/bold]", password=True)
 
-    source_id = int(Prompt.ask("[bold]ID del Pipeline origen a clonar[/bold]"))
+    source_id_str = Prompt.ask("[bold]ID del Pipeline origen a clonar[/bold]")
+    try:
+        source_id = int(source_id_str)
+    except ValueError:
+        console.print("[red]✗ Error: El ID debe ser un número entero[/red]")
+        sys.exit(1)
 
     # Obtener definición con spinner
     with console.status("[cyan]Obteniendo definición...[/cyan]", spinner="dots"):
-        definition = get_release_definition(org, project, source_id, pat)
+        try:
+            definition = get_release_definition(org, project, source_id, pat)
+        except urllib.error.HTTPError as e:
+            console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
+            if e.code == 404:
+                console.print(f"[yellow]  El pipeline #{source_id} no existe o no tienes acceso.[/yellow]")
+            sys.exit(1)
+        except Exception as e:
+            console.print(f"\n[red]✗ Error: {e}[/red]")
+            sys.exit(1)
 
     console.print(f"[green]✓ Pipeline encontrado: {definition.get('name', 'N/A')}[/green]")
     current_name = definition.get("name", "")
@@ -468,10 +507,14 @@ def main():
             result = create_release_definition(org, project, payload, pat)
             progress.update(task, advance=1, description="[green]✓ Pipeline creado")
         except urllib.error.HTTPError as e:
-            error_body = e.read().decode('utf-8')
             progress.update(task, description=f"[red]✗ Error HTTP {e.code}")
             console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
-            console.print(f"[red]  {error_body[:500]}[/red]")
+            if e.code == 403:
+                console.print(f"[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
+                console.print(f"[yellow]  Posibles causas:[/yellow]")
+                console.print(f"[dim]    • El PAT no tiene permisos de 'Create' en Release Definitions[/dim]")
+                console.print(f"[dim]    • El usuario no tiene permisos 'Use' sobre los agent pools referenciados[/dim]")
+                console.print(f"[dim]    • Contacta al administrador de Azure DevOps para solicitar permisos[/dim]")
             sys.exit(1)
         except Exception as e:
             progress.update(task, description=f"[red]✗ Error")
