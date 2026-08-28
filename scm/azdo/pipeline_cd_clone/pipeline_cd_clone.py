@@ -42,6 +42,7 @@ API_VERSION = "7.0"
 BACKUP_DIR = Path("outcome") / "backups" / "clone"
 
 DEFAULT_FALLBACK_POOL_ID = 5331
+DEFAULT_FALLBACK_POOL_NAME = "Agents-AutoScaling-Releases"
 
 SYSTEM_FIELDS_TO_CLEAN = [
     "id", "revision", "createdOn", "modifiedOn", "createdBy", "modifiedBy",
@@ -584,7 +585,7 @@ def main():
                 console.print(f"[yellow]  No tienes permisos 'Use' sobre el agent pool.[/yellow]")
 
                 fallback_str = Prompt.ask(
-                    f"[bold]ID del agent pool a usar como reemplazo[/bold]",
+                    f"[bold]ID del agent pool a usar como reemplazo[/bold] [dim](default: {DEFAULT_FALLBACK_POOL_NAME} #{DEFAULT_FALLBACK_POOL_ID})[/dim]",
                     default=str(DEFAULT_FALLBACK_POOL_ID),
                 )
                 try:
