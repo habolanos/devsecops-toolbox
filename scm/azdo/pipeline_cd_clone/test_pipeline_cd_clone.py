@@ -224,6 +224,134 @@ class TestColorsAttributes(unittest.TestCase):
             self.assertTrue(hasattr(mod.Colors, attr), f"Colors.{attr} is missing")
 
 
+class TestExtractAgentPools(unittest.TestCase):
+    """Tests para extract_agent_pools."""
+
+    def test_no_environments(self):
+        result = mod.extract_agent_pools({})
+        self.assertEqual(result, [])
+
+    def test_env_with_queue_id(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 1, "queue": {"name": "Azure Pipelines"}},
+            ]
+        }
+        result = mod.extract_agent_pools(definition)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["id"], 1)
+        self.assertEqual(result[0]["name"], "Azure Pipelines")
+        self.assertEqual(result[0]["env"], "DEV")
+
+    def test_env_without_queue(self):
+        definition = {
+            "environments": [
+                {"name": "DEV"},
+            ]
+        }
+        result = mod.extract_agent_pools(definition)
+        self.assertEqual(result, [])
+
+    def test_multiple_envs_same_pool_dedup(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 1, "queue": {"name": "Pool1"}},
+                {"name": "QA", "queueId": 1, "queue": {"name": "Pool1"}},
+            ]
+        }
+        result = mod.extract_agent_pools(definition)
+        self.assertEqual(len(result), 1)
+
+    def test_multiple_envs_different_pools(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 1, "queue": {"name": "Pool1"}},
+                {"name": "QA", "queueId": 2, "queue": {"name": "Pool2"}},
+            ]
+        }
+        result = mod.extract_agent_pools(definition)
+        self.assertEqual(len(result), 2)
+
+    def test_deploy_phase_queue_id(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 1, "queue": {"name": "Pool1"},
+                 "deployPhases": [
+                     {"phaseInput": {"queueId": 99}},
+                 ]},
+            ]
+        }
+        result = mod.extract_agent_pools(definition)
+        self.assertEqual(len(result), 2)
+        ids = [p["id"] for p in result]
+        self.assertIn(99, ids)
+
+    def test_no_queue_name_uses_default(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 5},
+            ]
+        }
+        result = mod.extract_agent_pools(definition)
+        self.assertEqual(result[0]["name"], "pool-5")
+
+
+class TestReplaceAgentPools(unittest.TestCase):
+    """Tests para replace_agent_pools."""
+
+    def test_replace_env_queue(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 1, "queue": {"name": "Pool1"}},
+            ]
+        }
+        changes = mod.replace_agent_pools(definition, 5331)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["old_id"], 1)
+        self.assertEqual(changes[0]["new_id"], 5331)
+        self.assertEqual(definition["environments"][0]["queueId"], 5331)
+        self.assertNotIn("queue", definition["environments"][0])
+
+    def test_replace_deploy_phase_queue(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 1, "queue": {"name": "Pool1"},
+                 "deployPhases": [
+                     {"phaseInput": {"queueId": 99}},
+                 ]},
+            ]
+        }
+        changes = mod.replace_agent_pools(definition, 5331)
+        self.assertEqual(len(changes), 2)
+        self.assertEqual(definition["environments"][0]["deployPhases"][0]["phaseInput"]["queueId"], 5331)
+
+    def test_no_replace_if_already_target(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 5331, "queue": {"name": "MyPool"}},
+            ]
+        }
+        changes = mod.replace_agent_pools(definition, 5331)
+        self.assertEqual(len(changes), 0)
+
+    def test_no_environments(self):
+        definition = {}
+        changes = mod.replace_agent_pools(definition, 5331)
+        self.assertEqual(changes, [])
+
+    def test_multiple_envs_all_replaced(self):
+        definition = {
+            "environments": [
+                {"name": "DEV", "queueId": 1, "queue": {"name": "Pool1"}},
+                {"name": "QA", "queueId": 2, "queue": {"name": "Pool2"}},
+            ]
+        }
+        changes = mod.replace_agent_pools(definition, 5331)
+        self.assertEqual(len(changes), 2)
+        self.assertEqual(definition["environments"][0]["queueId"], 5331)
+        self.assertEqual(definition["environments"][1]["queueId"], 5331)
+
+
 class TestParseErrorBody(unittest.TestCase):
     """Tests para _parse_error_body."""
 

@@ -41,6 +41,8 @@ API_VERSION = "7.0"
 
 BACKUP_DIR = Path("outcome") / "backups" / "clone"
 
+DEFAULT_FALLBACK_POOL_ID = 5331
+
 SYSTEM_FIELDS_TO_CLEAN = [
     "id", "revision", "createdOn", "modifiedOn", "createdBy", "modifiedBy",
     "createdBy@type", "modifiedBy@type", "_links", "url", "projectReference",
@@ -198,6 +200,59 @@ def build_clone_payload(definition: Dict, new_name: str, new_path: Optional[str]
     if new_path is not None:
         payload["path"] = new_path
     return payload
+
+
+def extract_agent_pools(definition: Dict) -> List[Dict]:
+    """Extrae los agent pools referenciados en la definición (environments y deployPhases)."""
+    pools = []
+    seen = set()
+
+    for env in definition.get("environments", []):
+        # environment-level queueId
+        queue_id = env.get("queueId")
+        if queue_id and queue_id not in seen:
+            pool_name = env.get("queue", {}).get("name", f"pool-{queue_id}")
+            pools.append({"id": queue_id, "name": pool_name, "scope": "environment", "env": env.get("name", "?")})
+            seen.add(queue_id)
+
+        # deployPhases may have their own queueId
+        for phase in env.get("deployPhases", []):
+            phase_input = phase.get("phaseInput", {})
+            qid = phase_input.get("queueId")
+            if qid and qid not in seen:
+                pools.append({"id": qid, "name": f"pool-{qid}", "scope": "deployPhase", "env": env.get("name", "?")})
+                seen.add(qid)
+
+    return pools
+
+
+def replace_agent_pools(definition: Dict, fallback_pool_id: int) -> List[Dict]:
+    """Reemplaza todos los agent pools referenciados por fallback_pool_id.
+
+    Returns lista de reemplazos hechos.
+    """
+    changes = []
+
+    for env in definition.get("environments", []):
+        env_name = env.get("name", "?")
+
+        if env.get("queueId") is not None:
+            old_id = env["queueId"]
+            old_name = env.get("queue", {}).get("name", f"pool-{old_id}")
+            if old_id != fallback_pool_id:
+                env["queueId"] = fallback_pool_id
+                env.pop("queue", None)
+                changes.append({"env": env_name, "old_id": old_id, "old_name": old_name, "new_id": fallback_pool_id})
+
+        for phase in env.get("deployPhases", []):
+            phase_input = phase.get("phaseInput", {})
+            if phase_input.get("queueId") is not None:
+                old_id = phase_input["queueId"]
+                if old_id != fallback_pool_id:
+                    phase_input["queueId"] = fallback_pool_id
+                    changes.append({"env": env_name, "scope": "deployPhase", "old_id": old_id, "new_id": fallback_pool_id})
+
+    return changes
 
 
 def create_clone_backup(definition: Dict, source_id: int, backup_path: str) -> str:
@@ -510,12 +565,44 @@ def main():
             progress.update(task, description=f"[red]✗ Error HTTP {e.code}")
             console.print(f"\n[red]✗ Error HTTP {e.code}: {e.reason}[/red]")
             if e.code == 403:
-                console.print(f"[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
-                console.print(f"[yellow]  Posibles causas:[/yellow]")
-                console.print(f"[dim]    • El PAT no tiene permisos de 'Create' en Release Definitions[/dim]")
-                console.print(f"[dim]    • El usuario no tiene permisos 'Use' sobre los agent pools referenciados[/dim]")
-                console.print(f"[dim]    • Contacta al administrador de Azure DevOps para solicitar permisos[/dim]")
-            sys.exit(1)
+                # Listar agent pools referenciados
+                pools = extract_agent_pools(payload)
+                if pools:
+                    console.print(f"\n[yellow]  📋 Agent pools referenciados en la definición:[/yellow]")
+                    for p in pools:
+                        console.print(f"[dim]    • ID {p['id']} - {p['name']} (env: {p['env']}, scope: {p['scope']})[/dim]")
+
+                    console.print(f"\n[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
+                    console.print(f"[yellow]  Reemplazando agent pools por pool #{DEFAULT_FALLBACK_POOL_ID} y reintentando...[/yellow]")
+
+                    # Reemplazar pools y reintentar
+                    changes = replace_agent_pools(payload, DEFAULT_FALLBACK_POOL_ID)
+                    for c in changes:
+                        console.print(f"[dim]    • {c['env']}: pool {c['old_id']} → {c['new_id']}[/dim]")
+
+                    progress.update(task, description="[cyan]Reintentando con pool #{}...".format(DEFAULT_FALLBACK_POOL_ID))
+                    try:
+                        result = create_release_definition(org, project, payload, pat)
+                        progress.update(task, advance=1, description="[green]✓ Pipeline creado (con pool fallback)")
+                    except urllib.error.HTTPError as e2:
+                        progress.update(task, description=f"[red]✗ Error HTTP {e2.code}")
+                        console.print(f"\n[red]✗ Error HTTP {e2.code}: {e2.reason}[/red]")
+                        console.print(f"[yellow]  El reintento con pool #{DEFAULT_FALLBACK_POOL_ID} también falló.[/yellow]")
+                        console.print(f"[dim]    • Verifica que tienes permisos 'Use' sobre el pool #{DEFAULT_FALLBACK_POOL_ID}[/dim]")
+                        console.print(f"[dim]    • Contacta al administrador de Azure DevOps[/dim]")
+                        sys.exit(1)
+                    except Exception as e2:
+                        progress.update(task, description=f"[red]✗ Error")
+                        console.print(f"\n[red]✗ Error: {e2}[/red]")
+                        sys.exit(1)
+                else:
+                    console.print(f"[yellow]  ⚠ Error de permisos (403 Forbidden).[/yellow]")
+                    console.print(f"[yellow]  No se encontraron agent pools en la definición.[/yellow]")
+                    console.print(f"[dim]    • El PAT no tiene permisos de 'Create' en Release Definitions[/dim]")
+                    console.print(f"[dim]    • Contacta al administrador de Azure DevOps[/dim]")
+                    sys.exit(1)
+            else:
+                sys.exit(1)
         except Exception as e:
             progress.update(task, description=f"[red]✗ Error")
             console.print(f"\n[red]✗ Error: {e}[/red]")
