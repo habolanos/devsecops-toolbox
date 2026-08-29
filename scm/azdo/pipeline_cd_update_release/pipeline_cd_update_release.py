@@ -912,22 +912,91 @@ def main():
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
     print(f"{Colors.BOLD}  RESUMEN FINAL{Colors.ENDC}")
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
-    successful = sum(1 for r in results if r['status'] == 'success')
-    failed = sum(1 for r in results if r['status'] == 'error')
-    cancelled = sum(1 for r in results if r['status'] == 'cancelled')
-    dry_run = sum(1 for r in results if r['status'] == 'dry_run')
-    skipped = sum(1 for r in results if r['status'] == 'skipped')
-    print(f"{Colors.GREEN}✅ Exitosos: {successful}/{total}{Colors.ENDC}")
-    if dry_run > 0:
-        print(f"{Colors.CYAN}🔍 Dry-run:  {dry_run}/{total}{Colors.ENDC}")
-    if skipped > 0:
-        print(f"{Colors.YELLOW}⏭  Saltados:  {skipped}/{total}{Colors.ENDC}")
-    if failed > 0:
-        print(f"{Colors.RED}❌ Errores:   {failed}/{total}{Colors.ENDC}")
-    if cancelled > 0:
-        print(f"{Colors.YELLOW}⏸  Cancelados: {cancelled}/{total}{Colors.ENDC}")
-    print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
-    return 0 if failed == 0 and cancelled == 0 else 1
+
+    successful = [r for r in results if r['status'] == 'success']
+    failed = [r for r in results if r['status'] == 'error']
+    cancelled = [r for r in results if r['status'] == 'cancelled']
+    dry_run_list = [r for r in results if r['status'] == 'dry_run']
+    skipped = [r for r in results if r['status'] == 'skipped']
+
+    # Tabla de resultados detallada
+    summary_table = Table(title="Resultados por Release", show_lines=True)
+    summary_table.add_column("#", style="dim", width=4)
+    summary_table.add_column("Release ID", style="cyan", width=12)
+    summary_table.add_column("Status", width=12)
+    summary_table.add_column("Cambios", justify="right", width=8)
+    summary_table.add_column("Detalle", no_wrap=False)
+
+    status_styles = {
+        'success': '[green]✅ Success[/green]',
+        'error': '[red]❌ Error[/red]',
+        'dry_run': '[cyan]🔍 Dry-run[/cyan]',
+        'skipped': '[yellow]⏭ Skipped[/yellow]',
+        'cancelled': '[yellow]⏸ Cancelled[/yellow]',
+    }
+
+    for i, r in enumerate(results, 1):
+        status_str = status_styles.get(r['status'], r['status'])
+        changes = str(r.get('changes', '-'))
+        if r['status'] == 'success':
+            detail = f"Backup: {r.get('backup', '-')}"
+        elif r['status'] == 'error':
+            detail = f"Error: {r.get('error', 'N/A')}"
+        elif r['status'] == 'dry_run':
+            detail = f"{r.get('changes', 0)} cambios simulados"
+        elif r['status'] == 'skipped':
+            detail = "Sin cambios"
+        elif r['status'] == 'cancelled':
+            detail = r.get('error', 'Interrumpido')
+        else:
+            detail = "-"
+        summary_table.add_row(str(i), f"#{r['release_id']}", status_str, changes, detail)
+
+    console.print(summary_table)
+
+    # Estadisticas
+    print()
+    print(f"{Colors.GREEN}✅ Exitosos: {len(successful)}/{total}{Colors.ENDC}")
+    if dry_run_list:
+        print(f"{Colors.CYAN}🔍 Dry-run:  {len(dry_run_list)}/{total}{Colors.ENDC}")
+    if skipped:
+        print(f"{Colors.YELLOW}⏭  Saltados:  {len(skipped)}/{total}{Colors.ENDC}")
+    if failed:
+        print(f"{Colors.RED}❌ Errores:   {len(failed)}/{total}{Colors.ENDC}")
+    if cancelled:
+        print(f"{Colors.YELLOW}⏸  Cancelados: {len(cancelled)}/{total}{Colors.ENDC}")
+
+    # Listado agrupado de releases fallidos
+    if failed or cancelled:
+        print(f"\n{Colors.BOLD}{'─'*70}{Colors.ENDC}")
+        print(f"{Colors.RED}  RELEASES NO ACTUALIZADOS{Colors.ENDC}")
+        print(f"{Colors.BOLD}{'─'*70}{Colors.ENDC}\n")
+
+        # Agrupar por motivo de error
+        error_groups = {}
+        for r in failed + cancelled:
+            err_msg = r.get('error', 'Unknown')
+            # Normalizar error HTTP para agrupar
+            if 'HTTP' in err_msg and '403' in err_msg:
+                group_key = 'HTTP 403 - Forbidden (permisos)'
+            elif 'HTTP' in err_msg and '404' in err_msg:
+                group_key = 'HTTP 404 - Not Found (release no existe)'
+            elif 'HTTP' in err_msg and '409' in err_msg:
+                group_key = 'HTTP 409 - Conflict'
+            elif 'HTTP' in err_msg:
+                group_key = err_msg.split(':')[0] if ':' in err_msg else err_msg
+            elif 'Interrumpido' in err_msg:
+                group_key = 'Cancelado por usuario'
+            else:
+                group_key = err_msg[:80]
+            error_groups.setdefault(group_key, []).append(r['release_id'])
+
+        for group_key, rids in error_groups.items():
+            print(f"  {Colors.RED}• {group_key}{Colors.ENDC}")
+            print(f"    {Colors.DIM}Releases: {', '.join([f'#{rid}' for rid in rids])}{Colors.ENDC}\n")
+
+    print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+    return 0 if not failed and not cancelled else 1
 
 
 if __name__ == "__main__":
