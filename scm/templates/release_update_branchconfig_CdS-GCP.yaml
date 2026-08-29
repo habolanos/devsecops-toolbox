@@ -1,0 +1,47 @@
+metadata:
+  name: "Actualizar branchConfig, k8ManifestPath y path_pipelineConfig en release"
+  version: "1.3"
+  description: "Busca branchConfig=config-cadenaSuministro y k8ManifestPath=GCP/K8/k8s-manifest-template-GCP-v2.yaml en variables globales y los actualiza. Ademas busca path_pipelineConfig en el script de la task 'get file k8-manifest' y lo reemplaza por path_pipelineConfigYml"
+  comment: |
+    Cambios:
+    1. Variable global branchConfig: config-cadenaSuministro → feature/feature-amad
+    2. Variable global k8ManifestPath: GCP/K8/k8s-manifest-template-GCP-v2.yaml → frameworks/k8Templates/k8s-manifest-template-GCP-v2.yaml
+    3. Task "get file k8-manifest": path_pipelineConfig → path_pipelineConfigYml en inputs.script
+    Razon: Promocion a feature branch, reubicacion de template k8s y renombrado de variable de configuracion
+    Aprobado por: DevOps Lead
+    Fecha: 2026-08-27
+  author: "DevOps Team"
+  created_at: "2026-08-27"
+
+search:
+  stages:
+    - name: "*"
+  variables:
+    - name: "branchConfig"
+      value: "CdS-GCP"
+      scope: "*" # release, o Stage Name
+
+release:
+  ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
+
+update:
+  global_vars: []
+
+  env_vars:
+    - name: "branchConfig"
+      value: "feature/feature-amad"
+    - name: "k8ManifestPath"
+      value: "frameworks/k8Templates/k8s-manifest-template-GCP-v2.yaml"
+
+  tasks:
+    - name: "get file k8-manifest"
+      fields:
+        - path: "inputs.script"
+          old_value: "path_pipelineConfig"
+          new_value: "path_pipelineConfigYml"
+
+  abandon: false
+
+options:
+  dry_run: false
+  backup_path: "./outcome/backups"
