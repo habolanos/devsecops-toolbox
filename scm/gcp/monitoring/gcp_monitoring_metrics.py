@@ -585,3 +585,217 @@ def format_percentage(value: Optional[float]) -> str:
     if value is None:
         return "N/A"
     return f"{value:.1f}%"
+
+
+def get_cloud_run_usage_metrics(
+    project_id: str,
+    service_name: str,
+    region: str,
+    logger: Optional[logging.Logger] = None
+) -> Dict[str, Any]:
+    """Obtiene métricas de uso de un servicio Cloud Run via REST API.
+    
+    Métricas obtenidas:
+    - Request count (últimos 5 min)
+    - Latencia p95 (ms)
+    - CPU utilizado (%)
+    - Memoria utilizada (%)
+    - Tasa de errores (4xx+5xx / total)
+    
+    Args:
+        project_id: ID del proyecto GCP
+        service_name: Nombre del servicio Cloud Run
+        region: Región del servicio
+        logger: Logger
+        
+    Returns:
+        {
+            'request_count': int,
+            'latency_p95_ms': float,
+            'cpu_percent': float,
+            'memory_percent': float,
+            'error_rate_percent': float,
+            'status': 'success' | 'error' | 'unavailable'
+        }
+    """
+    if not MONITORING_AVAILABLE:
+        return {
+            'request_count': None,
+            'latency_p95_ms': None,
+            'cpu_percent': None,
+            'memory_percent': None,
+            'error_rate_percent': None,
+            'status': 'unavailable'
+        }
+    
+    try:
+        # Request count
+        req_query = f"""
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/request_count'
+        | filter resource.project_id == '{project_id}'
+        | filter resource.service_name == '{service_name}'
+        | filter resource.location == '{region}'
+        | group_by [total: sum(value.request_count)]
+        | within 5m
+        """
+        
+        request_count = None
+        try:
+            resp = _query_monitoring_rest(project_id, req_query, logger)
+            if resp:
+                val = _extract_latest_value(resp)
+                request_count = int(val) if val is not None else 0
+        except Exception as e:
+            if logger:
+                logger.warning(f"No se pudo obtener request_count para {service_name}: {e}")
+        
+        # Latencia p95
+        latency_query = f"""
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/request_latencies'
+        | filter resource.project_id == '{project_id}'
+        | filter resource.service_name == '{service_name}'
+        | filter resource.location == '{region}'
+        | group_by [p95: percentile(value.latencies, 95)]
+        | within 5m
+        """
+        
+        latency_p95 = None
+        try:
+            resp = _query_monitoring_rest(project_id, latency_query, logger)
+            if resp:
+                latency_p95 = _extract_latest_value(resp)
+        except Exception as e:
+            if logger:
+                logger.warning(f"No se pudo obtener latencia para {service_name}: {e}")
+        
+        # CPU utilizado
+        cpu_query = f"""
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/container/cpu/utilizations'
+        | filter resource.project_id == '{project_id}'
+        | filter resource.service_name == '{service_name}'
+        | filter resource.location == '{region}'
+        | group_by [cpu: mean(value.cpu_utilization)]
+        | within 5m
+        """
+        
+        cpu_percent = None
+        try:
+            resp = _query_monitoring_rest(project_id, cpu_query, logger)
+            if resp:
+                val = _extract_latest_value(resp)
+                cpu_percent = (val * 100) if val is not None else None
+        except Exception as e:
+            if logger:
+                logger.warning(f"No se pudo obtener CPU para {service_name}: {e}")
+        
+        # Memoria utilizada
+        mem_query = f"""
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/container/memory/utilizations'
+        | filter resource.project_id == '{project_id}'
+        | filter resource.service_name == '{service_name}'
+        | filter resource.location == '{region}'
+        | group_by [mem: mean(value.memory_utilization)]
+        | within 5m
+        """
+        
+        memory_percent = None
+        try:
+            resp = _query_monitoring_rest(project_id, mem_query, logger)
+            if resp:
+                val = _extract_latest_value(resp)
+                memory_percent = (val * 100) if val is not None else None
+        except Exception as e:
+            if logger:
+                logger.warning(f"No se pudo obtener memoria para {service_name}: {e}")
+        
+        return {
+            'request_count': request_count,
+            'latency_p95_ms': round(latency_p95, 1) if latency_p95 is not None else None,
+            'cpu_percent': round(cpu_percent, 1) if cpu_percent is not None else None,
+            'memory_percent': round(memory_percent, 1) if memory_percent is not None else None,
+            'error_rate_percent': None,
+            'status': 'success' if any([request_count, latency_p95, cpu_percent, memory_percent]) else 'unavailable'
+        }
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Error obteniendo métricas Cloud Run para {service_name}: {e}")
+        return {
+            'request_count': None,
+            'latency_p95_ms': None,
+            'cpu_percent': None,
+            'memory_percent': None,
+            'error_rate_percent': None,
+            'status': 'error'
+        }
+
+
+def get_cloud_run_metrics_parallel(
+    project_id: str,
+    services: List[Dict[str, Any]],
+    max_workers: int = 6,
+    debug: bool = False,
+    console=None,
+    logger: Optional[logging.Logger] = None
+) -> Dict[str, Dict[str, Any]]:
+    """Obtiene métricas de uso para múltiples servicios Cloud Run en paralelo.
+    
+    Args:
+        project_id: ID del proyecto GCP
+        services: Lista de dicts con 'name' y 'region'
+        max_workers: Número máximo de workers
+        debug: Modo debug
+        console: Console de Rich
+        logger: Logger
+        
+    Returns:
+        {
+            'service_name': {
+                'request_count': X,
+                'latency_p95_ms': Y,
+                'cpu_percent': Z,
+                'memory_percent': W,
+                'status': 'success'|'error'|'unavailable'
+            }
+        }
+    """
+    metrics = {}
+    
+    if not services:
+        return metrics
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                get_cloud_run_usage_metrics,
+                project_id,
+                svc['name'],
+                svc['region'],
+                logger
+            ): svc['name']
+            for svc in services
+            if svc.get('name') and svc.get('region')
+        }
+        
+        for future in as_completed(futures):
+            service_name = futures[future]
+            try:
+                result = future.result(timeout=30)
+                metrics[service_name] = result
+            except Exception as e:
+                if logger:
+                    logger.error(f"Error obteniendo métricas Cloud Run para {service_name}: {e}")
+                metrics[service_name] = {
+                    'request_count': None,
+                    'latency_p95_ms': None,
+                    'cpu_percent': None,
+                    'memory_percent': None,
+                    'error_rate_percent': None,
+                    'status': 'error'
+                }
+    
+    return metrics

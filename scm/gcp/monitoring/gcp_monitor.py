@@ -41,6 +41,7 @@ try:
     from gcp_monitoring_metrics import (
         get_gke_metrics_parallel,
         get_compute_metrics_parallel,
+        get_cloud_run_metrics_parallel,
         format_percentage,
         MONITORING_AVAILABLE
     )
@@ -49,6 +50,8 @@ except ImportError:
     def get_gke_metrics_parallel(*args, **kwargs):
         return {}
     def get_compute_metrics_parallel(*args, **kwargs):
+        return {}
+    def get_cloud_run_metrics_parallel(*args, **kwargs):
         return {}
     def format_percentage(value):
         return "N/A"
@@ -743,25 +746,98 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         console.print(table)
         console.print()
     
-    # Tabla consolidada de Cloud Run
+    # Tabla consolidada de Cloud Run con info + métricas
     all_run = []
+    cloudrun_metrics_all = {}
+    
+    # Obtener métricas de Cloud Run en paralelo
+    if MONITORING_AVAILABLE:
+        for project_id, data in all_data.items():
+            run_services = data.get('cloud_run', [])
+            svc_list = []
+            for svc in run_services:
+                metadata = svc.get('metadata', {})
+                name = metadata.get('name', '')
+                region = metadata.get('namespace', '').split('--')[0] if metadata.get('namespace') else ''
+                if name and region:
+                    svc_list.append({'name': name, 'region': region})
+            if svc_list:
+                metrics = get_cloud_run_metrics_parallel(
+                    project_id, svc_list, max_workers=6, logger=logger
+                )
+                cloudrun_metrics_all.update(metrics)
+    
     for project_id, data in all_data.items():
         run_services = data.get('cloud_run', [])
-        for svc in run_services[:10]:
+        for svc in run_services:
             metadata = svc.get('metadata', {})
+            spec = svc.get('spec', {})
+            template = spec.get('template', {})
+            containers = template.get('spec', {}).get('containers', [])
+            annotations = metadata.get('annotations', {})
+            
+            name = metadata.get('name', 'N/A')
+            region = metadata.get('namespace', 'N/A')
+            url = svc.get('status', {}).get('url', 'N/A')
+            if url and url != 'N/A':
+                url = url.replace('https://', '')[:50]
+            
+            concurrency = template.get('spec', {}).get('containerConcurrency', 'N/A')
+            
+            # CPU y memoria limits
+            cpu_limit = 'N/A'
+            mem_limit = 'N/A'
+            if containers:
+                limits = containers[0].get('resources', {}).get('limits', {})
+                cpu_limit = limits.get('cpu', 'N/A')
+                mem_limit = limits.get('memory', 'N/A')
+            
+            ingress = annotations.get('run.googleapis.com/ingress', 'all')
+            last_deploy = annotations.get('client.knative.dev/user-image', '')
+            if last_deploy:
+                last_deploy = last_deploy.split('/')[-1][:30]
+            
+            # Métricas
+            metrics = cloudrun_metrics_all.get(name, {})
+            req_count = metrics.get('request_count')
+            latency = metrics.get('latency_p95_ms')
+            cpu_pct = metrics.get('cpu_percent')
+            mem_pct = metrics.get('memory_percent')
+            
+            req_str = str(req_count) if req_count is not None else "N/A"
+            lat_str = f"{latency:.0f}ms" if latency is not None else "N/A"
+            cpu_str = format_percentage(cpu_pct)
+            mem_str = format_percentage(mem_pct)
+            
             all_run.append((
                 project_id,
-                metadata.get('name', 'N/A')[:40],
-                metadata.get('namespace', 'N/A')[:20],
-                "✅ Activo"
+                name[:40],
+                region[:20],
+                url,
+                str(concurrency),
+                cpu_limit,
+                mem_limit,
+                ingress,
+                req_str,
+                lat_str,
+                cpu_str,
+                mem_str
             ))
     
     if all_run:
-        table = Table(title="🚀 Servicios Cloud Run", box=box.ROUNDED)
-        table.add_column("Proyecto", style="magenta")
-        table.add_column("Nombre", style="cyan")
+        table = Table(title="🚀 Servicios Cloud Run", box=box.ROUNDED, show_lines=False)
+        table.add_column("Proyecto", style="magenta", no_wrap=False)
+        table.add_column("Nombre", style="cyan", no_wrap=False)
         table.add_column("Región", style="yellow")
-        table.add_column("Estado", style="green")
+        table.add_column("URL", style="blue", no_wrap=False)
+        table.add_column("Conc.", style="white", justify="right")
+        table.add_column("CPU Lim", style="white", justify="right")
+        table.add_column("Mem Lim", style="white", justify="right")
+        table.add_column("Ingress", style="white")
+        table.add_column("Requests", style="green", justify="right")
+        table.add_column("Lat p95", style="green", justify="right")
+        table.add_column("CPU %", style="yellow", justify="right")
+        table.add_column("Mem %", style="yellow", justify="right")
         for row in all_run:
             table.add_row(*row)
         console.print(table)
@@ -872,18 +948,42 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
     run_services = data.get('cloud_run', [])
     if run_services:
         table = Table(title="🚀 Servicios Cloud Run", box=box.ROUNDED)
-        table.add_column("Nombre", style="cyan")
+        table.add_column("Nombre", style="cyan", no_wrap=False)
         table.add_column("Región", style="yellow")
-        table.add_column("Estado", style="green")
-        for svc in run_services[:10]:
+        table.add_column("URL", style="blue", no_wrap=False)
+        table.add_column("Conc.", style="white", justify="right")
+        table.add_column("CPU Lim", style="white", justify="right")
+        table.add_column("Mem Lim", style="white", justify="right")
+        table.add_column("Ingress", style="white")
+        for svc in run_services:
             metadata = svc.get('metadata', {})
+            spec = svc.get('spec', {})
+            template = spec.get('template', {})
+            containers = template.get('spec', {}).get('containers', [])
+            annotations = metadata.get('annotations', {})
+            
+            url = svc.get('status', {}).get('url', 'N/A')
+            if url and url != 'N/A':
+                url = url.replace('https://', '')[:50]
+            
+            concurrency = template.get('spec', {}).get('containerConcurrency', 'N/A')
+            cpu_limit = 'N/A'
+            mem_limit = 'N/A'
+            if containers:
+                limits = containers[0].get('resources', {}).get('limits', {})
+                cpu_limit = limits.get('cpu', 'N/A')
+                mem_limit = limits.get('memory', 'N/A')
+            ingress = annotations.get('run.googleapis.com/ingress', 'all')
+            
             table.add_row(
                 metadata.get('name', 'N/A')[:40],
                 metadata.get('namespace', 'N/A')[:20],
-                "✅ Activo"
+                url,
+                str(concurrency),
+                cpu_limit,
+                mem_limit,
+                ingress
             )
-        if len(run_services) > 10:
-            table.add_row(f"... y {len(run_services) - 10} más", "", "")
         console.print(table)
         console.print()
     

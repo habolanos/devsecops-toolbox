@@ -23,6 +23,10 @@ Script de monitoreo de recursos GCP que genera reportes de estatus, consumo y us
 - Consumo de CPU y memoria
 - Servicios con alto uso de memoria
 - Estado y uso de disco de instancias Cloud SQL
+- Monitoreo de Cloud Run: info del servicio (URL, concurrencia, CPU/mem limits, ingress) + métricas (requests, latencia p95, CPU%, memoria%)
+- Monitoreo de Compute Engine: specs (CPU, memoria, disco) + métricas de uso (CPU%, memoria%, disco%)
+- Monitoreo de GKE: capacidad (CPU total, memoria total) + métricas de uso (CPU%, memoria%)
+- Reporte consolidado multi-proyecto con tabla Rich
 
 ### Uso
 
@@ -510,6 +514,8 @@ Desarrollado para monitoreo y auditoría de recursos en clusters GKE.
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-08-31 | 3.1.3 | gcp_monitor.py: Monitoreo Cloud Run con info (URL, concurrencia, limits, ingress) + métricas (requests, latencia p95, CPU%, mem%) |
+| 2026-08-31 | 3.1.2 | gcp_monitor.py: Fix métricas Compute Engine usando instance_id numérico, reporte consolidado con Rich Table, fix spinners en pipe |
 | 2026-02-20 | 3.1.0 | gcp_monitor.py: Reporte JSON mejorado con metadatos (timestamp, timezone, summary) |
 | 2026-02-20 | 3.0.0 | gcp_monitor.py: Refactorizado para usar gcloud CLI, monitoreo de GKE, Cloud SQL, Compute Engine, Cloud Run, Pub/Sub |
 | 2026-02-19 | 2.1.0 | gcp_monitor.py: Export CSV/JSON, show_help(), get_args(), fallback sin Rich, --max-workers |
