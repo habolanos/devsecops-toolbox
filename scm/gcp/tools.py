@@ -910,9 +910,9 @@ def log_command(cmd: List[str], status: str = "EXEC") -> None:
 def _run_with_spinner(cmd: List[str]):
     """Ejecuta un comando mostrando un spinner mientras arranca.
 
-    El spinner se muestra inmediatamente y se detiene en cuanto el
-    proceso hijo produce su primera linea de output. A partir de ahi,
-    el output se transmite en tiempo real (streaming).
+    El spinner se muestra inmediatamente y se detiene por completo
+    antes de escribir cualquier output del proceso hijo, evitando
+    superposicion de mensajes.
 
     Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
     """
@@ -931,10 +931,9 @@ def _run_with_spinner(cmd: List[str]):
     def _spinner_thread():
         if RICH_AVAILABLE:
             console = Console()
-            with Live(Spinner("dots", text="[bold cyan]Iniciando...[/bold cyan]"),
+            with Live(Spinner("dots", text="[bold cyan]Cargando herramienta...[/bold cyan]"),
                       console=console, refresh_per_second=10, transient=True) as live:
                 while not first_output.is_set() and proc.poll() is None:
-                    live.update(Spinner("dots", text="[bold cyan]Cargando herramienta...[/bold cyan]"))
                     first_output.wait(timeout=0.1)
         else:
             spinner_chars = "|/-\\"
@@ -952,14 +951,24 @@ def _run_with_spinner(cmd: List[str]):
 
     lines = []
     try:
+        # Leer primera linea: detener spinner ANTES de escribir
+        first_line = proc.stdout.readline()
+        first_output.set()
+        spinner_t.join(timeout=3)
+
+        if first_line:
+            sys.stdout.write(first_line)
+            sys.stdout.flush()
+            lines.append(first_line)
+
+        # Stream del resto del output
         for line in proc.stdout:
-            first_output.set()
             sys.stdout.write(line)
             sys.stdout.flush()
             lines.append(line)
     finally:
         first_output.set()
-        spinner_t.join(timeout=2)
+        spinner_t.join(timeout=3)
 
     proc.wait()
     if proc.returncode != 0:
