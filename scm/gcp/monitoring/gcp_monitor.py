@@ -464,11 +464,10 @@ def get_cloud_run_services(project_id: str, debug: bool, console, logger=None) -
 def check_gcp_connection(project_id: str, console, debug: bool = False) -> bool:
     """Verifica la conexión a GCP antes de ejecutar el script."""
     try:
-        if RICH_AVAILABLE and console:
+        if RICH_AVAILABLE and console and sys.stdout.isatty():
             with console.status("[bold cyan]Verificando conexión a GCP...[/]"):
                 return _verify_gcp_auth(project_id, console, debug)
         else:
-            print("Verificando conexión a GCP...")
             return _verify_gcp_auth(project_id, console, debug)
     except Exception as e:
         if RICH_AVAILABLE and console:
@@ -1703,7 +1702,7 @@ def main() -> int:
         
         # Procesar proyectos en paralelo si hay múltiples
         if len(project_ids) > 1 and use_parallel:
-            if RICH_AVAILABLE and console:
+            if RICH_AVAILABLE and console and sys.stdout.isatty():
                 with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                     task = progress.add_task(f"[cyan]Procesando {len(project_ids)} proyectos en paralelo...", total=len(project_ids))
                     
@@ -1726,7 +1725,7 @@ def main() -> int:
         else:
             # Procesar proyectos secuencialmente
             for project_id in project_ids:
-                if RICH_AVAILABLE and console:
+                if RICH_AVAILABLE and console and sys.stdout.isatty():
                     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                         task = progress.add_task(f"[cyan]Recopilando recursos de {project_id}...", total=None)
                         _, data = process_project(project_id)
