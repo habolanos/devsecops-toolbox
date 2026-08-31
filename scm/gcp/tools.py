@@ -34,8 +34,6 @@ try:
     from rich.box import ROUNDED, DOUBLE_EDGE, HEAVY
     from rich.align import Align
     from rich.columns import Columns
-    from rich.live import Live
-    from rich.spinner import Spinner
     from rich import print as rprint
     RICH_AVAILABLE = True
 except ImportError:
@@ -908,16 +906,13 @@ def log_command(cmd: List[str], status: str = "EXEC") -> None:
 
 
 def _run_with_spinner(cmd: List[str]):
-    """Ejecuta un comando mostrando un spinner mientras arranca.
+    """Ejecuta un comando mostrando un mensaje de carga mientras arranca.
 
-    El spinner se muestra inmediatamente y se detiene por completo
-    antes de escribir cualquier output del proceso hijo, evitando
-    superposicion de mensajes.
+    Imprime un mensaje estatico y lo limpia antes de escribir el output
+    del proceso hijo, evitando superposicion con Rich/ANSI del subprocess.
 
     Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
     """
-    import threading
-
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -926,49 +921,26 @@ def _run_with_spinner(cmd: List[str]):
         bufsize=1,
     )
 
-    first_output = threading.Event()
+    loading_msg = f"{Colors.CYAN}⏳ Cargando herramienta...{Colors.ENDC}"
+    clear_line = "\r" + " " * 45 + "\r"
 
-    def _spinner_thread():
-        if RICH_AVAILABLE:
-            console = Console()
-            with Live(Spinner("dots", text="[bold cyan]Cargando herramienta...[/bold cyan]"),
-                      console=console, refresh_per_second=10, transient=True) as live:
-                while not first_output.is_set() and proc.poll() is None:
-                    first_output.wait(timeout=0.1)
-        else:
-            spinner_chars = "|/-\\"
-            idx = 0
-            while not first_output.is_set() and proc.poll() is None:
-                sys.stdout.write(f"\r{Colors.CYAN}{spinner_chars[idx]} Cargando herramienta...{Colors.ENDC}")
-                sys.stdout.flush()
-                idx = (idx + 1) % 4
-                first_output.wait(timeout=0.1)
-            sys.stdout.write("\r" + " " * 40 + "\r")
-            sys.stdout.flush()
-
-    spinner_t = threading.Thread(target=_spinner_thread, daemon=True)
-    spinner_t.start()
+    sys.stdout.write(loading_msg)
+    sys.stdout.flush()
 
     lines = []
-    try:
-        # Leer primera linea: detener spinner ANTES de escribir
-        first_line = proc.stdout.readline()
-        first_output.set()
-        spinner_t.join(timeout=3)
-
-        if first_line:
-            sys.stdout.write(first_line)
+    first_written = False
+    for line in proc.stdout:
+        if not first_written:
+            sys.stdout.write(clear_line)
             sys.stdout.flush()
-            lines.append(first_line)
+            first_written = True
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        lines.append(line)
 
-        # Stream del resto del output
-        for line in proc.stdout:
-            sys.stdout.write(line)
-            sys.stdout.flush()
-            lines.append(line)
-    finally:
-        first_output.set()
-        spinner_t.join(timeout=3)
+    if not first_written:
+        sys.stdout.write(clear_line)
+        sys.stdout.flush()
 
     proc.wait()
     if proc.returncode != 0:
