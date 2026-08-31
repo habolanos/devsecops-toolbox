@@ -687,7 +687,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     
     for project_id, data in all_data.items():
         compute_instances = data.get('compute_instances', [])
-        for vm in compute_instances[:15]:
+        for vm in compute_instances:
             machine = vm.get('machineType', '').split('/')[-1] if vm.get('machineType') else 'N/A'
             zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
             

@@ -293,7 +293,9 @@ def get_compute_usage_metrics(
     logger: Optional[logging.Logger] = None,
     timeout: int = 30
 ) -> Dict[str, Any]:
-    """Obtiene métricas de uso actual de una instancia Compute Engine.
+    """Obtiene métricas de uso actual de una instancia Compute Engine via REST API.
+    
+    Usa el mismo enfoque REST que las funciones de GKE (gcloud token + Monitoring API).
     
     Args:
         project_id: ID del proyecto GCP
@@ -321,13 +323,7 @@ def get_compute_usage_metrics(
         }
     
     try:
-        client = monitoring_v3.MetricServiceClient()
-        project_name = f"projects/{project_id}"
-        
-        end_time = datetime.utcnow()
-        start_time = end_time - timedelta(minutes=5)
-        
-        # Query para CPU
+        # Query MQL para CPU
         cpu_query = f"""
         fetch gce_instance
         | metric 'compute.googleapis.com/instance/cpu/utilization'
@@ -335,21 +331,19 @@ def get_compute_usage_metrics(
         | filter resource.instance_id == '{instance_name}'
         | filter resource.zone == '{zone}'
         | group_by [value_cpu: mean(value.utilization)]
+        | within 5m
         """
         
         cpu_used = None
         try:
-            results_cpu = client.query_time_series(
-                name=project_name,
-                query=cpu_query
-            )
-            cpu_value = _extract_metric_value(results_cpu)
+            cpu_response = _query_monitoring_rest(project_id, cpu_query, logger)
+            cpu_value = _extract_latest_value(cpu_response) if cpu_response else None
             cpu_used = (cpu_value * 100) if cpu_value is not None else None
         except Exception as e:
             if logger:
                 logger.warning(f"No se pudo obtener CPU para {instance_name}: {e}")
         
-        # Query para Memoria
+        # Query MQL para Memoria
         memory_query = f"""
         fetch gce_instance
         | metric 'agent.googleapis.com/memory/percent_used'
@@ -357,20 +351,18 @@ def get_compute_usage_metrics(
         | filter resource.instance_id == '{instance_name}'
         | filter resource.zone == '{zone}'
         | group_by [value_mem: mean(value.percent_used)]
+        | within 5m
         """
         
         memory_used = None
         try:
-            results_memory = client.query_time_series(
-                name=project_name,
-                query=memory_query
-            )
-            memory_used = _extract_metric_value(results_memory)
+            memory_response = _query_monitoring_rest(project_id, memory_query, logger)
+            memory_used = _extract_latest_value(memory_response) if memory_response else None
         except Exception as e:
             if logger:
                 logger.warning(f"No se pudo obtener Memoria para {instance_name}: {e}")
         
-        # Query para Disco
+        # Query MQL para Disco
         disk_query = f"""
         fetch gce_instance
         | metric 'agent.googleapis.com/disk/percent_used'
@@ -378,15 +370,13 @@ def get_compute_usage_metrics(
         | filter resource.instance_id == '{instance_name}'
         | filter resource.zone == '{zone}'
         | group_by [value_disk: mean(value.percent_used)]
+        | within 5m
         """
         
         disk_used = None
         try:
-            results_disk = client.query_time_series(
-                name=project_name,
-                query=disk_query
-            )
-            disk_used = _extract_metric_value(results_disk)
+            disk_response = _query_monitoring_rest(project_id, disk_query, logger)
+            disk_used = _extract_latest_value(disk_response) if disk_response else None
         except Exception as e:
             if logger:
                 logger.warning(f"No se pudo obtener Disco para {instance_name}: {e}")
