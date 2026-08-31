@@ -100,7 +100,7 @@ class TestGetPlatformConfig:
         from scm.main import get_platform_config
         
         with patch("scm.main.load_config", return_value=sample_config_data):
-            result = get_platform_config("2")  # AZDO es "2"
+            result = get_platform_config("4")  # AZDO es "4"
         
         assert result is not None
         assert result["organization_url"] == "https://dev.azure.com/test-org"
@@ -160,7 +160,7 @@ class TestIsPlatformConfigured:
         from scm.main import is_platform_configured
         
         with patch("scm.main.load_config", return_value=sample_config_data):
-            result = is_platform_configured("2")
+            result = is_platform_configured("4")  # AZDO es "4"
         
         assert result is True
 
@@ -178,7 +178,7 @@ class TestIsPlatformConfigured:
         }
         
         with patch("scm.main.load_config", return_value=config):
-            result = is_platform_configured("2")
+            result = is_platform_configured("4")  # AZDO es "4"
         
         assert result is False
 
@@ -196,7 +196,7 @@ class TestIsPlatformConfigured:
         }
         
         with patch("scm.main.load_config", return_value=config):
-            result = is_platform_configured("2")
+            result = is_platform_configured("4")  # AZDO es "4"
         
         assert result is False
 
@@ -289,7 +289,7 @@ class TestPrepareEnvForPlatform:
         from scm.main import prepare_env_for_platform
         
         with patch("scm.main.load_config", return_value=sample_config_data):
-            env = prepare_env_for_platform("2")
+            env = prepare_env_for_platform("4")  # AZDO es "4"
         
         assert env["AZDO_ORG_URL"] == "https://dev.azure.com/test-org"
         assert env["AZDO_PROJECT"] == "test-project"

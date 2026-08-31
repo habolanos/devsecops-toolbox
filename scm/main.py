@@ -215,8 +215,8 @@ def get_platform_config(platform_key: str) -> Optional[Dict[str, Any]]:
     platform_map = {
         "1": "gcp",
         "2": "azure",
-        "3": "azdo",
-        "4": "aws",
+        "3": "aws",
+        "4": "azdo",
         "5": "terminal",
         "6": "kpi_analyzer"
     }
@@ -233,7 +233,7 @@ def is_platform_configured(platform_key: str) -> bool:
     platform_config = get_platform_config(platform_key)
     
     # Verificaciones específicas por plataforma
-    platform_map = {"1": "gcp", "2": "azure", "3": "azdo", "4": "aws", "5": "terminal", "6": "kpi_analyzer"}
+    platform_map = {"1": "gcp", "2": "azure", "3": "aws", "4": "azdo", "5": "terminal", "6": "kpi_analyzer"}
     platform_name = platform_map.get(platform_key)
     
     if not platform_config:
@@ -305,7 +305,7 @@ def validate_platform_authentication(platform_key: str) -> bool:
     
     auth_config = config.get("auth", {}).get("login", {})
     
-    platform_map = {"1": "gcp", "2": "azure", "3": "azdo", "4": "aws", "5": "terminal", "6": "kpi_analyzer"}
+    platform_map = {"1": "gcp", "2": "azure", "3": "aws", "4": "azdo", "5": "terminal", "6": "kpi_analyzer"}
     platform_name = platform_map.get(platform_key)
     
     if not platform_name or platform_name in ["terminal", "kpi_analyzer"]:
@@ -444,20 +444,10 @@ def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
         return env
     
     # Variables específicas por plataforma
-    platform_map = {"1": "gcp", "2": "azdo", "3": "aws", "4": "terminal", "5": "kpi_analyzer", "6": "dashboard"}
+    platform_map = {"1": "gcp", "2": "azure", "3": "aws", "4": "azdo", "5": "terminal", "6": "kpi_analyzer"}
     platform_name = platform_map.get(platform_key)
     
-    if platform_name == "dashboard":
-        if platform_config.get("org"):
-            env["AZDO_ORG"] = platform_config["org"]
-        if platform_config.get("project"):
-            env["AZDO_PROJECT"] = platform_config["project"]
-        if platform_config.get("pat"):
-            env["AZDO_PAT"] = platform_config["pat"]
-        if platform_config.get("webhook_url"):
-            env["TEAMS_WEBHOOK_URL"] = platform_config["webhook_url"]
-    
-    elif platform_name == "azdo":
+    if platform_name == "azdo":
         if platform_config.get("organization_url"):
             env["AZDO_ORG_URL"] = platform_config["organization_url"]
         if platform_config.get("project"):
