@@ -34,6 +34,8 @@ try:
     from rich.box import ROUNDED, DOUBLE_EDGE, HEAVY
     from rich.align import Align
     from rich.columns import Columns
+    from rich.live import Live
+    from rich.spinner import Spinner
     from rich import print as rprint
     RICH_AVAILABLE = True
 except ImportError:
@@ -904,6 +906,66 @@ def log_command(cmd: List[str], status: str = "EXEC") -> None:
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(f"[{ts}] [{_PLATFORM}] [{status}] {cmd_str}\n")
 
+
+def _run_with_spinner(cmd: List[str]):
+    """Ejecuta un comando mostrando un spinner mientras arranca.
+
+    El spinner se muestra inmediatamente y se detiene en cuanto el
+    proceso hijo produce su primera linea de output. A partir de ahi,
+    el output se transmite en tiempo real (streaming).
+
+    Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
+    """
+    import threading
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    first_output = threading.Event()
+
+    def _spinner_thread():
+        if RICH_AVAILABLE:
+            console = Console()
+            with Live(Spinner("dots", text="[bold cyan]Iniciando...[/bold cyan]"),
+                      console=console, refresh_per_second=10, transient=True) as live:
+                while not first_output.is_set() and proc.poll() is None:
+                    live.update(Spinner("dots", text="[bold cyan]Cargando herramienta...[/bold cyan]"))
+                    first_output.wait(timeout=0.1)
+        else:
+            spinner_chars = "|/-\\"
+            idx = 0
+            while not first_output.is_set() and proc.poll() is None:
+                sys.stdout.write(f"\r{Colors.CYAN}{spinner_chars[idx]} Cargando herramienta...{Colors.ENDC}")
+                sys.stdout.flush()
+                idx = (idx + 1) % 4
+                first_output.wait(timeout=0.1)
+            sys.stdout.write("\r" + " " * 40 + "\r")
+            sys.stdout.flush()
+
+    spinner_t = threading.Thread(target=_spinner_thread, daemon=True)
+    spinner_t.start()
+
+    lines = []
+    try:
+        for line in proc.stdout:
+            first_output.set()
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            lines.append(line)
+    finally:
+        first_output.set()
+        spinner_t.join(timeout=2)
+
+    proc.wait()
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd, "".join(lines))
+
+
 def run_tool(tool_key: str):
     """Ejecuta la herramienta seleccionada."""
     if tool_key not in TOOLS:
@@ -1225,7 +1287,7 @@ def run_tool(tool_key: str):
 
             log_command(proj_cmd)
             try:
-                subprocess.run(proj_cmd, check=True)
+                _run_with_spinner(proj_cmd)
             except subprocess.CalledProcessError as e:
                 log_command(proj_cmd, "ERROR")
                 print(f"{Colors.FAIL}Error en proyecto {proj}: {e}{Colors.ENDC}")
@@ -1241,7 +1303,7 @@ def run_tool(tool_key: str):
 
         log_command(cmd)
         try:
-            subprocess.run(cmd, check=True)
+            _run_with_spinner(cmd)
         except subprocess.CalledProcessError as e:
             log_command(cmd, "ERROR")
             print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
