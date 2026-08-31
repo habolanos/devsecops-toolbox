@@ -366,8 +366,12 @@ def check_gcp_connection(project_id: str, console, debug: bool = False) -> bool:
         return False
 
 
+_account_checked = False
+
+
 def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     """Función interna para verificar autenticación GCP."""
+    global _account_checked
     auth_cmd = 'gcloud auth list --filter=status:ACTIVE --format="value(account)"'
     if debug:
         if RICH_AVAILABLE and console:
@@ -385,10 +389,12 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
         return False
     
     active_account = auth_result.stdout.strip().split('\n')[0]
-    if RICH_AVAILABLE and console:
-        console.print(f"[green]✓[/] Cuenta activa: [cyan]{active_account}[/]")
-    else:
-        print(f"✓ Cuenta activa: {active_account}")
+    if not _account_checked:
+        if RICH_AVAILABLE and console:
+            console.print(f"[green]✓[/] Cuenta activa: [cyan]{active_account}[/]")
+        else:
+            print(f"✓ Cuenta activa: {active_account}")
+        _account_checked = True
     
     project_cmd = f'gcloud projects describe {project_id} --format="value(projectId)" 2>&1'
     if debug:
@@ -1063,10 +1069,12 @@ def print_execution_summary(start_time: datetime, console, project_id: str, data
         print(f"  Recursos: {total_resources}")
 
 
-def print_consolidated_execution_summary(start_time: datetime, console, all_data: Dict[str, Dict[str, Any]]) -> None:
+def print_consolidated_execution_summary(start_time: datetime, console, all_data: Dict[str, Dict[str, Any]],
+                                         skipped_projects: Optional[List[str]] = None) -> None:
     """Imprime tabla resumen consolidado de ejecución para múltiples proyectos."""
     end_time = datetime.now()
     total_duration = (end_time - start_time).total_seconds()
+    skipped_projects = skipped_projects or []
     
     if RICH_AVAILABLE and console:
         table = Table(title="⏱️ Resumen de Ejecución (CONSOLIDADO)", box=box.ROUNDED)
@@ -1075,6 +1083,8 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
         
         # Información general
         table.add_row("Proyectos procesados", str(len(all_data)))
+        if skipped_projects:
+            table.add_row("Proyectos omitidos (sin acceso)", f"[yellow]{len(skipped_projects)}[/]")
         table.add_row("Tiempo total de ejecución", f"{total_duration:.2f}s")
         
         # Información por proyecto
@@ -1088,9 +1098,17 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
         
         console.print()
         console.print(Panel(table, border_style="blue"))
+        
+        if skipped_projects:
+            console.print("[yellow]⚠ Proyectos omitidos por falta de acceso:[/]")
+            for pid in skipped_projects:
+                console.print(f"  [yellow]• {pid}[/]")
+            console.print()
     else:
         print(f"\n⏱️ Resumen de Ejecución (CONSOLIDADO)")
         print(f"  Proyectos procesados: {len(all_data)}")
+        if skipped_projects:
+            print(f"  Proyectos omitidos (sin acceso): {len(skipped_projects)}")
         print(f"  Tiempo total: {total_duration:.2f}s")
         total_resources_all = 0
         for project_id, data in all_data.items():
@@ -1098,6 +1116,8 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
             total_resources_all += total_resources
             print(f"  Recursos en {project_id}: {total_resources}")
         print(f"  Recursos totales: {total_resources_all}")
+        if skipped_projects:
+            print(f"  Proyectos omitidos: {', '.join(skipped_projects)}")
 
 
 def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) -> Dict[str, Dict[str, Any]]:
@@ -1441,10 +1461,35 @@ def main() -> int:
         print(f"GCP Monitor v{__version__}")
         print(f"Proyectos: {', '.join(project_ids)}")
     
-    # Verificar conexión para cada proyecto
+    # Verificar conexión para cada proyecto (saltar inaccesibles, no abortar)
+    skipped_projects = []
+    valid_project_ids = []
     for project_id in project_ids:
         if not check_gcp_connection(project_id, console, debug):
-            return 1
+            skipped_projects.append(project_id)
+        else:
+            valid_project_ids.append(project_id)
+
+    if skipped_projects:
+        if RICH_AVAILABLE and console:
+            console.print(f"\n[yellow]⚠ {len(skipped_projects)} proyecto(s) sin acceso - se omitirán:[/]")
+            for pid in skipped_projects:
+                console.print(f"  [yellow]• {pid}[/]")
+            console.print()
+        else:
+            print(f"\n⚠ {len(skipped_projects)} proyecto(s) sin acceso - se omitirán:")
+            for pid in skipped_projects:
+                print(f"  • {pid}")
+            print()
+
+    if not valid_project_ids:
+        if RICH_AVAILABLE and console:
+            console.print("[red]❌ No hay proyectos accesibles. Abortando.[/]")
+        else:
+            print("❌ No hay proyectos accesibles. Abortando.")
+        return 1
+
+    project_ids = valid_project_ids
 
     all_data: Dict[str, Dict[str, Any]] = {}
 
@@ -1587,7 +1632,7 @@ def main() -> int:
         logger.info(f"═══════════════════════════════════════════════════════════════")
         
         # Mostrar resumen consolidado de ejecución
-        print_consolidated_execution_summary(start_time, console, all_data)
+        print_consolidated_execution_summary(start_time, console, all_data, skipped_projects)
         
         # Mensaje final - Terminar automáticamente sin esperar entrada
         if RICH_AVAILABLE and console:
