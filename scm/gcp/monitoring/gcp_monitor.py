@@ -900,6 +900,69 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
         console.print()
 
 
+def generate_consolidated_report(all_data: Dict[str, Dict[str, Any]], skipped_projects: Optional[List[str]] = None) -> str:
+    """Genera un reporte consolidado simplificado para todos los proyectos."""
+    lines = []
+    now_local = datetime.now()
+
+    lines.append("=" * 80)
+    lines.append(f"📊 REPORTE CONSOLIDADO DE MONITOREO GCP - {len(all_data)} proyecto(s)")
+    lines.append(f"🕐 Fecha: {now_local.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"📦 Versión: {__version__}")
+    lines.append("=" * 80)
+    lines.append("")
+
+    # Resumen por proyecto
+    lines.append("📌 RESUMEN POR PROYECTO:")
+    lines.append("-" * 80)
+    for project_id, data in all_data.items():
+        services = len(data.get('services', []))
+        gke = len(data.get('gke_clusters', []))
+        sql = len(data.get('sql_instances', []))
+        compute = len(data.get('compute_instances', []))
+        cloud_run = len(data.get('cloud_run', []))
+        pubsub = len(data.get('pubsub_topics', []))
+        total = services + gke + sql + compute + cloud_run + pubsub
+        lines.append(f"  📦 {project_id}")
+        lines.append(f"     Servicios: {services} | GKE: {gke} | Cloud SQL: {sql} | "
+                      f"Compute: {compute} | Cloud Run: {cloud_run} | Pub/Sub: {pubsub}")
+        lines.append(f"     Total recursos: {total}")
+        lines.append("")
+
+    # Proyectos omitidos
+    if skipped_projects:
+        lines.append(f"⚠️  PROYECTOS OMITIDOS ({len(skipped_projects)}):")
+        lines.append("-" * 80)
+        for pid in skipped_projects:
+            lines.append(f"  • {pid} (sin acceso)")
+        lines.append("")
+
+    # Totales consolidados
+    total_services = sum(len(d.get('services', [])) for d in all_data.values())
+    total_gke = sum(len(d.get('gke_clusters', [])) for d in all_data.values())
+    total_sql = sum(len(d.get('sql_instances', [])) for d in all_data.values())
+    total_compute = sum(len(d.get('compute_instances', [])) for d in all_data.values())
+    total_run = sum(len(d.get('cloud_run', [])) for d in all_data.values())
+    total_pubsub = sum(len(d.get('pubsub_topics', [])) for d in all_data.values())
+    grand_total = total_services + total_gke + total_sql + total_compute + total_run + total_pubsub
+
+    lines.append("📊 TOTALES CONSOLIDADOS:")
+    lines.append("-" * 80)
+    lines.append(f"  Proyectos procesados: {len(all_data)}")
+    lines.append(f"  Servicios habilitados: {total_services}")
+    lines.append(f"  Clusters GKE: {total_gke}")
+    lines.append(f"  Instancias Cloud SQL: {total_sql}")
+    lines.append(f"  Instancias Compute Engine: {total_compute}")
+    lines.append(f"  Servicios Cloud Run: {total_run}")
+    lines.append(f"  Topics Pub/Sub: {total_pubsub}")
+    lines.append(f"  ─────────────────────────")
+    lines.append(f"  TOTAL recursos: {grand_total}")
+    lines.append("")
+
+    lines.append("=" * 80)
+    return "\n".join(lines)
+
+
 def generate_report(project_id: str, data: Dict[str, Any]) -> str:
     """Genera el reporte como string."""
     lines = []
@@ -1689,10 +1752,8 @@ def main() -> int:
             console.print()
             create_consolidated_detailed_tables(all_data, console, logger)
         
-        # Generar reporte para el primer proyecto (o consolidado)
-        project_id = project_ids[0]
-        data = all_data.get(project_id, {})
-        report = generate_report(project_id, data)
+        # Generar reporte consolidado para todos los proyectos
+        report = generate_consolidated_report(all_data, skipped_projects)
         
         if RICH_AVAILABLE and console:
             console.print(report)
@@ -1706,16 +1767,23 @@ def main() -> int:
         
         filepaths = []
         
-        # Generar JSON (siempre)
-        json_filepath = export_to_json(data, project_id, outcome_dir, "America/Mazatlan", all_data, logger)
+        # Generar JSON (siempre) - usar todos los proyectos
+        json_filepath = export_to_json(
+            all_data.get(project_ids[0], {}),
+            project_ids[0],
+            outcome_dir,
+            "America/Mazatlan",
+            all_data,
+            logger
+        )
         filepaths.append(json_filepath)
         
         # Generar formato adicional si se especifica
         if args.output == "csv":
-            csv_filepath = export_to_csv(data, project_id, outcome_dir)
+            csv_filepath = export_to_csv(all_data.get(project_ids[0], {}), project_ids[0], outcome_dir)
             filepaths.append(csv_filepath)
         elif args.output == "txt":
-            txt_filepath = export_to_txt(report, project_id, outcome_dir)
+            txt_filepath = export_to_txt(report, project_ids[0], outcome_dir)
             filepaths.append(txt_filepath)
         
         # Generar HTML (siempre)
