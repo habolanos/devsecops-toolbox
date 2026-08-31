@@ -913,12 +913,27 @@ def _run_with_spinner(cmd: List[str]):
 
     Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
     """
+    import os as _os
+    import shutil as _shutil
+
+    env = _os.environ.copy()
+    env["FORCE_COLOR"] = "1"
+    env["ANSI_COLORS_ENABLED"] = "1"
+
+    # Pasar dimensiones del terminal para que Rich del subprocess use ancho correcto
+    try:
+        term_width = _shutil.get_terminal_size((120, 40)).columns
+        env["COLUMNS"] = str(term_width)
+    except Exception:
+        env["COLUMNS"] = "120"
+
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        env=env,
     )
 
     loading_msg = f"{Colors.CYAN}⏳ Cargando herramienta...{Colors.ENDC}"
