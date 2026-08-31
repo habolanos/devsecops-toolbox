@@ -291,7 +291,8 @@ def get_compute_usage_metrics(
     debug: bool = False,
     console=None,
     logger: Optional[logging.Logger] = None,
-    timeout: int = 30
+    timeout: int = 30,
+    instance_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Obtiene métricas de uso actual de una instancia Compute Engine via REST API.
     
@@ -299,12 +300,13 @@ def get_compute_usage_metrics(
     
     Args:
         project_id: ID del proyecto GCP
-        instance_name: Nombre de la instancia
+        instance_name: Nombre de la instancia (usado como key en el dict de retorno)
         zone: Zona de la instancia
         debug: Modo debug
         console: Console de Rich
         logger: Logger
         timeout: Timeout en segundos
+        instance_id: ID numérico de la instancia (requerido por Monitoring API)
         
     Returns:
         {
@@ -322,13 +324,16 @@ def get_compute_usage_metrics(
             'status': 'unavailable'
         }
     
+    # Monitoring API requiere el ID numérico, no el nombre
+    resource_filter = f"resource.instance_id == '{instance_id}'" if instance_id else f"resource.label.instance_name == '{instance_name}'"
+    
     try:
         # Query MQL para CPU
         cpu_query = f"""
         fetch gce_instance
         | metric 'compute.googleapis.com/instance/cpu/utilization'
         | filter resource.project_id == '{project_id}'
-        | filter resource.instance_id == '{instance_name}'
+        | filter {resource_filter}
         | filter resource.zone == '{zone}'
         | group_by [value_cpu: mean(value.utilization)]
         | within 5m
@@ -348,7 +353,7 @@ def get_compute_usage_metrics(
         fetch gce_instance
         | metric 'agent.googleapis.com/memory/percent_used'
         | filter resource.project_id == '{project_id}'
-        | filter resource.instance_id == '{instance_name}'
+        | filter {resource_filter}
         | filter resource.zone == '{zone}'
         | group_by [value_mem: mean(value.percent_used)]
         | within 5m
@@ -367,7 +372,7 @@ def get_compute_usage_metrics(
         fetch gce_instance
         | metric 'agent.googleapis.com/disk/percent_used'
         | filter resource.project_id == '{project_id}'
-        | filter resource.instance_id == '{instance_name}'
+        | filter {resource_filter}
         | filter resource.zone == '{zone}'
         | group_by [value_disk: mean(value.percent_used)]
         | within 5m
@@ -543,7 +548,9 @@ def get_compute_metrics_parallel(
                 instance['zone'],
                 debug,
                 console,
-                logger
+                logger,
+                30,
+                instance.get('instance_id')
             ): instance['name']
             for instance in instances
         }

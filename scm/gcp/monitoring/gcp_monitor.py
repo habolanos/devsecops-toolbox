@@ -671,6 +671,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 all_instances_list.append({
                     'project_id': project_id,
                     'name': vm.get('name'),
+                    'instance_id': vm.get('id'),
                     'zone': zone
                 })
         
@@ -678,7 +679,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             for instance_info in all_instances_list:
                 metrics = get_compute_metrics_parallel(
                     instance_info['project_id'],
-                    [{'name': instance_info['name'], 'zone': instance_info['zone']}],
+                    [{'name': instance_info['name'], 'instance_id': instance_info.get('instance_id'), 'zone': instance_info['zone']}],
                     max_workers=1,
                     logger=logger
                 )
@@ -897,6 +898,67 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
             table.add_row(name, "✅ Activo")
         console.print(table)
         console.print()
+
+
+def print_consolidated_report(all_data: Dict[str, Dict[str, Any]], console, skipped_projects: Optional[List[str]] = None) -> None:
+    """Imprime el reporte consolidado usando Rich Tables cuando está disponible."""
+    now_local = datetime.now()
+
+    if RICH_AVAILABLE and console:
+        console.print()
+        console.print(f"[bold cyan]📊 REPORTE CONSOLIDADO DE MONITOREO GCP - {len(all_data)} proyecto(s)[/]")
+        console.print(f"[dim]🕐 Fecha: {now_local.strftime('%Y-%m-%d %H:%M:%S')} | 📦 Versión: {__version__}[/]")
+        console.print()
+
+        # Tabla de resumen por proyecto
+        table = Table(title="📌 Resumen por Proyecto", box=box.ROUNDED, show_lines=True)
+        table.add_column("Proyecto", style="magenta", no_wrap=False)
+        table.add_column("Servicios", style="cyan", justify="right")
+        table.add_column("GKE", style="cyan", justify="right")
+        table.add_column("Cloud SQL", style="cyan", justify="right")
+        table.add_column("Compute", style="cyan", justify="right")
+        table.add_column("Cloud Run", style="cyan", justify="right")
+        table.add_column("Pub/Sub", style="cyan", justify="right")
+        table.add_column("Total", style="bold yellow", justify="right")
+
+        for project_id, data in all_data.items():
+            services = len(data.get('services', []))
+            gke = len(data.get('gke_clusters', []))
+            sql = len(data.get('sql_instances', []))
+            compute = len(data.get('compute_instances', []))
+            cloud_run = len(data.get('cloud_run', []))
+            pubsub = len(data.get('pubsub_topics', []))
+            total = services + gke + sql + compute + cloud_run + pubsub
+            table.add_row(project_id, str(services), str(gke), str(sql),
+                          str(compute), str(cloud_run), str(pubsub), str(total))
+
+        # Fila de totales
+        t_srv = sum(len(d.get('services', [])) for d in all_data.values())
+        t_gke = sum(len(d.get('gke_clusters', [])) for d in all_data.values())
+        t_sql = sum(len(d.get('sql_instances', [])) for d in all_data.values())
+        t_cmp = sum(len(d.get('compute_instances', [])) for d in all_data.values())
+        t_run = sum(len(d.get('cloud_run', [])) for d in all_data.values())
+        t_pub = sum(len(d.get('pubsub_topics', [])) for d in all_data.values())
+        t_all = t_srv + t_gke + t_sql + t_cmp + t_run + t_pub
+        table.add_row("[bold]TOTAL[/]", f"[bold]{t_srv}[/]", f"[bold]{t_gke}[/]",
+                       f"[bold]{t_sql}[/]", f"[bold]{t_cmp}[/]", f"[bold]{t_run}[/]",
+                       f"[bold]{t_pub}[/]", f"[bold]{t_all}[/]")
+
+        console.print(table)
+
+        # Proyectos omitidos
+        if skipped_projects:
+            console.print()
+            skip_table = Table(title=f"⚠️  Proyectos Omitidos ({len(skipped_projects)})", box=box.ROUNDED)
+            skip_table.add_column("Proyecto", style="yellow")
+            skip_table.add_column("Motivo", style="red")
+            for pid in skipped_projects:
+                skip_table.add_row(pid, "Sin acceso")
+            console.print(skip_table)
+
+        console.print()
+    else:
+        print(generate_consolidated_report(all_data, skipped_projects))
 
 
 def generate_consolidated_report(all_data: Dict[str, Dict[str, Any]], skipped_projects: Optional[List[str]] = None) -> str:
@@ -1752,12 +1814,8 @@ def main() -> int:
             create_consolidated_detailed_tables(all_data, console, logger)
         
         # Generar reporte consolidado para todos los proyectos
+        print_consolidated_report(all_data, console, skipped_projects)
         report = generate_consolidated_report(all_data, skipped_projects)
-        
-        if RICH_AVAILABLE and console:
-            console.print(report)
-        else:
-            print(report)
 
         # Guardar en archivo
         script_dir = os.path.dirname(os.path.abspath(__file__))
