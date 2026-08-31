@@ -153,6 +153,102 @@ MACHINE_SPECS = {
     't2d-standard-32': {'cpu': 32, 'memory': 128},
     't2d-standard-48': {'cpu': 48, 'memory': 192},
     't2d-standard-60': {'cpu': 60, 'memory': 240},
+
+    # Familia N2 (General Purpose)
+    'n2-standard-2': {'cpu': 2, 'memory': 8},
+    'n2-standard-4': {'cpu': 4, 'memory': 16},
+    'n2-standard-8': {'cpu': 8, 'memory': 32},
+    'n2-standard-16': {'cpu': 16, 'memory': 64},
+    'n2-standard-32': {'cpu': 32, 'memory': 128},
+    'n2-standard-48': {'cpu': 48, 'memory': 192},
+    'n2-standard-64': {'cpu': 64, 'memory': 256},
+    'n2-standard-96': {'cpu': 96, 'memory': 384},
+    'n2-highmem-2': {'cpu': 2, 'memory': 16},
+    'n2-highmem-4': {'cpu': 4, 'memory': 32},
+    'n2-highmem-8': {'cpu': 8, 'memory': 64},
+    'n2-highmem-16': {'cpu': 16, 'memory': 128},
+    'n2-highmem-32': {'cpu': 32, 'memory': 256},
+    'n2-highmem-48': {'cpu': 48, 'memory': 384},
+    'n2-highmem-64': {'cpu': 64, 'memory': 512},
+    'n2-highmem-96': {'cpu': 96, 'memory': 768},
+    'n2-highcpu-2': {'cpu': 2, 'memory': 2},
+    'n2-highcpu-4': {'cpu': 4, 'memory': 4},
+    'n2-highcpu-8': {'cpu': 8, 'memory': 8},
+    'n2-highcpu-16': {'cpu': 16, 'memory': 16},
+    'n2-highcpu-32': {'cpu': 32, 'memory': 32},
+    'n2-highcpu-48': {'cpu': 48, 'memory': 48},
+    'n2-highcpu-64': {'cpu': 64, 'memory': 64},
+    'n2-highcpu-96': {'cpu': 96, 'memory': 96},
+
+    # Familia N2D (AMD EPYC)
+    'n2d-standard-2': {'cpu': 2, 'memory': 8},
+    'n2d-standard-4': {'cpu': 4, 'memory': 16},
+    'n2d-standard-8': {'cpu': 8, 'memory': 32},
+    'n2d-standard-16': {'cpu': 16, 'memory': 64},
+    'n2d-standard-32': {'cpu': 32, 'memory': 128},
+    'n2d-standard-48': {'cpu': 48, 'memory': 192},
+    'n2d-standard-64': {'cpu': 64, 'memory': 256},
+    'n2d-standard-96': {'cpu': 96, 'memory': 384},
+    'n2d-standard-128': {'cpu': 128, 'memory': 512},
+    'n2d-standard-224': {'cpu': 224, 'memory': 896},
+    'n2d-highmem-2': {'cpu': 2, 'memory': 16},
+    'n2d-highmem-4': {'cpu': 4, 'memory': 32},
+    'n2d-highmem-8': {'cpu': 8, 'memory': 64},
+    'n2d-highmem-16': {'cpu': 16, 'memory': 128},
+    'n2d-highmem-32': {'cpu': 32, 'memory': 256},
+    'n2d-highmem-48': {'cpu': 48, 'memory': 384},
+    'n2d-highmem-64': {'cpu': 64, 'memory': 512},
+    'n2d-highmem-96': {'cpu': 96, 'memory': 768},
+    'n2d-highcpu-2': {'cpu': 2, 'memory': 2},
+    'n2d-highcpu-4': {'cpu': 4, 'memory': 4},
+    'n2d-highcpu-8': {'cpu': 8, 'memory': 8},
+    'n2d-highcpu-16': {'cpu': 16, 'memory': 16},
+    'n2d-highcpu-32': {'cpu': 32, 'memory': 32},
+    'n2d-highcpu-48': {'cpu': 48, 'memory': 48},
+    'n2d-highcpu-64': {'cpu': 64, 'memory': 64},
+    'n2d-highcpu-96': {'cpu': 96, 'memory': 96},
+
+    # Familia C2D (AMD Compute-Optimized)
+    'c2d-standard-2': {'cpu': 2, 'memory': 8},
+    'c2d-standard-4': {'cpu': 4, 'memory': 16},
+    'c2d-standard-8': {'cpu': 8, 'memory': 32},
+    'c2d-standard-16': {'cpu': 16, 'memory': 64},
+    'c2d-standard-32': {'cpu': 32, 'memory': 128},
+    'c2d-standard-56': {'cpu': 56, 'memory': 224},
+    'c2d-standard-112': {'cpu': 112, 'memory': 448},
+    'c2d-highcpu-2': {'cpu': 2, 'memory': 2},
+    'c2d-highcpu-4': {'cpu': 4, 'memory': 4},
+    'c2d-highcpu-8': {'cpu': 8, 'memory': 8},
+    'c2d-highcpu-16': {'cpu': 16, 'memory': 16},
+    'c2d-highcpu-32': {'cpu': 32, 'memory': 32},
+    'c2d-highcpu-56': {'cpu': 56, 'memory': 56},
+    'c2d-highcpu-112': {'cpu': 112, 'memory': 112},
+
+    # Familia C3 (Intel Sapphire Rapids)
+    'c3-standard-4': {'cpu': 4, 'memory': 16},
+    'c3-standard-8': {'cpu': 8, 'memory': 32},
+    'c3-standard-22': {'cpu': 22, 'memory': 88},
+    'c3-standard-44': {'cpu': 44, 'memory': 176},
+    'c3-standard-88': {'cpu': 88, 'memory': 352},
+    'c3-highcpu-8': {'cpu': 8, 'memory': 7},
+    'c3-highcpu-22': {'cpu': 22, 'memory': 19},
+    'c3-highcpu-44': {'cpu': 44, 'memory': 38},
+    'c3-highcpu-88': {'cpu': 88, 'memory': 76},
+    'c3-highmem-8': {'cpu': 8, 'memory': 64},
+    'c3-highmem-22': {'cpu': 22, 'memory': 176},
+    'c3-highmem-44': {'cpu': 44, 'memory': 352},
+    'c3-highmem-88': {'cpu': 88, 'memory': 704},
+
+    # Familia M2 (Memory-Optimized)
+    'm2-ultramem-208': {'cpu': 208, 'memory': 5888},
+    'm2-ultramem-416': {'cpu': 416, 'memory': 11776},
+
+    # Familia M3 (Memory-Optimized)
+    'm3-ultramem-32': {'cpu': 32, 'memory': 905},
+    'm3-ultramem-64': {'cpu': 64, 'memory': 1810},
+    'm3-ultramem-128': {'cpu': 128, 'memory': 3620},
+    'm3-megamem-64': {'cpu': 64, 'memory': 905},
+    'm3-megamem-128': {'cpu': 128, 'memory': 1810},
 }
 
 def get_machine_specs(machine_type: str) -> Dict[str, float]:
@@ -173,6 +269,22 @@ def get_machine_specs(machine_type: str) -> Dict[str, float]:
     # Buscar en el diccionario
     if machine_type in MACHINE_SPECS:
         return MACHINE_SPECS[machine_type]
+    
+    # Intentar parsear tipos personalizados (e2-custom-N-MEM, n2-custom-N-MEM, etc.)
+    # Formato: {family}-custom-{cpu}-{memory_mb}
+    import re
+    custom_match = re.match(r'^([a-z0-9]+)-custom-(\d+)-(\d+)$', machine_type)
+    if custom_match:
+        cpu = int(custom_match.group(2))
+        memory_mb = int(custom_match.group(3))
+        return {'cpu': cpu, 'memory': round(memory_mb / 1024, 1)}
+    
+    # Intentar parsear tipos con sufijo (n1-standard-4-gpu, etc.)
+    base_match = re.match(r'^([a-z0-9]+-(?:standard|highmem|highcpu)-\d+)', machine_type)
+    if base_match:
+        base = base_match.group(1)
+        if base in MACHINE_SPECS:
+            return MACHINE_SPECS[base]
     
     # Si no se encuentra, retornar valores por defecto
     return {'cpu': 0, 'memory': 0}
@@ -555,7 +667,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         all_instances_list = []
         for project_id, data in all_data.items():
             compute_instances = data.get('compute_instances', [])
-            for vm in compute_instances[:15]:
+            for vm in compute_instances:
                 zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
                 all_instances_list.append({
                     'project_id': project_id,
@@ -601,9 +713,9 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             
             all_compute.append((
                 project_id,
-                instance_name[:30],
+                instance_name,
                 vm.get('status', 'N/A'),
-                machine[:20],
+                machine,
                 zone,
                 cpu_str,
                 memory_str,
