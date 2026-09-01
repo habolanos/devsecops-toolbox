@@ -494,6 +494,16 @@ TOOLS = {
         "group": "inventory",
         "status": "ready"
     },
+    # ══════════ MONITORING (41) ══════════
+    "41": {
+        "name": "ECS Fargate Metrics Monitor",
+        "description": "Monitorea métricas de uso de servicios ECS Fargate: requests, latencia, CPU, memoria y errores",
+        "path": "cloudwatch/aws_ecs_fargate_metrics_monitor.py",
+        "args": ["--profile", "--region", "--cluster", "-o"],
+        "requirements": None,
+        "group": "monitoring",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {

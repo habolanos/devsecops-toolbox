@@ -17,7 +17,7 @@ Herramientas DevSecOps para análisis y monitoreo de recursos AWS.
 | **[ecr/](ecr/README.md)** | Repositorios ECR, imágenes y lifecycle policies |
 | **[ec2/](ec2/README.md)** | Instancias EC2, estado y volúmenes EBS |
 | **[lambda/](lambda/README.md)** | Funciones Lambda, runtime y memoria |
-| **[cloudwatch/](cloudwatch/README.md)** | Alarmas CloudWatch y estado |
+| **[cloudwatch/](cloudwatch/README.md)** | Alarmas CloudWatch y métricas de ECS Fargate |
 | **[secretsmanager/](secretsmanager/)** | Secrets Manager y SSM Parameter Store |
 | **[waf/](waf/)** | AWS WAF v2: Web ACLs, reglas y logging |
 | **[inventory/](inventory/)** | Inventario completo multi-servicio y multi-región |
@@ -46,7 +46,8 @@ python tools.py --profile my-profile --region us-west-2
 | 9 | Kubernetes | EKS Cluster Checker | gcp_cluster_checker | Clusters, node groups, addons |
 | 10 | Artifacts | ECR Repository Checker | artifact-registry | Repositorios, imágenes, policies |
 | 11 | Compute | EC2 Instances Checker | gcp_monitor | Instancias, estado, networking |
-| 12 | Compute | Lambda Functions Checker | cloud-run | Funciones, runtime, memoria |
+| 20 | Monitoring | **CloudWatch Metrics Monitor** *(nuevo)* | gcp_monitor | Métricas de EC2, RDS, EKS, Lambda |
+| 41 | Monitoring | **ECS Fargate Metrics Monitor** *(nuevo)* | cloud-run | Requests, latencia p95, CPU%, memoria% y errores de ECS Fargate |
 | 13 | Monitoring | CloudWatch Alarms Checker | gcp_monitor | Alarmas, estado, acciones |
 | 14 | Database | **EBS Volume Checker** *(nuevo)* | gcp_disk_checker | Volúmenes EBS: cifrado, snapshots, adjuntos |
 | 15 | Kubernetes | **EKS Pod Monitor** *(nuevo)* | gke_monitor_pod | CPU/memoria por pod (kubectl top pods) |
@@ -148,7 +149,7 @@ Para ejecutar todas las herramientas, el usuario/rol necesita permisos de lectur
 ```
 aws/
 ├── acm/                    # Certificate Manager (≈ certificate-manager GCP)
-├── cloudwatch/             # CloudWatch Alarms (≈ gcp_monitor GCP)
+├── cloudwatch/             # CloudWatch Alarms + ECS Fargate metrics (≈ gcp_monitor GCP) ← NUEVO
 ├── ec2/                    # EC2 Instances + EBS Volumes (≈ gcp_disk_checker GCP)
 ├── ecr/                    # Container Registry (≈ artifact-registry GCP)
 ├── eks/                    # EKS: Clusters, Pods, Nodes (≈ cluster-gke + monitoring GCP)
@@ -165,7 +166,7 @@ aws/
 ├── config.json             # Configuración local (gitignored)
 ├── config.json.template    # Plantilla de configuración
 ├── requirements.txt        # Dependencias Python
-├── tools.py                # Launcher principal (19 herramientas)
+├── tools.py                # Launcher principal (20+ herramientas)
 └── README.md               # Este archivo
 ```
 
@@ -211,6 +212,7 @@ python eks/aws_eks_checker.py --cluster my-cluster -o json
 
 | Fecha | Versión | Descripción | Archivos |
 |-------|---------|-------------|----------|
+| 2026-08-31 | **1.7.51** | **feat(aws): Homologación de Cloud Run Monitoring a ECS Fargate** — Tool 41: `aws_ecs_fargate_metrics_monitor.py` con métricas de requests, latencia p95, CPU%, memoria% y error rate. Módulo base `cloudwatch/aws_cloudwatch_metrics.py` con `get_ecs_fargate_usage_metrics` y `get_ecs_fargate_metrics_parallel`. 17 tests unitarios nuevos. | `cloudwatch/aws_cloudwatch_metrics.py`, `cloudwatch/aws_ecs_fargate_metrics_monitor.py`, `tools.py`, `tests/test_aws_cloudwatch_metrics.py`, `tests/test_aws_ecs_fargate_monitor.py`, `README.md` |
 | 2026-06-04 | **1.6.8** | `aws/tools.py` homologado visualmente con `gcp/tools.py` — mismos colores, emojis, nombres en español y estructura del menú Rich | `tools.py` |
 | 2026-05-03 | 1.0.2 | feat: log_commands global — log_command() registra comandos ejecutados en scm/outcome/commands_YYYYMMDD.log cuando DEVSECOPS_LOG_COMMANDS=1 | tools.py |
 | 2026-05-03 | 1.0.1 | +6 herramientas nuevas replicadas de GCP: EBS (14), EKS Pod Monitor (15), EKS Node Monitor (16), Secrets Manager+SSM (17), WAF (18), Inventory Generator (19). Directorios: secretsmanager/, waf/, inventory/, notification/ | tools.py, ec2/aws_ebs_checker.py, eks/aws_eks_pod_checker.py, eks/aws_eks_node_checker.py, secretsmanager/aws_secrets_checker.py, waf/aws_waf_checker.py, inventory/aws_inventory_generator.py, notification/aws_notify.sh |
