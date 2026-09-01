@@ -347,6 +347,16 @@ TOOLS = {
         "group": "consolidation",
         "status": "ready"
     },
+    # ══════════ CONTAINER APPS (26) ══════════
+    "26": {
+        "name": "Azure Container Apps Metrics Monitor",
+        "description": "Monitorea métricas de Azure Container Apps: requests, latencia p95, CPU%, memoria% y errores",
+        "path": "container-apps/azure_container_apps_metrics_monitor.py",
+        "args": ["--subscription", "--resource-group"],
+        "requirements": "monitoring/requirements.txt",
+        "group": "appservice",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {

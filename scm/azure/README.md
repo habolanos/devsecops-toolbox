@@ -88,6 +88,7 @@ python tools.py
 | 19 | App Service Monitor | Monitorea App Services |
 | 20 | App Service Security Auditor | Audita seguridad |
 | 21 | App Service Deployment Validator | Valida despliegues |
+| 26 | **Azure Container Apps Metrics Monitor** | Métricas de Container Apps: requests, latencia p95, CPU%, memoria% y errores (homologo a Cloud Run) |
 
 ### Inventory & Reports (22-25)
 
@@ -311,6 +312,7 @@ Formatos soportados: JSON, CSV, Excel, HTML, Markdown
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.7.53 | 2026-09-01 | Homologación de GCP Cloud Run Monitoring: Tool 26 Azure Container Apps Metrics Monitor (requests, latencia p95, CPU%, memoria%, errores). 10 tests unitarios. README modernizado. |
 | 1.0.0 | 2026-07-14 | Versión inicial con 25 herramientas |
 
 ## Licencia

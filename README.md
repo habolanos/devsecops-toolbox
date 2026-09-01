@@ -1,13 +1,17 @@
 # 🔐 DevSecOps Toolbox
 
-[![Version](https://img.shields.io/badge/version-1.7.52-blue.svg)](VERSION)
-[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-GNUv3-green.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.7.53-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
+  <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
+  <img src="https://img.shields.io/github/workflow/status/habolanos/devsecops-toolbox/Security%20Analysis" alt="Security Analysis">
+</p>
 
-> **Caja de herramientas DevSecOps unificada para operaciones multi-cloud.**
-> 
-> Soporta **Google Cloud Platform (GCP)**, **Azure Cloud Platform (AZURE)**, **Azure DevOps (AZDO)** y **Amazon Web Services (AWS)** con un launcher centralizado, testing profesional y distribución Docker.
+<p align="center">
+  <b>Caja de herramientas DevSecOps unificada para operaciones multi-cloud.</b><br>
+  Soporta <b>Google Cloud Platform</b> (GCP), <b>Microsoft Azure</b>, <b>Azure DevOps</b> (AZDO), <b>Amazon Web Services</b> (AWS) y <b>KPI Analyzer Pro</b>.
+</p>
 
 ---
 
@@ -33,15 +37,16 @@
 
 | Característica | Descripción |
 |---------------|-------------|
-| 🎯 **Launcher Unificado** | Punto de entrada único para todas las plataformas cloud |
-| 📊 **KPI Analyzer** | Análisis de métricas DevSecOps con modelo de madurez de 6 niveles y dashboards interactivos |
-| 🐳 **Docker Ready** | Contenedor optimizado con todas las herramientas CLI (Azure, AWS, GCP, Kubernetes, Terraform) |
-| 🧪 **Testing Profesional** | Suite completa de tests unitarios e integración con pytest (70%+ cobertura) |
-| 🔐 **Configuración Segura** | Gestión centralizada de credenciales vía `config.json` (excluido de git) |
-| 📊 **Reportes** | Generación de reportes y análisis de arquitectura |
-| 🌐 **Multi-Cloud** | Soporte nativo para GCP, Azure Cloud, Azure DevOps y AWS |
-| 🔑 **Autenticación Automática** | Validación automática de credenciales (gcloud, az, aws) |
-| 🏷️ **SemVer** | Versionado semántico automatizado |
+| 🎯 **Launcher Unificado** | Menú interactivo Rich con lanzador centralizado para GCP, Azure, AWS, AZDO, Terminal y KPI Analyzer |
+| ☁️ **Multi-Cloud** | 60+ herramientas nativas para GCP, Azure Cloud, Azure DevOps y AWS |
+| 📊 **KPI Analyzer Pro** | Modelo de madurez DevSecOps de 6 niveles con dashboards y análisis DORA |
+| 🧪 **Testing Profesional** | Suite de tests unitarios e integración con pytest (meta 70%+ cobertura) |
+| � **Docker Ready** | Contenedor con Azure CLI, AWS CLI, gcloud, kubectl, Terraform y dependencias Python |
+| � **CI/CD Automation** | Templates de AZDO para actualización de releases, clonado de pipelines y análisis de drift |
+| 🤖 **Serverless Metrics** | Métricas de Cloud Run (GCP), ECS Fargate (AWS) y Container Apps (Azure) con latencia p95, CPU% y memoria% |
+| � **Reportes Consolidados** | Reportes multi-proyecto/multi-región con Rich Tables, fila TOTAL y exportación JSON/CSV |
+| 🔐 **Configuración Segura** | Gestión centralizada de credenciales vía `config.json` (gitignored) |
+| 🏷️ **SemVer Automático** | Versionado semántico con patch-only y release notes centralizados |
 
 ---
 

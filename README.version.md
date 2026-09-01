@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.52`** — 2026-08-31
+**`1.7.53`** — 2026-09-01
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-01 | **1.7.53** | **feat(azure): Homologación de GCP Cloud Run Monitoring a Azure Container Apps + renovación README**: Tool 26 `azure_container_apps_metrics_monitor.py` muestra métricas de Azure Container Apps: requests, latencia p95, CPU%, memoria% y error rate. Módulo base `monitoring/azure_monitor_metrics.py` con `get_container_app_usage_metrics` y `get_container_app_metrics_parallel`. Registrado en `azure/tools.py` grupo appservice. 10 tests unitarios nuevos. README.md renovado con header moderno, badges y tabla de características actualizada. | `scm/azure/monitoring/azure_monitor_metrics.py`, `scm/azure/container-apps/azure_container_apps_metrics_monitor.py`, `scm/azure/tools.py`, `scm/azure/tests/test_azure_monitor_metrics.py`, `scm/azure/README.md`, `README.md`, `VERSION`, `README.version.md` |
 | 2026-08-31 | **1.7.52** | **feat(aws): Homologación del consolidated report de GCP a AWS multi-región + guard TTY**: `aws_cloudwatch_metrics_monitor.py` ahora soporta `--consolidated --regions us-east-1,us-west-2` generando Rich Table con totales por recurso (EC2, RDS, EKS, Lambda), fila **TOTAL** en negrita y lista de regiones omitidas. Agregado `_is_tty()` para evitar spinner artifacts cuando stdout es un pipe (homologo a GCP). 6 tests unitarios nuevos. | `scm/aws/cloudwatch/aws_cloudwatch_metrics_monitor.py`, `scm/aws/tests/test_aws_cloudwatch_metrics_monitor.py`, `scm/aws/README.md`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-08-31 | **1.7.51** | **feat(aws): Homologación de GCP Cloud Run Monitoring a AWS ECS Fargate**: Tool 41 `aws_ecs_fargate_metrics_monitor.py` muestra requests, latencia p95 (ms), CPU%, memoria% y error rate de servicios ECS Fargate. Módulo base `cloudwatch/aws_cloudwatch_metrics.py` con `get_ecs_fargate_usage_metrics` (CloudWatch) y `get_ecs_fargate_metrics_parallel` (paralelo). Registrado en `aws/tools.py` grupo monitoring. 17 tests unitarios nuevos (12 para métricas, 5 para monitor). | `scm/aws/cloudwatch/aws_cloudwatch_metrics.py`, `scm/aws/cloudwatch/aws_ecs_fargate_metrics_monitor.py`, `scm/aws/tools.py`, `scm/aws/tests/test_aws_cloudwatch_metrics.py`, `scm/aws/tests/test_aws_ecs_fargate_monitor.py`, `scm/aws/README.md`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-08-31 | **1.7.50** | **Fix main.py: Unificar platform_map en todas las funciones**: Las 4 funciones (`get_platform_config`, `is_platform_configured`, `validate_platform_authentication`, `prepare_env_for_platform`) tenian `platform_map` inconsistentes entre si y con el dict `PLATFORMS` (fuente de verdad). Unificadas a: 1=gcp, 2=azure, 3=aws, 4=azdo, 5=terminal, 6=kpi_analyzer. Eliminada rama muerta `dashboard` en `prepare_env_for_platform`. Tests actualizados: AZDO usa key "4" (antes "2"). 6 tests fallando en CI ahora pasan (57/57). | `scm/main.py`, `scm/tests/unit/test_main.py`, `VERSION`, `README.md`, `README.version.md` |
