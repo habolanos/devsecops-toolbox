@@ -743,26 +743,26 @@ El proyecto incluye un `docker-compose.yml` para facilitar la ejecución del too
 
 ```bash
 # 1. Copiar el archivo de ejemplo de variables de entorno
-cp .env.example .env
+cp docker/.env.example docker/.env
 
 # 2. Editar .env con tus credenciales (nunca subir este archivo a git)
-nano .env
+nano docker/.env
 ```
 
 ### Uso Básico
 
 ```bash
-# Construir y ejecutar el servicio principal
-docker-compose up -d toolbox
+# Construir y ejecutar el servicio principal (desde la raíz del proyecto)
+docker-compose -f docker/docker-compose.yml up -d toolbox
 
 # Entrar al contenedor interactivo
-docker-compose exec toolbox bash
+docker-compose -f docker/docker-compose.yml exec toolbox bash
 
 # Ver logs
-docker-compose logs -f toolbox
+docker-compose -f docker/docker-compose.yml logs -f toolbox
 
 # Detener y eliminar contenedores
-docker-compose down
+docker-compose -f docker/docker-compose.yml down
 ```
 
 ### Uso con Credenciales
@@ -775,14 +775,14 @@ echo "AZURE_CLIENT_ID=xxx" >> .env
 echo "AWS_ACCESS_KEY_ID=xxx" >> .env
 
 # Ejecutar - las credenciales se cargan automáticamente
-docker-compose up -d toolbox
-docker-compose exec toolbox bash
+docker-compose -f docker/docker-compose.yml up -d toolbox
+docker-compose -f docker/docker-compose.yml exec toolbox bash
 ```
 
 #### Opción 2: Variables de entorno directas
 
 ```bash
-AZURE_CLIENT_ID=xxx AWS_ACCESS_KEY_ID=yyy docker-compose up -d toolbox
+AZURE_CLIENT_ID=xxx AWS_ACCESS_KEY_ID=yyy docker-compose -f docker/docker-compose.yml up -d toolbox
 ```
 
 #### Opción 3: Usando credenciales locales (montaje de volúmenes)
@@ -795,34 +795,34 @@ AZURE_CLIENT_ID=xxx AWS_ACCESS_KEY_ID=yyy docker-compose up -d toolbox
 # - ~/.kube para Kubernetes
 
 # El docker-compose.yml monta estos directorios automáticamente
-docker-compose up -d toolbox
-docker-compose exec toolbox az login  # o usa las credenciales existentes
+docker-compose -f docker/docker-compose.yml up -d toolbox
+docker-compose -f docker/docker-compose.yml exec toolbox az login  # o usa las credenciales existentes
 ```
 
 ### Modo Desarrollo
 
 ```bash
 # Ejecutar en modo desarrollo (código fuente montado con live reload)
-docker-compose --profile dev up -d toolbox-dev
+docker-compose -f docker/docker-compose.yml --profile dev up -d toolbox-dev
 
 # Los cambios en el código fuente local se reflejan inmediatamente
-docker-compose exec toolbox-dev bash
+docker-compose -f docker/docker-compose.yml exec toolbox-dev bash
 
 # Ejecutar tests
-docker-compose exec toolbox-dev pytest scm/tests/ -v
+docker-compose -f docker/docker-compose.yml exec toolbox-dev pytest scm/tests/ -v
 ```
 
 ### Ejecutar Comandos Específicos
 
 ```bash
 # Ejecutar un comando y salir (útil para CI/CD)
-docker-compose --profile cmd run --rm toolbox-cmd az version
+docker-compose -f docker/docker-compose.yml --profile cmd run --rm toolbox-cmd az version
 
 # Ejecutar script de GCP
-docker-compose --profile cmd run --rm toolbox-cmd python scm/gcp/tools.py
+docker-compose -f docker/docker-compose.yml --profile cmd run --rm toolbox-cmd python scm/gcp/tools.py
 
 # Ejecutar kubectl
-docker-compose --profile cmd run --rm toolbox-cmd kubectl get nodes
+docker-compose -f docker/docker-compose.yml --profile cmd run --rm toolbox-cmd kubectl get nodes
 ```
 
 ### Persistencia de Datos
@@ -842,8 +842,8 @@ Los siguientes directorios se persisten entre ejecuciones:
 
 ```bash
 # Ejemplo 1: Analizar recursos GCP con reporte exportado
-docker-compose up -d toolbox
-docker-compose exec toolbox bash -c "
+docker-compose -f docker/docker-compose.yml up -d toolbox
+docker-compose -f docker/docker-compose.yml exec toolbox bash -c "
   cd scm/gcp &&
   python tools.py &&
   # Seleccionar opción de reporte
@@ -851,18 +851,18 @@ docker-compose exec toolbox bash -c "
 # El reporte queda en ./outcome/
 
 # Ejemplo 2: Ejecutar checker de pods de Kubernetes
-docker-compose --profile cmd run --rm toolbox-cmd \
+docker-compose -f docker/docker-compose.yml --profile cmd run --rm toolbox-cmd \
   python scm/gcp/connectivity/pod_connectivity_checker.py
 
 # Ejemplo 3: Usar herramientas de red (netshoot)
-docker-compose exec toolbox bash -c "
+docker-compose -f docker/docker-compose.yml exec toolbox bash -c "
   ping -c 4 google.com &&
   dig cloud.google.com &&
   traceroute 8.8.8.8
 "
 
 # Ejemplo 4: Terraform con credenciales de AWS
-docker-compose exec toolbox bash -c "
+docker-compose -f docker/docker-compose.yml exec toolbox bash -c "
   cd workspace/terraform &&
   terraform init &&
   terraform plan

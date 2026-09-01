@@ -98,12 +98,14 @@ def build_executable():
         return False
 
 def create_wrapper_scripts():
-    """Crea scripts wrapper para facilitar el uso."""
+    """Crea scripts wrapper en dist/ para facilitar el uso."""
     
     project_root = Path(__file__).parent
+    dist_dir = project_root / "dist"
+    dist_dir.mkdir(exist_ok=True)
     
     # Script para Windows (batch)
-    batch_script = project_root / "devsecops-toolbox.bat"
+    batch_script = dist_dir / "devsecops-toolbox.bat"
     batch_content = """@echo off
 REM DevSecOps Toolbox - Wrapper para Windows
 REM Ejecuta el toolbox desde cualquier ubicación
@@ -114,7 +116,7 @@ REM Obtener directorio del script
 set SCRIPT_DIR=%~dp0
 
 REM Ejecutar el toolbox
-"%SCRIPT_DIR%dist\\devsecops-toolbox.exe" %*
+"%SCRIPT_DIR%devsecops-toolbox.exe" %*
 
 endlocal
 """
@@ -124,7 +126,7 @@ endlocal
     print(f"✅ Script wrapper creado: {batch_script}")
     
     # Script para Linux (bash)
-    bash_script = project_root / "devsecops-toolbox"
+    bash_script = dist_dir / "devsecops-toolbox.sh"
     bash_content = """#!/bin/bash
 # DevSecOps Toolbox - Wrapper para Linux
 # Ejecuta el toolbox desde cualquier ubicación
@@ -132,7 +134,7 @@ endlocal
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Ejecutar el toolbox
-"$SCRIPT_DIR/dist/devsecops-toolbox" "$@"
+"$SCRIPT_DIR/devsecops-toolbox" "$@"
 """
     
     with open(bash_script, "w") as f:
@@ -167,13 +169,13 @@ def main():
     print("║                    ✅ COMPILACIÓN COMPLETADA                   ║")
     print("╚════════════════════════════════════════════════════════════════╝")
     print()
-    print("📦 Ejecutables generados:")
-    print("   Windows: dist/devsecops-toolbox.exe")
-    print("   Linux:   dist/devsecops-toolbox")
+    print("📦 Ejecutables generados en dist/:")
+    print("   Windows: dist/devsecops-toolbox.exe + dist/devsecops-toolbox.bat")
+    print("   Linux:   dist/devsecops-toolbox + dist/devsecops-toolbox.sh")
     print()
     print("🚀 Uso:")
-    print("   Windows: devsecops-toolbox.bat")
-    print("   Linux:   ./devsecops-toolbox")
+    print("   Windows: dist\\devsecops-toolbox.bat")
+    print("   Linux:   ./dist/devsecops-toolbox.sh")
     print()
     
     return True

@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.54-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.55-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -109,7 +109,7 @@ pip install -e ".[test]"
 docker pull devsecops-toolbox:latest
 
 # O construir localmente
-docker build -t devsecops-toolbox:latest .
+docker build -t devsecops-toolbox:latest -f docker/Dockerfile .
 ```
 
 **Requisitos**: Docker 20.10+ y Docker Compose 2.0+
@@ -1008,24 +1008,24 @@ El proyecto incluye una imagen Docker optimizada (~400MB) con todas las herramie
 ### Uso con Docker Compose
 
 ```bash
-# 1. Configurar credenciales
-cp .env.example .env
-# Editar .env con tus credenciales
+# 1. Configurar credenciales (opcional)
+cp docker/.env.example docker/.env
+# Editar docker/.env con tus credenciales
 
-# 2. Iniciar servicios
-docker-compose up -d toolbox
+# 2. Iniciar servicios (desde la raíz del proyecto)
+docker-compose -f docker/docker-compose.yml up -d toolbox
 
 # 3. Acceder al contenedor
-docker-compose exec toolbox bash
+docker-compose -f docker/docker-compose.yml exec toolbox bash
 ```
 
 ### Servicios Disponibles
 
 | Servicio | Uso | Comando |
 |----------|-----|---------|
-| `toolbox` | Uso interactivo | `docker-compose up -d toolbox` |
-| `toolbox-dev` | Desarrollo con live reload | `docker-compose --profile dev up -d toolbox-dev` |
-| `toolbox-cmd` | CI/CD - ejecuta y sale | `docker-compose --profile cmd run --rm toolbox-cmd` |
+| `toolbox` | Uso interactivo | `docker-compose -f docker/docker-compose.yml up -d toolbox` |
+| `toolbox-dev` | Desarrollo con live reload | `docker-compose -f docker/docker-compose.yml --profile dev up -d toolbox-dev` |
+| `toolbox-cmd` | CI/CD - ejecuta y sale | `docker-compose -f docker/docker-compose.yml --profile cmd run --rm toolbox-cmd` |
 
 **Ver documentación completa de Docker en:** [`scm/README.md`](scm/README.md#-docker-container)
 
@@ -1230,8 +1230,8 @@ open htmlcov/index.html
 
 ```bash
 # Ejecutar tests en contenedor
-docker-compose --profile dev up -d toolbox-dev
-docker-compose exec toolbox-dev pytest scm/tests/ -v
+docker-compose -f docker/docker-compose.yml --profile dev up -d toolbox-dev
+docker-compose -f docker/docker-compose.yml exec toolbox-dev pytest scm/tests/ -v
 ```
 
 **Ver guía completa de testing en:** [`scm/README.md`](scm/README.md#-testing)
@@ -1264,10 +1264,11 @@ devsecops-toolbox/
 │   └── manifests/h/habolanos/devsecops-toolbox/
 │       └── 1.7.20/               # YAML manifests por versión
 ├── dist/                         # Ejecutables compilados
-├── Dockerfile                    # Imagen Docker
-├── docker-compose.yml            # Orquestación Docker
-├── docker-entrypoint.sh          # Script de inicio Docker
-├── .env.example                  # Template de variables de entorno
+├── docker/                       # Configuración Docker
+│   ├── Dockerfile                # Imagen Docker
+│   ├── docker-compose.yml        # Orquestación Docker
+│   ├── docker-entrypoint.sh      # Script de inicio Docker
+│   └── .env.example              # Template de variables de entorno Docker
 ├── .dockerignore                 # Exclusiones de Docker build
 ├── pytest.ini                   # Configuración de pytest
 ├── pyproject.toml               # Metadatos del proyecto
