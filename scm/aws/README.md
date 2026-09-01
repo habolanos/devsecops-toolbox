@@ -212,6 +212,7 @@ python eks/aws_eks_checker.py --cluster my-cluster -o json
 
 | Fecha | Versión | Descripción | Archivos |
 |-------|---------|-------------|----------|
+| 2026-08-31 | **1.7.52** | **feat(aws): Reporte consolidado multi-región + guard TTY** — `aws_cloudwatch_metrics_monitor.py` ahora soporta `--consolidated --regions` con Rich Table de totales y fila **TOTAL** en negrita. Homologación del consolidated report de GCP. Agregado `_is_tty()` para deshabilitar Rich spinners cuando stdout es un pipe. 6 tests unitarios nuevos. | `cloudwatch/aws_cloudwatch_metrics_monitor.py`, `tests/test_aws_cloudwatch_metrics_monitor.py`, `README.md` |
 | 2026-08-31 | **1.7.51** | **feat(aws): Homologación de Cloud Run Monitoring a ECS Fargate** — Tool 41: `aws_ecs_fargate_metrics_monitor.py` con métricas de requests, latencia p95, CPU%, memoria% y error rate. Módulo base `cloudwatch/aws_cloudwatch_metrics.py` con `get_ecs_fargate_usage_metrics` y `get_ecs_fargate_metrics_parallel`. 17 tests unitarios nuevos. | `cloudwatch/aws_cloudwatch_metrics.py`, `cloudwatch/aws_ecs_fargate_metrics_monitor.py`, `tools.py`, `tests/test_aws_cloudwatch_metrics.py`, `tests/test_aws_ecs_fargate_monitor.py`, `README.md` |
 | 2026-06-04 | **1.6.8** | `aws/tools.py` homologado visualmente con `gcp/tools.py` — mismos colores, emojis, nombres en español y estructura del menú Rich | `tools.py` |
 | 2026-05-03 | 1.0.2 | feat: log_commands global — log_command() registra comandos ejecutados en scm/outcome/commands_YYYYMMDD.log cuando DEVSECOPS_LOG_COMMANDS=1 | tools.py |
