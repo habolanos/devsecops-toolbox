@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.53`** — 2026-09-01
+**`1.7.54`** — 2026-09-01
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-01 | **1.7.54** | **docs: Renovación integral del README.md**: Reparados 5 caracteres corruptos `�`. Estructura del proyecto actualizada incluyendo `scm/azure/` y `container-apps/`. Agregada sección `🚀 Despliegue Moderno` con CI/CD nativo, GitHub Actions, Azure DevOps Pipelines, GitLab CI, distribución multi-canal (Winget, Docker Hub, GitHub Releases, PyPI) e Infraestructura como Código (Terraform, Bicep/ARM, Pulumi). Tabla de contenidos actualizada. `Plataformas Soportadas` ahora incluye Microsoft Azure. | `README.md`, `VERSION`, `README.version.md` |
 | 2026-09-01 | **1.7.53** | **feat(azure): Homologación de GCP Cloud Run Monitoring a Azure Container Apps + renovación README**: Tool 26 `azure_container_apps_metrics_monitor.py` muestra métricas de Azure Container Apps: requests, latencia p95, CPU%, memoria% y error rate. Módulo base `monitoring/azure_monitor_metrics.py` con `get_container_app_usage_metrics` y `get_container_app_metrics_parallel`. Registrado en `azure/tools.py` grupo appservice. 10 tests unitarios nuevos. README.md renovado con header moderno, badges y tabla de características actualizada. | `scm/azure/monitoring/azure_monitor_metrics.py`, `scm/azure/container-apps/azure_container_apps_metrics_monitor.py`, `scm/azure/tools.py`, `scm/azure/tests/test_azure_monitor_metrics.py`, `scm/azure/README.md`, `README.md`, `VERSION`, `README.version.md` |
 | 2026-08-31 | **1.7.52** | **feat(aws): Homologación del consolidated report de GCP a AWS multi-región + guard TTY**: `aws_cloudwatch_metrics_monitor.py` ahora soporta `--consolidated --regions us-east-1,us-west-2` generando Rich Table con totales por recurso (EC2, RDS, EKS, Lambda), fila **TOTAL** en negrita y lista de regiones omitidas. Agregado `_is_tty()` para evitar spinner artifacts cuando stdout es un pipe (homologo a GCP). 6 tests unitarios nuevos. | `scm/aws/cloudwatch/aws_cloudwatch_metrics_monitor.py`, `scm/aws/tests/test_aws_cloudwatch_metrics_monitor.py`, `scm/aws/README.md`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-08-31 | **1.7.51** | **feat(aws): Homologación de GCP Cloud Run Monitoring a AWS ECS Fargate**: Tool 41 `aws_ecs_fargate_metrics_monitor.py` muestra requests, latencia p95 (ms), CPU%, memoria% y error rate de servicios ECS Fargate. Módulo base `cloudwatch/aws_cloudwatch_metrics.py` con `get_ecs_fargate_usage_metrics` (CloudWatch) y `get_ecs_fargate_metrics_parallel` (paralelo). Registrado en `aws/tools.py` grupo monitoring. 17 tests unitarios nuevos (12 para métricas, 5 para monitor). | `scm/aws/cloudwatch/aws_cloudwatch_metrics.py`, `scm/aws/cloudwatch/aws_ecs_fargate_metrics_monitor.py`, `scm/aws/tools.py`, `scm/aws/tests/test_aws_cloudwatch_metrics.py`, `scm/aws/tests/test_aws_ecs_fargate_monitor.py`, `scm/aws/README.md`, `VERSION`, `README.md`, `README.version.md` |

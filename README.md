@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.53-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.54-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -22,6 +22,7 @@
 - [🎯 Uso Rápido](#-uso-rápido)
 - [📋 Templates para Pipeline Updater](#-templates-para-pipeline-updater)
 - [🐳 Docker](#-docker)
+- [🚀 Despliegue Moderno](#-despliegue-moderno)
 - [☁️ Plataformas Soportadas](#️-plataformas-soportadas)
 - [⚙️ Configuración](#️-configuración)
 - [🧪 Testing](#-testing)
@@ -41,10 +42,10 @@
 | ☁️ **Multi-Cloud** | 60+ herramientas nativas para GCP, Azure Cloud, Azure DevOps y AWS |
 | 📊 **KPI Analyzer Pro** | Modelo de madurez DevSecOps de 6 niveles con dashboards y análisis DORA |
 | 🧪 **Testing Profesional** | Suite de tests unitarios e integración con pytest (meta 70%+ cobertura) |
-| � **Docker Ready** | Contenedor con Azure CLI, AWS CLI, gcloud, kubectl, Terraform y dependencias Python |
-| � **CI/CD Automation** | Templates de AZDO para actualización de releases, clonado de pipelines y análisis de drift |
+| 🐳 **Docker Ready** | Contenedor con Azure CLI, AWS CLI, gcloud, kubectl, Terraform y dependencias Python |
+| 🔄 **CI/CD Automation** | Templates de AZDO para actualización de releases, clonado de pipelines y análisis de drift |
 | 🤖 **Serverless Metrics** | Métricas de Cloud Run (GCP), ECS Fargate (AWS) y Container Apps (Azure) con latencia p95, CPU% y memoria% |
-| � **Reportes Consolidados** | Reportes multi-proyecto/multi-región con Rich Tables, fila TOTAL y exportación JSON/CSV |
+| 📊 **Reportes Consolidados** | Reportes multi-proyecto/multi-región con Rich Tables, fila TOTAL y exportación JSON/CSV |
 | 🔐 **Configuración Segura** | Gestión centralizada de credenciales vía `config.json` (gitignored) |
 | 🏷️ **SemVer Automático** | Versionado semántico con patch-only y release notes centralizados |
 
@@ -115,7 +116,7 @@ docker build -t devsecops-toolbox:latest .
 
 ---
 
-### � Compilar Ejecutables desde el Código Fuente
+### 🔨 Compilar Ejecutables desde el Código Fuente
 
 Si necesitas generar los ejecutables localmente:
 
@@ -133,7 +134,7 @@ El ejecutable se genera en `dist/devsecops-toolbox.exe` (Windows) o `dist/devsec
 
 ---
 
-### �📊 Comparativa de Instalación
+### 📊 Comparativa de Instalación
 
 | Método | Requisitos | Complejidad | Velocidad |
 |--------|-----------|-----------|----------|
@@ -1030,6 +1031,41 @@ docker-compose exec toolbox bash
 
 ---
 
+## 🚀 Despliegue Moderno
+
+El toolbox soporta múltiples flujos de despliegue contemporáneos para equipos DevSecOps.
+
+### CI/CD Nativo
+
+- **GitHub Actions**: Workflow de `security-analysis.yml` escanea dependencias, secretos y ejecuta pytest en cada PR.
+- **Azure DevOps Pipelines**: Templates YAML reutilizables en `scm/templates/` para actualización masiva de pipelines CD y releases.
+- **GitLab CI**: Compatible con contenedores `toolbox-cmd` para ejecución no-interactiva.
+
+### Distribución Multi-Canal
+
+| Canal | Comando | Escenario |
+|-------|---------|-----------|
+| **Winget** | `winget install habolanos.devsecops-toolbox` | Usuarios Windows finales |
+| **Docker Hub** | `docker pull devsecops-toolbox:latest` | Runners CI/CD y entornos efímeros |
+| **GitHub Releases** | Descargar binario | Máquinas sin Python ni Docker |
+| **PyPI** | `pip install devsecops-toolbox` | Integración en otros proyectos Python |
+
+### Ejecución en CI/CD
+
+```yaml
+# Ejemplo GitHub Actions
+- name: Run Cloud Inventory
+  run: docker run --rm -v $(pwd)/config.json:/app/config.json devsecops-toolbox:latest python scm/azure/tools.py --auto 26
+```
+
+### Infraestructura como Código
+
+- **Terraform**: Plantillas de ejemplo para desplegar recursos base en GCP, Azure y AWS.
+- **Bicep/ARM**: Templates para recursos Azure.
+- **Pulumi (experimental)**: Ejemplos de provisioning cloud en `scm/iac/`.
+
+---
+
 ## ☁️ Plataformas Soportadas
 
 ### Google Cloud Platform (GCP)
@@ -1048,6 +1084,19 @@ Herramientas especializadas para operaciones SRE en GCP:
 - Secrets & ConfigMaps
 - VPC Networks Manager
 - Connectivity Checkers (Pods, Dependencies, DNS)
+
+### Microsoft Azure (Azure)
+
+Herramientas SRE homologadas de GCP a Azure Cloud:
+
+- Monitoreo de Recursos Azure
+- Azure Container Apps Metrics Monitor
+- Azure SQL Database Monitor
+- Cosmos DB Analyzer
+- AKS Cluster, Node Pool, Pod Security y Workload Identity
+- Virtual Network, NSG y Application Gateway
+- Azure Resource Inventory y Compliance Report
+- Event Tracker y Unified Infrastructure Dashboard
 
 ### Azure DevOps (AZDO)
 
@@ -1195,11 +1244,15 @@ docker-compose exec toolbox-dev pytest scm/tests/ -v
 devsecops-toolbox/
 ├── scm/                          # Código fuente principal
 │   ├── main.py                   # Launcher principal (ejecuta wizard en 1a ejecucion)
-│   ├── setup/                    # Wizard de configuracion inicial
+│   ├── setup/                    # Wizard de configuración inicial
 │   ├── gcp/                      # Herramientas GCP
-│   ├── azdo/                     # Herramientas AZDO (28 herramientas)
-│   │   ├── azdo_pipeline_history.py  # Tool 26: Evolución histórica de Pipeline CD (HTML interactivo)
-│   │   ├── pipeline_cd_backup_restore.py  # Tool 27: Backup & Restore completo de Pipeline CD
+│   ├── azure/                    # Herramientas Azure (26+ herramientas SRE)
+│   │   ├── monitoring/azure_monitor_metrics.py  # Métricas Azure Monitor
+│   │   ├── container-apps/azure_container_apps_metrics_monitor.py  # Tool 26
+│   │   └── ...
+│   ├── azdo/                     # Herramientas AZDO
+│   │   ├── pipeline_cd_update_release/  # Tool 42: Release Updater
+│   │   ├── pipeline_cd_clone.py         # Tool 43: Pipeline CD Clone
 │   │   └── ...
 │   ├── aws/                      # Herramientas AWS
 │   ├── terminal/                 # Scripts universales (agnostic cloud)
