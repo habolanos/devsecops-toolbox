@@ -65,9 +65,12 @@ try:
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
 
-def run_cmd(cmd: list[str]) -> tuple[str, str, int]:
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return result.stdout.strip(), result.stderr.strip(), result.returncode
+def run_cmd(cmd: list[str], timeout: int = 60) -> tuple[str, str, int]:
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return result.stdout.strip(), result.stderr.strip(), result.returncode
+    except subprocess.TimeoutExpired:
+        return "", f"Timeout after {timeout}s", -1
 
 
 def run_json(cmd: list[str]) -> Optional[dict | list]:
@@ -153,11 +156,11 @@ def get_cluster_list(project: Optional[str] = None) -> list[dict]:
 def get_credentials(cluster_name: str, location: str, project: Optional[str] = None) -> bool:
     cmd = [
         "gcloud", "container", "clusters", "get-credentials",
-        cluster_name, "--zone", location, "--quiet"
+        cluster_name, "--location", location, "--quiet"
     ]
     if project:
         cmd += ["--project", project]
-    _, stderr, rc = run_cmd(cmd)
+    _, stderr, rc = run_cmd(cmd, timeout=30)
     if rc != 0:
         console.print(f"  ⚠️  No se pudieron obtener credenciales: {stderr[:150]}", style="red")
     return rc == 0
@@ -269,15 +272,38 @@ def get_pods_info(context: str, namespace: Optional[str] = None) -> list[dict]:
     return pods
 
 
+def check_metrics_server(context: str) -> bool:
+    """Verifica rapidamente si Metrics Server esta disponible en el cluster."""
+    cmd = ["kubectl", "top", "nodes", "--context", context, "--no-headers"]
+    stdout, stderr, rc = run_cmd(cmd, timeout=15)
+    if rc != 0 or not stdout.strip():
+        return False
+    return True
+
+
 def get_pods_usage(context: str, namespace: Optional[str] = None) -> dict:
-    """Retorna uso actual de CPU/mem por pod via kubectl top pods."""
+    """Retorna uso actual de CPU/memoria por pod via kubectl top pods."""
+    if not check_metrics_server(context):
+        console.print("  ⚠️  Metrics Server no disponible en este cluster.", style="yellow")
+        return {}
+
     ns_flag = ["-n", namespace] if namespace else ["--all-namespaces"]
     cmd = [
         "kubectl", "top", "pods", *ns_flag,
         "--context", context, "--no-headers"
     ]
-    stdout, _, rc = run_cmd(cmd)
+    stdout, stderr, rc = run_cmd(cmd, timeout=45)
     if rc != 0:
+        if "not found" in stderr.lower() or "metrics" in stderr.lower():
+            console.print("  ⚠️  Metrics Server no disponible en este cluster.", style="yellow")
+        elif "timeout" in stderr.lower():
+            console.print("  ⚠️  Timeout obteniendo metricas (cluster muy grande?).", style="yellow")
+        else:
+            console.print(f"  ⚠️  kubectl top pods fallo: {stderr[:150]}", style="yellow")
+        return {}
+
+    if not stdout.strip():
+        console.print("  ⚠️  kubectl top pods no retorno datos.", style="yellow")
         return {}
 
     usage = {}
@@ -580,6 +606,8 @@ def main():
     parser.add_argument("--sort", choices=["name", "cpu", "mem", "restarts"], default="mem",
                         help="Ordenar pods por (default: mem)")
     parser.add_argument("--top", type=int, help="Mostrar solo los top N pods")
+    parser.add_argument("--no-metrics", action="store_true",
+                        help="Saltar kubectl top (mas rapido, sin % de uso)")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -729,9 +757,23 @@ def main():
         ) as progress:
             task = progress.add_task(f"Obteniendo pods de {cluster_name}...", total=None)
             pods = get_pods_info(context, namespace)
-            progress.update(task, description=f"✓ {len(pods)} pods encontrados — obteniendo métricas...")
-            usage = get_pods_usage(context, namespace)
-            progress.update(task, description=f"✓ {len(pods)} pods con métricas")
+            progress.update(task, description=f"✓ {len(pods)} pods encontrados")
+
+        if args.no_metrics:
+            console.print("  [dim]--no-metrics: saltando kubectl top pods[/]")
+            usage = {}
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console, transient=True,
+            ) as progress:
+                task = progress.add_task(f"Obteniendo metricas de {cluster_name}...", total=None)
+                usage = get_pods_usage(context, namespace)
+                if usage:
+                    progress.update(task, description=f"✓ {len(pods)} pods con metricas")
+                else:
+                    progress.update(task, description="⚠ Sin metricas disponibles")
 
         # Cruzar uso real con pods
         for p in pods:
