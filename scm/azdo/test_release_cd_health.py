@@ -363,13 +363,13 @@ class TestComputeScore(unittest.TestCase):
         last_deploy = now - timedelta(days=10)
         modified = now - timedelta(days=200)
         result = mod.compute_score(last_deploy, 1, modified)
-        # Recency: 60 * (1 - 10/365) = ~58.4 -> 58
+        # Recency: 70 * (1 - 10/365) = ~68.08 -> 68
         # Stability: 20 - 0 = 20
-        # Definition: min(20, 20 * 200/180) = 20
-        # Total: 58 + 20 + 20 = 98
-        self.assertEqual(result["recency"], 58)
+        # Definition: min(10, 10 * 200/180) = 10
+        # Total: 68 + 20 + 10 = 98
+        self.assertEqual(result["recency"], 68)
         self.assertEqual(result["stability"], 20)
-        self.assertEqual(result["definition"], 20)
+        self.assertEqual(result["definition"], 10)
         self.assertEqual(result["total"], 98)
 
     def test_old_deploy_many_attempts_recent_definition(self):
@@ -378,14 +378,14 @@ class TestComputeScore(unittest.TestCase):
         last_deploy = now - timedelta(days=300)
         modified = now - timedelta(days=5)
         result = mod.compute_score(last_deploy, 4, modified)
-        # Recency: 60 * (1 - 300/365) = ~10.68
+        # Recency: 70 * (1 - 300/365) = ~12.47
         # Stability: 20 - 3*7 = -1 -> max(0, -1) = 0
-        # Definition: min(20, 20 * 5/180) = ~0.56
-        # Total: round(10.68 + 0 + 0.56) = round(11.24) = 11
-        self.assertEqual(result["recency"], 11)
+        # Definition: min(10, 10 * 5/180) = ~0.28
+        # Total: round(12.47 + 0 + 0.28) = round(12.75) = 13
+        self.assertEqual(result["recency"], 12)
         self.assertEqual(result["stability"], 0)
-        self.assertEqual(result["definition"], 1)
-        self.assertEqual(result["total"], 11)
+        self.assertEqual(result["definition"], 0)
+        self.assertEqual(result["total"], 13)
 
     def test_no_modified_on_definition_zero(self):
         """Sin modifiedOn, definition debe ser 0."""
@@ -404,13 +404,13 @@ class TestComputeScore(unittest.TestCase):
         # Stability: 20 - 1*7 = 13
         self.assertEqual(result["stability"], 13)
 
-    def test_definition_caps_at_20(self):
-        """Definition no debe exceder 20 pts."""
+    def test_definition_caps_at_10(self):
+        """Definition no debe exceder 10 pts."""
         now = datetime.now(timezone.utc)
         last_deploy = now - timedelta(days=10)
         modified = now - timedelta(days=365)
         result = mod.compute_score(last_deploy, 1, modified)
-        self.assertEqual(result["definition"], 20)
+        self.assertEqual(result["definition"], 10)
 
     def test_total_capped_at_100(self):
         """Total no debe exceder 100."""
@@ -418,7 +418,7 @@ class TestComputeScore(unittest.TestCase):
         last_deploy = now  # 0 dias
         modified = now - timedelta(days=365)
         result = mod.compute_score(last_deploy, 1, modified)
-        # Recency: 60, Stability: 20, Definition: 20 = 100
+        # Recency: 70, Stability: 20, Definition: 10 = 100
         self.assertEqual(result["total"], 100)
 
 
