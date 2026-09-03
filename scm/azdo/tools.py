@@ -634,26 +634,39 @@ def prompt(label: str, default: str = "", secret: bool = False) -> str:
 
 
 def ask_common_params(cfg: dict, tool_key: str = "") -> dict:
-    """Solicita parámetros comunes (org, project, pat) al usuario."""
+    """Solicita parámetros comunes (org, project, pat) al usuario.
+    
+    Si los tres valores existen en config.json, se usan directamente sin preguntar.
+    """
+    cfg_org = config_get(cfg, "azdo", "organization_url", default="")
+    cfg_project = config_get(cfg, "azdo", "project", default="")
+    cfg_pat = config_get(cfg, "azdo", "pat", default="")
+    
+    # Si los tres valores estan en config, usarlos directamente sin preguntar
+    if cfg_org and cfg_project and cfg_pat:
+        if not cfg_org.startswith("https://"):
+            cfg_org = f"https://dev.azure.com/{cfg_org}"
+        print(f"{Colors.DIM}  Org: {cfg_org} | Proyecto: {cfg_project} | PAT: **** (config.json){Colors.ENDC}")
+        return {"org": cfg_org, "project": cfg_project, "pat": cfg_pat}
+    
+    # Fallback: preguntar los que falten
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
     print(f"{Colors.BOLD}  Parámetros Comunes{Colors.ENDC}")
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
     
     # Organización - Retornar URL completa
-    cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
-    
-    org = prompt("Organización", default=cfg_org)
+    org = prompt("Organización", default=cfg_org or "https://dev.azure.com/Coppel-Retail")
     # Asegurar que org es la URL completa
     if not org.startswith("https://"):
         # Si el usuario ingresó solo el nombre, construir la URL
         org = f"https://dev.azure.com/{org}"
     
     # Proyecto
-    project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+    project = prompt("Proyecto", default=cfg_project or "Cadena_de_Suministros")
     
     # PAT
     pat = prompt("Personal Access Token (PAT)",
-                default=config_get(cfg, "azdo", "pat", default=""),
+                default=cfg_pat,
                 secret=True)
     if not pat:
         print(f"{Colors.RED}❌ El PAT es obligatorio.{Colors.ENDC}")

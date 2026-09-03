@@ -1236,7 +1236,7 @@ def export_results(
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 def _setup_logger(out_dir) -> logging.Logger:
-    """Configura un logger que escribe a archivo y stdout simultaneamente."""
+    """Configura un logger que escribe solo a archivo (la salida en pantalla la maneja Rich)."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = os.path.join(str(out_dir), f"azdo_release_cd_health_{ts}.log")
 
@@ -1249,10 +1249,6 @@ def _setup_logger(out_dir) -> logging.Logger:
     fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setFormatter(fmt)
     logger.addHandler(fh)
-
-    sh = logging.StreamHandler()
-    sh.setFormatter(fmt)
-    logger.addHandler(sh)
 
     logger.info(f"Log file: {log_path}")
     return logger, log_path
@@ -1272,23 +1268,6 @@ def main():
     # --- Logger: capturar toda la salida en archivo ---
     out_dir = get_output_dir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "outcome"))
     logger, log_path = _setup_logger(out_dir)
-
-    # Redirigir print() al logger
-    class _PrintToLogger:
-        def __init__(self, logger, original):
-            self._logger = logger
-            self._original = original
-        def write(self, msg):
-            msg = msg.rstrip("\n")
-            if msg:
-                self._logger.info(msg)
-        def flush(self):
-            self._original.flush()
-        def __getattr__(self, name):
-            return getattr(self._original, name)
-
-    import sys as _sys
-    _sys.stdout = _PrintToLogger(logger, _sys.stdout)
 
     # Para Rich: usar console con record=True para capturar y volcar al log al final
     if RICH_AVAILABLE:
@@ -1447,14 +1426,9 @@ def main():
         with open(log_path, "a", encoding="utf-8") as f:
             f.write("\n")
             f.write("=" * 80 + "\n")
-            f.write("SALIDA COMPLETA DE CONSOLA RICH\n")
+            f.write("SALIDA COMPLETA DE CONSOLA\n")
             f.write("=" * 80 + "\n")
             f.write(log_text)
-
-    # Restaurar stdout original
-    import sys as _sys
-    if hasattr(_sys.stdout, '_original'):
-        _sys.stdout = _sys.stdout._original
 
     print(f"\n📝 Log completo: {log_path}")
 
