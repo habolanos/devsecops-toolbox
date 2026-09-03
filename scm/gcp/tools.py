@@ -931,6 +931,7 @@ def _run_with_spinner(cmd: List[str]):
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
         text=True,
         bufsize=1,
         env=env,
@@ -1306,6 +1307,20 @@ def run_tool(tool_key: str):
         except KeyboardInterrupt:
             print(f"\n{Colors.WARNING}Ejecución interrumpida por el usuario.{Colors.ENDC}")
     
+    # Vaciar stdin para descartar Enters acumulados durante la ejecucion
+    try:
+        import tty, termios, select
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            while select.select([sys.stdin], [], [], 0)[0]:
+                sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except Exception:
+        pass
+
     input("\nPresione Enter para continuar...")
 
 def print_execution_summary_rich(results: list, elapsed: float):
