@@ -1,8 +1,8 @@
 # 📚 Estructura de Documentación - DevSecOps Toolbox
 
-**Fecha:** 7 de Julio de 2026  
-**Versión:** 1.0.0  
-**Estado:** ✅ ORGANIZADO
+**Fecha:** 8 de Septiembre de 2026  
+**Versión:** 1.1.0  
+**Estado:** ✅ ORGANIZADO + NUEVOS PROYECTOS
 
 ---
 
@@ -34,6 +34,27 @@ docs/
 ├── corrections/                       (Correcciones y Fixes)
 │   └── CORRECCION_DUPLICADOS_TOOLS.md
 │
+├── features/                          (Carpeta de Features)
+│   ├── feat_repo_maker/               (🆕 Repo Creator Pro)
+│   │   ├── INDEX.md
+│   │   ├── RESUMEN_REPO_CREATOR_PRO.md
+│   │   ├── ANALISIS_REPO_CREATOR.md
+│   │   ├── ARQUITECTURA_REPO_CREATOR.md
+│   │   ├── EJEMPLOS_TEMPLATES_REPO_CREATOR.md
+│   │   └── ROADMAP_REPO_CREATOR.md
+│   │
+│   ├── feature_cloudrun/              (Feature: Cloud Run)
+│   │   ├── README.md
+│   │   ├── ARQUITECTURA_INTEGRACION.md
+│   │   ├── IMPLEMENTACION_COMPLETADA.md
+│   │   └── PLAN_INTEGRAL_CLOUDRUN.md
+│   │
+│   └── feature_loadbalancer/          (Feature: Load Balancer)
+│       ├── README.md
+│       ├── ANALISIS_CONSOLIDADO_LB_CLOUDRUN_CF.md
+│       ├── ARQUITECTURA_CONSOLIDADOR_TECNICA.md
+│       └── ... (múltiples)
+│
 ├── dashboard_project/                 (Proyecto Dashboard)
 │   ├── README.md
 │   ├── INICIO_AQUI.md
@@ -47,7 +68,7 @@ docs/
 │   ├── DASHBOARD_*.md (múltiples)
 │   └── ... (25 archivos)
 │
-├── feature_cloudrun/                  (Feature: Cloud Run)
+├── feature_cloudrun/                  (Feature: Cloud Run - DEPRECATED)
 │   ├── README.md
 │   ├── ARQUITECTURA_INTEGRACION.md
 │   ├── IMPLEMENTACION_COMPLETADA.md

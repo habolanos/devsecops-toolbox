@@ -1,8 +1,8 @@
 # 📚 Documentación DevSecOps Toolbox
 
-**Versión:** v1.6.14  
-**Fecha:** 2 de Julio de 2026  
-**Estado:** ✅ PROYECTO COMPLETADO (5/5 Fases)
+**Versión:** v1.7.0  
+**Fecha:** 8 de Septiembre de 2026  
+**Estado:** ✅ PROYECTO COMPLETADO + 🆕 NUEVOS PROYECTOS DOCUMENTADOS
 
 ---
 
@@ -11,6 +11,10 @@
 ### 📖 Leer Primero
 1. **[ESTRUCTURA.md](ESTRUCTURA.md)** - 📂 Guía de estructura y navegación de documentación
 2. **[SESION_FINAL_COMPLETA_FASE2_FASE3_FASE4.md](SESION_FINAL_COMPLETA_FASE2_FASE3_FASE4.md)** - Resumen ejecutivo del proyecto completo
+
+### 🆕 Nuevos Proyectos (Septiembre 2026)
+- **[features/feat_repo_maker/INDEX.md](features/feat_repo_maker/INDEX.md)** - 📦 Repo Creator Pro (Crear repositorios con templates YAML)
+- **[ANALISIS_PENDIENTES_IMPLEMENTACION.md](ANALISIS_PENDIENTES_IMPLEMENTACION.md)** - 📊 Análisis de proyectos pendientes
 
 ### 🔧 Guías de Uso
 - **[refactor_arquitectura/GUIA_BASE_LAUNCHER.md](refactor_arquitectura/GUIA_BASE_LAUNCHER.md)** - Cómo usar base_launcher.py
