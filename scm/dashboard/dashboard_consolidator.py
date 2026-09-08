@@ -75,14 +75,22 @@ class HistoryManager:
     def _extract_summary(self, dashboard_data):
         """Extrae resumen de métricas"""
         metrics = dashboard_data.get('metrics', {})
+        security = metrics.get('security', {})
         return {
             'timestamp': dashboard_data['timestamp'],
             'health_score': metrics.get('health_score', {}).get('overall_score', 0),
-            'code_coverage': metrics.get('code_coverage', {}).get('overall_coverage', 0),
             'deployment_frequency': metrics.get('health_score', {}).get('deployment_frequency', 0),
             'mttr': metrics.get('health_score', {}).get('mttr_hours', 0),
             'change_failure_rate': metrics.get('health_score', {}).get('change_failure_rate', 0),
-            'system_uptime': metrics.get('health_score', {}).get('system_uptime', 0)
+            'system_uptime': metrics.get('health_score', {}).get('system_uptime', 0),
+            'pr_total': metrics.get('pr_metrics', {}).get('total_prs', 0),
+            'pr_approval_rate': metrics.get('pr_metrics', {}).get('approval_rate_percentage', 0),
+            'branch_compliance': metrics.get('branch_compliance', {}).get('compliance_percentage', 0),
+            'pipeline_success_rate': metrics.get('pipeline_status', {}).get('success_rate', 0),
+            'security_vulnerabilities': security.get('repo_vulnerabilities', {}).get('total_findings', 0),
+            'security_log_alerts': security.get('pipeline_logs', {}).get('total_matches', 0),
+            'pending_approvals': metrics.get('pending_approvals', {}).get('total', 0),
+            'prod_deploy_tracking': metrics.get('prod_deploy', {}).get('total_pipelines', 0),
         }
 
 
@@ -138,13 +146,17 @@ class DashboardConsolidator:
         """Lee datos de los JSON generados por las herramientas AZDO"""
         results = {}
         
-        # Buscar archivos JSON generados por las herramientas
+        # Buscar archivos JSON generados por las herramientas AZDO
         json_files = {
             'pr_metrics': 'pr_master_*.json',
             'branch_compliance': 'branch_policies_*.json',
             'health_score': 'pipeline_health_score_*.json',
             'pipeline_status': 'pipeline_status_*.json',
-            'code_coverage': 'code_coverage_*.json',
+            'security_logs': 'azdo_scan_pipeline_logs_*.json',
+            'security_vulnerabilities': 'azdo_scan_repos_vulnerabilities_*.json',
+            'pending_approvals': 'cicd_inventory_pending_approvals_*.json',
+            'cicd_inventory': 'cicd_inventory_*.json',
+            'prod_deploy': 'cicd_inventory_prod_deploy_*.json',
         }
         
         for metric_name, pattern in json_files.items():
@@ -200,20 +212,45 @@ class DashboardConsolidator:
             }
         }
     
-    def _get_code_coverage(self):
-        """Obtiene Code Coverage (ISO 29119)"""
+    def _get_security_logs(self):
+        """Fallback: Pipeline Logs Scanner"""
         return {
-            'overall_coverage': 82,
-            'line_coverage': 85,
-            'branch_coverage': 78,
-            'function_coverage': 88,
-            'test_execution_rate': 95,
-            'repos_by_coverage': {
-                'critical': [],
-                'acceptable': ['repo-3'],
-                'good': ['repo-1', 'repo-2'],
-                'excellent': ['repo-4', 'repo-5']
-            }
+            'total_matches': 0,
+            'pipelines_affected': 0,
+            'findings': []
+        }
+    
+    def _get_security_vulnerabilities(self):
+        """Fallback: Repo Vulnerabilities Scanner"""
+        return {
+            'total_findings': 0,
+            'repos_affected': 0,
+            'findings': []
+        }
+    
+    def _get_pending_approvals(self):
+        """Fallback: Pending Approvals"""
+        return {
+            'total': 0,
+            'approvals': []
+        }
+    
+    def _get_cicd_inventory(self):
+        """Fallback: CICD Inventory"""
+        return {
+            'total_repos': 0,
+            'total_ci_pipelines': 0,
+            'total_cd_pipelines': 0,
+            'repos': []
+        }
+    
+    def _get_prod_deploy(self):
+        """Fallback: Prod Deploy Tracker"""
+        return {
+            'total_pipelines': 0,
+            'pipelines_within_deadline': 0,
+            'pipelines_overdue': 0,
+            'pipelines': []
         }
     
     def _get_pr_metrics(self):
@@ -251,27 +288,71 @@ class DashboardConsolidator:
     
     def _consolidate(self, results):
         """Consolida todos los datos en estructura dashboard_data.json"""
+        security_logs = results.get('security_logs', {})
+        security_vulns = results.get('security_vulnerabilities', {})
+        pending_approvals = results.get('pending_approvals', {})
+        cicd_inventory = results.get('cicd_inventory', {})
+        prod_deploy = results.get('prod_deploy', {})
+        
+        # Construir alertas dinámicamente
+        alerts = {'critical': [], 'warning': [], 'info': []}
+        
+        # Alertas de seguridad
+        vuln_count = security_vulns.get('total_findings', security_vulns.get('summary', {}).get('total', 0)) if isinstance(security_vulns, dict) else 0
+        if vuln_count and vuln_count > 0:
+            alerts['critical'].append(f'{vuln_count} vulnerabilidades detectadas en repositorios')
+        
+        log_alerts = security_logs.get('total_matches', security_logs.get('summary', {}).get('total_matches', 0)) if isinstance(security_logs, dict) else 0
+        if log_alerts and log_alerts > 0:
+            alerts['warning'].append(f'{log_alerts} coincidencias de vulnerabilidades en logs de pipelines')
+        
+        # Alertas de aprobaciones pendientes
+        pending_count = pending_approvals.get('total', 0) if isinstance(pending_approvals, dict) else 0
+        if pending_count and pending_count > 5:
+            alerts['warning'].append(f'{pending_count} aprobaciones de release pendientes')
+        
+        # Alertas de prod deploy
+        if isinstance(prod_deploy, dict):
+            overdue = prod_deploy.get('pipelines_overdue', 0)
+            if overdue and overdue > 0:
+                alerts['critical'].append(f'{overdue} pipelines con despliegue a producción vencido')
+        
+        # Alertas de health score
+        health = results.get('health_score', {})
+        if isinstance(health, dict):
+            overall = health.get('overall_score', 0)
+            if overall and overall < 60:
+                alerts['critical'].append(f'Health Score crítico: {overall}/100')
+            elif overall and overall < 75:
+                alerts['warning'].append(f'Health Score bajo: {overall}/100')
+        
         return {
             'timestamp': datetime.now().isoformat() + 'Z',
             'status': 'success',
             'metrics': {
                 'health_score': results.get('health_score', {}),
-                'code_coverage': results.get('code_coverage', {}),
                 'pr_metrics': results.get('pr_metrics', {}),
                 'branch_compliance': results.get('branch_compliance', {}),
-                'pipeline_status': results.get('pipeline_status', {})
+                'pipeline_status': results.get('pipeline_status', {}),
+                'security': {
+                    'pipeline_logs': results.get('security_logs', {}),
+                    'repo_vulnerabilities': results.get('security_vulnerabilities', {}),
+                },
+                'pending_approvals': results.get('pending_approvals', {}),
+                'cicd_inventory': results.get('cicd_inventory', {}),
+                'prod_deploy': results.get('prod_deploy', {}),
             },
-            'alerts': {
-                'critical': [],
-                'warning': [],
-                'info': []
-            },
+            'alerts': alerts,
             'summary': {
-                'total_repos': results.get('branch_compliance', {}).get('total_repos', 0),
-                'repos_with_ci': results.get('branch_compliance', {}).get('total_repos', 0),
-                'health_score': results.get('health_score', {}).get('overall_score', 0),
-                'code_coverage': results.get('code_coverage', {}).get('overall_coverage', 0),
-                'branch_compliance': results.get('branch_compliance', {}).get('compliance_percentage', 0)
+                'total_repos': results.get('branch_compliance', {}).get('total_repos', 0) if isinstance(results.get('branch_compliance'), dict) else 0,
+                'repos_with_ci': results.get('branch_compliance', {}).get('total_repos', 0) if isinstance(results.get('branch_compliance'), dict) else 0,
+                'health_score': results.get('health_score', {}).get('overall_score', 0) if isinstance(results.get('health_score'), dict) else 0,
+                'branch_compliance': results.get('branch_compliance', {}).get('compliance_percentage', 0) if isinstance(results.get('branch_compliance'), dict) else 0,
+                'pipeline_success_rate': results.get('pipeline_status', {}).get('success_rate', 0) if isinstance(results.get('pipeline_status'), dict) else 0,
+                'security_vulnerabilities': vuln_count,
+                'security_log_alerts': log_alerts,
+                'pending_approvals': pending_count,
+                'prod_deploy_overdue': prod_deploy.get('pipelines_overdue', 0) if isinstance(prod_deploy, dict) else 0,
             }
         }
     
@@ -307,8 +388,12 @@ def main():
         
         print("\n✅ Dashboard consolidado exitosamente")
         print(f"Health Score: {dashboard_data['summary']['health_score']}/100")
-        print(f"Code Coverage: {dashboard_data['summary']['code_coverage']}%")
         print(f"Branch Compliance: {dashboard_data['summary']['branch_compliance']}%")
+        print(f"Pipeline Success Rate: {dashboard_data['summary']['pipeline_success_rate']}%")
+        print(f"Security Vulnerabilities: {dashboard_data['summary']['security_vulnerabilities']}")
+        print(f"Pending Approvals: {dashboard_data['summary']['pending_approvals']}")
+        print(f"Prod Deploy Overdue: {dashboard_data['summary']['prod_deploy_overdue']}")
+        print(f"Alerts: {len(dashboard_data['alerts']['critical'])} critical, {len(dashboard_data['alerts']['warning'])} warning")
         
         return 0
         

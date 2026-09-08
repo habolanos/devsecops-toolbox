@@ -67,13 +67,18 @@ OUTPUT_DIR = get_output_dir()
 def execute_azdo_tools(org, project, pat):
     """Ejecuta herramientas AZDO necesarias para el Dashboard
     
-    Herramientas ejecutadas:
+    Herramientas ejecutadas (11):
     - azdo_pr_master_checker.py (PR Metrics)
     - azdo_branch_policy_checker.py (Branch Compliance)
-    - azdo_release_cd_health.py (Health Score)
-    - azdo_pipeline_drift.py (Pipeline Status)
+    - azdo_release_cd_health.py (Release CD Health)
+    - azdo_pipeline_drift.py (Pipeline Drift)
     - cicd_inventory_health_score.py (Health Score DORA)
     - cicd_pipeline_status.py (Pipeline Status)
+    - azdo_scan_pipeline_logs.py (Security: Logs Scanner)
+    - azdo_scan_repos_vulnerabilities.py (Security: Repo Vulnerabilities)
+    - cicd_inventory_pending_approvals.py (Pending Approvals)
+    - cicd_inventory.py (CICD Inventory)
+    - cicd_inventory_prod_deploy.py (Prod Deploy Tracker)
     """
     azdo_dir = Path(__file__).parent.parent / "azdo"
     
@@ -93,12 +98,23 @@ def execute_azdo_tools(org, project, pat):
     
     # Herramientas necesarias para el Dashboard con sus scripts
     dashboard_tools = [
+        # PR & Policy metrics
         ("azdo_pr_master_checker.py", "PR Master Checker"),
         ("azdo_branch_policy_checker.py", "Branch Policy Checker"),
+        # Release & CD health
         ("azdo_release_cd_health.py", "Release CD Health"),
         ("azdo_pipeline_drift.py", "Pipeline Drift"),
+        # Health Score & Pipeline Status (DORA)
         ("cicd_inventory_health_score.py", "Pipeline Health Score"),
         ("cicd_pipeline_status.py", "Pipeline Status"),
+        # Security
+        ("azdo_scan_pipeline_logs.py", "Pipeline Logs Scanner"),
+        ("azdo_scan_repos_vulnerabilities.py", "Repo Vulnerabilities Scanner"),
+        # Inventory & Approvals
+        ("cicd_inventory_pending_approvals.py", "Pending Approvals"),
+        ("cicd_inventory.py", "CICD Inventory"),
+        # Prod Deploy tracking
+        ("cicd_inventory_prod_deploy.py", "Prod Deploy Tracker"),
     ]
     
     success_count = 0

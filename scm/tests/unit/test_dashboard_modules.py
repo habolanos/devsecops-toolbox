@@ -36,7 +36,8 @@ def test_consolidator():
         
         print("✅ Consolidator funcionando correctamente")
         print(f"   - Health Score: {dashboard_data['summary']['health_score']}/100")
-        print(f"   - Code Coverage: {dashboard_data['summary']['code_coverage']}%")
+        print(f"   - Branch Compliance: {dashboard_data['summary'].get('branch_compliance', 0)}%")
+        print(f"   - Pipeline Success Rate: {dashboard_data['summary'].get('pipeline_success_rate', 0)}%")
         
         return True
         
@@ -107,8 +108,11 @@ def test_data_structure():
         # Validar métricas
         metrics = data['metrics']
         assert 'health_score' in metrics, "Falta health_score"
-        assert 'code_coverage' in metrics, "Falta code_coverage"
         assert 'pr_metrics' in metrics, "Falta pr_metrics"
+        assert 'security' in metrics, "Falta security"
+        assert 'pending_approvals' in metrics, "Falta pending_approvals"
+        assert 'cicd_inventory' in metrics, "Falta cicd_inventory"
+        assert 'prod_deploy' in metrics, "Falta prod_deploy"
         
         # Validar health_score
         health = metrics['health_score']
@@ -116,16 +120,17 @@ def test_data_structure():
         assert 'deployment_frequency' in health, "Falta deployment_frequency"
         assert 'mttr_hours' in health, "Falta mttr_hours"
         
-        # Validar code_coverage
-        coverage = metrics['code_coverage']
-        assert 'overall_coverage' in coverage, "Falta overall_coverage"
-        assert 'line_coverage' in coverage, "Falta line_coverage"
+        # Validar security
+        security = metrics['security']
+        assert 'pipeline_logs' in security, "Falta pipeline_logs en security"
+        assert 'repo_vulnerabilities' in security, "Falta repo_vulnerabilities en security"
         
         print("✅ Estructura de datos válida")
         print(f"   - Health Score: {health['overall_score']}/100")
-        print(f"   - Code Coverage: {coverage['overall_coverage']}%")
         print(f"   - Deployment Frequency: {health['deployment_frequency']}/semana")
         print(f"   - MTTR: {health['mttr_hours']} horas")
+        print(f"   - Security Vulnerabilities: {data['summary'].get('security_vulnerabilities', 0)}")
+        print(f"   - Pending Approvals: {data['summary'].get('pending_approvals', 0)}")
         
         return True
         
