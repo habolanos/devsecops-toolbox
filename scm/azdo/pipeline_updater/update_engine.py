@@ -926,9 +926,13 @@ class UpdateEngine:
             stage_name: Nombre del stage (para el registro de cambios)
         """
         for phase in stage.get('deployPhases', []):
+            # Buscar en deploymentInput.tasks (formato antiguo)
             tasks = phase.get('deploymentInput', {}).get('tasks', [])
+            # Buscar en workflowTasks (formato actual de Azure DevOps)
+            tasks = tasks or phase.get('workflowTasks', [])
             for task in tasks:
-                display_name = task.get('displayName', '')
+                # Buscar en 'name' (workflowTasks) o 'displayName' (deploymentInput.tasks)
+                display_name = task.get('name', '') or task.get('displayName', '')
                 for tu in task_updates:
                     task_name = tu.get('task_name', tu.get('name', ''))
                     if task_name and not fnmatch.fnmatch(display_name, task_name):

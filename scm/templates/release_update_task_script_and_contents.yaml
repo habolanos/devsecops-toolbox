@@ -1,0 +1,65 @@
+metadata:
+  name: "Actualizar script y Contents en release existente con stages fijos y patron"
+  version: "1.0"
+  description: "Modifica inputs.script de una tarea y inputs.Contents de otra tarea en un release existente (Tool 42) que combina fixed_stages con stages que coinciden con un patron."
+  comment: |
+    Caso de uso:
+    - Actualizar tasks en releases existentes en stages específicos: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.).
+    - Task "DataDog": reemplaza inputs.script por nuevo script que clona
+      el repo pipelineConfig (branch CdS-GCP), obtiene NginxStatus.conf
+      desde cedis/DataDog/ y lo deja en el working directory.
+    - Task "SFTP Properties $(host)": reemplaza inputs.contents para incluir
+      $(artifact.fileProperties) y NginxStatus.conf.
+    
+    Nota: Este template es idéntico al de CD (pipe_cd_update_task_script_and_contents.yaml)
+    pero para releases existentes (Tool 42) en lugar de definiciones de pipeline.
+  author: "DevOps Team"
+  created_at: "2026-09-07"
+
+release:
+  ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
+
+search:
+  # Buscar stages: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.)
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - pattern: "^\\d{2}-"  # Regex: stages que empiezan con 2 dígitos y guion (01-xxx, 02-yy, etc.)
+  
+  # Buscar tasks solo en los stages encontrados arriba
+  tasks:
+    - name: "DataDog"
+    - name: "SFTP Properties $(host)"
+
+update:
+  global_vars: []
+  env_vars: []
+
+  tasks:
+    - name: "DataDog"
+      fields:
+        - path: "inputs.script"
+          # old_value es opcional: el engine sobrescribe todo el campo con new_value
+          new_value: |
+            echo -e "\n1- Get the DataDog config from pipeliConfig repo\n"
+            git clone --single-branch -b CdS-GCP $(path_pipelineConfig) temp
+            ls -l ./temp
+
+            echo -e "\n2- Get and show NginxStatus.conf file\n"
+            mv -f temp/cedis/DataDog/NginxStatus.conf ./NginxStatus.conf
+            cat ./NginxStatus.conf
+
+            rm -rf temp
+
+    - name: "SFTP Properties $(host)"
+      fields:
+        - path: "inputs.contents"
+          new_value: |
+            $(artifact.fileProperties)
+            NginxStatus.conf
+
+  abandon: false
+
+options:
+  dry_run: false
+  backup_path: "./outcome/backups"

@@ -2,6 +2,7 @@
 Motor de búsqueda para Pipeline Updater
 """
 
+import re
 from typing import Dict, List, Optional
 from .models import Match
 
@@ -63,26 +64,44 @@ class SearchEngine:
         matches = []
         
         # Normalizar stage_names (pueden ser strings o dicts)
-        normalized_names = []
+        # Soporta:
+        #   - string: "Develop"
+        #   - dict con 'name': {name: "Develop"}
+        #   - dict con 'pattern' (regex): {pattern: "^\\d{2}-.*"}
+        criteria = []
         for item in stage_names:
             if isinstance(item, dict):
-                normalized_names.append(item.get('name', ''))
+                if item.get('pattern'):
+                    criteria.append(('pattern', item['pattern']))
+                elif item.get('name'):
+                    criteria.append(('name', item['name']))
             else:
-                normalized_names.append(item)
+                criteria.append(('name', item))
         
         for stage in self.definition.get('environments', []):
             stage_name = stage.get('name', '')
             
-            for search_name in normalized_names:
-                if self._matches_pattern(stage_name, search_name):
-                    matches.append(Match(
-                        type='stage',
-                        name=stage_name,
-                        location=f"environments[{stage.get('id')}]",
-                        object=stage,
-                        stage_name=stage_name
-                    ))
-                    break
+            for ctype, cvalue in criteria:
+                if ctype == 'pattern':
+                    if re.match(cvalue, stage_name):
+                        matches.append(Match(
+                            type='stage',
+                            name=stage_name,
+                            location=f"environments[{stage.get('id')}]",
+                            object=stage,
+                            stage_name=stage_name
+                        ))
+                        break
+                else:
+                    if self._matches_pattern(stage_name, cvalue):
+                        matches.append(Match(
+                            type='stage',
+                            name=stage_name,
+                            location=f"environments[{stage.get('id')}]",
+                            object=stage,
+                            stage_name=stage_name
+                        ))
+                        break
         
         return matches
     
@@ -102,15 +121,29 @@ class SearchEngine:
             stage_name = stage.get('name', '')
             
             for phase_idx, phase in enumerate(stage.get('deployPhases', [])):
-                for task_idx, task in enumerate(phase.get('deploymentInput', {}).get('tasks', [])):
-                    task_name = task.get('displayName', '')
+                # Buscar en deploymentInput.tasks (formato antiguo) O workflowTasks (formato actual)
+                # No buscar en ambos para evitar duplicados
+                tasks = phase.get('deploymentInput', {}).get('tasks', [])
+                if not tasks:
+                    # Si no hay deploymentInput.tasks, buscar en workflowTasks
+                    tasks = phase.get('workflowTasks', [])
+                    is_workflow = True
+                else:
+                    is_workflow = False
+                
+                for task_idx, task in enumerate(tasks):
+                    # En workflowTasks, el nombre está en 'name'; en deploymentInput.tasks está en 'displayName'
+                    task_name = task.get('name', '') if is_workflow else task.get('displayName', '')
                     
                     for criteria in task_criteria:
-                        if self._task_matches(task, criteria):
+                        if self._task_matches(task, criteria, stage_name):
+                            location = (f"environments[{env_idx}].deployPhases[{phase_idx}].workflowTasks[{task_idx}]"
+                                       if is_workflow
+                                       else f"environments[{env_idx}].deployPhases[{phase_idx}].deploymentInput.tasks[{task_idx}]")
                             matches.append(Match(
                                 type='task',
                                 name=task_name,
-                                location=f"environments[{env_idx}].deployPhases[{phase_idx}].deploymentInput.tasks[{task_idx}]",
+                                location=location,
                                 object=task,
                                 stage_name=stage_name
                             ))
@@ -273,30 +306,42 @@ class SearchEngine:
         
         return False
     
-    def _task_matches(self, task: Dict, criteria: Dict) -> bool:
+    def _task_matches(self, task: Dict, criteria: Dict, stage_name: str = '') -> bool:
         """
         Verificar si task coincide con criterios
         
         Args:
             task: Objeto task
             criteria: Criterios de búsqueda
+            stage_name: Nombre del stage (para filtrado opcional)
             
         Returns:
             True si coincide
         """
-        # Verificar nombre
-        task_name = task.get('displayName', '')
+        # Verificar nombre: buscar en 'name' (workflowTasks) o 'displayName' (deploymentInput.tasks)
+        task_name = task.get('name', '') or task.get('displayName', '')
         criteria_name = criteria.get('name', '')
         
         if criteria_name and not self._matches_pattern(task_name, criteria_name):
             return False
         
-        # Verificar tipo
-        task_type = task.get('task', {}).get('definitionType', '')
+        # Verificar stage si está especificado en los criterios
+        criteria_stage = criteria.get('stage', '')
+        if criteria_stage and stage_name != criteria_stage:
+            return False
+        
+        # Verificar tipo: comparar contra definitionType (ej: "task")
+        # y contra task.name (ej: "CmdLine", "SFTPUpload")
+        task_def = task.get('task', {})
+        task_def_type = task_def.get('definitionType', '')
+        task_internal_name = task_def.get('name', '')
         criteria_type = criteria.get('type', '')
         
-        if criteria_type and task_type != criteria_type:
-            return False
+        if criteria_type:
+            if (task_def_type != criteria_type
+                    and task_internal_name != criteria_type
+                    and not self._matches_pattern(task_internal_name, criteria_type)):
+                return False
         
         return True
     

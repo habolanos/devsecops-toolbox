@@ -176,9 +176,16 @@ def load_template(template_path: str) -> Dict:
     env_vars = []
     env_var_search_values = []
     search_stages = ['*']
+    search_stage_patterns = []
 
     if search_section:
-        search_stages = [s.get('name', '*') for s in search_section.get('stages', [{'name': '*'}])]
+        search_stages = []
+        search_stage_patterns = []
+        for s in search_section.get('stages', [{'name': '*'}]):
+            if s.get('pattern'):
+                search_stage_patterns.append(s['pattern'])
+            else:
+                search_stages.append(s.get('name', '*'))
         search_vars = {}
         search_scopes = {}
         for v in search_section.get('variables', []):
@@ -242,6 +249,7 @@ def load_template(template_path: str) -> Dict:
         'env_var_search_values': env_var_search_values,
         'task_updates': task_updates,
         'search_stages': search_stages,
+        'search_stage_patterns': search_stage_patterns,
         'abandon': abandon,
         'description': description,
         'comment': comment,
@@ -459,6 +467,7 @@ def build_patch_payload(
     env_var_search_values: Optional[List[Optional[str]]] = None,
     task_updates: Optional[List[Dict]] = None,
     search_stages: Optional[List[str]] = None,
+    search_stage_patterns: Optional[List[str]] = None,
     global_var_search_values: Optional[List[Optional[str]]] = None,
     comment: str = '',
 ) -> Tuple[Dict, List[Dict]]:
@@ -524,14 +533,18 @@ def build_patch_payload(
         environments = copy.deepcopy(release.get('environments', []))
         stage_filter = search_stages if search_stages else ['*']
         is_wildcard = '*' in stage_filter
+        stage_patterns = search_stage_patterns or []
         for task_spec in task_updates:
             task_name = task_spec.get('name', '')
             fields = task_spec.get('fields', [])
             task_found = False
             for env in environments:
                 env_name = env.get('name', '')
-                if not is_wildcard and env_name.lower() not in [s.lower() for s in stage_filter]:
-                    continue
+                if not is_wildcard:
+                    matches_stage = env_name.lower() in [s.lower() for s in stage_filter]
+                    matches_pattern = any(re.match(p, env_name) for p in stage_patterns)
+                    if not matches_stage and not matches_pattern:
+                        continue
                 # Release instances have workflowTasks directly on env or in deployPhasesSnapshot;
                 # release definitions have them inside deployPhases[].workflowTasks
                 all_tasks = []
@@ -553,7 +566,7 @@ def build_patch_payload(
                         task_found = True
                         for field in fields:
                             field_path = field.get('path', '')
-                            old_val = field.get('old_value', '')
+                            old_val = field.get('old_value', None)
                             new_val = field.get('new_value', '')
                             current_val = _get_nested_value(task, field_path)
                             if current_val is None:
@@ -561,6 +574,13 @@ def build_patch_payload(
                                     "type": "task_field", "task": task_name,
                                     "path": field_path, "old": None, "new": new_val, "stage": env_name,
                                     "error": f"Task '{task_name}' campo '{field_path}' no existe en stage '{env_name}'",
+                                })
+                            elif old_val in ('*', None, ''):
+                                _set_nested_value(task, field_path, new_val)
+                                changes.append({
+                                    "type": "task_field", "task": task_name,
+                                    "path": field_path, "old": current_val,
+                                    "new": new_val, "stage": env_name,
                                 })
                             elif old_val not in str(current_val):
                                 changes.append({
@@ -746,6 +766,7 @@ def main():
         args.global_var_search_values = tpl.get('global_var_search_values', [])
         args.task_updates = tpl.get('task_updates', [])
         args.search_stages = tpl.get('search_stages', ['*'])
+        args.search_stage_patterns = tpl.get('search_stage_patterns', [])
         if not args.abandon and tpl['abandon']:
             args.abandon = tpl['abandon']
         if not args.description and tpl['description']:
@@ -779,6 +800,7 @@ def main():
         args.global_var_search_values = []
         args.task_updates = []
         args.search_stages = ['*']
+        args.search_stage_patterns = []
         args.comment = ''
     else:
         if not args.release_id or not args.pat:
@@ -788,6 +810,7 @@ def main():
         args.global_var_search_values = []
         args.task_updates = []
         args.search_stages = ['*']
+        args.search_stage_patterns = []
         args.comment = ''
 
     release_ids = [rid.strip() for rid in str(args.release_id).split(',')]
@@ -831,6 +854,7 @@ def main():
                 getattr(args, 'env_var_search_values', []),
                 getattr(args, 'task_updates', []),
                 getattr(args, 'search_stages', ['*']),
+                getattr(args, 'search_stage_patterns', []),
                 getattr(args, 'global_var_search_values', []),
                 getattr(args, 'comment', '')
             )

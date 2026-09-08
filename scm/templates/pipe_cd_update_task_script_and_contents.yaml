@@ -1,0 +1,57 @@
+metadata:
+  name: "Actualizar script y Contents en release con stages fijos y patron"
+  version: "1.0"
+  description: "Modifica inputs.script de una tarea y inputs.Contents de otra tarea en un release CD que combina fixed_stages con stages que coinciden con un patron."
+  comment: |
+    Caso de uso:
+    - Actualizar tasks en stages específicos: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.).
+    - Task "DataDog": reemplaza inputs.script por nuevo script que clona
+      el repo pipelineConfig (branch CdS-GCP), obtiene NginxStatus.conf
+      desde cedis/DataDog/ y lo deja en el working directory.
+    - Task "SFTP Properties $(host)": reemplaza inputs.contents para incluir
+      $(artifact.fileProperties) y NginxStatus.conf.
+
+  author: "SCM Team"
+  created_at: "2026-09-07"
+
+search:
+  # Buscar stages: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.)
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - pattern: "^\\d{2}-"  # Regex: stages que empiezan con 2 dígitos y guion (01-xxx, 02-yy, etc.)
+  
+  # Buscar tasks solo en los stages encontrados arriba
+  tasks:
+    - name: "DataDog"
+    - name: "SFTP Properties $(host)"
+
+update:
+  tasks:
+    - name: "DataDog"
+      fields:
+        - path: "inputs.script"
+          # old_value es opcional: el engine sobrescribe todo el campo con new_value
+          new_value: |
+            echo -e "\n1- Get the DataDog config from pipeliConfig repo\n"
+            git clone --single-branch -b CdS-GCP $(path_pipelineConfig) temp
+            ls -l ./temp
+
+            echo -e "\n2- Get and show NginxStatus.conf file\n"
+            mv -f temp/cedis/DataDog/NginxStatus.conf ./NginxStatus.conf
+            cat ./NginxStatus.conf
+
+            rm -rf temp
+
+    - name: "SFTP Properties $(host)"
+      fields:
+        - path: "inputs.contents"
+          new_value: |
+            $(artifact.fileProperties)
+            NginxStatus.conf
+
+
+options:
+  dry_run: false
+  rollback_on_error: true
+  parallel_workers: 5

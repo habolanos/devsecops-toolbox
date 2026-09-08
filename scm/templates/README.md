@@ -99,6 +99,42 @@ Después: Build → Deploy → Test → Validate
 ### **pipe_cd_reorder_stages_with_dependencies.yaml** 🆕
 Reordenar stages Y actualizar dependencias automáticamente.
 
+---
+
+### **release_update_task_script_and_contents.yaml** 🆕 (Tool 42)
+Actualizar tasks en releases existentes: DataDog script y SFTP Properties contents.
+
+**Características**:
+- Busca stages específicos: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.)
+- Actualiza 2 tasks: DataDog (inputs.script) y SFTP Properties (inputs.contents)
+- Soporta backup automático y dry-run
+- Idéntico al template CD pero para releases existentes
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 42 (Release Updater)
+# Seleccionar: Template 6 (release_update_task_script_and_contents.yaml)
+# Ingresar: Release ID (ej: 56485)
+# Confirmar: dry-run (s/n)
+```
+
+**Resultados esperados**:
+- Stages encontrados: ~34 (Develop, QA, 01-31, CEDIS Lab)
+- Cambios a aplicar: ~66 (2 tasks × 33 stages)
+- Backup automático en ./outcome/backups
+
+**Ejemplo de cambios**:
+```
+DataDog (inputs.script):
+  Antes: echo -e "\n1- Get the DataDog config...\nrm -rf temp"
+  Después: [nuevo script con paso 2 agregado]
+
+SFTP Properties (inputs.contents):
+  Antes: $(artifact.fileProperties)
+  Después: $(artifact.fileProperties)\nNginxStatus.conf
+```
+
 **Uso**:
 ```bash
 python scm/main.py
@@ -212,6 +248,32 @@ Después: Develop → QA → Production → 01-Culiacan → 02-Leon → 03-Lagun
 
 ---
 
+### **pipe_cd_update_task_script_and_contents.yaml** 🆕
+Actualiza `inputs.script` de una tarea y `inputs.Contents` de otra tarea en releases con `fixed_stages` y stages que coinciden con un patrón.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 41
+# Ingresar: scm/templates/pipe_cd_update_task_script_and_contents.yaml
+```
+
+**Ejemplo**:
+```
+Task "Ejecutar Deployment Script":
+  • inputs.script se reemplaza por nuevo contenido
+Task "Copiar Artifacts de Release":
+  • inputs.Contents pasa de **/artifact-v1/** a **/artifact-v2/**
+```
+
+**Características**:
+- Busca en stages fijos por nombre + stages con **regex** (`pattern`)
+- `old_value` es opcional: el engine sobrescribe el campo con `new_value`
+- Reemplaza `inputs.script` y `inputs.Contents`
+- Ideal para releases con stages fijos + stages con patrón numérico
+
+---
+
 ## 🚀 Cómo Usar
 
 ### **Templates para Tool 41 (Pipeline Updater Template)**
@@ -266,6 +328,22 @@ python scm/main.py
 # Ingresar: --template scm/templates/release_update_branchconfig.yaml --release-id 987 --pat TOKEN
 ```
 
+#### **release_update_task_script_and_contents.yaml** 🆕
+Actualiza `inputs.script` de una tarea y `inputs.Contents` de otra tarea en un **release existente** (Tool 42) con `fixed_stages` y stages que coinciden con un patrón regex.
+
+**Características**:
+- `search.stages` soporta `name` (exacto/wildcard) y `pattern` (regex)
+- `old_value` es opcional: usar `"*"` o omitirlo para sobrescribir todo el campo
+- Reemplaza `inputs.script` y `inputs.Contents`
+- Ideal para releases con stages fijos + stages con patrón numérico
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 42
+# Ingresar: --template scm/templates/release_update_task_script_and_contents.yaml --release-id 987 --pat TOKEN
+```
+
 ### **Estructura de Templates Tool 42**
 
 **Estructura nueva (con search):**
@@ -279,6 +357,7 @@ metadata:
 search:
   stages:
     - name: "*"                      # o "QA", "PROD", etc.
+    - pattern: "^\\d{2}-.*"          # regex para stages con patron (opcional)
   variables:                          # search_value: solo actualizar si el valor actual coincide
     - name: "branchConfig"
       value: "config-cadenaSuministro"
@@ -413,6 +492,23 @@ Para más información sobre el formato de templates, consulta:
 
 ---
 
-**Versión**: 1.2  
-**Última actualización**: 2026-08-09  
+### Historial de cambios
+
+| Versión | Fecha | Cambios |
+|---|---|---|
+| 1.2.11 | 2026-09-07 | Feature: Documentación completa de template `release_update_task_script_and_contents.yaml` (Tool 42) con ejemplos y resultados esperados |
+| 1.2.10 | 2026-09-07 | Fix: Corregir path `inputs.Contents` a `inputs.contents` (lowercase) en template |
+| 1.2.9 | 2026-09-07 | Fix: Agregar sanitización de definición en `azdo_client.py` para detectar y limpiar duplicate keys antes de enviar a Azure DevOps |
+| 1.2.8 | 2026-09-07 | Feature: Agregar soporte `stage` filter en search.tasks para limitar búsqueda a stages específicos |
+| 1.2.7 | 2026-09-07 | Fix: `search_tasks` busca en `deploymentInput.tasks` O `workflowTasks`, no en ambos (evita duplicados) |
+| 1.2.6 | 2026-09-07 | Fix: `_task_matches` ahora busca en `task.name` (workflowTasks) además de `displayName` (deploymentInput.tasks) |
+| 1.2.5 | 2026-09-07 | Fix: `search_tasks` ahora busca en `workflowTasks` además de `deploymentInput.tasks`; `_apply_task_updates_to_stage` también |
+| 1.2.4 | 2026-09-07 | Fix: `search.tasks.type` ahora compara contra `definitionType` y `task.name`; removido `type` de templates que causaba 0 task matches |
+| 1.2.3 | 2026-09-07 | Agregado template `release_update_task_script_and_contents.yaml` (Tool 42); soporte `pattern` regex y `old_value` opcional en release updater |
+| 1.2.2 | 2026-09-07 | `search.stages` soporta `pattern` (regex); template `pipe_cd_update_task_script_and_contents.yaml` usa fixed_stages + pattern_stages |
+| 1.2.1 | 2026-09-07 | Agregado template `pipe_cd_update_task_script_and_contents.yaml` |
+| 1.2 | 2026-08-09 | Templates iniciales listos para usar |
+
+**Versión**: 1.2.11  
+**Última actualización**: 2026-09-07  
 **Estado**: ✅ Listos para usar

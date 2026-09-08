@@ -93,6 +93,30 @@ class AzureDevOpsClient:
         except requests.RequestException as e:
             raise AzureDevOpsError(f"Error al obtener definición: {str(e)}")
     
+    def _sanitize_definition(self, definition: Dict) -> Dict:
+        """
+        Sanitizar definición para evitar errores de serialización
+        
+        Args:
+            definition: Definición a sanitizar
+            
+        Returns:
+            Definición sanitizada
+        """
+        # Convertir a JSON y volver a parsear para eliminar referencias circulares
+        # y asegurar que no hay duplicate keys
+        try:
+            # Usar separators para asegurar formato correcto
+            json_str = json.dumps(definition, separators=(',', ':'), default=str)
+            return json.loads(json_str)
+        except ValueError as e:
+            # ValueError se lanza si hay duplicate keys en JSON
+            print(f"  [ERROR] Duplicate key en definición: {e}")
+            raise
+        except Exception as e:
+            print(f"  [WARN] Error sanitizando definición: {e}")
+            return definition
+    
     def update_release_definition(self, definition_id: int, definition: Dict, comment: Optional[str] = None, disable: bool = False) -> bool:
         """
         Guardar cambios en definición de release
@@ -138,6 +162,9 @@ class AzureDevOpsClient:
             
             for field in fields_to_remove:
                 definition_copy.pop(field, None)
+            
+            # Sanitizar definición para evitar errores de serialización
+            definition_copy = self._sanitize_definition(definition_copy)
             
             response = requests.put(
                 url,
