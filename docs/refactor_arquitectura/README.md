@@ -72,8 +72,12 @@
 │  └─ Análisis de plataformas GCP, AWS y Terminal
 ├─ ANALISIS_NUEVAS_HERRAMIENTAS.md
 │  └─ Análisis de nuevas herramientas
-└─ ANALISIS_SALIDAS_OUTPUTS.md
-   └─ Análisis de salidas y outputs
+├─ ANALISIS_SALIDAS_OUTPUTS.md
+│  └─ Análisis de salidas y outputs
+├─ ANALISIS_IMPLEMENTACION_ACTUAL_v1.7.0.md ⭐ NUEVO
+│  └─ Análisis exhaustivo de implementación actual (v1.6.14)
+└─ DEPURACION_Y_MEJORAS_v1.7.0.md ⭐ NUEVO
+   └─ Bugs potenciales y mejoras recomendadas
 ```
 
 ### Estado y Progreso
@@ -185,23 +189,29 @@
 - Guía: [GUIA_BUSQUEDA_INTERACTIVA.md](#guías-de-uso)
 - Plan: [FASE5_BUSQUEDA_INTERACTIVA_PLAN.md](#estado-y-progreso)
 
+### Análisis de Implementación Actual (v1.7.0) ⭐ NUEVO
+- Análisis: [ANALISIS_IMPLEMENTACION_ACTUAL_v1.7.0.md](#análisis-y-planificación)
+- Depuración: [DEPURACION_Y_MEJORAS_v1.7.0.md](#análisis-y-planificación)
+- Módulos: base_launcher, export_manager, search_module, search_module_advanced
+- Cobertura: 4 módulos, 149 herramientas, 41 tests
+
 ---
 
 ## 📈 Estadísticas
 
 ```
-DOCUMENTOS TOTALES: 37
+DOCUMENTOS TOTALES: 39 (actualizado 8 Septiembre 2026)
 
 Por Categoría:
-├─ Análisis:           8 documentos
+├─ Análisis:           10 documentos (+ 2 nuevos)
 ├─ Estado/Progreso:   12 documentos
 ├─ Guías:             6 documentos
 ├─ Planes:            4 documentos
 ├─ Fixes:             5 documentos
 └─ Otros:             2 documentos
 
-Líneas de Documentación: 2,000+
-Ejemplos de Código: 30+
+Líneas de Documentación: 4,000+
+Ejemplos de Código: 50+
 Cobertura: 100%
 ```
 
