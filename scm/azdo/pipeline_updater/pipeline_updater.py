@@ -17,6 +17,7 @@ from .validator import TemplateValidator
 from .azdo_client import AzureDevOpsClient, AzureDevOpsError
 from .parallel_executor import ParallelExecutor
 from .reporter import Reporter
+from .config import load_config
 
 console = Console()
 
@@ -230,18 +231,18 @@ def main():
     )
     parser.add_argument(
         '--pat',
-        required=True,
-        help='Personal Access Token de Azure DevOps'
+        default=None,
+        help='Personal Access Token de Azure DevOps (default: desde config.json)'
     )
     parser.add_argument(
         '--org',
-        required=True,
-        help='Organización de Azure DevOps'
+        default=None,
+        help='Organización de Azure DevOps (default: desde config.json)'
     )
     parser.add_argument(
         '--project',
-        required=True,
-        help='Proyecto de Azure DevOps'
+        default=None,
+        help='Proyecto de Azure DevOps (default: desde config.json)'
     )
     parser.add_argument(
         '--dry-run',
@@ -272,6 +273,22 @@ def main():
     
     args = parser.parse_args()
     
+    # Cargar configuración desde scm/config.json
+    cfg = load_config()
+    pat = args.pat or cfg.get('pat', '')
+    org = args.org or cfg.get('organization', '')
+    project = args.project or cfg.get('project', '')
+    
+    if not pat:
+        print("Error: --pat es requerido (no encontrado en config.json ni CLI)")
+        sys.exit(1)
+    if not org:
+        print("Error: --org es requerido (no encontrado en config.json ni CLI)")
+        sys.exit(1)
+    if not project:
+        print("Error: --project es requerido (no encontrado en config.json ni CLI)")
+        sys.exit(1)
+    
     # Ejecutar rollback si se especifica
     if args.rollback:
         if not args.definition_id or not args.snapshot_id:
@@ -284,7 +301,7 @@ def main():
             print("Error: definition-id debe ser un número")
             sys.exit(1)
         
-        updater = PipelineUpdater(args.pat, args.org, args.project)
+        updater = PipelineUpdater(pat, org, project)
         
         print("\n" + "="*70)
         print("  Pipeline Updater - Rollback desde Snapshot")
@@ -319,7 +336,7 @@ def main():
     
     # Ejecutar actualización
     # La ruta del template se pasa como absoluta desde tools.py
-    updater = PipelineUpdater(args.pat, args.org, args.project)
+    updater = PipelineUpdater(pat, org, project)
     result = updater.update_pipelines(
         definition_ids,
         args.template,

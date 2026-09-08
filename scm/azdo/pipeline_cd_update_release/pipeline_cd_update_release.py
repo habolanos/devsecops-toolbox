@@ -62,9 +62,13 @@ class Colors:
     MAGENTA = '\033[95m'
 
 
+_OUTPUT_DIR = "outcome"
+
+
 def load_config() -> Dict:
     """Carga configuracion desde scm/config.json si existe."""
-    config_file = Path(__file__).parent.parent / "config.json"
+    global _OUTPUT_DIR
+    config_file = Path(__file__).parent.parent.parent / "config.json"
     if config_file.exists():
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
@@ -72,10 +76,16 @@ def load_config() -> Dict:
                 azdo_config = config.get('azdo', {})
                 org_url = azdo_config.get('organization_url', '')
                 organization = org_url.split('/')[-1] if org_url else ''
+                global_cfg = config.get('global', {})
+                output_dir = global_cfg.get('output_dir', 'outcome')
+                if not Path(output_dir).is_absolute():
+                    output_dir = str(config_file.parent / output_dir)
+                _OUTPUT_DIR = output_dir
                 base_config = {
                     'organization': organization,
                     'project': azdo_config.get('project', ''),
-                    'pat': azdo_config.get('pat', '')
+                    'pat': azdo_config.get('pat', ''),
+                    'output_dir': output_dir,
                 }
                 pipeline_config = azdo_config.get('pipeline_update_release', {})
                 base_config.update(pipeline_config)
@@ -663,7 +673,9 @@ def show_changes(changes: List[Dict]) -> None:
 
 
 def export_report(stats: Dict, args, backup_file: str, updated_release: Optional[Dict],
-                  changes: List[Dict], output_dir: str = "outcome") -> str:
+                  changes: List[Dict], output_dir: str = None) -> str:
+    if output_dir is None:
+        output_dir = _OUTPUT_DIR
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"update_release_report_{timestamp}.json"
@@ -688,7 +700,9 @@ def export_report(stats: Dict, args, backup_file: str, updated_release: Optional
     return filepath
 
 
-def export_results(data, output_format: str = "json", output_dir: str = "outcome"):
+def export_results(data, output_format: str = "json", output_dir: str = None):
+    if output_dir is None:
+        output_dir = _OUTPUT_DIR
     from pathlib import Path as P
     import csv
     output_path = P(output_dir)
@@ -741,7 +755,7 @@ Ejemplos:
     parser.add_argument('--abandon', action='store_true', help='Abandonar el release (status=abandoned)')
     parser.add_argument('--description', default='', help='Nueva descripcion del release')
     parser.add_argument('--pat', required=False, help='Personal Access Token')
-    parser.add_argument('--backup-path', default='./outcome/backups', help='Carpeta de backups')
+    parser.add_argument('--backup-path', default=None, help='Carpeta de backups (default: <output_dir>/backups)')
     parser.add_argument('--dry-run', action='store_true', help='Modo simulacion (sin cambios)')
     parser.add_argument('--interactive', '-i', action='store_true', help='Modo interactivo')
     parser.add_argument('--template', type=str, default=None,
@@ -773,11 +787,15 @@ def main():
             args.description = tpl['description']
         args.comment = tpl.get('comment', '')
         args.tpl_dry_run = tpl.get('dry_run', False)
-        if args.backup_path == './outcome/backups' and tpl['backup_path'] != './outcome/backups':
-            args.backup_path = tpl['backup_path']
+        config = load_config()
         if not args.pat:
-            config = load_config()
             args.pat = config.get('pat', '')
+        if args.backup_path is None:
+            tpl_backup = tpl.get('backup_path', '')
+            if tpl_backup:
+                args.backup_path = tpl_backup
+            else:
+                args.backup_path = str(Path(_OUTPUT_DIR) / 'backups')
         if not args.release_id:
             print(f"{Colors.RED}✗ Error: --release-id es requerido (no encontrado en template ni CLI){Colors.ENDC}")
             sys.exit(1)
@@ -794,7 +812,7 @@ def main():
         args.abandon = params['abandon']
         args.description = params['description']
         args.pat = params['pat']
-        args.backup_path = params['backup_path']
+        args.backup_path = params['backup_path'] or str(Path(_OUTPUT_DIR) / 'backups')
         args.dry_run = params['dry_run']
         args.env_var_search_values = []
         args.global_var_search_values = []
@@ -804,8 +822,17 @@ def main():
         args.comment = ''
     else:
         if not args.release_id or not args.pat:
-            print(f"{Colors.RED}✗ Error: --release-id y --pat son requeridos cuando no se usa --interactive{Colors.ENDC}")
-            sys.exit(1)
+            config = load_config()
+            if not args.pat:
+                args.pat = config.get('pat', '')
+            if not args.release_id:
+                print(f"{Colors.RED}✗ Error: --release-id es requerido{Colors.ENDC}")
+                sys.exit(1)
+            if not args.pat:
+                print(f"{Colors.RED}✗ Error: --pat es requerido (no encontrado en config.json ni CLI){Colors.ENDC}")
+                sys.exit(1)
+        if args.backup_path is None:
+            args.backup_path = str(Path(_OUTPUT_DIR) / 'backups')
         args.env_var_search_values = []
         args.global_var_search_values = []
         args.task_updates = []

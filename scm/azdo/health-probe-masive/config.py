@@ -1,13 +1,44 @@
 """
 Configuración para Health Probe Masivo Validator
 """
+import json
 import os
-from typing import List
+from pathlib import Path
+from typing import Dict, List
+
+
+def _load_global_config() -> Dict:
+    """Carga configuración desde scm/config.json si existe."""
+    config_file = Path(__file__).parent.parent.parent / "config.json"
+    if config_file.exists():
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _resolve_output_dir(config: Dict) -> str:
+    """Resuelve output_dir desde global.output_dir en config.json."""
+    global_cfg = config.get('global', {})
+    output_dir = global_cfg.get('output_dir', 'outcome')
+    if not Path(output_dir).is_absolute():
+        config_file = Path(__file__).parent.parent.parent
+        output_dir = str(config_file / output_dir)
+    return output_dir
+
+
+_global_config = _load_global_config()
 
 # Azure DevOps Configuration
-AZDO_ORG = os.getenv("AZDO_ORG", "Coppel-Retail")
-AZDO_PROJECT = os.getenv("AZDO_PROJECT", "Cadena_de_Suministros")
-AZDO_PAT = os.getenv("AZDO_PAT", "")
+_azdo_cfg = _global_config.get('azdo', {})
+_org_url = _azdo_cfg.get('organization_url', '')
+_org_name = _org_url.split('/')[-1] if _org_url else ''
+
+AZDO_ORG = os.getenv("AZDO_ORG", _org_name or "Coppel-Retail")
+AZDO_PROJECT = os.getenv("AZDO_PROJECT", _azdo_cfg.get('project', 'Cadena_de_Suministros'))
+AZDO_PAT = os.getenv("AZDO_PAT", _azdo_cfg.get('pat', ''))
 AZDO_API_VERSION = "7.1"
 AZDO_BASE_URL = "https://dev.azure.com"
 
@@ -26,7 +57,8 @@ TIMEOUT = int(os.getenv("TIMEOUT", "30"))
 CACHE_TTL = int(os.getenv("CACHE_TTL", "86400"))  # 24 horas
 
 # Output Configuration
-OUTPUT_DIR = os.getenv("OUTPUT_DIR", "outcome/health_probe")
+_global_output_dir = _resolve_output_dir(_global_config)
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", str(Path(_global_output_dir) / "health_probe"))
 EXPORT_FORMATS = ["json", "csv", "html", "excel"]
 
 # Logging Configuration

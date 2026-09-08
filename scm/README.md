@@ -936,6 +936,30 @@ La versión se mantiene consistente en:
 
 ---
 
+## 🔧 Carga de Configuración desde `config.json`
+
+Los siguientes programas de Azure DevOps cargan configuración centralizada desde `scm/config.json`:
+
+| Programa | Carga `config.json` | Usa `global.output_dir` | Notas |
+|----------|---------------------|-------------------------|-------|
+| `pipeline_cd_clone` | ✅ | ✅ | Ya funcionaba correctamente |
+| `pipeline_cd_update_release` | ✅ (fix 1.7.1) | ✅ (fix 1.7.1) | Path corregido (2→3 niveles), backup_path y reportes usan `output_dir` |
+| `health-probe-masive` | ✅ (fix 1.7.1) | ✅ (fix 1.7.1) | `config.py` ahora lee `azdo.*` y `global.output_dir` |
+| `pipeline_updater` | ✅ (fix 1.7.1) | ✅ (fix 1.7.1) | `config.py` + `pipeline_updater.py` ahora leen `config.json` para PAT/org/project |
+
+### Prioridad de configuración
+
+1. **Variables de entorno** (mayor prioridad)
+2. **Argumentos CLI** (`--pat`, `--org`, `--project`, `--output`)
+3. **`scm/config.json`** (`azdo.*` y `global.output_dir`)
+4. **Valores por defecto** (menor prioridad)
+
+### `global.output_dir`
+
+Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`). Se resuelve a ruta absoluta relativa a `scm/`. Todas las herramientas deben usar este valor para sus directorios de salida.
+
+---
+
 ## 📜 Historial de Cambios
 
 | Fecha | Versión | Descripción |
@@ -945,6 +969,7 @@ La versión se mantiene consistente en:
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
+| 2026-09-08 | **1.7.1** | Fix config loading: health-probe-masive, pipeline_cd_update_release, pipeline_updater ahora cargan scm/config.json y usan global.output_dir |
 
 ---
 
