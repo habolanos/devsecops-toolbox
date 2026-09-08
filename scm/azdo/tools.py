@@ -1514,25 +1514,123 @@ def run_tool(tool_key: str):
         input("\nPresione Enter para continuar...")
         return
 
-    # ── Caso especial: Pipeline CD Clone (tool 43) usa modo interactivo ──
-    if tool_key == "43":
-        cmd = [str(venv_python), str(script_path), "--interactive"]
+    # ── Caso especial: Health Probe Masivo (tool 40) ──────────────────────────
+    if tool_key == "40":
+        while True:
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}  📊 Health Probe Masivo Validator - Seleccione una opción{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Modo interactivo (carga config.json automáticamente)")
+            print(f"{Colors.CYAN}[2]{Colors.ENDC} Ejecutar desde CLI (argumentos directos)")
+            print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+            print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
 
-        print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
-        try:
-            result = subprocess.run(cmd, cwd=BASE_DIR)
+            option = input().strip()
 
-            if result.returncode == 0:
-                print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
-            elif result.returncode == 1:
-                print(f"\n{Colors.WARNING}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
+            if option == "0":
+                return
+
+            elif option == "1":
+                cmd = [str(venv_python), str(script_path)]
+                print(f"\n{Colors.CYAN}▶ Ejecutando modo interactivo...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            elif option == "2":
+                print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
+                print(f"{Colors.DIM}Ej: -i input.json -o outcome/health_probe --workers 10 --timeout 30 --format json --verbose{Colors.ENDC}")
+                print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
+                cli_args = input().strip()
+                if not cli_args:
+                    print(f"{Colors.YELLOW}Sin argumentos. Cancelando...{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                cmd = [str(venv_python), str(script_path)] + cli_args.split()
+                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
             else:
-                print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
-        except Exception as e:
-            print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                print(f"{Colors.RED}❌ Opción no válida.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
 
-        input("\nPresione Enter para continuar...")
-        return
+    # ── Caso especial: Pipeline CD Clone (tool 43) ──────────────────────────
+    if tool_key == "43":
+        while True:
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}  📋 Pipeline CD Clone - Seleccione una opción{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Modo interactivo")
+            print(f"{Colors.CYAN}[2]{Colors.ENDC} Ejecutar desde CLI (argumentos directos)")
+            print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+            print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
+
+            option = input().strip()
+
+            if option == "0":
+                return
+
+            elif option == "1":
+                cmd = [str(venv_python), str(script_path), "--interactive"]
+                print(f"\n{Colors.CYAN}▶ Ejecutando modo interactivo...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    elif result.returncode == 1:
+                        print(f"\n{Colors.WARNING}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            elif option == "2":
+                print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
+                print(f"{Colors.DIM}Ej: --org Coppel-Retail --project Cadena_de_Suministros --source-id 1234 --new-name LAB-pipeline --pat TOKEN --dry-run{Colors.ENDC}")
+                print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
+                cli_args = input().strip()
+                if not cli_args:
+                    print(f"{Colors.YELLOW}Sin argumentos. Cancelando...{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                cmd = [str(venv_python), str(script_path)] + cli_args.split()
+                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    elif result.returncode == 1:
+                        print(f"\n{Colors.WARNING}🟡 Quality gate: HIGH (exit 1){Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            else:
+                print(f"{Colors.RED}❌ Opción no válida.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
 
     # ── Caso especial: Update Release (tool 42) - Submenú ──────────────────────
     if tool_key == "42":
@@ -1802,6 +1900,7 @@ def run_tool(tool_key: str):
             print(f"{Colors.CYAN}[1]{Colors.ENDC} Actualizar pipelines (modo interactivo)")
             print(f"{Colors.CYAN}[2]{Colors.ENDC} Rollback desde snapshot")
             print(f"{Colors.CYAN}[3]{Colors.ENDC} Listar snapshots disponibles")
+            print(f"{Colors.CYAN}[4]{Colors.ENDC} Ejecutar desde CLI (argumentos directos)")
             print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
             print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
             
@@ -1993,8 +2092,32 @@ def run_tool(tool_key: str):
                 input("\nPresione Enter para continuar...")
                 continue
             
+            # Opción 4: Ejecutar desde CLI (argumentos directos)
+            elif option == "4":
+                print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
+                print(f"{Colors.DIM}Ej: --definition-ids 2758,2759 --template scm/templates/example.yaml --workers 5 --dry-run{Colors.ENDC}")
+                print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
+                cli_args = input().strip()
+                if not cli_args:
+                    print(f"{Colors.YELLOW}Sin argumentos. Cancelando...{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                project_root = BASE_DIR.parent.parent
+                cmd = [sys.executable, "-m", "scm.azdo.pipeline_updater.pipeline_updater"] + cli_args.split()
+                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=project_root)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
             else:
-                print(f"{Colors.RED}❌ Opción no válida.{Colors.ENDC}")
+                print(f"{Colors.RED}❌ Opción no válida. Por favor seleccione 0-4.{Colors.ENDC}")
                 input("\nPresione Enter para continuar...")
                 continue
     

@@ -948,6 +948,17 @@ Los siguientes programas de Azure DevOps cargan configuración centralizada desd
 | `pipeline_updater` | ✅ (fix 1.7.1) | ✅ (fix 1.7.1) | `config.py` + `pipeline_updater.py` ahora leen `config.json` para PAT/org/project |
 | `tools.py` (launcher) | ✅ (fix 1.7.2) | ✅ (fix 1.7.2) | `_OUTPUT_DIR` resuelto al inicio; defaults de tools 23/24/42/43, `log_command`, listados de backups/snapshots y mensajes usan `output_dir` |
 
+### Submenús con CLI args (1.7.3)
+
+Los siguientes programas ahora pueden ejecutarse con argumentos directos desde el launcher `tools.py`:
+
+| Tool | Programa | Opciones del submenú |
+|------|----------|---------------------|
+| 40 | `health-probe-masive` | [1] Interactivo, [2] CLI args |
+| 41 | `pipeline_updater` | [1] Interactivo, [2] Rollback, [3] Listar snapshots, [4] CLI args |
+| 42 | `pipeline_cd_update_release` | [1] Interactivo, [2] Dry-run, [3] Listar backups, [4] CLI args |
+| 43 | `pipeline_cd_clone` | [1] Interactivo, [2] CLI args |
+
 ### Prioridad de configuración
 
 1. **Variables de entorno** (mayor prioridad)
@@ -970,6 +981,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
+| 2026-09-08 | **1.7.3** | Submenús CLI args: health-probe-masive (40), pipeline_cd_clone (43), pipeline_updater (41) ahora aceptan argumentos directos |
 | 2026-09-08 | **1.7.2** | Fix tools.py: _OUTPUT_DIR desde config.json para defaults, log_command, backups/snapshots listing y mensajes |
 | 2026-09-08 | **1.7.1** | Fix config loading: health-probe-masive, pipeline_cd_update_release, pipeline_updater ahora cargan scm/config.json y usan global.output_dir |
 
