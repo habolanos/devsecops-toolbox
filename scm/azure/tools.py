@@ -357,18 +357,138 @@ TOOLS = {
         "group": "appservice",
         "status": "ready"
     },
+    # ══════════ SECURITY (27) ══════════
+    "27": {
+        "name": "Azure Front Door / WAF Checker",
+        "description": "Audita Web Application Firewall (WAF), políticas, reglas y cobertura de backends en Azure Front Door",
+        "path": "security/azure_waf_checker.py",
+        "args": ["--subscription", "--view", "--severity", "-o"],
+        "requirements": "security/requirements.txt",
+        "group": "security",
+        "status": "ready"
+    },
+    # ══════════ ARTIFACTS (28) ══════════
+    "28": {
+        "name": "ACR Image Filter",
+        "description": "Filtra y exporta imágenes de Azure Container Registry a Excel",
+        "path": "artifacts/azure_acr_image_filter.py",
+        "args": ["--subscription", "--csv-file", "-o"],
+        "requirements": "artifacts/requirements.txt",
+        "group": "artifacts",
+        "status": "ready"
+    },
+    # ══════════ MONITORING (29-30) ══════════
+    "29": {
+        "name": "AKS Node Resources Monitor",
+        "description": "Uso de CPU y memoria por nodo en clusters AKS (HTML report)",
+        "path": "monitoring/aks_monitor_node.py",
+        "args": ["--subscription", "--output"],
+        "requirements": "monitoring/requirements.txt",
+        "group": "monitoring",
+        "status": "ready",
+        "auto_run": {"output_format": "html"}
+    },
+    "30": {
+        "name": "AKS Pod Resources Monitor",
+        "description": "Uso de CPU y memoria por pod en clusters AKS con selección interactiva",
+        "path": "monitoring/aks_monitor_pod.py",
+        "args": ["--subscription", "--namespace", "--sort", "--top"],
+        "requirements": "monitoring/requirements.txt",
+        "group": "monitoring",
+        "status": "ready",
+        "auto_run": {"skip_output": True}
+    },
+    # ══════════ APP SERVICE (31-33) ══════════
+    "31": {
+        "name": "App Service Health Analyzer",
+        "description": "Análisis profundo de salud y rendimiento de App Services",
+        "path": "app-service/appservice_health_analyzer.py",
+        "args": ["--subscription", "--resource-group", "--app-name", "--output", "--debug", "--timezone"],
+        "requirements": "app-service/requirements.txt",
+        "group": "appservice",
+        "status": "ready"
+    },
+    "32": {
+        "name": "App Service Cost Analyzer",
+        "description": "Análisis de costos y optimización de recursos en App Services",
+        "path": "app-service/appservice_cost_analyzer.py",
+        "args": ["--subscription", "--resource-group", "--compare", "--period", "--output", "--debug", "--timezone"],
+        "requirements": "app-service/requirements.txt",
+        "group": "appservice",
+        "status": "ready"
+    },
+    "33": {
+        "name": "App Service Traffic Analyzer",
+        "description": "Análisis de tráfico y distribución entre App Services",
+        "path": "app-service/appservice_traffic_analyzer.py",
+        "args": ["--subscription", "--resource-group", "--app-name", "--period", "--output", "--debug"],
+        "requirements": "app-service/requirements.txt",
+        "group": "appservice",
+        "status": "ready"
+    },
+    # ══════════ CONSOLIDATION (34-35) ══════════
+    "34": {
+        "name": "Azure Functions Analyzer",
+        "description": "Análisis profundo de Azure Functions (seguridad, costos, triggers, performance)",
+        "path": "consolidation/azure_functions_analyzer.py",
+        "args": ["--subscription", "--view", "--output", "--debug", "--timezone"],
+        "requirements": "consolidation/requirements.txt",
+        "group": "consolidation",
+        "status": "ready"
+    },
+    "35": {
+        "name": "Azure Infrastructure Consolidator",
+        "description": "Consolida Application Gateways, App Services y Azure Functions con mapeo de relaciones",
+        "path": "consolidation/azure_infrastructure_consolidator.py",
+        "args": ["--subscription", "--view", "--output", "--debug", "--timezone"],
+        "requirements": "consolidation/requirements.txt",
+        "group": "consolidation",
+        "status": "ready"
+    },
+    # ══════════ IAM (36) ══════════
+    "36": {
+        "name": "Service Principals Multi-Subscription Reporter",
+        "description": "Extrae, analiza y reporta service principals de múltiples suscripciones Azure con análisis de roles, permisos temporales y días restantes",
+        "path": "service-accounts/azure_sp_multi_subscription_reporter.py",
+        "args": ["-o"],
+        "requirements": "service-accounts/requirements.txt",
+        "group": "iam",
+        "status": "ready",
+        "additional_args": ["--config", "scm/config.json"]
+    },
+    # ══════════ KUBERNETES (37) ══════════
+    "37": {
+        "name": "AKS Deployments Off Analyzer",
+        "description": "Analiza deployments no running en AKS con diagnóstico automático de causa raíz y recomendaciones",
+        "path": "cluster-aks/aks_deployments_off_analyzer.py",
+        "args": ["--subscription", "--cluster", "--namespace", "-o"],
+        "requirements": "cluster-aks/requirements.txt",
+        "group": "kubernetes",
+        "status": "ready"
+    },
+    # ══════════ MONITORING (38) ══════════
+    "38": {
+        "name": "Service Bus Monitor - Multi-Suscripción",
+        "description": "Monitoreo profesional de Azure Service Bus con soporte multi-suscripción, alertas preventivas y dashboards ejecutivos",
+        "path": "servicebus/azure_service_bus_monitor.py",
+        "args": [],
+        "requirements": "servicebus/requirements.txt",
+        "group": "monitoring",
+        "status": "ready",
+        "additional_args": ["--config", "scm/config.json"]
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos (Checkers)",
-            "description": "Ejecuta todos los checkers con suscripción default",
+            "description": "Ejecuta todos los checkers con suscripción default y output JSON",
             "type": "auto_run",
-            "exclude": [],
-            "reason": "Ejecuta herramientas de monitoreo básico"
+            "exclude": ["27", "28", "37", "38"],
+            "reason": "Excluye: WAF Checker (requiere view), ACR Image Filter (requiere CSV), AKS Deployments Off Analyzer (requiere cluster), Service Bus Monitor (requiere config)"
         },
         "Q": {
             "name": "Salir",
-            "description": "Salir del launcher",
+            "description": "Salir del menú",
             "type": "exit"
         }
     }

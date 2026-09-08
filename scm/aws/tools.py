@@ -81,6 +81,8 @@ TOOL_GROUPS = {
     "artifacts": {"name": "Artifacts", "emoji": "📦", "color": "red"},
     "compute": {"name": "Compute", "emoji": "💻", "color": "bright_blue"},
     "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
+    "reports": {"name": "Reports", "emoji": "📈", "color": "bright_white"},
+    "consolidation": {"name": "Consolidación", "emoji": "🔗", "color": "bright_magenta"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
 
