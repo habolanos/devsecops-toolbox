@@ -336,11 +336,8 @@ TOOLS: Dict = {
         "path":        "pipeline_cd_new_re_release.py",
         "args":        ["--org", "--project", "--source-release-id", "--release-comment", "--pat", "--backup-path"],
         "defaults":    {
-            "org": "Coppel-Retail",
-            "project": "Cadena_de_Suministros",
             "source_release_id": 999999,
             "release_comment": "Renovacion de Credenciales Git",
-            "pat": "",
             "backup_path": str(Path(_OUTPUT_DIR) / "backups")
         },
         "group":       "updatepipe",
@@ -352,11 +349,8 @@ TOOLS: Dict = {
         "path":        "pipeline_cd_restore_release.py",
         "args":        ["--org", "--project", "--backup-file", "--restore-comment", "--pat", "--backup-path"],
         "defaults":    {
-            "org": "Coppel-Retail",
-            "project": "Cadena_de_Suministros",
             "backup_file": "",
             "restore_comment": "Restore automático desde tools.py",
-            "pat": "",
             "backup_path": str(Path(_OUTPUT_DIR) / "backups")
         },
         "group":       "updatepipe",
@@ -413,10 +407,7 @@ TOOLS: Dict = {
                         "--abandon", "--description", "--pat", "--backup-path", "--dry-run",
                         "--template", "--interactive"],
         "defaults":    {
-            "org": "Coppel-Retail",
-            "project": "Cadena_de_Suministros",
             "release_id": "",
-            "pat": "",
             "backup_path": str(Path(_OUTPUT_DIR) / "backups")
         },
         "group":       "updatepipe",
@@ -429,12 +420,9 @@ TOOLS: Dict = {
         "args":        ["--org", "--project", "--source-id", "--new-name", "--new-path",
                         "--pat", "--dry-run", "--backup", "--backup-path", "--interactive"],
         "defaults":    {
-            "org": "Coppel-Retail",
-            "project": "Cadena_de_Suministros",
             "source_id": "",
             "new_name": "",
             "new_path": "",
-            "pat": "",
             "backup_path": str(Path(_OUTPUT_DIR) / "backups" / "clone")
         },
         "group":       "updatepipe",
@@ -668,14 +656,14 @@ def ask_common_params(cfg: dict, tool_key: str = "") -> dict:
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
     
     # Organización - Retornar URL completa
-    org = prompt("Organización", default=cfg_org or "https://dev.azure.com/Coppel-Retail")
+    org = prompt("Organización", default=cfg_org)
     # Asegurar que org es la URL completa
     if not org.startswith("https://"):
         # Si el usuario ingresó solo el nombre, construir la URL
         org = f"https://dev.azure.com/{org}"
     
     # Proyecto
-    project = prompt("Proyecto", default=cfg_project or "Cadena_de_Suministros")
+    project = prompt("Proyecto", default=cfg_project)
     
     # PAT
     pat = prompt("Personal Access Token (PAT)",
@@ -1249,7 +1237,7 @@ def run_tool(tool_key: str):
         print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
         
         # Solicitar parámetros específicos
-        cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+        cfg_org = config_get(cfg, "azdo", "organization_url", default="")
         if cfg_org.startswith("https://"):
             cfg_org = cfg_org.split('/')[-1]
         
@@ -1257,7 +1245,7 @@ def run_tool(tool_key: str):
         if not org.startswith("https://"):
             org = f"https://dev.azure.com/{org}"
         
-        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default=""))
         
         print(f"{Colors.BOLD}Release IDs origen (obligatorio, máx 50, separados por coma):{Colors.ENDC} ", end="")
         source_release_ids_input = input().strip()
@@ -1343,7 +1331,7 @@ def run_tool(tool_key: str):
         print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
         
         # Solicitar parámetros específicos
-        cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+        cfg_org = config_get(cfg, "azdo", "organization_url", default="")
         if cfg_org.startswith("https://"):
             cfg_org = cfg_org.split('/')[-1]
         
@@ -1351,7 +1339,7 @@ def run_tool(tool_key: str):
         if not org.startswith("https://"):
             org = f"https://dev.azure.com/{org}"
         
-        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default="Cadena_de_Suministros"))
+        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default=""))
         
         backup_file = prompt("Archivo de backup (ruta o nombre)", 
                             default=tool_defaults.get("backup_file", ""),
@@ -1726,10 +1714,10 @@ def run_tool(tool_key: str):
                             continue
 
                 # Parametros de conexion (informativos, ya precargados de config.json)
-                cfg_org = config_get(cfg, "azdo", "organization_url", default="https://dev.azure.com/Coppel-Retail")
+                cfg_org = config_get(cfg, "azdo", "organization_url", default="")
                 if cfg_org.startswith("https://"):
                     cfg_org = cfg_org.split('/')[-1]
-                cfg_project = config_get(cfg, "azdo", "project", default="Cadena_de_Suministros")
+                cfg_project = config_get(cfg, "azdo", "project", default="")
                 cfg_pat = config_get(cfg, "azdo", "pat", default="")
 
                 print(f"{Colors.DIM}Organización: {cfg_org} (precargado){Colors.ENDC}")

@@ -981,6 +981,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
+| 2026-09-08 | **1.7.4** | Eliminar org/project/pat hardcoded de TOOLS defaults y fallbacks; todo proviene de config.json |
 | 2026-09-08 | **1.7.3** | Submenús CLI args: health-probe-masive (40), pipeline_cd_clone (43), pipeline_updater (41) ahora aceptan argumentos directos |
 | 2026-09-08 | **1.7.2** | Fix tools.py: _OUTPUT_DIR desde config.json para defaults, log_command, backups/snapshots listing y mensajes |
 | 2026-09-08 | **1.7.1** | Fix config loading: health-probe-masive, pipeline_cd_update_release, pipeline_updater ahora cargan scm/config.json y usan global.output_dir |
