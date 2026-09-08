@@ -946,6 +946,7 @@ Los siguientes programas de Azure DevOps cargan configuración centralizada desd
 | `pipeline_cd_update_release` | ✅ (fix 1.7.1) | ✅ (fix 1.7.1) | Path corregido (2→3 niveles), backup_path y reportes usan `output_dir` |
 | `health-probe-masive` | ✅ (fix 1.7.1) | ✅ (fix 1.7.1) | `config.py` ahora lee `azdo.*` y `global.output_dir` |
 | `pipeline_updater` | ✅ (fix 1.7.1) | ✅ (fix 1.7.1) | `config.py` + `pipeline_updater.py` ahora leen `config.json` para PAT/org/project |
+| `tools.py` (launcher) | ✅ (fix 1.7.2) | ✅ (fix 1.7.2) | `_OUTPUT_DIR` resuelto al inicio; defaults de tools 23/24/42/43, `log_command`, listados de backups/snapshots y mensajes usan `output_dir` |
 
 ### Prioridad de configuración
 
@@ -969,6 +970,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
+| 2026-09-08 | **1.7.2** | Fix tools.py: _OUTPUT_DIR desde config.json para defaults, log_command, backups/snapshots listing y mensajes |
 | 2026-09-08 | **1.7.1** | Fix config loading: health-probe-masive, pipeline_cd_update_release, pipeline_updater ahora cargan scm/config.json y usan global.output_dir |
 
 ---

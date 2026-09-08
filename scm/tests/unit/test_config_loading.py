@@ -6,6 +6,7 @@ Verifica que los programas:
 - pipeline_cd_clone
 - pipeline_cd_update_release
 - pipeline_updater
+- tools.py (launcher unificado)
 
 carguen correctamente scm/config.json y usen global.output_dir.
 """
@@ -349,6 +350,91 @@ class TestConfigFallback:
             sys.path.pop()
             if original_content is not None:
                 with open(config_path, 'w', encoding='utf-8') as f:
+                    f.write(original_content)
+
+
+# ─── Tests para tools.py _OUTPUT_DIR ─────────────────────────────────────────
+
+class TestToolsPyOutputDir:
+    """Verifica que tools.py resuelva _OUTPUT_DIR desde config.json."""
+
+    def test_tools_py_output_dir_resolved(self):
+        """tools.py debe tener _OUTPUT_DIR apuntando a SCM_ROOT/output_dir."""
+        sys.path.insert(0, str(SCM_DIR / "azdo"))
+        try:
+            import importlib
+            mod = importlib.import_module("tools")
+            importlib.reload(mod)
+            assert hasattr(mod, "_OUTPUT_DIR")
+            assert "outcome" in mod._OUTPUT_DIR.lower()
+        finally:
+            sys.path.pop()
+
+    def test_tools_py_output_dir_uses_config(self, temp_config):
+        """_OUTPUT_DIR debe reflejar global.output_dir de config.json."""
+        config_path = SCM_DIR / "config.json"
+        original_content = None
+        if config_path.exists():
+            original_content = config_path.read_text(encoding="utf-8")
+        test_config = {
+            "global": {"output_dir": "custom_output"},
+            "azdo": {
+                "organization_url": "https://dev.azure.com/TestOrg",
+                "project": "TestProject",
+                "pat": "test-pat-12345",
+            },
+        }
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(test_config, f)
+        try:
+            sys.path.insert(0, str(SCM_DIR / "azdo"))
+            import importlib
+            mod = importlib.import_module("tools")
+            importlib.reload(mod)
+            assert "custom_output" in mod._OUTPUT_DIR
+        finally:
+            sys.path.pop()
+            if original_content is not None:
+                with open(config_path, "w", encoding="utf-8") as f:
+                    f.write(original_content)
+
+    def test_tools_py_defaults_use_output_dir(self):
+        """TOOLS defaults para 23, 24, 42, 43 deben usar _OUTPUT_DIR."""
+        sys.path.insert(0, str(SCM_DIR / "azdo"))
+        try:
+            import importlib
+            mod = importlib.import_module("tools")
+            importlib.reload(mod)
+            output_dir = mod._OUTPUT_DIR
+            for key in ("23", "24", "42"):
+                defaults = mod.TOOLS[key].get("defaults", {})
+                backup_path = defaults.get("backup_path", "")
+                assert "outcome" in backup_path.lower() or "custom" in backup_path.lower(), \
+                    f"Tool {key} backup_path should reference output_dir, got: {backup_path}"
+            clone_defaults = mod.TOOLS["43"].get("defaults", {})
+            clone_backup = clone_defaults.get("backup_path", "")
+            assert "clone" in clone_backup, \
+                f"Tool 43 backup_path should include 'clone', got: {clone_backup}"
+        finally:
+            sys.path.pop()
+
+    def test_tools_py_fallback_no_config(self):
+        """Si config.json no existe, _OUTPUT_DIR debe ser SCM_ROOT/outcome."""
+        config_path = SCM_DIR / "config.json"
+        original_content = None
+        if config_path.exists():
+            original_content = config_path.read_text(encoding="utf-8")
+            config_path.unlink()
+        try:
+            sys.path.insert(0, str(SCM_DIR / "azdo"))
+            import importlib
+            mod = importlib.import_module("tools")
+            importlib.reload(mod)
+            assert mod._OUTPUT_DIR.endswith("outcome")
+        finally:
+            sys.path.pop()
+            if original_content is not None:
+                with open(config_path, "w", encoding="utf-8") as f:
                     f.write(original_content)
 
 

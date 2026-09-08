@@ -78,6 +78,19 @@ LAST_PARAMS_FILE  = BASE_DIR / ".last_params.json"  # Cache de últimos parámet
 REQUIREMENTS_FILE = "requirements.txt"
 _PLATFORM         = platform.system()  # Windows, Linux, Darwin, etc.
 
+# ── Resolver output_dir desde config.json (global.output_dir) ──────────────
+_OUTPUT_DIR = str(SCM_ROOT / "outcome")
+try:
+    if CONFIG_FILE.exists():
+        with open(CONFIG_FILE, "r", encoding="utf-8") as _f:
+            _cfg = json.load(_f)
+            _output_dir_val = _cfg.get('global', {}).get('output_dir', 'outcome')
+            if not Path(_output_dir_val).is_absolute():
+                _output_dir_val = str(SCM_ROOT / _output_dir_val)
+            _OUTPUT_DIR = _output_dir_val
+except Exception:
+    pass
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # COLORES FALLBACK
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -328,7 +341,7 @@ TOOLS: Dict = {
             "source_release_id": 999999,
             "release_comment": "Renovacion de Credenciales Git",
             "pat": "",
-            "backup_path": "./outcome/backups"
+            "backup_path": str(Path(_OUTPUT_DIR) / "backups")
         },
         "group":       "updatepipe",
         "status":      "ready",
@@ -344,7 +357,7 @@ TOOLS: Dict = {
             "backup_file": "",
             "restore_comment": "Restore automático desde tools.py",
             "pat": "",
-            "backup_path": "./outcome/backups"
+            "backup_path": str(Path(_OUTPUT_DIR) / "backups")
         },
         "group":       "updatepipe",
         "status":      "ready",
@@ -404,7 +417,7 @@ TOOLS: Dict = {
             "project": "Cadena_de_Suministros",
             "release_id": "",
             "pat": "",
-            "backup_path": "./outcome/backups"
+            "backup_path": str(Path(_OUTPUT_DIR) / "backups")
         },
         "group":       "updatepipe",
         "status":      "ready",
@@ -422,7 +435,7 @@ TOOLS: Dict = {
             "new_name": "",
             "new_path": "",
             "pat": "",
-            "backup_path": "./outcome/backups/clone"
+            "backup_path": str(Path(_OUTPUT_DIR) / "backups" / "clone")
         },
         "group":       "updatepipe",
         "status":      "ready",
@@ -910,7 +923,7 @@ def log_command(cmd: List[str], status: str = "EXEC") -> None:
     if os.environ.get("DEVSECOPS_LOG_COMMANDS") != "1":
         return
     output_dir_env = os.environ.get("DEVSECOPS_OUTPUT_DIR")
-    log_dir = Path(output_dir_env) if output_dir_env else BASE_DIR / "outcome"
+    log_dir = Path(output_dir_env) if output_dir_env else Path(_OUTPUT_DIR)
     log_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.datetime.now().strftime("%Y%m%d")
     log_file = log_dir / f"commands_{today}.log"
@@ -1280,8 +1293,8 @@ def run_tool(tool_key: str):
             return
         
         backup_path = prompt("Carpeta de backups", 
-                            default=tool_defaults.get("backup_path", "./outcome/backups"))
-        
+                            default=tool_defaults.get("backup_path", str(Path(_OUTPUT_DIR) / "backups")))
+
         # Confirmación
         print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
         print(f"{Colors.YELLOW}⚠  CONFIRMACIÓN REQUERIDA{Colors.ENDC}")
@@ -1360,8 +1373,8 @@ def run_tool(tool_key: str):
             return
         
         backup_path = prompt("Carpeta de backups", 
-                            default=tool_defaults.get("backup_path", "./outcome/backups"))
-        
+                            default=tool_defaults.get("backup_path", str(Path(_OUTPUT_DIR) / "backups")))
+
         # Construir comando
         cmd = [
             str(venv_python), str(script_path),
@@ -1544,7 +1557,7 @@ def run_tool(tool_key: str):
 
             # Opción 3: Listar backups
             elif option == "3":
-                backups_dir = BASE_DIR / "outcome" / "backups"
+                backups_dir = Path(_OUTPUT_DIR) / "backups"
                 if backups_dir.exists():
                     print(f"\n{Colors.CYAN}📁 Backups disponibles:{Colors.ENDC}\n")
                     backups = sorted(backups_dir.glob("release_backup_UPD_REL_*.json"))
@@ -1697,7 +1710,7 @@ def run_tool(tool_key: str):
                     description = input().strip()
 
                 backup_path = prompt("Carpeta de backups",
-                                    default=tool_defaults.get("backup_path", "./outcome/backups"))
+                                    default=tool_defaults.get("backup_path", str(Path(_OUTPUT_DIR) / "backups")))
 
                 # Preguntar dry-run (solo opcion 1; opcion 2 ya es dry-run)
                 if not is_dry_run:
@@ -1800,7 +1813,7 @@ def run_tool(tool_key: str):
             
             # Opción 3: Listar snapshots
             elif option == "3":
-                snapshots_dir = BASE_DIR / "outcome" / "snapshots"
+                snapshots_dir = Path(_OUTPUT_DIR) / "snapshots"
                 if snapshots_dir.exists():
                     print(f"\n{Colors.CYAN}📁 Snapshots disponibles:{Colors.ENDC}\n")
                     snapshots = sorted(snapshots_dir.glob("*.json"))
@@ -2394,7 +2407,7 @@ def run_all_json():
             cache_note = " [dim](JSON cache)[/dim]" if k in _CACHE_JSON_TOOLS else ""
             t.add_row(f"{group.get('emoji','🔧')}  {tool.get('name','')}{cache_note}")
         console.print(t)
-        console.print(f"[dim]Los JSON se generarán en [cyan]outcome/[/cyan][/dim]")
+        console.print(f"[dim]Los JSON se generarán en [cyan]{_OUTPUT_DIR}[/cyan][/dim]")
         console.print()
     else:
         print(f"\n{Colors.HEADER}{'='*60}")
@@ -2480,7 +2493,7 @@ def run_all_json():
 
     if RICH_AVAILABLE and console:
         console.print(Panel(
-            "💡 Todos los JSON están en [cyan]outcome/[/cyan]. "
+            f"💡 Todos los JSON están en [cyan]{_OUTPUT_DIR}[/cyan]. "
             "Carga esa carpeta en el dashboard para visualizar.",
             box=ROUNDED, border_style="yellow",
         ))
@@ -2520,7 +2533,7 @@ def _print_execution_summary(results: list, elapsed: float):
             box=ROUNDED, border_style="blue",
         ))
         console.print(Panel(
-            "💡 Los reportes se generaron en la carpeta [cyan]outcome/[/cyan].",
+            f"💡 Los reportes se generaron en la carpeta [cyan]{_OUTPUT_DIR}[/cyan].",
             box=ROUNDED, border_style="dim",
         ))
     else:
