@@ -510,8 +510,8 @@ TOOLS = {
             "name": "Ejecutar Todos (Checkers)",
             "description": "Ejecuta todos los checkers con profile y región por defecto",
             "type": "auto_run",
-            "exclude": ["15", "16", "19"],
-            "reason": "Excluye: EKS Pod Monitor, EKS Node Monitor, Inventory (pipeline propio)"
+            "exclude": ["26", "27", "35", "39", "19", "40"],
+            "reason": "Excluye: EKS Pod Connectivity (requiere deployment), EKS Deployment Validator (requiere deployment), EKS Deployments Off Analyzer (requiere cluster), EKS Deploy Dependency Checker (requiere deployment), Inventory (pipeline propio), Inventory Consolidator (requiere múltiples regiones)"
         },
         "Q": {
             "name": "Salir",
