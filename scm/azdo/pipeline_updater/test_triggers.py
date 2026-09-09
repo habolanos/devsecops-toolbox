@@ -180,5 +180,137 @@ class TestTriggers(unittest.TestCase):
         self.assertEqual(len(definition['triggers']), 1)
 
 
+class TestStageTriggerOnExisting(unittest.TestCase):
+    """Tests for trigger override on existing stages via _update_stage."""
+
+    def setUp(self):
+        self.definition = {
+            'environments': [
+                {
+                    'id': 1, 'name': 'SCM Inspection', 'rank': 1,
+                    'conditions': [
+                        {'name': 'ReleaseStarted', 'conditionType': 'event', 'value': '', 'result': None}
+                    ]
+                },
+                {
+                    'id': 2, 'name': 'Develop', 'rank': 2,
+                    'conditions': [
+                        {'name': 'ReleaseStarted', 'conditionType': 'event', 'value': '', 'result': None},
+                        {'name': '_myartifact', 'conditionType': 'artifact', 'value': '', 'result': None}
+                    ]
+                },
+                {
+                    'id': 3, 'name': 'QA', 'rank': 3,
+                    'conditions': [
+                        {'name': 'ReleaseStarted', 'conditionType': 'event', 'value': '', 'result': None},
+                        {'name': '_myartifact', 'conditionType': 'artifact', 'value': '', 'result': None}
+                    ]
+                },
+            ]
+        }
+
+    def test_trigger_after_stage_on_existing(self):
+        """Configurar trigger after_stage en un stage existente."""
+        search_rules = {
+            'stages': [{'name': 'Develop'}, {'name': 'QA'}]
+        }
+        se = SearchEngine(self.definition, search_rules)
+        matches = se.search_all()
+
+        update_rules = {
+            'stages': [
+                {'name': 'SCM Inspection', 'rank': 1},
+                {'name': 'Develop', 'rank': 2, 'trigger': 'after_stage', 'reference_stage': 'SCM Inspection'},
+                {'name': 'QA', 'rank': 3, 'trigger': 'after_stage', 'reference_stage': 'SCM Inspection'},
+            ]
+        }
+        engine = UpdateEngine(self.definition, matches, update_rules)
+        engine.apply_updates()
+
+        develop = self.definition['environments'][1]
+        qa = self.definition['environments'][2]
+
+        # Verificar que conditions tienen environmentState apuntando a SCM Inspection
+        dev_conditions = develop['conditions']
+        self.assertEqual(len(dev_conditions), 2)
+        self.assertEqual(dev_conditions[0]['name'], 'SCM Inspection')
+        self.assertEqual(dev_conditions[0]['conditionType'], 'environmentState')
+        self.assertEqual(dev_conditions[0]['value'], '4')
+
+        # Verificar que artifact filter se preservó
+        self.assertEqual(dev_conditions[1]['conditionType'], 'artifact')
+        self.assertEqual(dev_conditions[1]['name'], '_myartifact')
+
+        # Mismo check para QA
+        qa_conditions = qa['conditions']
+        self.assertEqual(len(qa_conditions), 2)
+        self.assertEqual(qa_conditions[0]['name'], 'SCM Inspection')
+        self.assertEqual(qa_conditions[0]['conditionType'], 'environmentState')
+        self.assertEqual(qa_conditions[1]['conditionType'], 'artifact')
+
+        # Verificar changes registrados
+        changes = engine.get_changes()
+        trigger_changes = [c for c in changes if c['type'] == 'stage_trigger_override']
+        self.assertEqual(len(trigger_changes), 2)
+
+    def test_trigger_after_release_on_existing(self):
+        """Configurar trigger after_release en un stage existente."""
+        search_rules = {'stages': [{'name': 'Develop'}]}
+        se = SearchEngine(self.definition, search_rules)
+        matches = se.search_all()
+
+        update_rules = {
+            'stages': [
+                {'name': 'Develop', 'trigger': 'after_release'}
+            ]
+        }
+        engine = UpdateEngine(self.definition, matches, update_rules)
+        engine.apply_updates()
+
+        develop = self.definition['environments'][1]
+        conditions = develop['conditions']
+        self.assertEqual(len(conditions), 2)
+        self.assertEqual(conditions[0]['name'], 'ReleaseStarted')
+        self.assertEqual(conditions[0]['conditionType'], 'event')
+        # Artifact filter preservado
+        self.assertEqual(conditions[1]['conditionType'], 'artifact')
+
+    def test_trigger_none_on_existing(self):
+        """Configurar trigger none (manual) en un stage existente."""
+        search_rules = {'stages': [{'name': 'Develop'}]}
+        se = SearchEngine(self.definition, search_rules)
+        matches = se.search_all()
+
+        update_rules = {
+            'stages': [
+                {'name': 'Develop', 'trigger': 'none'}
+            ]
+        }
+        engine = UpdateEngine(self.definition, matches, update_rules)
+        engine.apply_updates()
+
+        develop = self.definition['environments'][1]
+        conditions = develop['conditions']
+        # Solo debe quedar el artifact filter
+        self.assertEqual(len(conditions), 1)
+        self.assertEqual(conditions[0]['conditionType'], 'artifact')
+
+    def test_trigger_after_stage_without_reference_raises(self):
+        """trigger after_stage sin reference_stage debe lanzar error."""
+        search_rules = {'stages': [{'name': 'Develop'}]}
+        se = SearchEngine(self.definition, search_rules)
+        matches = se.search_all()
+
+        update_rules = {
+            'stages': [
+                {'name': 'Develop', 'trigger': 'after_stage'}
+            ]
+        }
+        engine = UpdateEngine(self.definition, matches, update_rules)
+        # apply_updates captura excepciones y retorna False
+        result = engine.apply_updates()
+        self.assertFalse(result)
+
+
 if __name__ == '__main__':
     unittest.main()

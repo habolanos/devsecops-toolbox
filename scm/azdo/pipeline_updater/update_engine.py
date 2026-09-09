@@ -1033,6 +1033,11 @@ class UpdateEngine:
                         'new': new_value
                     })
                 
+                # Actualizar trigger del stage (preserva artifact filters)
+                trigger = rule.get('trigger')
+                if trigger is not None:
+                    self._apply_trigger_override(stage, trigger, rule, match.name)
+
                 # Actualizar campos del stage (formato 'fields')
                 for field_update in rule.get('fields', []):
                     path = field_update.get('path')

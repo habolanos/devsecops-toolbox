@@ -1,0 +1,65 @@
+metadata:
+  name: "Reordenar stages + trigger after SCM Inspection"
+  version: "1.1"
+  description: |
+    Reordenamiento: SCM Inspection → Develop → QA → Validator → Production
+    Con trigger "after stage SCM Inspection" en Develop y QA.
+  comment: |
+    Reordenamiento de stages con trigger after stage.
+
+    IMPORTANTE:
+    - Develop y QA se configuran con trigger "after stage SCM Inspection"
+    - SCM Inspection mantiene su trigger actual (after_release o manual)
+    - Validator y Production mantienen su trigger actual
+    - SOLO actualiza pipelines que tengan EXACTAMENTE estos 5 stages
+    - Los artifact filters de Develop y QA se PRESERVAN automaticamente
+
+    Nuevo orden de ejecucion:
+    1. SCM Inspection (trigger: after_release o manual)
+    2. Develop       (trigger: after stage SCM Inspection)
+    3. QA            (trigger: after stage SCM Inspection)
+    4. Validator     (trigger: after stage QA o el que tenga)
+    5. Production    (trigger: after stage Validator o el que tenga)
+
+    Realizado por: Harold Adrian
+    Fecha: 2026-09-08
+    Via: Template YAML
+
+search:
+  # Validacion exacta: Pipeline debe tener EXACTAMENTE estos 5 stages
+  stages:
+    - name: "SCM Inspection"
+    - name: "Develop"
+    - name: "QA"
+    - name: "Validator"
+    - name: "Production"
+
+update:
+  stages:
+    # SCM Inspection: rank 1, sin cambios de trigger
+    - name: "SCM Inspection"
+      rank: 1
+
+    # Develop: rank 2 + trigger after stage SCM Inspection
+    - name: "Develop"
+      rank: 2
+      trigger: after_stage
+      reference_stage: "SCM Inspection"
+
+    # QA: rank 3 + trigger after stage SCM Inspection
+    - name: "QA"
+      rank: 3
+      trigger: after_stage
+      reference_stage: "SCM Inspection"
+
+    # Validator: rank 4, sin cambios de trigger
+    - name: "Validator"
+      rank: 4
+
+    # Production: rank 5, sin cambios de trigger
+    - name: "Production"
+      rank: 5
+
+options:
+  dry_run: true
+  rollback_on_error: true
