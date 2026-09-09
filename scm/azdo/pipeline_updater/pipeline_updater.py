@@ -124,6 +124,11 @@ class PipelineUpdater:
         else:
             console.print("\n[bold cyan][3/5] Modo DRY-RUN (sin cambios)[/]")
         
+        # Merge dry_run: CLI flag OR template option
+        template_options = parser.get_template_options()
+        if template_options.dry_run:
+            dry_run = True
+
         # 4. Ejecutar actualización
         print(f"\n[4/5] Ejecutando actualización en paralelo...")
         
@@ -137,7 +142,8 @@ class PipelineUpdater:
             definition_ids,
             parser,
             self.azdo_client,
-            on_progress=progress_callback
+            on_progress=progress_callback,
+            dry_run=dry_run
         )
         
         # 5. Generar reportes

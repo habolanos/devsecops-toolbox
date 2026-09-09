@@ -31,7 +31,8 @@ class ParallelExecutor:
         definition_ids: List[int],
         template_parser,
         azdo_client,
-        on_progress: Callable = None
+        on_progress: Callable = None,
+        dry_run: bool = False
     ) -> Dict:
         """
         Ejecutar actualización en paralelo
@@ -41,6 +42,7 @@ class ParallelExecutor:
             template_parser: Parser de templates
             azdo_client: Cliente de Azure DevOps
             on_progress: Callback para progreso
+            dry_run: Modo simulación (sin guardar cambios)
             
         Returns:
             Diccionario con resultados
@@ -54,7 +56,8 @@ class ParallelExecutor:
                     self._process_pipeline,
                     def_id,
                     template_parser,
-                    azdo_client
+                    azdo_client,
+                    dry_run
                 ): def_id
                 for def_id in definition_ids
             }
@@ -99,7 +102,8 @@ class ParallelExecutor:
         self,
         definition_id: int,
         template_parser,
-        azdo_client
+        azdo_client,
+        dry_run: bool = False
     ) -> UpdateResult:
         """
         Procesar un pipeline
@@ -108,6 +112,7 @@ class ParallelExecutor:
             definition_id: ID de la definición
             template_parser: Parser de templates
             azdo_client: Cliente de Azure DevOps
+            dry_run: Modo simulación (sin guardar cambios)
             
         Returns:
             Resultado de la actualización
@@ -115,17 +120,22 @@ class ParallelExecutor:
         start_time = time.time()
         
         try:
-            print(f"\n  [Pipeline {definition_id}] Iniciando procesamiento...")
+            mode_label = " [DRY-RUN]" if dry_run else ""
+            print(f"\n  [Pipeline {definition_id}] Iniciando procesamiento{mode_label}...")
             
             # 1. Descargar definición
             print(f"  [Pipeline {definition_id}] 1/5 Descargando definición...")
             definition = azdo_client.get_release_definition(definition_id)
             print(f"  [Pipeline {definition_id}]   ✓ Definición descargada (revision: {definition.get('revision', 'N/A')})")
             
-            # 2. Crear snapshot
-            print(f"  [Pipeline {definition_id}] 2/5 Creando snapshot...")
-            snapshot_id = azdo_client.create_snapshot(definition_id, definition)
-            print(f"  [Pipeline {definition_id}]   ✓ Snapshot creado: {snapshot_id}")
+            # 2. Crear snapshot (skip en dry-run)
+            if dry_run:
+                print(f"  [Pipeline {definition_id}] 2/5 [DRY-RUN] Snapshot omitido")
+                snapshot_id = ''
+            else:
+                print(f"  [Pipeline {definition_id}] 2/5 Creando snapshot...")
+                snapshot_id = azdo_client.create_snapshot(definition_id, definition)
+                print(f"  [Pipeline {definition_id}]   ✓ Snapshot creado: {snapshot_id}")
             
             # 3. Buscar coincidencias
             print(f"  [Pipeline {definition_id}] 3/5 Buscando coincidencias...")
@@ -145,6 +155,23 @@ class ParallelExecutor:
                 # Flujo de deshabilitación: PUT con isDisabled=true
                 # El pipeline permanece visible en la UI pero no permite crear releases.
                 # Es reversible: un PUT con isDisabled=false lo re-habilita.
+                if dry_run:
+                    print(f"  [Pipeline {definition_id}] 4/5 [DRY-RUN] Deshabilitar pipeline (isDisabled=true)")
+                    duration = time.time() - start_time
+                    return UpdateResult(
+                        definition_id=definition_id,
+                        success=True,
+                        snapshot_id=snapshot_id,
+                        matches_found=len(matches),
+                        changes_applied=1,
+                        changes=[{
+                            'type': 'pipeline_disable',
+                            'definition_id': definition_id,
+                            'snapshot_id': snapshot_id
+                        }],
+                        error=None,
+                        duration=duration
+                    )
                 print(f"  [Pipeline {definition_id}] 4/5 Deshabilitando pipeline (isDisabled=true)...")
                 metadata = template_parser.get_metadata()
                 success = azdo_client.update_release_definition(
@@ -192,6 +219,25 @@ class ParallelExecutor:
                 
                 print(f"  [Pipeline {definition_id}] 4/5 Moviendo pipeline de '{old_path}' a '{target_path}'...")
                 
+                if dry_run:
+                    print(f"  [Pipeline {definition_id}]   ✓ [DRY-RUN] Movimiento simulado (no guardado)")
+                    duration = time.time() - start_time
+                    return UpdateResult(
+                        definition_id=definition_id,
+                        success=True,
+                        snapshot_id=snapshot_id,
+                        matches_found=len(matches),
+                        changes_applied=1,
+                        changes=[{
+                            'type': 'pipeline_move',
+                            'definition_id': definition_id,
+                            'old_path': old_path,
+                            'new_path': target_path,
+                            'snapshot_id': snapshot_id
+                        }],
+                        error=None,
+                        duration=duration
+                    )
                 definition['path'] = target_path
                 metadata = template_parser.get_metadata()
                 success = azdo_client.update_release_definition(
@@ -287,6 +333,19 @@ class ParallelExecutor:
                     print(f"  [Pipeline {definition_id}]   ✓ Sin cambios de orden necesarios")
                 
                 definition['environments'] = new_environments
+                if dry_run:
+                    print(f"  [Pipeline {definition_id}]   ✓ [DRY-RUN] {len(changes)} cambios simulados (no guardados)")
+                    duration = time.time() - start_time
+                    return UpdateResult(
+                        definition_id=definition_id,
+                        success=True,
+                        snapshot_id=snapshot_id,
+                        matches_found=len(matches),
+                        changes_applied=len(changes),
+                        changes=changes,
+                        error=None,
+                        duration=duration
+                    )
                 metadata = template_parser.get_metadata()
                 success = azdo_client.update_release_definition(
                     definition_id, definition,
@@ -340,7 +399,7 @@ class ParallelExecutor:
             changes_count = update_engine.get_changes_count()
             print(f"  [Pipeline {definition_id}]   ✓ Cambios aplicados: {changes_count}")
             
-            # 5. Guardar cambios (skip si no hubo cambios)
+            # 5. Guardar cambios (skip si no hubo cambios o dry-run)
             if changes_count == 0:
                 print(f"  [Pipeline {definition_id}] 5/5 Sin cambios - omitiendo PUT a Azure DevOps")
                 duration = time.time() - start_time
@@ -351,6 +410,20 @@ class ParallelExecutor:
                     matches_found=len(matches),
                     changes_applied=0,
                     changes=[],
+                    error=None,
+                    duration=duration
+                )
+            
+            if dry_run:
+                print(f"  [Pipeline {definition_id}] 5/5 [DRY-RUN] {changes_count} cambios simulados (no guardados)")
+                duration = time.time() - start_time
+                return UpdateResult(
+                    definition_id=definition_id,
+                    success=True,
+                    snapshot_id=snapshot_id,
+                    matches_found=len(matches),
+                    changes_applied=changes_count,
+                    changes=update_engine.get_changes(),
                     error=None,
                     duration=duration
                 )

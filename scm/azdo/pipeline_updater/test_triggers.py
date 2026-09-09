@@ -312,5 +312,106 @@ class TestStageTriggerOnExisting(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestDryRunExecution(unittest.TestCase):
+    """Tests para dry-run en ParallelExecutor."""
+
+    def setUp(self):
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'SCM Inspection', 'rank': 1},
+                {'id': 2, 'name': 'Develop', 'rank': 2},
+                {'id': 3, 'name': 'QA', 'rank': 3},
+                {'id': 4, 'name': 'Validator', 'rank': 4},
+                {'id': 5, 'name': 'Production', 'rank': 5},
+            ],
+            'triggers': [],
+            'artifacts': [],
+        }
+
+    def test_dry_run_skips_snapshot_and_put(self):
+        """En dry-run, no se crea snapshot ni se envia PUT a AzDO."""
+        from .parallel_executor import ParallelExecutor
+        from unittest.mock import MagicMock
+
+        class FakeParser:
+            def get_search_rules(self):
+                return {'stages': [{'name': 'SCM Inspection'}, {'name': 'Develop'}]}
+            def get_update_rules(self):
+                return {'stages': [
+                    {'name': 'SCM Inspection', 'rank': 1},
+                    {'name': 'Develop', 'rank': 2, 'trigger': 'after_stage', 'reference_stage': 'SCM Inspection'},
+                ]}
+            def get_template_options(self):
+                return TemplateOptions(dry_run=True)
+            def get_pipeline_action(self):
+                return None
+            def get_metadata(self):
+                from .models import TemplateMetadata
+                return TemplateMetadata(
+                    name='test', version='1.0', description='test',
+                    comment='test', author='test', created_at='2026-01-01'
+                )
+
+        azdo_client = MagicMock()
+        azdo_client.get_release_definition.return_value = self.definition
+
+        executor = ParallelExecutor(max_workers=1)
+        result = executor.execute(
+            [1], FakeParser(), azdo_client, dry_run=True
+        )
+
+        # No snapshot created
+        azdo_client.create_snapshot.assert_not_called()
+        # No PUT to Azure DevOps
+        azdo_client.update_release_definition.assert_not_called()
+        # But definition was downloaded (read-only)
+        azdo_client.get_release_definition.assert_called_once_with(1)
+        # Result should be successful
+        self.assertEqual(result['success'], 1)
+        self.assertEqual(result['failed'], 0)
+
+    def test_non_dry_run_makes_snapshot_and_put(self):
+        """En modo normal, se crea snapshot y se envia PUT a AzDO."""
+        from .parallel_executor import ParallelExecutor
+        from unittest.mock import MagicMock
+
+        class FakeParser:
+            def get_search_rules(self):
+                return {'stages': [{'name': 'SCM Inspection'}, {'name': 'Develop'}]}
+            def get_update_rules(self):
+                return {'stages': [
+                    {'name': 'SCM Inspection', 'rank': 1},
+                    {'name': 'Develop', 'rank': 2, 'trigger': 'after_stage', 'reference_stage': 'SCM Inspection'},
+                ]}
+            def get_template_options(self):
+                return TemplateOptions(dry_run=False)
+            def get_pipeline_action(self):
+                return None
+            def get_metadata(self):
+                from .models import TemplateMetadata
+                return TemplateMetadata(
+                    name='test', version='1.0', description='test',
+                    comment='test', author='test', created_at='2026-01-01'
+                )
+
+        azdo_client = MagicMock()
+        azdo_client.get_release_definition.return_value = self.definition
+        azdo_client.create_snapshot.return_value = 'snap_123'
+        azdo_client.update_release_definition.return_value = True
+
+        executor = ParallelExecutor(max_workers=1)
+        result = executor.execute(
+            [1], FakeParser(), azdo_client, dry_run=False
+        )
+
+        # Snapshot created
+        azdo_client.create_snapshot.assert_called_once()
+        # PUT to Azure DevOps
+        azdo_client.update_release_definition.assert_called_once()
+        # Result should be successful
+        self.assertEqual(result['success'], 1)
+        self.assertEqual(result['failed'], 0)
+
+
 if __name__ == '__main__':
     unittest.main()

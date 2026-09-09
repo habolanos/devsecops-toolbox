@@ -981,6 +981,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |
 | 2026-06-09 | **1.6.9** | KPI Analyzer: Sistema completo de análisis DevSecOps con dashboards |
 | 2026-06-04 | **1.6.8** | Ver historial completo en [README.version.md](../README.version.md) |
+| 2026-09-08 | **1.7.6** | Fix dry-run: ParallelExecutor ahora respeta flag dry_run (skip snapshot, skip PUT a AzDO); merge template dry_run option con CLI flag |
 | 2026-09-08 | **1.7.5** | pipeline_updater: trigger after_stage en stages existentes (preserva artifact filters) + template pipe_cd_reorder_5_scm_dev_qa_valid_prod_after_scm.yaml |
 | 2026-09-08 | **1.7.4** | Eliminar org/project/pat hardcoded de TOOLS defaults y fallbacks; todo proviene de config.json |
 | 2026-09-08 | **1.7.3** | Submenús CLI args: health-probe-masive (40), pipeline_cd_clone (43), pipeline_updater (41) ahora aceptan argumentos directos |
