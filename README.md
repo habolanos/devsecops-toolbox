@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.56-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.57-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1336,6 +1336,10 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 ---
 
 ## 📚 Historial de Cambios
+
+| Versión | Fecha | Descripción |
+|---|---|---|
+| **1.7.57** | 2026-09-09 | fix(azdo): Corregir error de sintaxis f-string con backslash en `pipeline_cd_clone.py` para Python 3.11. |
 
 **Ver historial completo y detallado en:** [`README.version.md`](README.version.md)
 

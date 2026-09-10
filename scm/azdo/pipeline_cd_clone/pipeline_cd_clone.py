@@ -39,6 +39,8 @@ __author__ = "Harold Adrian"
 
 API_VERSION = "7.0"
 
+DEFAULT_PATH = "\\"
+
 BACKUP_DIR = Path("outcome") / "backups" / "clone"
 
 DEFAULT_FALLBACK_POOL_ID = 5331
@@ -329,7 +331,7 @@ def show_source_info(definition: Dict) -> None:
     table.add_column("Valor", style="white")
     table.add_row("ID", str(definition.get('id', 'N/A')))
     table.add_row("Name", definition.get('name', 'N/A'))
-    table.add_row("Path", definition.get('path', '\\'))
+    table.add_row("Path", definition.get('path', DEFAULT_PATH))
     table.add_row("Revision", str(definition.get('revision', 'N/A')))
     envs = definition.get('environments', [])
     env_summary = ", ".join([f"{e.get('name', '?')}" for e in envs])
@@ -352,7 +354,7 @@ def show_clone_summary(source_def: Dict, new_name: str, new_path: str, secrets: 
     table.add_column("Valor", style="white")
     table.add_row("Source ID", str(source_def.get('id', 'N/A')))
     table.add_row("Source Name", source_def.get('name', 'N/A'))
-    table.add_row("Source Path", source_def.get('path', '\\'))
+    table.add_row("Source Path", source_def.get('path', DEFAULT_PATH))
     table.add_row("New Name", new_name)
     table.add_row("New Path", new_path)
     table.add_row("Environments", f"{len(envs)} stages")
@@ -367,7 +369,7 @@ def show_dry_run(source_def: Dict, new_name: str, new_path: str, secrets: List[D
         f"[yellow]DRY-RUN: No se creará el pipeline[/yellow]\n\n"
         f"  Source ID:    {source_def.get('id', 'N/A')}\n"
         f"  Source Name:  {source_def.get('name', 'N/A')}\n"
-        f"  Source Path:  {source_def.get('path', '\\')}\n"
+        f"  Source Path:  {source_def.get('path', DEFAULT_PATH)}\n"
         f"  New Name:     {new_name}\n"
         f"  New Path:     {new_path}\n"
         f"  Environments: {len(source_def.get('environments', []))}\n"
@@ -384,7 +386,7 @@ def show_result(result: Dict) -> None:
         f"[green]✅ Pipeline creado exitosamente[/green]\n\n"
         f"  New ID:       {result.get('id', 'N/A')}\n"
         f"  New Name:     {result.get('name', 'N/A')}\n"
-        f"  New Path:     {result.get('path', '\\')}\n"
+        f"  New Path:     {result.get('path', DEFAULT_PATH)}\n"
         f"  Revision:     {result.get('revision', 1)}\n"
         f"  URL:          {result.get('_links', {}).get('web', {}).get('href', 'N/A')}",
         title="Pipeline Creado",
@@ -442,7 +444,7 @@ def interactive_mode() -> Dict:
 
     console.print(f"[green]✓ Pipeline encontrado: {definition.get('name', 'N/A')}[/green]")
     current_name = definition.get("name", "")
-    current_path = definition.get("path", "\\")
+    current_path = definition.get('path', DEFAULT_PATH)
     console.print(f"  Path actual: [dim]{current_path}[/dim]\n")
 
     show_source_info(definition)
@@ -539,7 +541,7 @@ def main():
 
         # Defaults
         current_name = definition.get("name", "")
-        current_path = definition.get("path", "\\")
+        current_path = definition.get('path', DEFAULT_PATH)
         new_name = args.new_name or f"LAB-{current_name}"
         new_path = args.new_path or current_path
 
