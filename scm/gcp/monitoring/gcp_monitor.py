@@ -24,6 +24,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import logging
@@ -533,6 +534,246 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     return True
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# FUNCIONES ADICIONALES GKE / IP CAPACITY (integradas de opciones 13 y 14)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def run_kubectl_command(command: str, debug: bool = False, logger=None) -> Optional[str]:
+    """Ejecuta un comando kubectl y retorna el resultado como texto."""
+    try:
+        if logger:
+            logger.info(f"Ejecutando kubectl: {command}")
+        if debug:
+            print(f"DEBUG kubectl: {command}")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        return None
+    except Exception as e:
+        if logger:
+            logger.warning(f"Error en kubectl: {e}")
+        return None
+
+
+def get_cluster_network_info(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None) -> Optional[Dict[str, str]]:
+    """Obtiene metadatos de red desde GCP (pods CIDR, services CIDR, subred)."""
+    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
+    cmd = (f'gcloud container clusters describe {cluster_name} {location_flag} --project={project_id} '
+           f'--format="value(ipAllocationPolicy.clusterIpv4CidrBlock, ipAllocationPolicy.servicesIpv4CidrBlock, networkConfig.subnetwork)"')
+    try:
+        result = run_gcloud_command(cmd, debug, console=None, logger=logger, timeout=120)
+        if not result:
+            return None
+        if isinstance(result, (list, dict)):
+            return None
+        parts = result.split()
+        if len(parts) < 3:
+            return None
+        return {'pods_cidr': parts[0], 'services_cidr': parts[1], 'subnet': parts[2]}
+    except Exception as e:
+        if logger:
+            logger.warning(f"Error obteniendo network info: {e}")
+        return None
+
+
+def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None):
+    """Obtiene el conteo de pods running y not running del cluster."""
+    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
+    context_name = f'gke_{project_id}_{location}_{cluster_name}'
+    try:
+        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
+        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True)
+        if debug and logger:
+            logger.info(f"get-credentials returncode: {creds_result.returncode}")
+        cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json 2>/dev/null'
+        result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True)
+        if debug and logger:
+            logger.info(f"kubectl get pods returncode: {result.returncode}, stdout length: {len(result.stdout)}")
+        running = 0
+        not_running = 0
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                data = json.loads(result.stdout)
+                items = data.get('items', [])
+                for pod in items:
+                    phase = pod.get('status', {}).get('phase', 'Unknown')
+                    if phase == 'Running':
+                        running += 1
+                    else:
+                        not_running += 1
+            except json.JSONDecodeError:
+                pass
+        return running, not_running
+    except Exception as e:
+        if debug and logger:
+            logger.warning(f"Pod count error: {e}")
+        return None, None
+
+
+def get_services_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None) -> Optional[int]:
+    """Cuenta servicios con ClusterIP usando kubectl."""
+    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
+    context_name = f'gke_{project_id}_{location}_{cluster_name}'
+    try:
+        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
+        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True)
+        if debug and logger:
+            logger.info(f"get-credentials returncode: {creds_result.returncode}")
+        cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers 2>/dev/null'
+        result = run_kubectl_command(cmd, debug, logger)
+        if not result:
+            return None
+        lines = result.strip().split('\n')
+        services_with_ip = 0
+        for line in lines:
+            if not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) >= 4:
+                cluster_ip = parts[3]
+                if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', cluster_ip):
+                    services_with_ip += 1
+        return services_with_ip
+    except Exception as e:
+        if debug and logger:
+            logger.warning(f"Services count error: {e}")
+        return None
+
+
+def calculate_total_ips(cidr: str) -> int:
+    """Calcula el total de IPs disponibles en un rango CIDR."""
+    if not cidr or '/' not in cidr:
+        return 0
+    try:
+        mask = int(cidr.split('/')[1])
+        if mask < 0 or mask > 32:
+            return 0
+        return (2 ** (32 - mask)) - 2
+    except (ValueError, IndexError):
+        return 0
+
+
+def get_utilization_status(pods_pct: float, services_pct: float):
+    """Determina el estado de alerta basado en porcentajes de utilización."""
+    alerts = []
+    if services_pct > 90:
+        alerts.append("[CRÍTICO] IPs de Servicios agotadas. No se pueden desplegar más Apps.")
+    if pods_pct > 80:
+        alerts.append("[WARNING] IPs de Pods cerca del límite.")
+    if not alerts:
+        alerts.append("[OK] Capacidad dentro de rangos normales.")
+    if services_pct > 90:
+        status = "CRITICAL"
+        status_style = "red"
+    elif pods_pct > 80:
+        status = "WARNING"
+        status_style = "yellow"
+    else:
+        status = "OK"
+        status_style = "green"
+    return status, status_style, alerts
+
+
+def get_version_status(current_version, release_channel):
+    """Determina el estado de la versión del cluster."""
+    if not current_version:
+        return "UNKNOWN"
+    version_parts = current_version.split('.')
+    if len(version_parts) >= 2:
+        minor_version = int(version_parts[1]) if version_parts[1].isdigit() else 0
+        if minor_version < 27:
+            return "OUTDATED"
+        elif minor_version < 29:
+            return "UPDATE_AVAILABLE"
+    if release_channel and release_channel.get('channel') == 'UNSPECIFIED':
+        return "NO_CHANNEL"
+    return "CURRENT"
+
+
+def get_status_summary(cluster_status, version_status, autopilot):
+    """Lógica de Semáforo SRE para Clusters GKE."""
+    if cluster_status != 'RUNNING':
+        return "[bold white on red] NOT RUNNING [/]"
+    if version_status == 'OUTDATED':
+        return "[bold white on red] OUTDATED [/]"
+    if version_status == 'UPDATE_AVAILABLE':
+        return "[bold black on yellow] UPDATE [/]"
+    if version_status == 'NO_CHANNEL':
+        return "[bold cyan] NO CHANNEL [/]"
+    if autopilot:
+        return "[bold green] AUTOPILOT ✨ [/]"
+    return "[bold green] HEALTHY [/]"
+
+
+def get_status_text(cluster_status, version_status, autopilot):
+    """Retorna el estado en texto plano para exportación."""
+    if cluster_status != 'RUNNING':
+        return "NOT_RUNNING"
+    if version_status == 'OUTDATED':
+        return "OUTDATED"
+    if version_status == 'UPDATE_AVAILABLE':
+        return "UPDATE_AVAILABLE"
+    if version_status == 'NO_CHANNEL':
+        return "NO_CHANNEL"
+    if autopilot:
+        return "AUTOPILOT"
+    return "HEALTHY"
+
+
+def build_gke_cluster_enrichment(project_id: str, cluster: Dict[str, Any], debug: bool = False, logger=None) -> Dict[str, Any]:
+    """Calcula metadatos adicionales de un cluster GKE para tablas de monitor."""
+    cluster_name = cluster.get('name', 'UNKNOWN')
+    location = cluster.get('location', 'N/A')
+    current_version = cluster.get('currentMasterVersion', 'N/A')
+    cluster_status = cluster.get('status', 'UNKNOWN')
+    is_autopilot = cluster.get('autopilot', {}).get('enabled', False)
+    release_channel = cluster.get('releaseChannel', {})
+    channel_name = release_channel.get('channel', 'UNSPECIFIED') if release_channel else 'UNSPECIFIED'
+    version_status = get_version_status(current_version, release_channel)
+    status_text = get_status_text(cluster_status, version_status, is_autopilot)
+    status_summary = get_status_summary(cluster_status, version_status, is_autopilot)
+
+    pods_running, pods_not_running = get_pod_count(project_id, cluster_name, location, debug, logger)
+    network_info = get_cluster_network_info(project_id, cluster_name, location, debug, logger)
+    services_used = get_services_count(project_id, cluster_name, location, debug, logger)
+
+    pods_cidr = network_info.get('pods_cidr', 'N/A') if network_info else 'N/A'
+    services_cidr = network_info.get('services_cidr', 'N/A') if network_info else 'N/A'
+    subnet = network_info.get('subnet', 'N/A') if network_info else 'N/A'
+
+    pods_total = calculate_total_ips(pods_cidr)
+    services_total = calculate_total_ips(services_cidr)
+    pods_used = pods_running if pods_running is not None else 0
+    services_used_count = services_used if services_used is not None else 0
+    pods_pct = (pods_used / pods_total * 100) if pods_total > 0 else 0.0
+    services_pct = (services_used_count / services_total * 100) if services_total > 0 else 0.0
+    ip_status, ip_status_style, _ = get_utilization_status(pods_pct, services_pct)
+
+    return {
+        'cluster_name': cluster_name,
+        'location': location,
+        'release_channel': channel_name,
+        'autopilot': is_autopilot,
+        'master_version': current_version,
+        'version_status': version_status,
+        'status_text': status_text,
+        'status_summary': status_summary,
+        'pods_running': pods_running if pods_running is not None else 'N/A',
+        'pods_not_running': pods_not_running if pods_not_running is not None else 'N/A',
+        'pods_used': pods_used,
+        'pods_total': pods_total,
+        'pods_pct': pods_pct,
+        'services_used': services_used_count,
+        'services_total': services_total,
+        'services_pct': services_pct,
+        'pods_cidr': pods_cidr,
+        'services_cidr': services_cidr,
+        'subnet': subnet,
+        'ip_status': ip_status,
+        'ip_status_style': ip_status_style,
+    }
+
+
 def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], console, logger=None) -> None:
     """Crea y muestra tablas detalladas consolidadas de múltiples proyectos con columna de proyecto."""
     if not RICH_AVAILABLE or not console:
@@ -558,6 +799,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     
     # Tabla consolidada de Clusters GKE con métricas de uso (Fase 2)
     all_clusters = []
+    all_network_capacity = []
     gke_metrics_all = {}
     
     # Obtener métricas de uso para todos los clusters en paralelo (Fase 2)
@@ -606,15 +848,70 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             # Calcular estado de salud basado en umbrales
             health_status = get_health_status(cpu_used_percent, memory_used_percent)
             
+            # Enriquecer con datos de opciones 13 y 14
+            gke_extra = build_gke_cluster_enrichment(project_id, cluster, debug=False, logger=logger)
+            
+            # Formatear Version Status con color
+            version_status = gke_extra['version_status']
+            if version_status == 'OUTDATED':
+                version_status_fmt = f"[red]{version_status}[/]"
+            elif version_status == 'UPDATE_AVAILABLE':
+                version_status_fmt = f"[yellow]{version_status}[/]"
+            elif version_status == 'NO_CHANNEL':
+                version_status_fmt = f"[cyan]{version_status}[/]"
+            else:
+                version_status_fmt = f"[green]{version_status}[/]"
+            
+            # Formatear conteo de pods
+            pods_fmt = str(gke_extra['pods_running']) if gke_extra['pods_running'] != 'N/A' else 'N/A'
+            not_running_fmt = str(gke_extra['pods_not_running']) if gke_extra['pods_not_running'] != 'N/A' else 'N/A'
+            if not_running_fmt != 'N/A' and gke_extra['pods_not_running'] and int(gke_extra['pods_not_running']) > 0:
+                not_running_fmt = f"[red]{not_running_fmt}[/]"
+            
+            # Formatear IPs de pods y servicios
+            if gke_extra['pods_total'] > 0:
+                pods_ip_fmt = f"{gke_extra['pods_used']}/{gke_extra['pods_total']} ({gke_extra['pods_pct']:.2f}%)"
+            else:
+                pods_ip_fmt = "N/A"
+            if gke_extra['services_total'] > 0:
+                services_ip_fmt = f"{gke_extra['services_used']}/{gke_extra['services_total']} ({gke_extra['services_pct']:.2f}%)"
+            else:
+                services_ip_fmt = "N/A"
+            
+            ip_status_fmt = f"[{gke_extra['ip_status_style']}]{gke_extra['ip_status']}[/{gke_extra['ip_status_style']}]"
+            autopilot_fmt = "✓" if gke_extra['autopilot'] else ""
+            
             all_clusters.append((
                 project_id,
                 cluster_name[:30],
-                cluster.get('location', 'N/A'),
+                gke_extra['location'],
                 cpu_str,
                 memory_str,
                 cpu_used,
                 memory_used,
-                health_status
+                health_status,
+                gke_extra['release_channel'],
+                autopilot_fmt,
+                gke_extra['master_version'][:15],
+                version_status_fmt,
+                gke_extra['status_summary'],
+                pods_fmt,
+                not_running_fmt,
+                pods_ip_fmt,
+                services_ip_fmt,
+                ip_status_fmt
+            ))
+            
+            all_network_capacity.append((
+                project_id,
+                cluster_name[:30],
+                gke_extra['location'],
+                gke_extra['subnet'][:40],
+                gke_extra['pods_cidr'],
+                gke_extra['services_cidr'],
+                pods_ip_fmt,
+                services_ip_fmt,
+                ip_status_fmt
             ))
     
     if all_clusters:
@@ -627,7 +924,34 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("CPU PROM.", style="yellow", justify="right")
         table.add_column("MEMORIA PROM.", style="yellow", justify="right")
         table.add_column("ESTADO", style="white", justify="center")
+        table.add_column("RELEASE CHANNEL", style="magenta", justify="center")
+        table.add_column("AUTOPILOT", style="cyan", justify="center")
+        table.add_column("MASTER VERSION", style="yellow")
+        table.add_column("VERSION STATUS", style="white", justify="center")
+        table.add_column("STATUS SUMMARY", style="green", justify="center")
+        table.add_column("PODS", style="cyan", justify="right")
+        table.add_column("NOT RUNNING", style="red", justify="right")
+        table.add_column("PODS IPs", style="blue", justify="right")
+        table.add_column("SERVICES IPs", style="blue", justify="right")
+        table.add_column("IP STATUS", style="green", justify="center")
         for row in all_clusters:
+            table.add_row(*row)
+        console.print(table)
+        console.print()
+    
+    # Tabla de Capacidad de Red de Clusters GKE
+    if all_network_capacity:
+        table = Table(title="🌐 Capacidad de Red de Clusters GKE", box=box.ROUNDED)
+        table.add_column("PROYECTO", style="magenta")
+        table.add_column("CLUSTER", style="cyan")
+        table.add_column("UBICACION", style="yellow")
+        table.add_column("SUBRED", style="magenta")
+        table.add_column("CIDR PODS", style="cyan")
+        table.add_column("CIDR SERVICES", style="cyan")
+        table.add_column("PODs USADAS/TOTAL/%", style="blue", justify="right")
+        table.add_column("SVCS USADAS/TOTAL/%", style="blue", justify="right")
+        table.add_column("ESTADO", style="green", justify="center")
+        for row in all_network_capacity:
             table.add_row(*row)
         console.print(table)
         console.print()

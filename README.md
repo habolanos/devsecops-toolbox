@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.59-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.60-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1339,7 +1339,8 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Versión | Fecha | Descripción |
 |---|---|---|
-| **1.7.59** | 2026-09-09 | feat(azdo): Colorear logs internos de `parallel_executor.py` del Pipeline Updater: fases 1/5-5/5, éxitos, dry-run y errores ahora usan `Colors.CYAN/GREEN/YELLOW/RED` para homologar el progreso con la opción 42. |
+| **1.7.60** | 2026-09-09 | **feat(gcp): Enriquecer Monitoreo de Recursos GCP (opción 1) con datos de GKE Cluster Checker (opción 14) e IP Addresses Checker (opción 13)**: La tabla "Clusters GKE" ahora incluye Release Channel, Autopilot, Master Version, Version Status, Status Summary, Pods, Not Running, Pods IPs, Services IPs e IP Status. Se agrega la tabla "Capacidad de Red de Clusters GKE" con subred, CIDRs y uso de IPs. Funciones adaptadas sin modificar los scripts originales. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
+|| **1.7.59** | 2026-09-09 | feat(azdo): Colorear logs internos de `parallel_executor.py` del Pipeline Updater: fases 1/5-5/5, éxitos, dry-run y errores ahora usan `Colors.CYAN/GREEN/YELLOW/RED` para homologar el progreso con la opción 42. |
 | **1.7.58** | 2026-09-09 | feat(azdo): Homologar progreso y resumen de Pipeline Updater (opción 41) al esquema de Release Updater (opción 42): Panel de apertura, pasos con markup Rich, progress callback coloreado y tabla final "Resultados por Pipeline" con estadísticas. Se elimina el dump JSON al final para coincidir con el flujo de release updater. |
 | **1.7.57** | 2026-09-09 | fix(azdo): Corregir error de sintaxis f-string con backslash en `pipeline_cd_clone.py` para Python 3.11. |
 
