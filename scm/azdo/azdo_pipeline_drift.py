@@ -202,10 +202,30 @@ def _dt_default(obj: Any) -> str:
 def get_release_definitions(
     org: str, project: str, headers: Dict, debug: bool
 ) -> List[Dict]:
+    """Obtiene TODAS las release definitions sin límite de 500.
+
+    Implementa paginación mediante continuationToken: la API de Azure DevOps
+    devuelve este token cuando hay más resultados disponibles. Se siguen
+    pidiendo páginas hasta que no haya más resultados.
+    """
     vsrm = vsrm_base(org)
     url  = f"{vsrm}/{quote(project, safe='')}/_apis/release/definitions"
-    data = api_get(url, headers, {"api-version": API_VERSION_DEFS, "$top": 500}, debug)
-    return (data or {}).get("value", [])
+    all_values: List[Dict] = []
+    continuation_token = None
+
+    while True:
+        params: Dict = {"api-version": API_VERSION_DEFS, "$top": 200}
+        if continuation_token:
+            params["continuationToken"] = continuation_token
+        data = api_get(url, headers, params, debug)
+        if not data:
+            break
+        all_values.extend(data.get("value", []))
+        continuation_token = data.get("continuationToken")
+        if not continuation_token:
+            break
+
+    return all_values
 
 
 def get_release_definition_detail(
