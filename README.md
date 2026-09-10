@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.67-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.68-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1339,6 +1339,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Versión | Fecha | Descripción | Archivos / Scope |
 |---|---|---|---|
+| **1.7.68** | 2026-09-09 | **feat(gcp): Agregar columna "BDs" con cantidad de bases de datos a la tabla "Instancias Cloud SQL" de `gcp_monitor`**: Nueva función `get_cloud_sql_database_count()` que ejecuta `gcloud sql databases list` por instancia (con timeout 30s). El conteo se obtiene en paralelo con `ThreadPoolExecutor(max_workers=min(6, n_instancias))` para no ralentizar la ejecución. Columna agregada en tablas consolidado (multi-proyecto) y single proyecto. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.67** | 2026-09-09 | **refactor(gcp): Convertir tabla "Servicios Habilitados" de `gcp_monitor` en resumen por proyecto**: La tabla que listaba cada API habilitada como fila individual (~1200 filas con 12 proyectos) ahora muestra un resumen compacto: una fila por proyecto con conteo de "Habilitados" y estado general (✅/⚠️/❌), más fila TOTAL. Aplicado en tablas consolidado (multi-proyecto) y single proyecto. Los servicios son APIs de GCP (estado ENABLED), no tienen RUNNING/STOPPED. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.66** | 2026-09-09 | **feat(gcp): Estados con color en tablas de `gcp_monitor`**: Nueva función `format_status_color()` que aplica Rich markup automáticamente: STOPPED/TERMINATED/SUSPENDED en `[red]rojo[/]`, RUNNING/RUNNABLE/ACTIVE en `[green]verde[/]`, otros estados sin cambio. Aplicada en tablas de Cloud SQL e Instancias Compute Engine (consolidado y single proyecto) para identificar visualmente recursos detenidos. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.65** | 2026-09-09 | **feat(gcp): Formato legible de tiempo de ejecución en `gcp_monitor` + retiro de columnas de uso en tabla Compute Engine**: (1) Nueva función `format_duration()` que convierte segundos a formato legible automático: `X.XXs` (< 1 min), `Xm Ys` (1-60 min), `Xh Ym Zs` (> 1 hora). Aplicada en tablas de resumen single y consolidado (Rich y print plano). Ej: 1282.19s → 21m 22s. (2) Retiradas columnas "CPU Usado (%)", "Memoria Usada (%)" y "Disco Usado (%)" de la tabla "Instancias Compute Engine" (consolidado) junto con su cálculo de métricas y bloque de obtención (`get_compute_metrics_parallel`), reduciendo el tiempo de ejecución. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |

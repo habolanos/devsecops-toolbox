@@ -437,6 +437,15 @@ def get_cloud_sql_instances(project_id: str, debug: bool, console, logger=None) 
     return result if isinstance(result, list) else []
 
 
+def get_cloud_sql_database_count(project_id: str, instance_name: str, debug: bool = False, console=None, logger=None) -> str:
+    """Obtiene la cantidad de bases de datos de una instancia Cloud SQL."""
+    cmd = f'gcloud sql databases list --instance={instance_name} --project={project_id} --format=json'
+    result = run_gcloud_command(cmd, debug, console, logger, timeout=30)
+    if isinstance(result, list):
+        return str(len(result))
+    return "N/A"
+
+
 def get_compute_instances(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene instancias Compute Engine del proyecto."""
     cmd = f'gcloud compute instances list --project={project_id} --format=json'
@@ -1063,19 +1072,47 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     
     # Tabla consolidada de Cloud SQL
     all_sql = []
+    sql_db_counts = {}
+    sql_tasks = []
+    for project_id, data in all_data.items():
+        sql_instances = data.get('sql_instances', [])
+        for instance in sql_instances[:10]:
+            inst_name = instance.get('name', 'N/A')
+            sql_tasks.append((project_id, inst_name))
+
+    if sql_tasks:
+        if logger:
+            logger.info(f"Obteniendo conteo de bases de datos de {len(sql_tasks)} instancias Cloud SQL en paralelo...")
+        with ThreadPoolExecutor(max_workers=min(6, len(sql_tasks))) as executor:
+            futures = {
+                executor.submit(get_cloud_sql_database_count, pid, iname, False, None, logger): (pid, iname)
+                for pid, iname in sql_tasks
+            }
+            for fut in as_completed(futures):
+                pid, iname = futures[fut]
+                try:
+                    sql_db_counts[(pid, iname)] = fut.result()
+                except Exception as e:
+                    if logger:
+                        logger.warning(f"Error obteniendo BDs de {iname}: {e}")
+                    sql_db_counts[(pid, iname)] = "N/A"
+
     for project_id, data in all_data.items():
         sql_instances = data.get('sql_instances', [])
         for instance in sql_instances[:10]:
             disk = instance.get('settings', {}).get('dataDiskSizeGb', 'N/A')
+            inst_name = instance.get('name', 'N/A')
+            db_count = sql_db_counts.get((project_id, inst_name), "N/A")
             all_sql.append((
                 project_id,
-                instance.get('name', 'N/A')[:30],
+                inst_name[:30],
                 format_status_color(instance.get('state', 'N/A')),
                 instance.get('databaseVersion', 'N/A')[:20],
                 instance.get('settings', {}).get('tier', 'N/A')[:20],
-                str(disk)
+                str(disk),
+                db_count
             ))
-    
+
     if all_sql:
         table = Table(title="🗄️  Instancias Cloud SQL", box=box.ROUNDED)
         table.add_column("Proyecto", style="magenta")
@@ -1084,6 +1121,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("Versión", style="yellow")
         table.add_column("Tier", style="magenta")
         table.add_column("Disco (GB)", style="blue", justify="right")
+        table.add_column("BDs", style="cyan", justify="right")
         for row in all_sql:
             table.add_row(*row)
         console.print(table)
@@ -1253,7 +1291,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         console.print()
 
 
-def create_detailed_tables(data: Dict[str, Any], console) -> None:
+def create_detailed_tables(data: Dict[str, Any], console, project_id: str = "") -> None:
     """Crea y muestra tablas detalladas de recursos con Rich."""
     if not RICH_AVAILABLE or not console:
         return
@@ -1297,23 +1335,41 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
     # Tabla de Cloud SQL
     sql_instances = data.get('sql_instances', [])
     if sql_instances:
+        sql_db_counts = {}
+        sql_tasks = [(instance.get('name', 'N/A')) for instance in sql_instances[:10]]
+        if sql_tasks and project_id:
+            with ThreadPoolExecutor(max_workers=min(6, len(sql_tasks))) as executor:
+                futures = {
+                    executor.submit(get_cloud_sql_database_count, project_id, iname, False, None, None): iname
+                    for iname in sql_tasks
+                }
+                for fut in as_completed(futures):
+                    iname = futures[fut]
+                    try:
+                        sql_db_counts[iname] = fut.result()
+                    except Exception:
+                        sql_db_counts[iname] = "N/A"
         table = Table(title="🗄️  Instancias Cloud SQL", box=box.ROUNDED)
         table.add_column("Nombre", style="cyan")
         table.add_column("Estado", style="green")
         table.add_column("Versión", style="yellow")
         table.add_column("Tier", style="magenta")
         table.add_column("Disco (GB)", style="blue", justify="right")
+        table.add_column("BDs", style="cyan", justify="right")
         for instance in sql_instances[:10]:
             disk = instance.get('settings', {}).get('dataDiskSizeGb', 'N/A')
+            inst_name = instance.get('name', 'N/A')
+            db_count = sql_db_counts.get(inst_name, "N/A")
             table.add_row(
-                instance.get('name', 'N/A')[:30],
+                inst_name[:30],
                 format_status_color(instance.get('state', 'N/A')),
                 instance.get('databaseVersion', 'N/A')[:20],
                 instance.get('settings', {}).get('tier', 'N/A')[:20],
-                str(disk)
+                str(disk),
+                db_count
             )
         if len(sql_instances) > 10:
-            table.add_row(f"... y {len(sql_instances) - 10} más", "", "", "", "")
+            table.add_row(f"... y {len(sql_instances) - 10} más", "", "", "", "", "")
         console.print(table)
         console.print()
     
