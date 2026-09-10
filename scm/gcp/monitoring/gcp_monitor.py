@@ -588,15 +588,47 @@ def get_cluster_network_info(project_id: str, cluster_name: str, location: str, 
         return None
 
 
-def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None):
+def _ensure_cluster_credentials(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None) -> bool:
+    """Obtiene credenciales kubectl del cluster una sola vez (con cache por proceso)."""
+    cache_key = f"{project_id}:{location}:{cluster_name}"
+    if getattr(_ensure_cluster_credentials, "_cache", None) is None:
+        _ensure_cluster_credentials._cache = {}
+    if cache_key in _ensure_cluster_credentials._cache:
+        return _ensure_cluster_credentials._cache[cache_key]
+    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
+    cmd = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
+    ok = False
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+        ok = result.returncode == 0
+        if debug and logger:
+            logger.info(f"get-credentials returncode: {result.returncode}")
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.warning(f"Timeout (>60s) obteniendo credenciales para {cluster_name}")
+    except Exception as e:
+        if logger:
+            logger.warning(f"Error obteniendo credenciales para {cluster_name}: {e}")
+    _ensure_cluster_credentials._cache[cache_key] = ok
+    return ok
+
+
+def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None, skip_credentials: bool = False):
     """Obtiene el conteo de pods running y not running del cluster."""
     location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
     context_name = f'gke_{project_id}_{location}_{cluster_name}'
     try:
-        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
-        if debug and logger:
-            logger.info(f"get-credentials returncode: {creds_result.returncode}")
+        if skip_credentials:
+            creds_ok = _ensure_cluster_credentials(project_id, cluster_name, location, debug, logger)
+        else:
+            creds_ok = True
+            get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
+            creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
+            creds_ok = creds_result.returncode == 0
+            if debug and logger:
+                logger.info(f"get-credentials returncode: {creds_result.returncode}")
+        if not creds_ok:
+            return None, None
         cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json 2>/dev/null'
         result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True, timeout=30)
         if debug and logger:
@@ -626,15 +658,22 @@ def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool
         return None, None
 
 
-def get_services_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None) -> Optional[int]:
+def get_services_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None, skip_credentials: bool = False) -> Optional[int]:
     """Cuenta servicios con ClusterIP usando kubectl."""
     location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
     context_name = f'gke_{project_id}_{location}_{cluster_name}'
     try:
-        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
-        if debug and logger:
-            logger.info(f"get-credentials returncode: {creds_result.returncode}")
+        if skip_credentials:
+            creds_ok = _ensure_cluster_credentials(project_id, cluster_name, location, debug, logger)
+        else:
+            creds_ok = True
+            get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
+            creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
+            creds_ok = creds_result.returncode == 0
+            if debug and logger:
+                logger.info(f"get-credentials returncode: {creds_result.returncode}")
+        if not creds_ok:
+            return None
         cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers 2>/dev/null'
         result = run_kubectl_command(cmd, debug, logger, timeout=30)
         if not result:
@@ -753,9 +792,17 @@ def build_gke_cluster_enrichment(project_id: str, cluster: Dict[str, Any], debug
     status_text = get_status_text(cluster_status, version_status, is_autopilot)
     status_summary = get_status_summary(cluster_status, version_status, is_autopilot)
 
-    pods_running, pods_not_running = get_pod_count(project_id, cluster_name, location, debug, logger)
-    network_info = get_cluster_network_info(project_id, cluster_name, location, debug, logger)
-    services_used = get_services_count(project_id, cluster_name, location, debug, logger)
+    # Obtener credenciales una sola vez por cluster (evita gcloud get-credentials duplicado)
+    _ensure_cluster_credentials(project_id, cluster_name, location, debug, logger)
+
+    # Ejecutar las 3 consultas (pods, red, servicios) en paralelo
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        fut_pods = executor.submit(get_pod_count, project_id, cluster_name, location, debug, logger, True)
+        fut_network = executor.submit(get_cluster_network_info, project_id, cluster_name, location, debug, logger)
+        fut_services = executor.submit(get_services_count, project_id, cluster_name, location, debug, logger, True)
+        pods_running, pods_not_running = fut_pods.result()
+        network_info = fut_network.result()
+        services_used = fut_services.result()
 
     pods_cidr = network_info.get('pods_cidr', 'N/A') if network_info else 'N/A'
     services_cidr = network_info.get('services_cidr', 'N/A') if network_info else 'N/A'
@@ -844,6 +891,28 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 )
                 gke_metrics_all.update(metrics)
     
+    # Pre-calcular enriquecimientos de clusters GKE en paralelo (opciones 13 y 14)
+    all_cluster_keys = []
+    for project_id, data in all_data.items():
+        for cluster in data.get('gke_clusters', []):
+            all_cluster_keys.append((project_id, cluster))
+    gke_extras = {}
+    if all_cluster_keys:
+        if logger:
+            logger.info(f"Pre-calculando enriquecimiento de {len(all_cluster_keys)} clusters GKE en paralelo...")
+        with ThreadPoolExecutor(max_workers=min(6, len(all_cluster_keys))) as executor:
+            futures = {
+                executor.submit(build_gke_cluster_enrichment, pid, cl, False, logger): (pid, cl)
+                for pid, cl in all_cluster_keys
+            }
+            for fut in as_completed(futures):
+                pid, cl = futures[fut]
+                try:
+                    gke_extras[(pid, cl.get('name', 'N/A'))] = fut.result()
+                except Exception as e:
+                    if logger:
+                        logger.warning(f"Error enriqueciendo cluster {cl.get('name', 'UNKNOWN')}: {e}")
+    
     for project_id, data in all_data.items():
         clusters = data.get('gke_clusters', [])
         for cluster in clusters:
@@ -868,8 +937,10 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             # Calcular estado de salud basado en umbrales
             health_status = get_health_status(cpu_used_percent, memory_used_percent)
             
-            # Enriquecer con datos de opciones 13 y 14
-            gke_extra = build_gke_cluster_enrichment(project_id, cluster, debug=False, logger=logger)
+            # Enriquecer con datos de opciones 13 y 14 (pre-calculado en paralelo)
+            gke_extra = gke_extras.get((project_id, cluster_name), {})
+            if not gke_extra:
+                gke_extra = build_gke_cluster_enrichment(project_id, cluster, debug=False, logger=logger)
             
             # Formatear Version Status con color
             version_status = gke_extra['version_status']
