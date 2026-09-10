@@ -696,6 +696,18 @@ def _build_network_row(project_id: str, cluster: Dict[str, Any]) -> Dict[str, An
             services_used = cluster.get(key)
             break
 
+    # Sanitizar a int o None (pueden venir como "N/A" u otros strings no numericos)
+    def _safe_int(val):
+        if val is None:
+            return None
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return None
+
+    pods_used = _safe_int(pods_used)
+    services_used = _safe_int(services_used)
+
     pods_pct = (pods_used / pods_total * 100) if (pods_used is not None and pods_total > 0) else None
     services_pct = (services_used / services_total * 100) if (services_used is not None and services_total > 0) else None
 

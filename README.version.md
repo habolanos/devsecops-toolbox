@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.73`** — 2026-09-10
+**`1.7.74`** — 2026-09-10
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-10 | **1.7.74** | **fix(gcp): Fix TypeError en generate_gcp_dashboard que impedía generar HTML**: La función `_build_network_row` fallaba con `TypeError: unsupported operand type(s) for /: 'str' and 'int'` cuando `pods_running` o `services_used` venían como string ("N/A") en el JSON exportado. Se agregó sanitización con `_safe_int()` que convierte valores no numéricos a `None` antes de hacer la división para calcular `pods_pct` y `services_pct`. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-10 | **1.7.73** | **fix(azdo): Eliminar límite de 500 release definitions en Pipeline Drift Analyzer**: La función `get_release_definitions` de `azdo_pipeline_drift.py` ahora implementa paginación mediante `continuationToken` de la API de Azure DevOps. Se piden páginas de 200 resultados hasta agotar todos los pipelines, eliminando el límite anterior de `$top: 500`. Esto permite analizar drift en proyectos con más de 500 release pipelines. | `scm/azdo/azdo_pipeline_drift.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-10 | **1.7.72** | **fix(gcp): Persistir enriquecimiento de GKE y Cloud SQL en JSON exportado por `gcp_monitor`**: La función `_enrich_data_with_metrics` ahora agrega a cada cluster GKE los campos `pods_running`, `pods_not_running`, `pods_used`, `pods_total`, `pods_pct`, `services_used`, `services_total`, `services_pct`, `pods_cidr`, `services_cidr`, `subnet`, `ip_status`, `version_status`, `status_text` (vía `build_gke_cluster_enrichment` en paralelo). A cada instancia Cloud SQL le agrega `databases` (conteo de bases de datos vía `get_cloud_sql_database_count` en paralelo). Esto permite que el dashboard HTML muestre pods, BDs y capacidad de red desde el JSON sin datos en blanco. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-10 | **1.7.71** | **fix(gcp): Ajustes de columnas y colores en tablas de terminal de `gcp_monitor`**: (1) GKE: columnas ESTADO y STATUS SUMMARY movidas al final de la tabla (consolidado). (2) Red GKE: columnas PODs USADAS/TOTAL/% y SVCS USADAS/TOTAL/% coloreadas con semáforo Rich según porcentaje (>90% rojo, >80% amarillo, resto verde). (3) Compute Engine: fix campo `diskSizeGb` (antes `sizeGb` mostraba N/A) y columna Estado movida al final (consolidado y single). (4) Cloud Run: sustituidas columnas Requests/Lat p95/CPU%/Mem% por VPC connector y Estado calculada (PUBLIC_URL rojo si ingress=all con URL pública, INTERNAL verde si restringido). `format_status_color` ampliada con PUBLIC_URL e INTERNAL. Aplicado en consolidado y single-project. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
