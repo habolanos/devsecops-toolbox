@@ -846,21 +846,29 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     if not RICH_AVAILABLE or not console:
         return
     
-    # Tabla consolidada de Servicios
-    all_services = []
+    # Tabla resumen de Servicios Habilitados por proyecto
+    service_summary = []
     for project_id, data in all_data.items():
         services = data.get('services', [])
-        for svc in services:
-            name = svc.get('config', {}).get('title', svc.get('name', 'N/A'))
-            all_services.append((project_id, name, "✅ Activo"))
-    
-    if all_services:
-        table = Table(title="📌 Servicios Habilitados", box=box.ROUNDED)
+        enabled = sum(1 for svc in services if svc.get('state', 'ENABLED') == 'ENABLED')
+        total = len(services)
+        if enabled == total:
+            estado = "[green]✅ Todos habilitados[/]"
+        elif enabled > 0:
+            estado = f"[yellow]⚠️ {total - enabled} con estado distinto[/]"
+        else:
+            estado = "[red]❌ Sin servicios[/]"
+        service_summary.append((project_id, str(enabled), estado))
+
+    if service_summary:
+        table = Table(title="📌 Servicios Habilitados (Resumen)", box=box.ROUNDED)
         table.add_column("Proyecto", style="magenta")
-        table.add_column("Nombre", style="cyan")
+        table.add_column("Habilitados", style="cyan", justify="right")
         table.add_column("Estado", style="green")
-        for project, name, status in all_services:
-            table.add_row(project, name, status)
+        for project, count, estado in service_summary:
+            table.add_row(project, count, estado)
+        total_services = sum(int(s[1]) for s in service_summary)
+        table.add_row("[bold]TOTAL[/]", f"[bold]{total_services}[/]", "")
         console.print(table)
         console.print()
     
@@ -1250,15 +1258,19 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
     if not RICH_AVAILABLE or not console:
         return
     
-    # Tabla de Servicios
+    # Tabla de Servicios (resumen)
     services = data.get('services', [])
     if services:
-        table = Table(title="📌 Servicios Habilitados", box=box.ROUNDED)
-        table.add_column("Nombre", style="cyan")
+        enabled = sum(1 for svc in services if svc.get('state', 'ENABLED') == 'ENABLED')
+        total = len(services)
+        table = Table(title="📌 Servicios Habilitados (Resumen)", box=box.ROUNDED)
+        table.add_column("Habilitados", style="cyan", justify="right")
         table.add_column("Estado", style="green")
-        for svc in services:
-            name = svc.get('config', {}).get('title', svc.get('name', 'N/A'))
-            table.add_row(name, "✅ Activo")
+        if enabled == total:
+            estado = "✅ Todos habilitados"
+        else:
+            estado = f"⚠️ {total - enabled} con estado distinto"
+        table.add_row(str(enabled), estado)
         console.print(table)
         console.print()
     
