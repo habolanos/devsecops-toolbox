@@ -1007,5 +1007,248 @@ class TestLoadTemplate(unittest.TestCase):
         self.assertEqual(result["env_var_search_values"][0], "config-cadena")
 
 
+class TestReleaseUpdateTaskScriptAndAddVarTemplate(unittest.TestCase):
+    """Tests para el template release_update_task_script_and_add_var.yaml.
+
+    Valida el flujo completo:
+    1. load_template: cargar el template YAML real
+    2. build_patch_payload: aplicar task update + global_var a un release mock
+    """
+
+    TEMPLATE_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "templates", "release_update_task_script_and_add_var.yaml"
+    )
+
+    EXPECTED_SCRIPT_START = "printf '%s' \"$(DataDogScriptPermission)\" | base64 -d"
+
+    def setUp(self):
+        if not mod.YAML_AVAILABLE:
+            self.skipTest("PyYAML no instalado")
+        if not os.path.exists(self.TEMPLATE_PATH):
+            self.skipTest(f"Template no encontrado: {self.TEMPLATE_PATH}")
+        self.release = {
+            "id": 500,
+            "name": "Release-500",
+            "status": "active",
+            "description": "Test release",
+            "variables": {},
+            "environments": [
+                {
+                    "id": 1, "name": "Develop", "status": "succeeded",
+                    "variables": {},
+                    "deployPhases": [{
+                        "name": "Develop",
+                        "workflowTasks": [{
+                            "displayName": "Create folders logs",
+                            "inputs": {"inline": "old_inline_develop"},
+                        }]
+                    }]
+                },
+                {
+                    "id": 2, "name": "QA", "status": "succeeded",
+                    "variables": {},
+                    "deployPhases": [{
+                        "name": "QA",
+                        "workflowTasks": [{
+                            "displayName": "Create folders logs",
+                            "inputs": {"inline": "old_inline_qa"},
+                        }]
+                    }]
+                },
+                {
+                    "id": 3, "name": "01-Cedis Norte", "status": "notStarted",
+                    "variables": {},
+                    "deployPhases": [{
+                        "name": "01-Cedis Norte",
+                        "workflowTasks": [{
+                            "displayName": "Create folders logs",
+                            "inputs": {"inline": "old_inline_01"},
+                        }]
+                    }]
+                },
+                {
+                    "id": 4, "name": "Production", "status": "notStarted",
+                    "variables": {},
+                    "deployPhases": [{
+                        "name": "Production",
+                        "workflowTasks": [{
+                            "displayName": "Create folders logs",
+                            "inputs": {"inline": "old_inline_prod"},
+                        }]
+                    }]
+                },
+            ]
+        }
+
+    def test_template_loads_correctly(self):
+        """load_template debe cargar el template sin errores."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        self.assertEqual(result["release_ids"], [])
+        self.assertEqual(len(result["global_vars"]), 1)
+        self.assertEqual(len(result["env_vars"]), 0)
+        self.assertEqual(len(result["task_updates"]), 1)
+        self.assertFalse(result["abandon"])
+        self.assertFalse(result["dry_run"])
+
+    def test_template_has_datadog_var_in_global_vars(self):
+        """global_vars debe contener DataDogScriptPermission."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        var_str = result["global_vars"][0]
+        name, value = mod.parse_var(var_str)
+        self.assertEqual(name, "DataDogScriptPermission")
+        self.assertTrue(len(value) > 50)
+
+    def test_template_search_stages(self):
+        """search_stages debe incluir Develop y QA; patterns debe incluir ^\\d{2}-."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        self.assertIn("Develop", result["search_stages"])
+        self.assertIn("QA", result["search_stages"])
+        self.assertIn("^\\d{2}-", result["search_stage_patterns"])
+
+    def test_template_task_update_targets_inputs_inline(self):
+        """task_updates debe apuntar a inputs.inline (no inputs.script)."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        task = result["task_updates"][0]
+        self.assertEqual(task["name"], "Create folders logs")
+        field = task["fields"][0]
+        self.assertEqual(field["path"], "inputs.inline")
+        self.assertIn("DataDogScriptPermission", field["new_value"])
+
+    def test_build_payload_updates_inline_in_matching_stages(self):
+        """build_patch_payload debe actualizar inputs.inline en Develop, QA y 01-Cedis (no Production)."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        payload, changes = mod.build_patch_payload(
+            self.release,
+            result["global_vars"],
+            result["env_vars"],
+            result["abandon"],
+            result.get("description", ""),
+            env_var_search_values=result["env_var_search_values"],
+            task_updates=result["task_updates"],
+            search_stages=result["search_stages"],
+            search_stage_patterns=result["search_stage_patterns"],
+            global_var_search_values=result["global_var_search_values"],
+            comment=result.get("comment", ""),
+        )
+        task_changes = [c for c in changes if c["type"] == "task_field"]
+        success_changes = [c for c in task_changes if "error" not in c]
+        stages_changed = {c["stage"] for c in success_changes}
+        self.assertIn("Develop", stages_changed)
+        self.assertIn("QA", stages_changed)
+        self.assertIn("01-Cedis Norte", stages_changed)
+        self.assertNotIn("Production", stages_changed)
+
+    def test_build_payload_sets_global_var(self):
+        """build_patch_payload debe agregar DataDogScriptPermission a release.variables."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        payload, changes = mod.build_patch_payload(
+            self.release,
+            result["global_vars"],
+            result["env_vars"],
+            result["abandon"],
+            result.get("description", ""),
+            global_var_search_values=result["global_var_search_values"],
+            task_updates=result["task_updates"],
+            search_stages=result["search_stages"],
+            search_stage_patterns=result["search_stage_patterns"],
+            comment=result.get("comment", ""),
+        )
+        self.assertIn("variables", payload)
+        self.assertIn("DataDogScriptPermission", payload["variables"])
+        var_changes = [c for c in changes if c["type"] == "global_var"]
+        self.assertEqual(len(var_changes), 1)
+        self.assertEqual(var_changes[0]["key"], "DataDogScriptPermission")
+
+    def test_build_payload_combined_task_and_var(self):
+        """El payload debe tener tanto environments (task) como variables (global_var)."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        payload, changes = mod.build_patch_payload(
+            self.release,
+            result["global_vars"],
+            result["env_vars"],
+            result["abandon"],
+            result.get("description", ""),
+            global_var_search_values=result["global_var_search_values"],
+            task_updates=result["task_updates"],
+            search_stages=result["search_stages"],
+            search_stage_patterns=result["search_stage_patterns"],
+            comment=result.get("comment", ""),
+        )
+        self.assertIn("environments", payload)
+        self.assertIn("variables", payload)
+        task_changes = [c for c in changes if c["type"] == "task_field" and "error" not in c]
+        var_changes = [c for c in changes if c["type"] == "global_var"]
+        self.assertGreaterEqual(len(task_changes), 3)
+        self.assertEqual(len(var_changes), 1)
+
+    def test_build_payload_inline_value_replaced(self):
+        """El valor de inputs.inline debe cambiar del old al nuevo script."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        payload, changes = mod.build_patch_payload(
+            self.release,
+            result["global_vars"],
+            result["env_vars"],
+            result["abandon"],
+            result.get("description", ""),
+            global_var_search_values=result["global_var_search_values"],
+            task_updates=result["task_updates"],
+            search_stages=result["search_stages"],
+            search_stage_patterns=result["search_stage_patterns"],
+            comment=result.get("comment", ""),
+        )
+        for env in payload["environments"]:
+            if env["name"] == "Production":
+                continue
+            for phase in env.get("deployPhases", []):
+                for task in phase.get("workflowTasks", []):
+                    if task.get("displayName") == "Create folders logs":
+                        self.assertIn("DataDogScriptPermission", task["inputs"]["inline"])
+                        self.assertNotEqual(task["inputs"]["inline"], "old_inline_develop")
+
+    def test_build_payload_production_not_updated(self):
+        """Production no debe ser actualizado (no coincide con stages ni pattern)."""
+        result = mod.load_template(self.TEMPLATE_PATH)
+        payload, changes = mod.build_patch_payload(
+            self.release,
+            result["global_vars"],
+            result["env_vars"],
+            result["abandon"],
+            result.get("description", ""),
+            global_var_search_values=result["global_var_search_values"],
+            task_updates=result["task_updates"],
+            search_stages=result["search_stages"],
+            search_stage_patterns=result["search_stage_patterns"],
+            comment=result.get("comment", ""),
+        )
+        for env in payload["environments"]:
+            if env["name"] == "Production":
+                for phase in env.get("deployPhases", []):
+                    for task in phase.get("workflowTasks", []):
+                        if task.get("displayName") == "Create folders logs":
+                            self.assertEqual(task["inputs"]["inline"], "old_inline_prod")
+
+    def test_original_release_not_mutated(self):
+        """El release original no debe ser mutado por build_patch_payload."""
+        original_inline = self.release["environments"][0]["deployPhases"][0]["workflowTasks"][0]["inputs"]["inline"]
+        result = mod.load_template(self.TEMPLATE_PATH)
+        mod.build_patch_payload(
+            self.release,
+            result["global_vars"],
+            result["env_vars"],
+            result["abandon"],
+            result.get("description", ""),
+            global_var_search_values=result["global_var_search_values"],
+            task_updates=result["task_updates"],
+            search_stages=result["search_stages"],
+            search_stage_patterns=result["search_stage_patterns"],
+            comment=result.get("comment", ""),
+        )
+        self.assertEqual(
+            self.release["environments"][0]["deployPhases"][0]["workflowTasks"][0]["inputs"]["inline"],
+            original_inline
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

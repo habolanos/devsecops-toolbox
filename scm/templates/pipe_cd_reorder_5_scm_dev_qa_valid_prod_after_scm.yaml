@@ -27,7 +27,7 @@ metadata:
 
 search:
   # Validacion exacta: Pipeline debe tener EXACTAMENTE estos 5 stages
-  exact_match: true
+  exact_match: false
   stages:
     - name: "SCM Inspection"
     - name: "Develop"
@@ -62,5 +62,5 @@ update:
       rank: 5
 
 options:
-  dry_run: true
+  dry_run: false
   rollback_on_error: true

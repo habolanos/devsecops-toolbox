@@ -1,5 +1,6 @@
-"""Tests para triggers y artifact filters en UpdateEngine."""
+"""Tests para triggers, artifact filters y variables en UpdateEngine."""
 
+import copy
 import unittest
 import json
 from .update_engine import UpdateEngine
@@ -411,6 +412,627 @@ class TestDryRunExecution(unittest.TestCase):
         # Result should be successful
         self.assertEqual(result['success'], 1)
         self.assertEqual(result['failed'], 0)
+
+
+class TestVariableActions(unittest.TestCase):
+    """Tests para _process_variable_actions (add/update/remove)"""
+
+    def setUp(self):
+        self.definition = {
+            'environments': [
+                {'id': 1, 'name': 'Develop', 'rank': 1},
+                {'id': 2, 'name': 'QA', 'rank': 2},
+                {'id': 3, 'name': 'Production', 'rank': 3},
+            ],
+            'variables': {
+                'ExistingVar': {
+                    'value': 'old_value',
+                    'allowOverride': True
+                }
+            }
+        }
+
+    def test_add_new_variable(self):
+        """Agregar una variable que no existe"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'DataDogScriptPermission',
+                    'action': 'add',
+                    'value': 'base64encodedvalue',
+                    'allowOverride': True
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertIn('DataDogScriptPermission', self.definition['variables'])
+        self.assertEqual(
+            self.definition['variables']['DataDogScriptPermission']['value'],
+            'base64encodedvalue'
+        )
+        self.assertTrue(
+            self.definition['variables']['DataDogScriptPermission']['allowOverride']
+        )
+
+        add_changes = [c for c in engine.get_changes() if c['type'] == 'variable_add']
+        self.assertEqual(len(add_changes), 1)
+        self.assertEqual(add_changes[0]['name'], 'DataDogScriptPermission')
+
+    def test_add_existing_variable_updates_value(self):
+        """Agregar variable que ya existe actualiza el valor"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'ExistingVar',
+                    'action': 'add',
+                    'value': 'new_value'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertEqual(
+            self.definition['variables']['ExistingVar']['value'],
+            'new_value'
+        )
+
+        update_changes = [c for c in engine.get_changes() if c['type'] == 'variable_update']
+        self.assertEqual(len(update_changes), 1)
+
+    def test_update_existing_variable(self):
+        """Actualizar una variable existente con action: update"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'ExistingVar',
+                    'action': 'update',
+                    'value': 'updated_value',
+                    'allowOverride': False
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertEqual(
+            self.definition['variables']['ExistingVar']['value'],
+            'updated_value'
+        )
+        self.assertFalse(
+            self.definition['variables']['ExistingVar']['allowOverride']
+        )
+
+    def test_update_nonexistent_variable_skipped(self):
+        """Actualizar variable que no existe es skip silencioso"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'NonExistent',
+                    'action': 'update',
+                    'value': 'value'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertNotIn('NonExistent', self.definition['variables'])
+        changes = [c for c in engine.get_changes() if c['type'] == 'variable_update']
+        self.assertEqual(len(changes), 0)
+
+    def test_remove_existing_variable(self):
+        """Eliminar una variable existente"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'ExistingVar',
+                    'action': 'remove'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertNotIn('ExistingVar', self.definition['variables'])
+        remove_changes = [c for c in engine.get_changes() if c['type'] == 'variable_remove']
+        self.assertEqual(len(remove_changes), 1)
+
+    def test_remove_nonexistent_variable_skipped(self):
+        """Eliminar variable que no existe es skip silencioso"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'NonExistent',
+                    'action': 'remove'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        remove_changes = [c for c in engine.get_changes() if c['type'] == 'variable_remove']
+        self.assertEqual(len(remove_changes), 0)
+
+    def test_add_secret_variable(self):
+        """Agregar una variable con isSecret: true"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'SecretVar',
+                    'action': 'add',
+                    'value': 'secret_value',
+                    'isSecret': True
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertIn('SecretVar', self.definition['variables'])
+        self.assertTrue(self.definition['variables']['SecretVar']['isSecret'])
+
+    def test_add_variable_default_allow_override(self):
+        """Agregar variable sin allowOverride usa default True"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'DefaultVar',
+                    'action': 'add',
+                    'value': 'val'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertTrue(
+            self.definition['variables']['DefaultVar']['allowOverride']
+        )
+
+    def test_add_variable_scope_release_explicit(self):
+        """Agregar variable con scope: release explicito"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'ReleaseVar',
+                    'action': 'add',
+                    'scope': 'release',
+                    'value': 'release_value'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertIn('ReleaseVar', self.definition['variables'])
+        self.assertEqual(
+            self.definition['variables']['ReleaseVar']['value'],
+            'release_value'
+        )
+        add_changes = [c for c in engine.get_changes() if c['type'] == 'variable_add']
+        self.assertEqual(add_changes[0]['scope'], 'release')
+
+    def test_add_variable_scope_environment(self):
+        """Agregar variable con scope: environment a un stage especifico"""
+        self.definition['environments'][0]['variables'] = {}
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'StageVar',
+                    'action': 'add',
+                    'scope': 'environment',
+                    'stage': 'Develop',
+                    'value': 'stage_value'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        env_vars = self.definition['environments'][0].get('variables', {})
+        self.assertIn('StageVar', env_vars)
+        self.assertEqual(env_vars['StageVar']['value'], 'stage_value')
+        add_changes = [c for c in engine.get_changes() if c['type'] == 'variable_add']
+        self.assertEqual(add_changes[0]['scope'], 'environment:Develop')
+
+    def test_add_variable_scope_environment_nonexistent_stage(self):
+        """Agregar variable con scope environment a stage inexistente es skip"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'StageVar',
+                    'action': 'add',
+                    'scope': 'environment',
+                    'stage': 'NonExistent',
+                    'value': 'val'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        add_changes = [c for c in engine.get_changes() if c['type'] == 'variable_add']
+        self.assertEqual(len(add_changes), 0)
+
+    def test_add_variable_scope_environment_without_stage_raises(self):
+        """Scope environment sin stage lanza ValueError capturado por apply_updates"""
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'StageVar',
+                    'action': 'add',
+                    'scope': 'environment',
+                    'value': 'val'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        result = engine.apply_updates()
+        self.assertFalse(result)
+        self.assertEqual(len(engine.get_changes()), 0)
+
+    def test_remove_variable_scope_environment(self):
+        """Eliminar variable con scope environment"""
+        self.definition['environments'][0]['variables'] = {
+            'StageVar': {'value': 'val', 'allowOverride': True}
+        }
+        update_rules = {
+            'variables': [
+                {
+                    'name': 'StageVar',
+                    'action': 'remove',
+                    'scope': 'environment',
+                    'stage': 'Develop'
+                }
+            ]
+        }
+        engine = UpdateEngine(self.definition, [], update_rules)
+        engine.apply_updates()
+
+        self.assertNotIn('StageVar', self.definition['environments'][0].get('variables', {}))
+        remove_changes = [c for c in engine.get_changes() if c['type'] == 'variable_remove']
+        self.assertEqual(len(remove_changes), 1)
+
+
+class TestCreateFoldersLogsAddVariableTemplate(unittest.TestCase):
+    """Tests para el template pipe_cd_update_task_create_folders_logs_add_var_datadogscriptpermision.yaml
+
+    Valida el flujo completo:
+    1. Search: stages Develop, QA y patron ^\\d{2}-
+    2. Search: task "Create folders logs" en los stages encontrados
+    3. Update: inputs.inline de la task encontrada (SSH task usa inputs.inline)
+    4. Update: add variable DataDogScriptPermission scope release
+    """
+
+    SEARCH_RULES = {
+        'stages': [
+            {'name': 'Develop'},
+            {'name': 'QA'},
+            {'pattern': r'^\d{2}-'},
+        ],
+        'tasks': [
+            {'name': 'Create folders logs'},
+        ],
+    }
+
+    EXPECTED_SCRIPT = (
+        "printf '%s' \"$(DataDogScriptPermission)\" | base64 -d | sh -s -- "
+        "\"$(pathConfig)\" \"$(artifact.fileProperties)\"\n"
+    )
+
+    UPDATE_RULES = {
+        'tasks': [
+            {
+                'name': 'Create folders logs',
+                'fields': [
+                    {
+                        'path': 'inputs.inline',
+                        'new_value': EXPECTED_SCRIPT,
+                    }
+                ],
+            }
+        ],
+        'variables': [
+            {
+                'name': 'DataDogScriptPermission',
+                'action': 'add',
+                'scope': 'release',
+                'value': 'IyEvYmluL3NoCnNldCAtZXUKCkJBU0VfUEFUSD0kMQ==',
+                'allowOverride': True,
+                'isSecret': False,
+            }
+        ],
+    }
+
+    def setUp(self):
+        self.definition = {
+            'environments': [
+                {
+                    'id': 1, 'name': 'Develop', 'rank': 1,
+                    'deployPhases': [{
+                        'deploymentInput': {
+                            'tasks': [{
+                                'displayName': 'Create folders logs',
+                                'enabled': True,
+                                'task': {'id': 'task-id', 'versionSpec': '1.*'},
+                                'inputs': {'inline': 'old_inline_develop'},
+                            }]
+                        }
+                    }]
+                },
+                {
+                    'id': 2, 'name': 'QA', 'rank': 2,
+                    'deployPhases': [{
+                        'deploymentInput': {
+                            'tasks': [{
+                                'displayName': 'Create folders logs',
+                                'enabled': True,
+                                'task': {'id': 'task-id', 'versionSpec': '1.*'},
+                                'inputs': {'inline': 'old_inline_qa'},
+                            }]
+                        }
+                    }]
+                },
+                {
+                    'id': 3, 'name': '01-Cedis Norte', 'rank': 3,
+                    'deployPhases': [{
+                        'deploymentInput': {
+                            'tasks': [{
+                                'displayName': 'Create folders logs',
+                                'enabled': True,
+                                'task': {'id': 'task-id', 'versionSpec': '1.*'},
+                                'inputs': {'inline': 'old_inline_01'},
+                            }]
+                        }
+                    }]
+                },
+                {
+                    'id': 4, 'name': '02-Cedis Sur', 'rank': 4,
+                    'deployPhases': [{
+                        'deploymentInput': {
+                            'tasks': [{
+                                'displayName': 'Create folders logs',
+                                'enabled': True,
+                                'task': {'id': 'task-id', 'versionSpec': '1.*'},
+                                'inputs': {'inline': 'old_inline_02'},
+                            }]
+                        }
+                    }]
+                },
+                {
+                    'id': 5, 'name': 'Production', 'rank': 5,
+                    'deployPhases': [{
+                        'deploymentInput': {
+                            'tasks': [{
+                                'displayName': 'Create folders logs',
+                                'enabled': True,
+                                'task': {'id': 'task-id', 'versionSpec': '1.*'},
+                                'inputs': {'inline': 'old_inline_prod'},
+                            }]
+                        }
+                    }]
+                },
+            ],
+            'variables': {},
+        }
+
+    def test_search_finds_correct_stages(self):
+        """Search debe encontrar Develop, QA, 01-Cedis Norte, 02-Cedis Sur (NO Production)"""
+        engine = SearchEngine(self.definition, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        stage_matches = [m for m in matches if m.type == 'stage']
+        stage_names = {m.name for m in stage_matches}
+        self.assertIn('Develop', stage_names)
+        self.assertIn('QA', stage_names)
+        self.assertIn('01-Cedis Norte', stage_names)
+        self.assertIn('02-Cedis Sur', stage_names)
+        self.assertNotIn('Production', stage_names)
+
+    def test_search_finds_tasks_in_all_stages(self):
+        """Search encuentra 'Create folders logs' en TODOS los stages (sin filtro stage en criterio)"""
+        engine = SearchEngine(self.definition, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        task_matches = [m for m in matches if m.type == 'task']
+        # Sin campo 'stage' en el criterio de task, search_tasks busca en todos los stages
+        self.assertEqual(len(task_matches), 5)
+
+        task_stage_names = {m.stage_name for m in task_matches}
+        self.assertIn('Develop', task_stage_names)
+        self.assertIn('QA', task_stage_names)
+        self.assertIn('01-Cedis Norte', task_stage_names)
+        self.assertIn('02-Cedis Sur', task_stage_names)
+        self.assertIn('Production', task_stage_names)
+
+    def test_update_modifies_inline_in_all_stages(self):
+        """Update modifica inputs.inline en TODOS los stages donde encontro la task"""
+        engine = SearchEngine(self.definition, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        update_engine = UpdateEngine(
+            self.definition, matches, self.UPDATE_RULES
+        )
+        update_engine.apply_updates()
+
+        for env in self.definition['environments']:
+            for phase in env.get('deployPhases', []):
+                tasks = phase.get('deploymentInput', {}).get('tasks', [])
+                for task in tasks:
+                    if task.get('displayName') == 'Create folders logs':
+                        # Sin filtro stage en task criteria, la task se actualiza en todos los stages
+                        self.assertEqual(
+                            task['inputs']['inline'],
+                            self.EXPECTED_SCRIPT,
+                            f"Inline no actualizado en stage {env['name']}"
+                        )
+
+    def test_variable_added_to_release_scope(self):
+        """La variable DataDogScriptPermission debe agregarse a definition.variables"""
+        engine = SearchEngine(self.definition, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        update_engine = UpdateEngine(
+            self.definition, matches, self.UPDATE_RULES
+        )
+        update_engine.apply_updates()
+
+        self.assertIn('DataDogScriptPermission', self.definition['variables'])
+        var = self.definition['variables']['DataDogScriptPermission']
+        self.assertEqual(
+            var['value'],
+            'IyEvYmluL3NoCnNldCAtZXUKCkJBU0VfUEFUSD0kMQ=='
+        )
+        self.assertTrue(var['allowOverride'])
+
+    def test_combined_task_and_variable_changes(self):
+        """El engine debe reportar tanto cambios de task como de variable"""
+        engine = SearchEngine(self.definition, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        update_engine = UpdateEngine(
+            self.definition, matches, self.UPDATE_RULES
+        )
+        update_engine.apply_updates()
+
+        changes = update_engine.get_changes()
+        task_changes = [c for c in changes if c['type'] == 'task_field']
+        var_changes = [c for c in changes if c['type'] == 'variable_add']
+
+        # 5 stages con la task (sin filtro stage en criterio)
+        self.assertEqual(len(task_changes), 5)
+        self.assertEqual(len(var_changes), 1)
+        self.assertEqual(var_changes[0]['name'], 'DataDogScriptPermission')
+        self.assertEqual(var_changes[0]['scope'], 'release')
+
+    def test_no_task_changes_when_task_not_found(self):
+        """Si la task no existe en ningun stage, solo se agrega la variable"""
+        no_task_def = {
+            'environments': [
+                {
+                    'id': 1, 'name': 'Develop', 'rank': 1,
+                    'deployPhases': [{
+                        'deploymentInput': {
+                            'tasks': [{
+                                'displayName': 'Other Task',
+                                'enabled': True,
+                                'inputs': {'inline': 'original'},
+                            }]
+                        }
+                    }]
+                }
+            ],
+            'variables': {},
+        }
+        engine = SearchEngine(no_task_def, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        update_engine = UpdateEngine(
+            no_task_def, matches, self.UPDATE_RULES
+        )
+        update_engine.apply_updates()
+
+        task_changes = [c for c in update_engine.get_changes() if c['type'] == 'task_field']
+        var_changes = [c for c in update_engine.get_changes() if c['type'] == 'variable_add']
+        self.assertEqual(len(task_changes), 0)
+        self.assertEqual(len(var_changes), 1)
+
+    def test_variable_added_even_if_task_not_found(self):
+        """La variable se agrega aunque la task no exista en los stages"""
+        def_no_task = copy.deepcopy(self.definition)
+        for env in def_no_task['environments']:
+            for phase in env.get('deployPhases', []):
+                tasks = phase.get('deploymentInput', {}).get('tasks', [])
+                for t in tasks:
+                    t['displayName'] = 'Other Task'
+
+        engine = SearchEngine(def_no_task, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        update_engine = UpdateEngine(
+            def_no_task, matches, self.UPDATE_RULES
+        )
+        update_engine.apply_updates()
+
+        self.assertIn('DataDogScriptPermission', def_no_task['variables'])
+        var_changes = [c for c in update_engine.get_changes() if c['type'] == 'variable_add']
+        self.assertEqual(len(var_changes), 1)
+        task_changes = [c for c in update_engine.get_changes() if c['type'] == 'task_field']
+        self.assertEqual(len(task_changes), 0)
+
+    def test_existing_variable_gets_updated_not_duplicated(self):
+        """Si la variable ya existe, se actualiza el valor (no se duplica)"""
+        self.definition['variables']['DataDogScriptPermission'] = {
+            'value': 'old_base64_value',
+            'allowOverride': False,
+        }
+        engine = SearchEngine(self.definition, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        update_engine = UpdateEngine(
+            self.definition, matches, self.UPDATE_RULES
+        )
+        update_engine.apply_updates()
+
+        var = self.definition['variables']['DataDogScriptPermission']
+        self.assertEqual(
+            var['value'],
+            'IyEvYmluL3NoCnNldCAtZXUKCkJBU0VfUEFUSD0kMQ=='
+        )
+        self.assertTrue(var['allowOverride'])
+
+        update_changes = [c for c in update_engine.get_changes() if c['type'] == 'variable_update']
+        self.assertEqual(len(update_changes), 1)
+        add_changes = [c for c in update_engine.get_changes() if c['type'] == 'variable_add']
+        self.assertEqual(len(add_changes), 0)
+
+    def test_workflow_tasks_format_also_updated(self):
+        """El engine debe actualizar tasks en formato workflowTasks tambien"""
+        def_workflow = {
+            'environments': [
+                {
+                    'id': 1, 'name': 'Develop', 'rank': 1,
+                    'deployPhases': [{
+                        'workflowTasks': [{
+                            'name': 'Create folders logs',
+                            'enabled': True,
+                            'inputs': {'inline': 'old_workflow_inline'},
+                        }]
+                    }]
+                },
+                {
+                    'id': 2, 'name': 'QA', 'rank': 2,
+                    'deployPhases': [{
+                        'workflowTasks': [{
+                            'name': 'Create folders logs',
+                            'enabled': True,
+                            'inputs': {'inline': 'old_workflow_qa'},
+                        }]
+                    }]
+                },
+            ],
+            'variables': {},
+        }
+        engine = SearchEngine(def_workflow, self.SEARCH_RULES)
+        matches = engine.search_all()
+
+        update_engine = UpdateEngine(
+            def_workflow, matches, self.UPDATE_RULES
+        )
+        update_engine.apply_updates()
+
+        for env in def_workflow['environments']:
+            for phase in env.get('deployPhases', []):
+                for task in phase.get('workflowTasks', []):
+                    if task.get('name') == 'Create folders logs':
+                        self.assertEqual(
+                            task['inputs']['inline'],
+                            self.EXPECTED_SCRIPT,
+                            f"Inline no actualizado en {env['name']}"
+                        )
 
 
 if __name__ == '__main__':

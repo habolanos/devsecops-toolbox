@@ -65,6 +65,11 @@ class UpdateEngine:
             if trigger_rules and any(rule.get('action') for rule in trigger_rules):
                 self._process_trigger_actions(trigger_rules)
             
+            # Procesar acciones de variables (add/update/remove)
+            var_rules = self.update_rules.get('variables', [])
+            if var_rules and any(rule.get('action') for rule in var_rules):
+                self._process_variable_actions(var_rules)
+            
             # Luego aplicar otras actualizaciones
             for match in self.matches:
                 if match.type == 'task':
@@ -546,7 +551,169 @@ class UpdateEngine:
                     })
         
         self.definition['triggers'] = triggers
-    
+
+    def _process_variable_actions(self, var_rules: List[Dict]):
+        """
+        Procesar acciones de variables (add/update/remove) en la definicion de release.
+
+        Azure DevOps soporta dos scopes para variables:
+
+        1. Scope "release" (default): variables a nivel del pipeline.
+           Se almacenan en definition.variables como un dict:
+             {
+               "VarName": {
+                 "value": "...",
+                 "allowOverride": true,
+                 "isSecret": false
+               }
+             }
+
+        2. Scope "environment": variables a nivel de un stage especifico.
+           Se almacenan en definition.environments[].variables como un dict:
+             {
+               "VarName": {
+                 "value": "...",
+                 "allowOverride": true
+               }
+             }
+           Requiere el campo 'stage' en la regla para identificar el environment.
+
+        Soporta:
+          - action: "add"    -> Agrega una variable nueva (si no existe)
+          - action: "update" -> Actualiza el valor de una variable existente
+          - action: "remove" -> Elimina una variable existente
+
+        Campos de la regla:
+          - name: nombre de la variable (obligatorio)
+          - action: "add" | "update" | "remove" (obligatorio)
+          - value: valor de la variable
+          - scope: "release" (default) | "environment"
+          - stage: nombre del stage (obligatorio si scope=environment)
+          - allowOverride: bool (default: true)
+          - isSecret: bool (default: false)
+
+        Args:
+            var_rules: Reglas de actualizacion de variables
+        """
+        for rule in var_rules:
+            action = rule.get('action')
+            scope = rule.get('scope', 'release')
+            var_name = rule.get('name', '')
+
+            if not var_name:
+                raise ValueError(f"action '{action}' en variables requiere 'name'")
+
+            # Obtener el dict de variables segun el scope
+            if scope == 'environment':
+                stage_name = rule.get('stage', '')
+                if not stage_name:
+                    raise ValueError(
+                        "scope 'environment' en variables requiere 'stage'"
+                    )
+                variables = self._get_environment_variables(stage_name)
+                if variables is None:
+                    print(f"  ⚠ Stage '{stage_name}' no encontrado, se omite variable '{var_name}'")
+                    continue
+                scope_label = f"environment:{stage_name}"
+            else:
+                variables = self.definition.get('variables', {})
+                scope_label = 'release'
+
+            if action == 'add':
+                if var_name in variables:
+                    print(f"  ⚠ Variable '{var_name}' ya existe en {scope_label}, se actualiza el valor")
+                    old_value = variables[var_name].get('value')
+                    variables[var_name]['value'] = rule.get('value', '')
+                    if 'allowOverride' in rule:
+                        variables[var_name]['allowOverride'] = rule.get('allowOverride')
+                    if 'isSecret' in rule:
+                        variables[var_name]['isSecret'] = rule.get('isSecret')
+                    self.changes.append({
+                        'type': 'variable_update',
+                        'name': var_name,
+                        'scope': scope_label,
+                        'old': old_value,
+                        'new': rule.get('value', '')
+                    })
+                else:
+                    new_var = {
+                        'value': rule.get('value', ''),
+                        'allowOverride': rule.get('allowOverride', True)
+                    }
+                    if rule.get('isSecret'):
+                        new_var['isSecret'] = True
+                    variables[var_name] = new_var
+                    self.changes.append({
+                        'type': 'variable_add',
+                        'name': var_name,
+                        'scope': scope_label,
+                        'value': rule.get('value', ''),
+                        'allowOverride': rule.get('allowOverride', True)
+                    })
+
+            elif action == 'update':
+                if var_name in variables:
+                    old_value = variables[var_name].get('value')
+                    variables[var_name]['value'] = rule.get('value', '')
+                    if 'allowOverride' in rule:
+                        variables[var_name]['allowOverride'] = rule.get('allowOverride')
+                    if 'isSecret' in rule:
+                        variables[var_name]['isSecret'] = rule.get('isSecret')
+                    self.changes.append({
+                        'type': 'variable_update',
+                        'name': var_name,
+                        'scope': scope_label,
+                        'old': old_value,
+                        'new': rule.get('value', '')
+                    })
+                else:
+                    print(f"  ⚠ Variable '{var_name}' no encontrada en {scope_label}, se omite update")
+
+            elif action == 'remove':
+                if var_name in variables:
+                    del variables[var_name]
+                    self.changes.append({
+                        'type': 'variable_remove',
+                        'name': var_name,
+                        'scope': scope_label
+                    })
+                else:
+                    print(f"  ⚠ Variable '{var_name}' no encontrada en {scope_label}, se omite remove")
+
+            # Guardar el dict de variables segun el scope
+            if scope == 'environment':
+                self._set_environment_variables(rule.get('stage', ''), variables)
+            else:
+                self.definition['variables'] = variables
+
+    def _get_environment_variables(self, stage_name: str) -> Dict:
+        """
+        Obtener el dict de variables de un environment (stage) especifico.
+
+        Args:
+            stage_name: Nombre del stage
+
+        Returns:
+            Dict de variables del environment, o None si no se encuentra
+        """
+        for env in self.definition.get('environments', []):
+            if env.get('name', '') == stage_name:
+                return env.get('variables', {})
+        return None
+
+    def _set_environment_variables(self, stage_name: str, variables: Dict):
+        """
+        Asignar el dict de variables a un environment (stage) especifico.
+
+        Args:
+            stage_name: Nombre del stage
+            variables: Dict de variables a asignar
+        """
+        for env in self.definition.get('environments', []):
+            if env.get('name', '') == stage_name:
+                env['variables'] = variables
+                break
+
     def _resolve_artifact_name(self, token: str) -> str:
         """
         Resolver un token $auto al alias real del artifact del pipeline.

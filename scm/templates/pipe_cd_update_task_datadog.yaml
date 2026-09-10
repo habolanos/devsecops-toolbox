@@ -1,0 +1,48 @@
+metadata:
+  name: "Actualizar inputs.script de DataDog"
+  version: "1.0"
+  description: "Modifica inputs.script de la task Bash 'DataDog' en pipelines CD con stages Develop, QA y patron numerico. La task DataDog obtiene NginxStatus.conf desde el repo pipelineConfig."
+  comment: |
+    Caso de uso:
+    - Buscar stages: Develop, QA, y stages con patron numerico (01-*, 02-*, etc.).
+    - Actualizar la task Bash "DataDog" (taskId d9bafed4-...): reemplaza
+      inputs.script (campo que usa la tarea Bash para ejecutar el script)
+      por un nuevo script que clona el repo pipelineConfig (branch CdS-GCP),
+      obtiene NginxStatus.conf desde cedis/DataDog/ y lo deja en el
+      working directory.
+    - Nota: Este template NO agrega ni modifica variables.
+
+  author: "SCM Team"
+  created_at: "2026-09-09"
+
+search:
+  # Buscar stages: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.)
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - pattern: "^\\d{2}-"  # Regex: stages que empiezan con 2 dígitos y guion (01-xxx, 02-yy, etc.)
+  
+  # Buscar tasks solo en los stages encontrados arriba
+  tasks:
+    - name: "DataDog"
+
+update:
+  tasks:
+    - name: "DataDog"
+      fields:
+        - path: "inputs.script"
+          # La task Bash (taskId d9bafed4-...) usa inputs.script para el script
+          new_value: |
+            echo -e "\n1- Get the DataDog config from pipeliConfig repo\n"
+            git clone --single-branch -b CdS-GCP $(path_pipelineConfig) temp
+            ls -l ./temp
+
+            echo -e "\n2- Get and show NginxStatus.conf file\n"
+            mv -f temp/cedis/DataDog/NginxStatus.conf ./NginxStatus.conf
+            cat ./NginxStatus.conf
+
+            rm -rf temp
+options:
+  dry_run: false
+  rollback_on_error: true
+  parallel_workers: 5

@@ -1,0 +1,42 @@
+metadata:
+  name: "Actualizar variables existentes del release"
+  version: "1.0"
+  description: "Actualiza valores de variables existentes a nivel Release (definition.variables) en pipelines CD. No modifica tasks ni stages."
+  comment: |
+    Caso de uso:
+    - Actualizar variables existentes del release sin modificar tasks.
+    - Las variables deben existir previamente en definition.variables;
+      si no existen, el engine las omite (action: update solo actualiza).
+    - Variables que se pueden actualizar: branchProperties, configpath,
+      logspath, port, portSftp, externalport, DataDogNginx, restart, etc.
+    - Para agregar variables nuevas, usar action: add en su lugar.
+    - Para variables con scope environment, especificar stage: "NombreStage".
+
+  author: "SCM Team"
+  created_at: "2026-09-09"
+
+search:
+  # No se busca tasks ni stages; las variables son a nivel release
+  stages: []
+
+update:
+  # Actualizar variables existentes a nivel Release (definition.variables)
+  variables:
+    - name: "branchProperties"
+      action: "update"
+      scope: "release"
+      value: "master"
+
+    - name: "logspath"
+      action: "update"
+      scope: "release"
+      value: "/sysx/progs/cedis/logs"
+
+    - name: "externalport"
+      action: "update"
+      scope: "release"
+      value: "11018"
+options:
+  dry_run: false
+  rollback_on_error: true
+  parallel_workers: 5

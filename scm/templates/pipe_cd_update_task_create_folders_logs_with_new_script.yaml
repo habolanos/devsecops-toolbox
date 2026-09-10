@@ -1,0 +1,51 @@
+metadata:
+  name: "Actualizar inputs.inline de Create folders logs y agregar variable DataDogScriptPermission"
+  version: "1.0"
+  description: "Modifica inputs.inline de la task SSH 'Create folders logs'"
+  comment: |
+    Caso de uso:
+    - Buscar stages: Develop, QA, y stages con patron numerico (01-*, 02-*, etc.).
+    - Actualizar la task SSH "Create folders logs": reemplaza inputs.inline
+      (campo que usa la tarea SSH para ejecutar el script) por un nuevo
+      script que decodifica la variable $(DataDogScriptPermission) en base64
+      y la ejecuta, luego crea el directorio de logs
+      $(logspath)/$(artifact.name) y valida su existencia.
+
+  author: "SCM Team"
+  created_at: "2026-09-09"
+
+search:
+  # Buscar stages: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.)
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - pattern: "^\\d{2}-"  # Regex: stages que empiezan con 2 dígitos y guion (01-xxx, 02-yy, etc.)
+  
+  # Buscar tasks solo en los stages encontrados arriba
+  tasks:
+    - name: "Create folders logs"
+
+update:
+  tasks:
+    - name: "Create folders logs"
+      fields:
+        - path: "inputs.inline"
+          # La task SSH (taskId 91443475-...) usa inputs.inline para el script, no inputs.script
+          new_value: |
+            printf '%s' "$(DataDogScriptPermission)" | base64 -d | sh -s -- "$(pathConfig)" "$(artifact.fileProperties)"
+            
+            DIR="$(logspath)/$(artifact.name)"
+
+            mkdir -p ${DIR}
+
+            if [ -d "$DIR" ]; then
+              # Take action if $DIR exists. #
+              echo "El directorio si existe ${DIR}..."
+            else
+                echo "##vso[task.logissue type=warning] No se pudo crear la carpeta de LOGS ${DIR}"
+                exit 1
+            fi
+options:
+  dry_run: false
+  rollback_on_error: true
+  parallel_workers: 5

@@ -1,0 +1,42 @@
+metadata:
+  name: "Agregar variable DataDogScriptPermission a pipeline CD"
+  version: "1.0"
+  description: "Adiciona la variable DataDogScriptPermission con scope Release en pipelines CD especificados por definitionId"
+  comment: |
+    Caso de uso:
+    - Agregar la variable "DataDogScriptPermission" a nivel Release en pipelines CD.
+    - La variable contiene un script base64 que se decodifica y ejecuta en runtime
+      dentro de la task "Create folders logs" para clonar el repo pipelineConfig
+      (branch CdS-GCP), obtener NginxStatus.conf desde cedis/DataDog/ y dejarlo
+      en el working directory.
+    - La variable tiene allowOverride: true para que los operadores puedan
+      sobrescribir el valor en el momento del release si es necesario.
+
+    Requisitos:
+    - El pipeline debe tener al menos uno de los stages especificados en search.stages.
+    - Si la variable ya existe, se actualiza el valor (no se duplica).
+
+  author: "SCM Team"
+  created_at: "2026-09-09"
+
+search:
+  # Buscar pipelines que tengan estos stages (cualquiera de ellos)
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - name: "Production"
+
+update:
+  # Agregar variable a nivel Release (definition.variables)
+  variables:
+    - name: "DataDogScriptPermission"
+      action: "add"
+      scope: "release"
+      value: "Z2l0IGNsb25lIC0tYnJhbmNoIENkUy1HQ1AgLS1zaW5nbGUtYnJhbmNoIGh0dHBzOi8vZGV2LmF6dXJlLmNvbS9Db3BwZWwtUmV0YWlsL0NkUy1HQ1AtUGlwZWxpbmVDb25maWcuZ2l0ICYmIGNkIHBpcGVsaW5lQ29uZmlnICYmIGNwIC1yIGNlZGlzL0RhdGFEb2cvTmdpbnhTdGF0dXMuY29uZiAuJiBjZCAuLiAmJiBybSAtcmYgcGlwZWxpbmVDb25maWc="
+      allowOverride: true
+      isSecret: false
+
+options:
+  dry_run: true
+  rollback_on_error: true
+  parallel_workers: 5
