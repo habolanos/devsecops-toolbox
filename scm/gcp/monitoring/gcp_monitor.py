@@ -538,16 +538,20 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
 # FUNCIONES ADICIONALES GKE / IP CAPACITY (integradas de opciones 13 y 14)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def run_kubectl_command(command: str, debug: bool = False, logger=None) -> Optional[str]:
+def run_kubectl_command(command: str, debug: bool = False, logger=None, timeout: int = 30) -> Optional[str]:
     """Ejecuta un comando kubectl y retorna el resultado como texto."""
     try:
         if logger:
             logger.info(f"Ejecutando kubectl: {command}")
         if debug:
             print(f"DEBUG kubectl: {command}")
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
+        return None
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.warning(f"Timeout (>{timeout}s) en kubectl: {command[:80]}...")
         return None
     except Exception as e:
         if logger:
@@ -561,15 +565,23 @@ def get_cluster_network_info(project_id: str, cluster_name: str, location: str, 
     cmd = (f'gcloud container clusters describe {cluster_name} {location_flag} --project={project_id} '
            f'--format="value(ipAllocationPolicy.clusterIpv4CidrBlock, ipAllocationPolicy.servicesIpv4CidrBlock, networkConfig.subnetwork)"')
     try:
-        result = run_gcloud_command(cmd, debug, console=None, logger=logger, timeout=120)
-        if not result:
+        if logger:
+            logger.info(f"Ejecutando: {cmd}")
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            if logger:
+                logger.warning(f"Error obteniendo network info: {result.stderr[:200]}")
             return None
-        if isinstance(result, (list, dict)):
+        if not result.stdout.strip():
             return None
-        parts = result.split()
+        parts = result.stdout.strip().split()
         if len(parts) < 3:
             return None
         return {'pods_cidr': parts[0], 'services_cidr': parts[1], 'subnet': parts[2]}
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.warning(f"Timeout (>120s) obteniendo network info para {cluster_name}")
+        return None
     except Exception as e:
         if logger:
             logger.warning(f"Error obteniendo network info: {e}")
@@ -582,11 +594,11 @@ def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool
     context_name = f'gke_{project_id}_{location}_{cluster_name}'
     try:
         get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True)
+        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
         if debug and logger:
             logger.info(f"get-credentials returncode: {creds_result.returncode}")
         cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json 2>/dev/null'
-        result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True)
+        result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True, timeout=30)
         if debug and logger:
             logger.info(f"kubectl get pods returncode: {result.returncode}, stdout length: {len(result.stdout)}")
         running = 0
@@ -604,6 +616,10 @@ def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool
             except json.JSONDecodeError:
                 pass
         return running, not_running
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.warning(f"Timeout obteniendo pods para {cluster_name}")
+        return None, None
     except Exception as e:
         if debug and logger:
             logger.warning(f"Pod count error: {e}")
@@ -616,11 +632,11 @@ def get_services_count(project_id: str, cluster_name: str, location: str, debug:
     context_name = f'gke_{project_id}_{location}_{cluster_name}'
     try:
         get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True)
+        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
         if debug and logger:
             logger.info(f"get-credentials returncode: {creds_result.returncode}")
         cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers 2>/dev/null'
-        result = run_kubectl_command(cmd, debug, logger)
+        result = run_kubectl_command(cmd, debug, logger, timeout=30)
         if not result:
             return None
         lines = result.strip().split('\n')
@@ -634,6 +650,10 @@ def get_services_count(project_id: str, cluster_name: str, location: str, debug:
                 if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', cluster_ip):
                     services_with_ip += 1
         return services_with_ip
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.warning(f"Timeout obteniendo services para {cluster_name}")
+        return None
     except Exception as e:
         if debug and logger:
             logger.warning(f"Services count error: {e}")
