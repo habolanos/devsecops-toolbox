@@ -6,8 +6,11 @@ Herramientas para monitoreo de recursos GCP y generación de reportes de GKE.
 
 | Archivo | Descripción |
 |---------|-------------|
-| `gcp_monitor.py` | Monitoreo general de recursos GCP (CPU, memoria, Cloud SQL) |
+| `gcp_monitor.py` | Monitoreo general de recursos GCP (multi-proyecto, GKE, Cloud SQL, Compute, Cloud Run, Pub/Sub) |
+| `generate_gcp_dashboard.py` | Generador de dashboard HTML interactivo con tabs por tipo de recurso |
 | `gke_deployments_report.py` | Reporte detallado de deployments en GKE |
+| `gke_monitor_node.py` | Monitoreo de nodos de GKE |
+| `gke_monitor_pod.py` | Monitoreo de pods de GKE |
 | `requirements.txt` | Dependencias de Python |
 | `outcome/` | Directorio de salida para reportes generados |
 
@@ -19,14 +22,18 @@ Script de monitoreo de recursos GCP que genera reportes de estatus, consumo y us
 
 ### Características
 
-- Estatus general de servicios GCP
-- Consumo de CPU y memoria
-- Servicios con alto uso de memoria
-- Estado y uso de disco de instancias Cloud SQL
-- Monitoreo de Cloud Run: info del servicio (URL, concurrencia, CPU/mem limits, ingress) + métricas (requests, latencia p95, CPU%, memoria%)
-- Monitoreo de Compute Engine: specs (CPU, memoria, disco) + métricas de uso (CPU%, memoria%, disco%)
-- Monitoreo de GKE: capacidad (CPU total, memoria total) + métricas de uso (CPU%, memoria%)
-- Reporte consolidado multi-proyecto con tabla Rich
+- **Servicios Habilitados**: resumen por proyecto con conteo de APIs habilitadas y estado general (✅/⚠️/❌)
+- **Clusters GKE**: tabla enriquecida con Release Channel, Autopilot, Master Version, Version Status, Status Summary, Pods, Not Running, CPU/memoria total y promedio, estado de salud
+- **Capacidad de Red GKE**: tabla con subred, CIDR de pods, CIDR de services, IPs usadas/totales/%, estado de alerta (OK/WARNING/CRITICAL)
+- **Instancias Cloud SQL**: nombre, estado (con color: STOPPED rojo, RUNNABLE verde), versión, tier, disco (GB), conteo de bases de datos por instancia
+- **Instancias Compute Engine**: nombre, estado (con color), tipo de máquina, zona, CPUs, memoria, disco raíz
+- **Servicios Cloud Run**: nombre, región, URL, concurrencia, CPU/mem limits, ingress
+- **Topics Pub/Sub**: nombre del topic por proyecto
+- **Estados con color**: STOPPED/TERMINATED/SUSPENDED en rojo, RUNNING/RUNNABLE/ACTIVE en verde (vía `format_status_color`)
+- **Formato legible de tiempo**: `format_duration()` convierte segundos a `Xs`, `Xm Ys`, `Xh Ym Zs` automáticamente
+- **Paralelización**: `get_gke_metrics_parallel`, `build_gke_cluster_enrichment` y `_ensure_cluster_credentials` (con cache) ejecutan en paralelo con `ThreadPoolExecutor`
+- **Timeouts**: kubectl (30s) y gcloud (60-120s) con captura de `subprocess.TimeoutExpired` para evitar cuelgues
+- **Reporte consolidado multi-proyecto** con tablas Rich
 
 ### Uso
 
@@ -47,7 +54,62 @@ Los reportes se guardan en: `outcome/gcp_report_<project_id>_<timestamp>.txt`
 
 ---
 
-## 📊 GKE Deployments Report
+## �️ Generate GCP Dashboard
+
+Genera un dashboard HTML **interactivo y self-contained** (CSS y JS inline, sin CDNs externos) a partir de los archivos JSON consolidados que exporta `gcp_monitor.py`.
+
+### Características del dashboard
+
+El dashboard replica en HTML todas las dimensiones que muestra `gcp_monitor.py` en la terminal mediante un **sistema de pestañas (tabs)**:
+
+| Tab | Dimensiones |
+|-----|-------------|
+| 📌 Servicios Habilitados | Proyecto, Habilitados, Estado |
+| ☸️ Clusters GKE | Proyecto, Cluster, Ubicación, CPU Total, Memoria Total, CPU Prom., Memoria Prom., Estado, Release Channel, Autopilot, Master Version, Version Status, Status Summary, Pods, Not Running |
+| 🌐 Capacidad de Red GKE | Proyecto, Cluster, Ubicación, Subred, CIDR Pods, CIDR Services, Pods IPs, Services IPs, Estado |
+| 🗄️ Instancias Cloud SQL | Proyecto, Nombre, Estado, Versión, Tier, Disco (GB), BDs |
+| 💻 Instancias Compute Engine | Proyecto, Nombre, Estado, Tipo, Zona, CPUs, Memoria, Disco Raíz |
+| 🚀 Servicios Cloud Run | Proyecto, Nombre, Región, URL, Concurrencia, CPU Lim, Mem Lim, Ingress |
+| 📨 Topics Pub/Sub | Proyecto, Nombre |
+| 📋 Inventario Completo | Tipo, Nombre, Proyecto, Ambiente, Región/Zona, Estado, Postura, Hallazgos |
+
+Cada tabla es **interactiva**:
+- **Filtros globales**: por proyecto, ambiente, tipo de recurso, estado y búsqueda de texto
+- **Filtros por columna**: input de texto en cada header para filtrar individualmente
+- **Ordenamiento**: clic en cualquier header para ordenar asc/desc
+- **Badges de color**: verde (RUNNING/ENABLED), rojo (STOPPED/TERMINATED), amarillo (advertencia), gris (N/A)
+- **Paginación**: muestra 50 filas inicialmente, botón "Cargar más" para ver el resto
+- **Modal de hallazgos**: clic en "N hallazgo(s)" para ver detalles de seguridad por recurso
+
+KPIs incluidos: Proyectos, Servicios Habilitados, Recursos Totales, Clusters GKE, Pods Running, Bases de Datos, Cloud SQL, Compute Engine, Cloud Run, Pub/Sub.
+
+### Uso
+
+```bash
+# Desde un archivo JSON individual
+python generate_gcp_dashboard.py -i outcome/gcp_report_xxx.json -o outcome/dashboard.html
+
+# Desde un directorio con múltiples snapshots JSON
+python generate_gcp_dashboard.py -d outcome/ -o outcome/dashboard.html
+```
+
+### Argumentos
+
+| Argumento | Descripción |
+|-----------|-------------|
+| `--input`, `-i` | Archivo JSON de entrada |
+| `--input-dir`, `-d` | Directorio con múltiples snapshots JSON |
+| `--output`, `-o` | Archivo HTML de salida (default: `gcp_infrastructure_dashboard.html`) |
+
+### Requisitos
+
+- Python 3.8+
+- `pandas` (opcional, para análisis avanzado)
+- `plotly` (opcional, para gráficos)
+
+---
+
+## �📊 GKE Deployments Report
 
 Script en Python para generar reportes detallados de **Deployments en Google Kubernetes Engine (GKE)**, incluyendo métricas de uso en tiempo real, recursos definidos (requests/limits), y resúmenes agrupados por status y configuración de límites.
 
@@ -514,6 +576,16 @@ Desarrollado para monitoreo y auditoría de recursos en clusters GKE.
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-09-09 | 1.7.69 | generate_gcp_dashboard.py: Dashboard HTML interactivo con sistema de pestañas (tabs) por tipo de recurso, filtros globales y por columna, ordenamiento, badges de color, paginación y modal de hallazgos. 8 dimensiones: Servicios, GKE, Red GKE, Cloud SQL, Compute, Cloud Run, Pub/Sub, Inventario |
+| 2026-09-09 | 1.7.68 | gcp_monitor.py: Columna BDs (conteo de bases de datos) en tabla Cloud SQL, obtenido en paralelo con ThreadPoolExecutor |
+| 2026-09-09 | 1.7.67 | gcp_monitor.py: Tabla Servicios Habilitados convertida en resumen por proyecto (conteo + estado) en vez de listado individual |
+| 2026-09-09 | 1.7.66 | gcp_monitor.py: Estados con color (format_status_color): STOPPED rojo, RUNNING verde en tablas Cloud SQL y Compute Engine |
+| 2026-09-09 | 1.7.65 | gcp_monitor.py: format_duration() para tiempo legible (s/min/h) + retiro de columnas CPU/Memoria/Disco Usado de Compute Engine |
+| 2026-09-09 | 1.7.64 | gcp_monitor.py: Retiro de columnas PODS IPs, SERVICES IPs, IP STATUS de tabla Clusters GKE (siguen en tabla Capacidad de Red) |
+| 2026-09-09 | 1.7.63 | gcp_monitor.py: Paralelizar get_gke_metrics_parallel con ThreadPoolExecutor(max_workers=6) |
+| 2026-09-09 | 1.7.62 | gcp_monitor.py: Paralelizar build_gke_cluster_enrichment + cache de get-credentials (_ensure_cluster_credentials) |
+| 2026-09-09 | 1.7.61 | gcp_monitor.py: Timeouts en kubectl/gcloud (30s-120s) + parsing de gcloud describe como texto (no JSON) |
+| 2026-09-09 | 1.7.60 | gcp_monitor.py: Enriquecer opción 1 con GKE Cluster Checker (opción 14) e IP Addresses Checker (opción 13) |
 | 2026-08-31 | 3.1.3 | gcp_monitor.py: Monitoreo Cloud Run con info (URL, concurrencia, limits, ingress) + métricas (requests, latencia p95, CPU%, mem%) |
 | 2026-08-31 | 3.1.2 | gcp_monitor.py: Fix métricas Compute Engine usando instance_id numérico, reporte consolidado con Rich Table, fix spinners en pipe |
 | 2026-02-20 | 3.1.0 | gcp_monitor.py: Reporte JSON mejorado con metadatos (timestamp, timezone, summary) |
