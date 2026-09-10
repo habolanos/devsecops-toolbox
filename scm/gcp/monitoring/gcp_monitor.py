@@ -882,14 +882,26 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 })
         
         if all_clusters_list:
-            for cluster_info in all_clusters_list:
-                metrics = get_gke_metrics_parallel(
-                    cluster_info['project_id'],
-                    [{'name': cluster_info['name'], 'location': cluster_info['location']}],
-                    max_workers=1,
-                    logger=logger
-                )
-                gke_metrics_all.update(metrics)
+            if logger:
+                logger.info(f"Obteniendo métricas de {len(all_clusters_list)} clusters GKE en paralelo...")
+            with ThreadPoolExecutor(max_workers=min(6, len(all_clusters_list))) as executor:
+                futures = {
+                    executor.submit(
+                        get_gke_metrics_parallel,
+                        ci['project_id'],
+                        [{'name': ci['name'], 'location': ci['location']}],
+                        1,
+                        logger
+                    ): ci
+                    for ci in all_clusters_list
+                }
+                for fut in as_completed(futures):
+                    try:
+                        gke_metrics_all.update(fut.result())
+                    except Exception as e:
+                        ci = futures[fut]
+                        if logger:
+                            logger.warning(f"Error obteniendo métricas de {ci.get('name', 'N/A')}: {e}")
     
     # Pre-calcular enriquecimientos de clusters GKE en paralelo (opciones 13 y 14)
     all_cluster_keys = []

@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.62-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.63-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1339,6 +1339,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Versión | Fecha | Descripción | Archivos / Scope |
 |---|---|---|---|
+| **1.7.63** | 2026-09-09 | **perf(gcp): Paralelizar `get_gke_metrics_parallel` en `gcp_monitor`**: El loop secuencial que obtenía métricas de CPU/memoria cluster por cluster (con `max_workers=1`) ahora se ejecuta en paralelo con `ThreadPoolExecutor(max_workers=min(6, n_clusters))`. Con ~24 clusters, el tiempo de obtención de métricas pasa de ~24 × T a ~(24/6) × T. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.62** | 2026-09-09 | **perf(gcp): Optimizar `gcp_monitor` con ejecución paralela del enriquecimiento de clusters GKE**: (1) `build_gke_cluster_enrichment` ahora ejecuta pods/red/servicios en paralelo con `ThreadPoolExecutor(max_workers=3)`. (2) Nuevo helper `_ensure_cluster_credentials` con cache por proceso: `gcloud get-credentials` se ejecuta 1 vez por cluster en vez de 2 (pod_count + services_count). (3) `create_consolidated_detailed_tables` pre-calcula todos los enriquecimientos de clusters en paralelo (`max_workers=min(6, n_clusters)`) antes de formatear las tablas, eliminando la espera secuencial cluster por cluster. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.61** | 2026-09-09 | **fix(gcp): Evitar cuelgue en `gcp_monitor` al enriquecer clusters GKE**: `run_kubectl_command`, `get_pod_count`, `get_services_count` y `get_cluster_network_info` ahora usan `timeout` (`30s-120s`) y capturan `subprocess.TimeoutExpired`. El comando `gcloud container clusters describe` ya no intenta parsear JSON, evitando warnings innecesarios. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.60** | 2026-09-09 | **feat(gcp): Enriquecer Monitoreo de Recursos GCP (opción 1) con datos de GKE Cluster Checker (opción 14) e IP Addresses Checker (opción 13)**: La tabla "Clusters GKE" ahora incluye Release Channel, Autopilot, Master Version, Version Status, Status Summary, Pods, Not Running, Pods IPs, Services IPs e IP Status. Se agrega la tabla "Capacidad de Red de Clusters GKE" con subred, CIDRs y uso de IPs. Funciones adaptadas sin modificar los scripts originales. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
