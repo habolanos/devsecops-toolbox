@@ -1081,34 +1081,9 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         console.print(table)
         console.print()
     
-    # Tabla consolidada de Compute Engine con métricas de uso (Fase 2)
+    # Tabla consolidada de Compute Engine
     all_compute = []
-    compute_metrics_all = {}
-    
-    # Obtener métricas de uso para todas las instancias en paralelo (Fase 2)
-    if MONITORING_AVAILABLE:
-        all_instances_list = []
-        for project_id, data in all_data.items():
-            compute_instances = data.get('compute_instances', [])
-            for vm in compute_instances:
-                zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
-                all_instances_list.append({
-                    'project_id': project_id,
-                    'name': vm.get('name'),
-                    'instance_id': vm.get('id'),
-                    'zone': zone
-                })
-        
-        if all_instances_list:
-            for instance_info in all_instances_list:
-                metrics = get_compute_metrics_parallel(
-                    instance_info['project_id'],
-                    [{'name': instance_info['name'], 'instance_id': instance_info.get('instance_id'), 'zone': instance_info['zone']}],
-                    max_workers=1,
-                    logger=logger
-                )
-                compute_metrics_all.update(metrics)
-    
+
     for project_id, data in all_data.items():
         compute_instances = data.get('compute_instances', [])
         for vm in compute_instances:
@@ -1128,25 +1103,15 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 disk_gb = boot_disk.get('sizeGb', 'N/A')
                 disk_size = f"{disk_gb} GB" if disk_gb != 'N/A' else "N/A"
             
-            # Obtener métricas de uso (Fase 2)
-            instance_name = vm.get('name', 'N/A')
-            metrics = compute_metrics_all.get(instance_name, {})
-            cpu_used = format_percentage(metrics.get('cpu_used_percent'))
-            memory_used = format_percentage(metrics.get('memory_used_percent'))
-            disk_used = format_percentage(metrics.get('disk_used_percent'))
-            
             all_compute.append((
                 project_id,
-                instance_name,
+                vm.get('name', 'N/A'),
                 vm.get('status', 'N/A'),
                 machine,
                 zone,
                 cpu_str,
                 memory_str,
-                disk_size,
-                cpu_used,
-                memory_used,
-                disk_used
+                disk_size
             ))
     
     if all_compute:
@@ -1159,9 +1124,6 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("CPUs", style="cyan", justify="right")
         table.add_column("Memoria", style="cyan", justify="right")
         table.add_column("Disco Raíz", style="cyan", justify="right")
-        table.add_column("CPU Usado (%)", style="yellow", justify="right")
-        table.add_column("Memoria Usada (%)", style="yellow", justify="right")
-        table.add_column("Disco Usado (%)", style="yellow", justify="right")
         for row in all_compute:
             table.add_row(*row)
         console.print(table)
@@ -1802,6 +1764,21 @@ def get_performance_semaphore(duration: float) -> str:
         return "🔴"  # Lento
 
 
+def format_duration(seconds: float) -> str:
+    """Convierte segundos a formato legible: s, m+s o h+m+s según la magnitud."""
+    if seconds < 60:
+        return f"{seconds:.2f}s"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        secs = seconds % 60
+        return f"{minutes}m {secs:.0f}s"
+    else:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = seconds % 60
+        return f"{hours}h {minutes}m {secs:.0f}s"
+
+
 def print_execution_summary(start_time: datetime, console, project_id: str, data: Dict[str, Any]) -> None:
     """Imprime tabla resumen de ejecución para un proyecto."""
     end_time = datetime.now()
@@ -1814,7 +1791,7 @@ def print_execution_summary(start_time: datetime, console, project_id: str, data
         table.add_column("Valor", style="green")
         
         table.add_row("Proyecto", project_id)
-        table.add_row("Tiempo de ejecución", f"{duration:.2f}s")
+        table.add_row("Tiempo de ejecución", format_duration(duration))
         table.add_row("Recursos encontrados", str(total_resources))
         
         console.print()
@@ -1822,7 +1799,7 @@ def print_execution_summary(start_time: datetime, console, project_id: str, data
     else:
         print(f"\n⏱️ Resumen de Ejecución")
         print(f"  Proyecto: {project_id}")
-        print(f"  Tiempo: {duration:.2f}s")
+        print(f"  Tiempo: {format_duration(duration)}")
         print(f"  Recursos: {total_resources}")
 
 
@@ -1842,7 +1819,7 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
         table.add_row("Proyectos procesados", str(len(all_data)))
         if skipped_projects:
             table.add_row("Proyectos omitidos (sin acceso)", f"[yellow]{len(skipped_projects)}[/]")
-        table.add_row("Tiempo total de ejecución", f"{total_duration:.2f}s")
+        table.add_row("Tiempo total de ejecución", format_duration(total_duration))
         
         # Información por proyecto
         total_resources_all = 0
@@ -1866,7 +1843,7 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
         print(f"  Proyectos procesados: {len(all_data)}")
         if skipped_projects:
             print(f"  Proyectos omitidos (sin acceso): {len(skipped_projects)}")
-        print(f"  Tiempo total: {total_duration:.2f}s")
+        print(f"  Tiempo total: {format_duration(total_duration)}")
         total_resources_all = 0
         for project_id, data in all_data.items():
             total_resources = sum(len(v) for v in data.values() if isinstance(v, list))

@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.64`** — 2026-09-09
+**`1.7.65`** — 2026-09-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-09 | **1.7.65** | **feat(gcp): Formato legible de tiempo de ejecución en `gcp_monitor` + retiro de columnas de uso en tabla Compute Engine**: (1) Nueva función `format_duration()` que convierte segundos a formato legible automático: `X.XXs` (< 1 min), `Xm Ys` (1-60 min), `Xh Ym Zs` (> 1 hora). Aplicada en tablas de resumen single y consolidado (Rich y print plano). Ej: 1282.19s → 21m 22s. (2) Retiradas columnas "CPU Usado (%)", "Memoria Usada (%)" y "Disco Usado (%)" de la tabla "Instancias Compute Engine" (consolidado) junto con su cálculo de métricas y bloque de obtención (`get_compute_metrics_parallel`), reduciendo el tiempo de ejecución. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.64** | **refactor(gcp): Retirar columnas de IPs de Pods y Servicios de la tabla "Clusters GKE" en `gcp_monitor`**: Se eliminan las columnas PODS IPs, SERVICES IPs e IP STATUS para reducir el ancho de la tabla y mejorar legibilidad. Esta información sigue disponible en la tabla "Capacidad de Red de Clusters GKE". | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.63** | **perf(gcp): Paralelizar `get_gke_metrics_parallel` en `gcp_monitor`**: El loop secuencial que obtenía métricas de CPU/memoria cluster por cluster (con `max_workers=1`) ahora se ejecuta en paralelo con `ThreadPoolExecutor(max_workers=min(6, n_clusters))`. Con ~24 clusters, el tiempo de obtención de métricas pasa de ~24 × T a ~(24/6) × T. Se agregan logs de progreso y manejo de errores por cluster sin abortar el resto. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.62** | **perf(gcp): Optimizar `gcp_monitor` con ejecución paralela del enriquecimiento de clusters GKE**: (1) `build_gke_cluster_enrichment` ahora ejecuta pods/red/servicios en paralelo con `ThreadPoolExecutor(max_workers=3)`. (2) Nuevo helper `_ensure_cluster_credentials` con cache por proceso: `gcloud get-credentials` se ejecuta 1 vez por cluster en vez de 2 (pod_count + services_count). (3) `create_consolidated_detailed_tables` pre-calcula todos los enriquecimientos de clusters en paralelo (`max_workers=min(6, n_clusters)`) antes de formatear las tablas, eliminando la espera secuencial cluster por cluster. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
