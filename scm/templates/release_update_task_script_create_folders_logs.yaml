@@ -1,0 +1,61 @@
+metadata:
+  name: "Actualizar inputs.inline de Create folders logs y agregar variable DataDogScriptPermission en release existente"
+  version: "1.0"
+  description: "Modifica inputs.inline de la task SSH 'Create folders logs' y agrega la variable DataDogScriptPermission (scope Release) en un release existente (Tool 42) con stages Develop, QA y patron numerico."
+  comment: |
+    Caso de uso:
+    - Actualizar la task SSH "Create folders logs" en releases existentes
+      en stages: Develop, QA, y stages con patron numerico (01-*, 02-*, etc.).
+    - Reemplaza inputs.inline (campo que usa la task SSH para ejecutar el
+      script) por un nuevo script que decodifica la variable
+      $(DataDogScriptPermission) en base64 y la ejecuta, luego crea el
+      directorio de logs $(logspath)/$(artifact.name) y valida su existencia.
+
+  author: "DevOps Team"
+  created_at: "2026-09-09"
+
+release:
+  ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
+
+search:
+  # Buscar stages: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.)
+  stages:
+    - name: "Develop"
+    - name: "QA"
+    - pattern: "^\\d{2}-"  # Regex: stages que empiezan con 2 dígitos y guion (01-xxx, 02-yy, etc.)
+  
+  # Buscar tasks solo en los stages encontrados arriba
+  tasks:
+    - name: "Create folders logs"
+
+update:
+  tasks:
+    - name: "Create folders logs"
+      fields:
+        - path: "inputs.inline"
+          # La task SSH (taskId 91443475-...) usa inputs.inline para el script, no inputs.script
+          new_value: |
+            printf '%s' "$(DataDogScriptPermission)" | base64 -d | sh -s -- "$(pathConfig)" "$(artifact.fileProperties)"
+            
+            DIR="$(logspath)/$(artifact.name)"
+
+            mkdir -p ${DIR}
+
+            if [ -d "$DIR" ]; then
+              # Take action if $DIR exists. #
+              echo "El directorio si existe ${DIR}..."
+            else
+                echo "##vso[task.logissue type=warning] No se pudo crear la carpeta de LOGS ${DIR}"
+                exit 1
+            fi
+  # Variable a nivel Release: usar global_vars (el tool la mapea a release.variables)
+  # NOTA: El tool pipeline_cd_update_release NO soporta action/allowOverride/isSecret
+  # en global_vars. Solo lee name y value. allowOverride siempre es True.
+  global_vars: []
+  env_vars: []
+
+  abandon: false
+
+options:
+  dry_run: false
+  backup_path: "./outcome/backups"
