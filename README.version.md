@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.70`** — 2026-09-09
+**`1.7.71`** — 2026-09-10
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-10 | **1.7.71** | **fix(gcp): Ajustes de columnas y colores en tablas de terminal de `gcp_monitor`**: (1) GKE: columnas ESTADO y STATUS SUMMARY movidas al final de la tabla (consolidado). (2) Red GKE: columnas PODs USADAS/TOTAL/% y SVCS USADAS/TOTAL/% coloreadas con semáforo Rich según porcentaje (>90% rojo, >80% amarillo, resto verde). (3) Compute Engine: fix campo `diskSizeGb` (antes `sizeGb` mostraba N/A) y columna Estado movida al final (consolidado y single). (4) Cloud Run: sustituidas columnas Requests/Lat p95/CPU%/Mem% por VPC connector y Estado calculada (PUBLIC_URL rojo si ingress=all con URL pública, INTERNAL verde si restringido). `format_status_color` ampliada con PUBLIC_URL e INTERNAL. Aplicado en consolidado y single-project. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.70** | **fix(gcp): Ajustes de columnas y colores en dashboard HTML de `generate_gcp_dashboard`**: (1) GKE: columnas Estado y Status Summary movidas al final de la tabla. (2) Red GKE: Pods IPs y Services IPs coloreados con semáforo según porcentaje (>90% rojo, >80% amarillo, resto verde). (3) Compute Engine: fix campo `diskSizeGb` (antes `sizeGb` mostraba N/A) y columna Estado movida al final. (4) Cloud Run: agregada columna VPC connector y columna Estado calculada (PUBLIC_URL rojo si ingress=all con URL pública, INTERNAL verde si restringido). Filtro de Estado ampliado con PUBLIC_URL e INTERNAL. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.69** | **feat(gcp): Dashboard HTML interactivo con tabs por tipo de recurso en `generate_gcp_dashboard.py`**: Reescritura completa del dashboard con sistema de pestañas (8 tabs): Servicios Habilitados, Clusters GKE, Capacidad de Red GKE, Cloud SQL, Compute Engine, Cloud Run, Pub/Sub, Inventario Completo. Cada tabla es interactiva: filtros globales + por columna, ordenamiento por header, badges de color (STOPPED rojo, RUNNING verde), paginación (50 filas + cargar más), modal de hallazgos de seguridad. KPIs ampliados con servicios habilitados, pods running y bases de datos. HTML self-contained (CSS/JS inline). Actualizado README de `scm/gcp/monitoring/`. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `scm/gcp/monitoring/README.md`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.68** | **feat(gcp): Agregar columna "BDs" con cantidad de bases de datos a la tabla "Instancias Cloud SQL" de `gcp_monitor`**: Nueva función `get_cloud_sql_database_count()` que ejecuta `gcloud sql databases list` por instancia (con timeout 30s). El conteo se obtiene en paralelo con `ThreadPoolExecutor(max_workers=min(6, n_instancias))` para no ralentizar la ejecución. Columna agregada en tablas consolidado (multi-proyecto) y single proyecto. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |

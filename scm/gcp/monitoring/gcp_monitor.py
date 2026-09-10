@@ -988,13 +988,27 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             if not_running_fmt != 'N/A' and gke_extra['pods_not_running'] and int(gke_extra['pods_not_running']) > 0:
                 not_running_fmt = f"[red]{not_running_fmt}[/]"
             
-            # Formatear IPs de pods y servicios
+            # Formatear IPs de pods y servicios con color de semaforo segun porcentaje
             if gke_extra['pods_total'] > 0:
-                pods_ip_fmt = f"{gke_extra['pods_used']}/{gke_extra['pods_total']} ({gke_extra['pods_pct']:.2f}%)"
+                pods_pct_val = gke_extra['pods_pct']
+                pods_ip_str = f"{gke_extra['pods_used']}/{gke_extra['pods_total']} ({pods_pct_val:.2f}%)"
+                if pods_pct_val > 90:
+                    pods_ip_fmt = f"[red]{pods_ip_str}[/]"
+                elif pods_pct_val > 80:
+                    pods_ip_fmt = f"[yellow]{pods_ip_str}[/]"
+                else:
+                    pods_ip_fmt = f"[green]{pods_ip_str}[/]"
             else:
                 pods_ip_fmt = "N/A"
             if gke_extra['services_total'] > 0:
-                services_ip_fmt = f"{gke_extra['services_used']}/{gke_extra['services_total']} ({gke_extra['services_pct']:.2f}%)"
+                svcs_pct_val = gke_extra['services_pct']
+                services_ip_str = f"{gke_extra['services_used']}/{gke_extra['services_total']} ({svcs_pct_val:.2f}%)"
+                if svcs_pct_val > 90:
+                    services_ip_fmt = f"[red]{services_ip_str}[/]"
+                elif svcs_pct_val > 80:
+                    services_ip_fmt = f"[yellow]{services_ip_str}[/]"
+                else:
+                    services_ip_fmt = f"[green]{services_ip_str}[/]"
             else:
                 services_ip_fmt = "N/A"
             
@@ -1009,14 +1023,14 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 memory_str,
                 cpu_used,
                 memory_used,
-                health_status,
                 gke_extra['release_channel'],
                 autopilot_fmt,
                 gke_extra['master_version'][:15],
                 version_status_fmt,
-                gke_extra['status_summary'],
                 pods_fmt,
-                not_running_fmt
+                not_running_fmt,
+                health_status,
+                gke_extra['status_summary']
             ))
             
             all_network_capacity.append((
@@ -1040,14 +1054,14 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("MEMORIA TOTAL", style="cyan", justify="right")
         table.add_column("CPU PROM.", style="yellow", justify="right")
         table.add_column("MEMORIA PROM.", style="yellow", justify="right")
-        table.add_column("ESTADO", style="white", justify="center")
         table.add_column("RELEASE CHANNEL", style="magenta", justify="center")
         table.add_column("AUTOPILOT", style="cyan", justify="center")
         table.add_column("MASTER VERSION", style="yellow")
         table.add_column("VERSION STATUS", style="white", justify="center")
-        table.add_column("STATUS SUMMARY", style="green", justify="center")
         table.add_column("PODS", style="cyan", justify="right")
         table.add_column("NOT RUNNING", style="red", justify="right")
+        table.add_column("ESTADO", style="white", justify="center")
+        table.add_column("STATUS SUMMARY", style="green", justify="center")
         for row in all_clusters:
             table.add_row(*row)
         console.print(table)
@@ -1146,30 +1160,30 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             disk_size = "N/A"
             if disks:
                 boot_disk = next((d for d in disks if d.get('boot', False)), disks[0])
-                disk_gb = boot_disk.get('sizeGb', 'N/A')
+                disk_gb = boot_disk.get('diskSizeGb') or boot_disk.get('sizeGb') or 'N/A'
                 disk_size = f"{disk_gb} GB" if disk_gb != 'N/A' else "N/A"
             
             all_compute.append((
                 project_id,
                 vm.get('name', 'N/A'),
-                format_status_color(vm.get('status', 'N/A')),
                 machine,
                 zone,
                 cpu_str,
                 memory_str,
-                disk_size
+                disk_size,
+                format_status_color(vm.get('status', 'N/A'))
             ))
     
     if all_compute:
         table = Table(title="💻 Instancias Compute Engine", box=box.ROUNDED)
         table.add_column("Proyecto", style="magenta")
         table.add_column("Nombre", style="cyan")
-        table.add_column("Estado", style="green")
         table.add_column("Tipo", style="yellow")
         table.add_column("Zona", style="magenta")
         table.add_column("CPUs", style="cyan", justify="right")
         table.add_column("Memoria", style="cyan", justify="right")
         table.add_column("Disco Raíz", style="cyan", justify="right")
+        table.add_column("Estado", style="green")
         for row in all_compute:
             table.add_row(*row)
         console.print(table)
@@ -1204,6 +1218,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             template = spec.get('template', {})
             containers = template.get('spec', {}).get('containers', [])
             annotations = metadata.get('annotations', {})
+            template_annotations = (template.get('metadata') or {}).get('annotations', {})
             
             name = metadata.get('name', 'N/A')
             region = metadata.get('namespace', 'N/A')
@@ -1222,21 +1237,21 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 mem_limit = limits.get('memory', 'N/A')
             
             ingress = annotations.get('run.googleapis.com/ingress', 'all')
-            last_deploy = annotations.get('client.knative.dev/user-image', '')
-            if last_deploy:
-                last_deploy = last_deploy.split('/')[-1][:30]
             
-            # Métricas
-            metrics = cloudrun_metrics_all.get(name, {})
-            req_count = metrics.get('request_count')
-            latency = metrics.get('latency_p95_ms')
-            cpu_pct = metrics.get('cpu_percent')
-            mem_pct = metrics.get('memory_percent')
+            # VPC connector
+            vpc = (template_annotations.get('run.googleapis.com/vpc-access-connector')
+                   or annotations.get('run.googleapis.com/vpc-access-connector')
+                   or 'N/A')
+            if vpc != 'N/A' and '/' in str(vpc):
+                vpc = str(vpc).split('/')[-1]
             
-            req_str = str(req_count) if req_count is not None else "N/A"
-            lat_str = f"{latency:.0f}ms" if latency is not None else "N/A"
-            cpu_str = format_percentage(cpu_pct)
-            mem_str = format_percentage(mem_pct)
+            # Estado: grave si tiene URL publica (ingress=all)
+            if ingress == 'all' and url and url != 'N/A':
+                run_status = format_status_color('PUBLIC_URL')
+            elif ingress in ('internal', 'internal-and-cloud-load-balancing'):
+                run_status = format_status_color('INTERNAL')
+            else:
+                run_status = format_status_color('ACTIVE')
             
             all_run.append((
                 project_id,
@@ -1247,10 +1262,8 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 cpu_limit,
                 mem_limit,
                 ingress,
-                req_str,
-                lat_str,
-                cpu_str,
-                mem_str
+                vpc[:30] if vpc != 'N/A' else 'N/A',
+                run_status
             ))
     
     if all_run:
@@ -1263,10 +1276,8 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("CPU Lim", style="white", justify="right")
         table.add_column("Mem Lim", style="white", justify="right")
         table.add_column("Ingress", style="white")
-        table.add_column("Requests", style="green", justify="right")
-        table.add_column("Lat p95", style="green", justify="right")
-        table.add_column("CPU %", style="yellow", justify="right")
-        table.add_column("Mem %", style="yellow", justify="right")
+        table.add_column("VPC", style="magenta")
+        table.add_column("Estado", style="green", justify="center")
         for row in all_run:
             table.add_row(*row)
         console.print(table)
@@ -1378,17 +1389,17 @@ def create_detailed_tables(data: Dict[str, Any], console, project_id: str = "") 
     if compute_instances:
         table = Table(title="💻 Instancias Compute Engine", box=box.ROUNDED)
         table.add_column("Nombre", style="cyan")
-        table.add_column("Estado", style="green")
         table.add_column("Tipo", style="yellow")
         table.add_column("Zona", style="magenta")
+        table.add_column("Estado", style="green")
         for vm in compute_instances[:15]:
             machine = vm.get('machineType', '').split('/')[-1] if vm.get('machineType') else 'N/A'
             zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
             table.add_row(
                 vm.get('name', 'N/A')[:30],
-                format_status_color(vm.get('status', 'N/A')),
                 machine[:20],
-                zone
+                zone,
+                format_status_color(vm.get('status', 'N/A'))
             )
         if len(compute_instances) > 15:
             table.add_row(f"... y {len(compute_instances) - 15} más", "", "", "")
@@ -1406,12 +1417,15 @@ def create_detailed_tables(data: Dict[str, Any], console, project_id: str = "") 
         table.add_column("CPU Lim", style="white", justify="right")
         table.add_column("Mem Lim", style="white", justify="right")
         table.add_column("Ingress", style="white")
+        table.add_column("VPC", style="magenta")
+        table.add_column("Estado", style="green", justify="center")
         for svc in run_services:
             metadata = svc.get('metadata', {})
             spec = svc.get('spec', {})
             template = spec.get('template', {})
             containers = template.get('spec', {}).get('containers', [])
             annotations = metadata.get('annotations', {})
+            template_annotations = (template.get('metadata') or {}).get('annotations', {})
             
             url = svc.get('status', {}).get('url', 'N/A')
             if url and url != 'N/A':
@@ -1426,6 +1440,21 @@ def create_detailed_tables(data: Dict[str, Any], console, project_id: str = "") 
                 mem_limit = limits.get('memory', 'N/A')
             ingress = annotations.get('run.googleapis.com/ingress', 'all')
             
+            # VPC connector
+            vpc = (template_annotations.get('run.googleapis.com/vpc-access-connector')
+                   or annotations.get('run.googleapis.com/vpc-access-connector')
+                   or 'N/A')
+            if vpc != 'N/A' and '/' in str(vpc):
+                vpc = str(vpc).split('/')[-1]
+            
+            # Estado: grave si tiene URL publica
+            if ingress == 'all' and url and url != 'N/A':
+                run_status = format_status_color('PUBLIC_URL')
+            elif ingress in ('internal', 'internal-and-cloud-load-balancing'):
+                run_status = format_status_color('INTERNAL')
+            else:
+                run_status = format_status_color('ACTIVE')
+            
             table.add_row(
                 metadata.get('name', 'N/A')[:40],
                 metadata.get('namespace', 'N/A')[:20],
@@ -1433,7 +1462,9 @@ def create_detailed_tables(data: Dict[str, Any], console, project_id: str = "") 
                 str(concurrency),
                 cpu_limit,
                 mem_limit,
-                ingress
+                ingress,
+                vpc[:30] if vpc != 'N/A' else 'N/A',
+                run_status
             )
         console.print(table)
         console.print()
@@ -1848,13 +1879,13 @@ def format_duration(seconds: float) -> str:
 
 
 def format_status_color(status: str) -> str:
-    """Aplica color Rich a un estado: STOPPED en rojo, RUNNING/RUNNABLE en verde."""
+    """Aplica color Rich a un estado: STOPPED/PUBLIC_URL en rojo, RUNNING/RUNNABLE/INTERNAL en verde."""
     if not status or status == 'N/A':
         return status
     upper = status.upper()
-    if 'STOPPED' in upper or 'TERMINATED' in upper or 'SUSPENDED' in upper:
+    if 'STOPPED' in upper or 'TERMINATED' in upper or 'SUSPENDED' in upper or 'PUBLIC_URL' in upper:
         return f"[red]{status}[/red]"
-    if 'RUNNING' in upper or 'RUNNABLE' in upper or 'ACTIVE' in upper:
+    if 'RUNNING' in upper or 'RUNNABLE' in upper or 'ACTIVE' in upper or 'INTERNAL' in upper:
         return f"[green]{status}[/green]"
     return status
 
