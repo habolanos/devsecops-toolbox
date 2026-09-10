@@ -576,6 +576,7 @@ Desarrollado para monitoreo y auditoría de recursos en clusters GKE.
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-09-09 | 1.7.70 | generate_gcp_dashboard.py: GKE mueve Estado/Status Summary al final; Red GKE colorea Pods/SVCS IPs por semáforo; Compute fix diskSizeGb y Estado al final; Cloud Run agrega VPC y Estado (PUBLIC_URL rojo si ingress=all) |
 | 2026-09-09 | 1.7.69 | generate_gcp_dashboard.py: Dashboard HTML interactivo con sistema de pestañas (tabs) por tipo de recurso, filtros globales y por columna, ordenamiento, badges de color, paginación y modal de hallazgos. 8 dimensiones: Servicios, GKE, Red GKE, Cloud SQL, Compute, Cloud Run, Pub/Sub, Inventario |
 | 2026-09-09 | 1.7.68 | gcp_monitor.py: Columna BDs (conteo de bases de datos) en tabla Cloud SQL, obtenido en paralelo con ThreadPoolExecutor |
 | 2026-09-09 | 1.7.67 | gcp_monitor.py: Tabla Servicios Habilitados convertida en resumen por proyecto (conteo + estado) en vez de listado individual |

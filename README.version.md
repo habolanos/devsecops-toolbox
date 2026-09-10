@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.69`** — 2026-09-09
+**`1.7.70`** — 2026-09-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-09 | **1.7.70** | **fix(gcp): Ajustes de columnas y colores en dashboard HTML de `generate_gcp_dashboard`**: (1) GKE: columnas Estado y Status Summary movidas al final de la tabla. (2) Red GKE: Pods IPs y Services IPs coloreados con semáforo según porcentaje (>90% rojo, >80% amarillo, resto verde). (3) Compute Engine: fix campo `diskSizeGb` (antes `sizeGb` mostraba N/A) y columna Estado movida al final. (4) Cloud Run: agregada columna VPC connector y columna Estado calculada (PUBLIC_URL rojo si ingress=all con URL pública, INTERNAL verde si restringido). Filtro de Estado ampliado con PUBLIC_URL e INTERNAL. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.69** | **feat(gcp): Dashboard HTML interactivo con tabs por tipo de recurso en `generate_gcp_dashboard.py`**: Reescritura completa del dashboard con sistema de pestañas (8 tabs): Servicios Habilitados, Clusters GKE, Capacidad de Red GKE, Cloud SQL, Compute Engine, Cloud Run, Pub/Sub, Inventario Completo. Cada tabla es interactiva: filtros globales + por columna, ordenamiento por header, badges de color (STOPPED rojo, RUNNING verde), paginación (50 filas + cargar más), modal de hallazgos de seguridad. KPIs ampliados con servicios habilitados, pods running y bases de datos. HTML self-contained (CSS/JS inline). Actualizado README de `scm/gcp/monitoring/`. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `scm/gcp/monitoring/README.md`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.68** | **feat(gcp): Agregar columna "BDs" con cantidad de bases de datos a la tabla "Instancias Cloud SQL" de `gcp_monitor`**: Nueva función `get_cloud_sql_database_count()` que ejecuta `gcloud sql databases list` por instancia (con timeout 30s). El conteo se obtiene en paralelo con `ThreadPoolExecutor(max_workers=min(6, n_instancias))` para no ralentizar la ejecución. Columna agregada en tablas consolidado (multi-proyecto) y single proyecto. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-09 | **1.7.67** | **refactor(gcp): Convertir tabla "Servicios Habilitados" de `gcp_monitor` en resumen por proyecto**: La tabla que listaba cada API habilitada como fila individual (~1200 filas con 12 proyectos) ahora muestra un resumen compacto: una fila por proyecto con conteo de "Habilitados" y estado general (✅/⚠️/❌), más fila TOTAL. Aplicado en tablas consolidado (multi-proyecto) y single proyecto. Los servicios son APIs de GCP (estado ENABLED), no tienen RUNNING/STOPPED. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |

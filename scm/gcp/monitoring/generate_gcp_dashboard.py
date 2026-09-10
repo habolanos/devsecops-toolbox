@@ -17,7 +17,7 @@ terminal mediante un sistema de pestañas (tabs):
 Cada tabla es interactiva: filtros por columna, ordenamiento por columna,
 filtros globales, badges de color por estado y paginacion (50 filas + cargar mas).
 
-Versión: 1.7.69
+Versión: 1.7.70
 Fecha: 9 de Septiembre de 2026
 Autor: Harold Adrian
 """
@@ -116,7 +116,7 @@ FIXED_MACHINE_SPECS = {
     'g1-small': {'cpu': 1, 'memory': 1.7},
 }
 
-DASHBOARD_VERSION = '1.7.69'
+DASHBOARD_VERSION = '1.7.70'
 
 # Tamano de pagina para la paginacion de tablas en el dashboard (JS).
 PAGE_SIZE = 50
@@ -722,6 +722,8 @@ def _build_network_row(project_id: str, cluster: Dict[str, Any]) -> Dict[str, An
         'services_cidr': services_cidr,
         'pods_ips': pods_ips,
         'services_ips': services_ips,
+        'pods_pct': round(pods_pct, 1) if pods_pct is not None else None,
+        'services_pct': round(services_pct, 1) if services_pct is not None else None,
         'ip_status': ip_status,
         'status': ip_status,
     }
@@ -797,7 +799,7 @@ def build_compute_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
             if disks:
                 boot_disk = next((d for d in disks if isinstance(d, dict) and d.get('boot')), disks[0])
                 if isinstance(boot_disk, dict):
-                    disk_gb = boot_disk.get('sizeGb', 'N/A')
+                    disk_gb = boot_disk.get('diskSizeGb') or boot_disk.get('sizeGb') or 'N/A'
                     root_disk = '{} GB'.format(disk_gb) if disk_gb != 'N/A' else 'N/A'
 
             status = vm.get('status', 'UNKNOWN') or 'UNKNOWN'
@@ -817,7 +819,11 @@ def build_compute_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def build_run_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Construye las filas de la tabla de Servicios Cloud Run."""
+    """Construye las filas de la tabla de Servicios Cloud Run.
+
+    Incluye VPC connector y estado calculado: si el servicio tiene URL publica
+    (ingress=all) es grave (PUBLIC_URL); si es interno o con VPC es OK.
+    """
     rows = []
     for project_id, proj_data in _iter_projects(json_data):
         for svc in proj_data.get('cloud_run', []) or []:
@@ -830,6 +836,7 @@ def build_run_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
             tspec = template.get('spec') or {}
             containers = tspec.get('containers') or []
             annotations = metadata.get('annotations') or {}
+            template_annotations = (template.get('metadata') or {}).get('annotations') or {}
 
             cpu_limit = 'N/A'
             mem_limit = 'N/A'
@@ -838,18 +845,37 @@ def build_run_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
                 cpu_limit = limits.get('cpu', 'N/A')
                 mem_limit = limits.get('memory', 'N/A')
 
+            ingress = annotations.get('run.googleapis.com/ingress', 'all')
+
+            # VPC connector (puede estar en annotations del template o del metadata)
+            vpc = (template_annotations.get('run.googleapis.com/vpc-access-connector')
+                   or annotations.get('run.googleapis.com/vpc-access-connector')
+                   or 'N/A')
+            if vpc != 'N/A' and '/' in str(vpc):
+                vpc = str(vpc).split('/')[-1]
+
+            # Estado: grave si tiene URL publica (ingress=all)
+            url = (svc.get('status') or {}).get('url') or ''
+            if ingress == 'all' and url:
+                run_status = 'PUBLIC_URL'
+            elif ingress in ('internal', 'internal-and-cloud-load-balancing'):
+                run_status = 'INTERNAL'
+            else:
+                run_status = 'ACTIVE'
+
             rows.append({
                 'project_id': project_id,
                 'environment': infer_environment(project_id),
                 'resource_type': 'Cloud Run',
                 'name': metadata.get('name', 'N/A') or 'N/A',
                 'region': metadata.get('namespace', 'N/A') or 'N/A',
-                'url': (svc.get('status') or {}).get('url') or 'N/A',
+                'url': url or 'N/A',
                 'concurrency': tspec.get('containerConcurrency', 'N/A'),
                 'cpu_limit': cpu_limit,
                 'mem_limit': mem_limit,
-                'ingress': annotations.get('run.googleapis.com/ingress', 'all'),
-                'status': 'ACTIVE',
+                'ingress': ingress,
+                'vpc': vpc,
+                'status': run_status,
             })
     return rows
 
@@ -1379,9 +1405,9 @@ var tabState = {};
 var BADGE_CLASSES = {
     'RUNNING': 'ok', 'RUNNABLE': 'ok', 'ACTIVE': 'ok', 'ENABLED': 'ok',
     'OK': 'ok', 'HEALTHY': 'ok', 'CURRENT': 'ok', 'AUTOPILOT': 'ok',
-    'CONFORME': 'ok', 'TODOS': 'ok', 'SI': 'ok', 'SÍ': 'ok',
+    'CONFORME': 'ok', 'TODOS': 'ok', 'SI': 'ok', 'SÍ': 'ok', 'INTERNAL': 'ok',
     'STOPPED': 'bad', 'TERMINATED': 'bad', 'SUSPENDED': 'bad', 'CRITICAL': 'bad',
-    'OUTDATED': 'bad', 'NOT_RUNNING': 'bad', 'NINGUNO': 'bad',
+    'OUTDATED': 'bad', 'NOT_RUNNING': 'bad', 'NINGUNO': 'bad', 'PUBLIC_URL': 'bad',
     'CRITICO': 'bad', 'CRÍTICO': 'bad',
     'WARNING': 'warn', 'ADVERTENCIA': 'warn', 'UPDATE': 'warn',
     'UPDATE_AVAILABLE': 'warn', 'PARCIAL': 'warn',
@@ -1410,14 +1436,14 @@ var TABS = {
             { key: 'memory_total', label: 'Memoria Total', right: true },
             { key: 'cpu_used', label: 'CPU Prom.', right: true },
             { key: 'memory_used', label: 'Memoria Prom.', right: true },
-            { key: 'health', label: 'Estado', badge: true },
             { key: 'release_channel', label: 'Release Channel' },
             { key: 'autopilot', label: 'Autopilot', badge: true },
             { key: 'master_version', label: 'Master Version' },
             { key: 'version_status', label: 'Version Status', badge: true },
-            { key: 'status_summary', label: 'Status Summary', badge: true },
             { key: 'pods', label: 'Pods', right: true },
-            { key: 'not_running', label: 'Not Running', right: true, danger: true }
+            { key: 'not_running', label: 'Not Running', right: true, danger: true },
+            { key: 'health', label: 'Estado', badge: true },
+            { key: 'status_summary', label: 'Status Summary', badge: true }
         ]
     },
     red: {
@@ -1430,8 +1456,8 @@ var TABS = {
             { key: 'subnet', label: 'Subred' },
             { key: 'pods_cidr', label: 'CIDR Pods' },
             { key: 'services_cidr', label: 'CIDR Services' },
-            { key: 'pods_ips', label: 'Pods IPs' },
-            { key: 'services_ips', label: 'Services IPs' },
+            { key: 'pods_ips', label: 'Pods USADAS/TOTAL/%', type: 'ip_usage', pctKey: 'pods_pct' },
+            { key: 'services_ips', label: 'SVCS USADAS/TOTAL/%', type: 'ip_usage', pctKey: 'services_pct' },
             { key: 'ip_status', label: 'Estado', badge: true }
         ]
     },
@@ -1454,12 +1480,12 @@ var TABS = {
         columns: [
             { key: 'project_id', label: 'Proyecto' },
             { key: 'name', label: 'Nombre' },
-            { key: 'status', label: 'Estado', badge: true },
             { key: 'machine_type', label: 'Tipo' },
             { key: 'zone', label: 'Zona' },
             { key: 'cpus', label: 'CPUs', right: true },
             { key: 'memory', label: 'Memoria', right: true },
-            { key: 'root_disk', label: 'Disco Raíz', right: true }
+            { key: 'root_disk', label: 'Disco Raíz', right: true },
+            { key: 'status', label: 'Estado', badge: true }
         ]
     },
     run: {
@@ -1473,7 +1499,9 @@ var TABS = {
             { key: 'concurrency', label: 'Concurrencia', right: true },
             { key: 'cpu_limit', label: 'CPU Lim', right: true },
             { key: 'mem_limit', label: 'Mem Lim', right: true },
-            { key: 'ingress', label: 'Ingress' }
+            { key: 'ingress', label: 'Ingress' },
+            { key: 'vpc', label: 'VPC' },
+            { key: 'status', label: 'Estado', badge: true }
         ]
     },
     pubsub: {
@@ -1537,6 +1565,16 @@ function badgeClass(value) {
 
 function renderCell(row, col) {
     var value = row[col.key];
+    if (col.type === 'ip_usage') {
+        if (isMissing(value)) return '<span class="muted">N/A</span>';
+        var pct = row[col.pctKey];
+        var cls = 'badge-ok';
+        if (pct !== null && pct !== undefined && !isNaN(pct)) {
+            if (pct > 90) cls = 'badge-bad';
+            else if (pct > 80) cls = 'badge-warn';
+        }
+        return '<span class="status-badge ' + cls + '">' + esc(value) + '</span>';
+    }
     if (col.type === 'findings') {
         var count = (row.findings && row.findings.length) ? row.findings.length : 0;
         return '<a href="javascript:void(0)" class="findings-link" onclick="showFindings(' + row.id + ')">' + count + ' hallazgo(s)</a>';
@@ -1933,6 +1971,8 @@ def _render_filters(json_data: Dict[str, Any]) -> str:
                         <option value="ACTIVE">Activo</option>
                         <option value="ENABLED">Habilitado</option>
                         <option value="STOPPED">Detenido</option>
+                        <option value="PUBLIC_URL">URL Pública (grave)</option>
+                        <option value="INTERNAL">Interno</option>
                     </select>
                 </div>
                 <div>
