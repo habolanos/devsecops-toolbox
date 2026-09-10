@@ -999,10 +999,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 version_status_fmt,
                 gke_extra['status_summary'],
                 pods_fmt,
-                not_running_fmt,
-                pods_ip_fmt,
-                services_ip_fmt,
-                ip_status_fmt
+                not_running_fmt
             ))
             
             all_network_capacity.append((
@@ -1034,9 +1031,6 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("STATUS SUMMARY", style="green", justify="center")
         table.add_column("PODS", style="cyan", justify="right")
         table.add_column("NOT RUNNING", style="red", justify="right")
-        table.add_column("PODS IPs", style="blue", justify="right")
-        table.add_column("SERVICES IPs", style="blue", justify="right")
-        table.add_column("IP STATUS", style="green", justify="center")
         for row in all_clusters:
             table.add_row(*row)
         console.print(table)
