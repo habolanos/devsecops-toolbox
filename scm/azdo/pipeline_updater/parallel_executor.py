@@ -12,6 +12,15 @@ from .search_engine import SearchEngine
 from .update_engine import UpdateEngine
 
 
+class Colors:
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+
+
 class ParallelExecutor:
     """Ejecutor paralelo de actualizaciones"""
     
@@ -121,24 +130,24 @@ class ParallelExecutor:
         
         try:
             mode_label = " [DRY-RUN]" if dry_run else ""
-            print(f"\n  [Pipeline {definition_id}] Iniciando procesamiento{mode_label}...")
+            print(f"\n{Colors.CYAN}  [Pipeline {definition_id}] Iniciando procesamiento{mode_label}...{Colors.ENDC}")
             
             # 1. Descargar definición
-            print(f"  [Pipeline {definition_id}] 1/5 Descargando definición...")
+            print(f"{Colors.CYAN}  [Pipeline {definition_id}] 1/5 Descargando definición...{Colors.ENDC}")
             definition = azdo_client.get_release_definition(definition_id)
-            print(f"  [Pipeline {definition_id}]   ✓ Definición descargada (revision: {definition.get('revision', 'N/A')})")
+            print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Definición descargada (revision: {definition.get('revision', 'N/A')}){Colors.ENDC}")
             
             # 2. Crear snapshot (skip en dry-run)
             if dry_run:
-                print(f"  [Pipeline {definition_id}] 2/5 [DRY-RUN] Snapshot omitido")
+                print(f"{Colors.YELLOW}  [Pipeline {definition_id}] 2/5 [DRY-RUN] Snapshot omitido{Colors.ENDC}")
                 snapshot_id = ''
             else:
-                print(f"  [Pipeline {definition_id}] 2/5 Creando snapshot...")
+                print(f"{Colors.CYAN}  [Pipeline {definition_id}] 2/5 Creando snapshot...{Colors.ENDC}")
                 snapshot_id = azdo_client.create_snapshot(definition_id, definition)
-                print(f"  [Pipeline {definition_id}]   ✓ Snapshot creado: {snapshot_id}")
+                print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Snapshot creado: {snapshot_id}{Colors.ENDC}")
             
             # 3. Buscar coincidencias
-            print(f"  [Pipeline {definition_id}] 3/5 Buscando coincidencias...")
+            print(f"{Colors.CYAN}  [Pipeline {definition_id}] 3/5 Buscando coincidencias...{Colors.ENDC}")
             search_rules = template_parser.get_search_rules()
             
             search_engine = SearchEngine(
@@ -146,7 +155,7 @@ class ParallelExecutor:
                 search_rules
             )
             matches = search_engine.search_all()
-            print(f"  [Pipeline {definition_id}]   ✓ Coincidencias encontradas: {len(matches)}")
+            print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Coincidencias encontradas: {len(matches)}{Colors.ENDC}")
             
             # Verificar si el template tiene una acción a nivel de pipeline
             pipeline_action = template_parser.get_pipeline_action()
@@ -156,7 +165,7 @@ class ParallelExecutor:
                 # El pipeline permanece visible en la UI pero no permite crear releases.
                 # Es reversible: un PUT con isDisabled=false lo re-habilita.
                 if dry_run:
-                    print(f"  [Pipeline {definition_id}] 4/5 [DRY-RUN] Deshabilitar pipeline (isDisabled=true)")
+                    print(f"{Colors.YELLOW}  [Pipeline {definition_id}] 4/5 [DRY-RUN] Deshabilitar pipeline (isDisabled=true){Colors.ENDC}")
                     duration = time.time() - start_time
                     return UpdateResult(
                         definition_id=definition_id,
@@ -172,14 +181,14 @@ class ParallelExecutor:
                         error=None,
                         duration=duration
                     )
-                print(f"  [Pipeline {definition_id}] 4/5 Deshabilitando pipeline (isDisabled=true)...")
+                print(f"{Colors.CYAN}  [Pipeline {definition_id}] 4/5 Deshabilitando pipeline (isDisabled=true)...{Colors.ENDC}")
                 metadata = template_parser.get_metadata()
                 success = azdo_client.update_release_definition(
                     definition_id, definition,
                     comment=metadata.comment,
                     disable=True
                 )
-                print(f"  [Pipeline {definition_id}]   ✓ Pipeline deshabilitado exitosamente")
+                print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Pipeline deshabilitado exitosamente{Colors.ENDC}")
                 
                 duration = time.time() - start_time
                 
@@ -217,10 +226,10 @@ class ParallelExecutor:
                 if '{current}' in target_path:
                     target_path = target_path.replace('{current}', old_path)
                 
-                print(f"  [Pipeline {definition_id}] 4/5 Moviendo pipeline de '{old_path}' a '{target_path}'...")
+                print(f"{Colors.CYAN}  [Pipeline {definition_id}] 4/5 Moviendo pipeline de '{old_path}' a '{target_path}'...{Colors.ENDC}")
                 
                 if dry_run:
-                    print(f"  [Pipeline {definition_id}]   ✓ [DRY-RUN] Movimiento simulado (no guardado)")
+                    print(f"{Colors.YELLOW}  [Pipeline {definition_id}]   ✓ [DRY-RUN] Movimiento simulado (no guardado){Colors.ENDC}")
                     duration = time.time() - start_time
                     return UpdateResult(
                         definition_id=definition_id,
@@ -244,7 +253,7 @@ class ParallelExecutor:
                     definition_id, definition,
                     comment=metadata.comment
                 )
-                print(f"  [Pipeline {definition_id}]   ✓ Pipeline movido exitosamente")
+                print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Pipeline movido exitosamente{Colors.ENDC}")
                 
                 duration = time.time() - start_time
                 
@@ -326,15 +335,15 @@ class ParallelExecutor:
                             'new_rank': new_rank
                         })
                 
-                print(f"  [Pipeline {definition_id}] 4/5 Auto-ordenando {len(sortable)} stages numericos...")
+                print(f"{Colors.CYAN}  [Pipeline {definition_id}] 4/5 Auto-ordenando {len(sortable)} stages numericos...{Colors.ENDC}")
                 if changes:
-                    print(f"  [Pipeline {definition_id}]   ✓ {len(changes)} stages reordenados")
+                    print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ {len(changes)} stages reordenados{Colors.ENDC}")
                 else:
-                    print(f"  [Pipeline {definition_id}]   ✓ Sin cambios de orden necesarios")
+                    print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Sin cambios de orden necesarios{Colors.ENDC}")
                 
                 definition['environments'] = new_environments
                 if dry_run:
-                    print(f"  [Pipeline {definition_id}]   ✓ [DRY-RUN] {len(changes)} cambios simulados (no guardados)")
+                    print(f"{Colors.YELLOW}  [Pipeline {definition_id}]   ✓ [DRY-RUN] {len(changes)} cambios simulados (no guardados){Colors.ENDC}")
                     duration = time.time() - start_time
                     return UpdateResult(
                         definition_id=definition_id,
@@ -351,7 +360,7 @@ class ParallelExecutor:
                     definition_id, definition,
                     comment=metadata.comment
                 )
-                print(f"  [Pipeline {definition_id}]   ✓ Definicion guardada exitosamente")
+                print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Definicion guardada exitosamente{Colors.ENDC}")
                 
                 duration = time.time() - start_time
                 
@@ -367,7 +376,7 @@ class ParallelExecutor:
                 )
             
             # 4. Aplicar actualizaciones (flujo normal)
-            print(f"  [Pipeline {definition_id}] 4/5 Aplicando actualizaciones...")
+            print(f"{Colors.CYAN}  [Pipeline {definition_id}] 4/5 Aplicando actualizaciones...{Colors.ENDC}")
             update_rules = template_parser.get_update_rules()
             template_options = template_parser.get_template_options()
             
@@ -397,11 +406,11 @@ class ParallelExecutor:
                     duration=duration
                 )
             changes_count = update_engine.get_changes_count()
-            print(f"  [Pipeline {definition_id}]   ✓ Cambios aplicados: {changes_count}")
+            print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Cambios aplicados: {changes_count}{Colors.ENDC}")
             
             # 5. Guardar cambios (skip si no hubo cambios o dry-run)
             if changes_count == 0:
-                print(f"  [Pipeline {definition_id}] 5/5 Sin cambios - omitiendo PUT a Azure DevOps")
+                print(f"{Colors.YELLOW}  [Pipeline {definition_id}] 5/5 Sin cambios - omitiendo PUT a Azure DevOps{Colors.ENDC}")
                 duration = time.time() - start_time
                 return UpdateResult(
                     definition_id=definition_id,
@@ -415,7 +424,7 @@ class ParallelExecutor:
                 )
             
             if dry_run:
-                print(f"  [Pipeline {definition_id}] 5/5 [DRY-RUN] {changes_count} cambios simulados (no guardados)")
+                print(f"{Colors.YELLOW}  [Pipeline {definition_id}] 5/5 [DRY-RUN] {changes_count} cambios simulados (no guardados){Colors.ENDC}")
                 duration = time.time() - start_time
                 return UpdateResult(
                     definition_id=definition_id,
@@ -428,12 +437,12 @@ class ParallelExecutor:
                     duration=duration
                 )
             
-            print(f"  [Pipeline {definition_id}] 5/5 Guardando cambios en Azure DevOps...")
+            print(f"{Colors.CYAN}  [Pipeline {definition_id}] 5/5 Guardando cambios en Azure DevOps...{Colors.ENDC}")
             metadata = template_parser.get_metadata()
             success = azdo_client.update_release_definition(
                 definition_id, definition, comment=metadata.comment
             )
-            print(f"  [Pipeline {definition_id}]   ✓ Cambios guardados exitosamente")
+            print(f"{Colors.GREEN}  [Pipeline {definition_id}]   ✓ Cambios guardados exitosamente{Colors.ENDC}")
             
             duration = time.time() - start_time
             
@@ -450,7 +459,7 @@ class ParallelExecutor:
         
         except Exception as e:
             duration = time.time() - start_time
-            print(f"  [Pipeline {definition_id}] ✗ ERROR: {str(e)}")
+            print(f"{Colors.RED}  [Pipeline {definition_id}] ✗ ERROR: {str(e)}{Colors.ENDC}")
             
             return UpdateResult(
                 definition_id=definition_id,
@@ -525,8 +534,8 @@ class ParallelExecutor:
                     "'source_stage' y 'new_name'"
                 )
             
-            print(f"  [Pipeline {target_definition_id}]   "
-                  f"Descargando pipeline origen {source_def_id}...")
+            print(f"{Colors.CYAN}  [Pipeline {target_definition_id}]   "
+                  f"Descargando pipeline origen {source_def_id}...{Colors.ENDC}")
             
             source_definition = azdo_client.get_release_definition(source_def_id)
             source_environments = source_definition.get('environments', [])
@@ -569,9 +578,9 @@ class ParallelExecutor:
             
             new_stage_rules.append(new_rule)
             
-            print(f"  [Pipeline {target_definition_id}]   "
+            print(f"{Colors.GREEN}  [Pipeline {target_definition_id}]   "
                   f"✓ Stage '{source_stage_name}' copiado desde pipeline "
-                  f"{source_def_id} como '{new_name}'")
+                  f"{source_def_id} como '{new_name}'{Colors.ENDC}")
         
         update_rules = dict(update_rules)
         update_rules['stages'] = new_stage_rules
