@@ -3,7 +3,6 @@ Orquestador principal de Pipeline Updater
 """
 
 import argparse
-import json
 import sys
 from typing import Dict, List, Optional
 from pathlib import Path
@@ -11,6 +10,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
+from rich.table import Table
 
 from .template_parser import TemplateParser
 from .validator import TemplateValidator
@@ -59,12 +59,17 @@ class PipelineUpdater:
             Diccionario con resultados
         """
         
-        print("\n" + "="*70)
-        print("  Pipeline Updater - Actualización Masiva de Pipelines CD")
-        print("="*70 + "\n")
-        
+        console.print(Panel(
+            f"[bold]🆙 Pipeline Updater[/bold]\n"
+            f"Actualización masiva de definiciones de CD\n"
+            f"Total de pipelines: {len(definition_ids)}",
+            title="Pipeline Updater",
+            border_style="cyan"
+        ))
+        console.print()
+
         # 1. Cargar y validar template
-        print(f"[1/5] Cargando template: {template_path}")
+        console.print(f"[bold cyan][1/5] Cargando template:[/bold cyan] {template_path}")
         try:
             parser = TemplateParser(template_path)
             
@@ -84,7 +89,7 @@ class PipelineUpdater:
                 }
             
             metadata = parser.get_metadata()
-            print(f"  ✓ Template cargado: {metadata.name} v{metadata.version}")
+            console.print(f"  [green]✓[/green] Template cargado: {metadata.name} v{metadata.version}")
         
         except Exception as e:
             return {
@@ -93,20 +98,20 @@ class PipelineUpdater:
             }
         
         # 2. Análisis previo
-        print(f"\n[2/5] Analizando {len(definition_ids)} pipelines...")
+        console.print(f"\n[bold cyan][2/5] Analizando {len(definition_ids)} pipelines...[/bold cyan]")
         analysis_results = self._analyze_pipelines(definition_ids, parser)
-        
-        print(f"  ✓ Análisis completado")
-        print(f"    - Pipelines analizados: {analysis_results['analyzed']}")
-        print(f"    - Pipelines con coincidencias: {analysis_results['with_matches']}")
-        print(f"    - Total de coincidencias: {analysis_results['total_matches']}")
+
+        console.print(f"  [green]✓[/green] Análisis completado")
+        console.print(f"    - Pipelines analizados: [cyan]{analysis_results['analyzed']}[/cyan]")
+        console.print(f"    - Pipelines con coincidencias: [cyan]{analysis_results['with_matches']}[/cyan]")
+        console.print(f"    - Total de coincidencias: [cyan]{analysis_results['total_matches']}[/cyan]")
         
         # 3. Confirmación
         if not dry_run:
-            console.print("\n[bold cyan][3/5] Confirmación requerida[/]")
-            console.print(f"  [yellow]⚠  Se procederá a actualizar {len(definition_ids)} pipelines[/]")
-            console.print(f"  [yellow]⚠  Los cambios serán PERMANENTES[/]")
-            console.print(f"  [blue]ℹ  Se crearán snapshots automáticos para rollback[/]")
+            console.print("\n[bold cyan][3/5] Confirmación requerida[/bold cyan]")
+            console.print(f"  [yellow]⚠[/yellow] Se procederá a actualizar [cyan]{len(definition_ids)}[/cyan] pipelines")
+            console.print("  [yellow]⚠[/yellow] Los cambios serán [red]PERMANENTES[/red]")
+            console.print("  [blue]ℹ[/blue] Se crearán snapshots automáticos para rollback")
             
             response = Prompt.ask(
                 "\n  ¿Deseas continuar?",
@@ -115,14 +120,14 @@ class PipelineUpdater:
             )
             
             if response.strip().upper() not in ('SI', 'S', 'Y', 'YES'):
-                console.print("\n  [red]✗ Operación cancelada por el usuario[/]\n")
+                console.print("\n  [red]✗[/red] Operación cancelada por el usuario\n")
                 return {
                     'success': False,
                     'error': 'Operación cancelada',
                     'cancelled': True
                 }
         else:
-            console.print("\n[bold cyan][3/5] Modo DRY-RUN (sin cambios)[/]")
+            console.print("\n[bold yellow][3/5] Modo DRY-RUN (sin cambios)[/bold yellow]")
         
         # Merge dry_run: CLI flag OR template option
         template_options = parser.get_template_options()
@@ -130,14 +135,20 @@ class PipelineUpdater:
             dry_run = True
 
         # 4. Ejecutar actualización
-        print(f"\n[4/5] Ejecutando actualización en paralelo...")
-        
+        console.print(f"\n[bold cyan][4/5] Ejecutando actualización en paralelo...[/bold cyan]")
+
         executor = ParallelExecutor(max_workers=max_workers)
-        
+
         def progress_callback(completed, total, result):
-            status = "✓" if result and result.success else "✗"
-            print(f"  {status} [{completed}/{total}] Pipeline {result.definition_id if result else 'Error'}")
-        
+            if result:
+                status = "[green]✅ Success[/green]" if result.success else "[red]❌ Error[/red]"
+                detail = f"cambios: [cyan]{result.changes_applied}[/cyan]"
+            else:
+                status = "[red]❌ Error[/red]"
+                detail = "error desconocido"
+            def_id = result.definition_id if result else '?'
+            console.print(f"  [{completed}/{total}] Pipeline [cyan]#{def_id}[/cyan] | {status} | {detail}")
+
         execution_results = executor.execute(
             definition_ids,
             parser,
@@ -147,29 +158,87 @@ class PipelineUpdater:
         )
         
         # 5. Generar reportes
-        print(f"\n[5/5] Generando reportes...")
-        
+        console.print(f"\n[bold cyan][5/5] Generando reportes...[/bold cyan]")
+
         reporter = Reporter(execution_results['results'], execution_results['errors'])
         json_file = reporter.generate_json()
         csv_file = reporter.generate_csv()
         html_file = reporter.generate_html()
-        
-        print(f"  ✓ Reportes generados:")
-        print(f"    - JSON: {json_file}")
-        print(f"    - CSV: {csv_file}")
-        print(f"    - HTML: {html_file}")
-        
-        # Resumen final
+
+        console.print("  [green]✓[/green] Reportes generados:")
+        console.print(f"    - JSON: [cyan]{json_file}[/cyan]")
+        console.print(f"    - CSV:  [cyan]{csv_file}[/cyan]")
+        console.print(f"    - HTML: [cyan]{html_file}[/cyan]")
+
+        # ─── Resumen final estilo Release Updater ───
         console.print(f"\n[bold]{'='*70}[/]")
-        console.print(f"[bold]  RESUMEN DE EJECUCIÓN[/]")
-        console.print(f"[bold]{'='*70}[/]")
-        console.print(f"  Total pipelines: [cyan]{execution_results['total']}[/]")
-        console.print(f"  Exitosos: [green]{execution_results['success']}[/]")
-        console.print(f"  Fallidos: [red]{execution_results['failed']}[/]")
+        console.print("[bold]  RESUMEN DE EJECUCIÓN[/bold]")
+        console.print(f"[bold]{'='*70}[/]\n")
+
+        all_results: list = list(execution_results.get('results', []))
+        all_errors: list = list(execution_results.get('errors', []))
+
+        summary_table = Table(title="Resultados por Pipeline", show_lines=True)
+        summary_table.add_column("#", style="dim", width=4)
+        summary_table.add_column("Definition ID", style="cyan", width=16)
+        summary_table.add_column("Status", width=12)
+        summary_table.add_column("Cambios", justify="right", width=8)
+        summary_table.add_column("Detalle", no_wrap=False)
+
+        status_styles = {
+            'success': '[green]✅ Success[/green]',
+            'error': '[red]❌ Error[/red]',
+            'dry_run': '[cyan]🔍 Dry-run[/cyan]',
+            'no_changes': '[yellow]⏭ Sin cambios[/yellow]',
+        }
+
+        row_index = 1
+        # Filas exitosas / simuladas
+        for r in all_results:
+            if r.success and r.changes_applied == 0 and not dry_run:
+                status_key = 'no_changes'
+            elif dry_run and r.success:
+                status_key = 'dry_run'
+            elif r.success:
+                status_key = 'success'
+            else:
+                status_key = 'error'
+
+            status_str = status_styles.get(status_key, r.success)
+            changes = str(r.changes_applied)
+
+            if status_key == 'success':
+                detail = f"snapshot: {r.snapshot_id} | matches: {r.matches_found}"
+            elif status_key == 'dry_run':
+                detail = f"{r.changes_applied} cambios simulados | matches: {r.matches_found}"
+            elif status_key == 'no_changes':
+                detail = f"matches: {r.matches_found}"
+            else:
+                detail = f"error: {r.error or 'N/A'}"
+
+            summary_table.add_row(str(row_index), f"#{r.definition_id}", status_str, changes, detail)
+            row_index += 1
+
+        # Filas de errores capturados fuera del resultado
+        for err in all_errors:
+            status_str = status_styles['error']
+            detail = f"error: {err.get('error', 'N/A')}"
+            summary_table.add_row(str(row_index), f"#{err.get('definition_id', '?')}", status_str, "0", detail)
+            row_index += 1
+
+        console.print(summary_table)
+
+        console.print()
+        console.print(f"[green]✅ Exitosos: {execution_results['success']}/{execution_results['total']}[/green]")
+        if dry_run:
+            console.print(f"[cyan]🔍 Dry-run: {execution_results['success']}/{execution_results['total']}[/cyan]")
+        if execution_results['failed']:
+            console.print(f"[red]❌ Errores: {execution_results['failed']}/{execution_results['total']}[/red]")
         if execution_results['total'] > 0:
             rate = execution_results['success'] / execution_results['total'] * 100
-            console.print(f"  Tasa de éxito: [cyan]{rate:.1f}%[/]")
-        console.print(f"[bold]{'='*70}[/]\n")
+            console.print(f"[cyan]Tasa de éxito: {rate:.1f}%[/cyan]")
+
+        console.print(f"\n[bold]{'='*70}[/]\n")
         
         return {
             'success': execution_results['failed'] == 0,
@@ -349,9 +418,6 @@ def main():
         dry_run=args.dry_run,
         max_workers=args.workers
     )
-    
-    # Mostrar resultado en JSON
-    print(json.dumps(result, indent=2, default=str))
     
     # Salir con código apropiado
     sys.exit(0 if result.get('success') else 1)
