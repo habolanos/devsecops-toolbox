@@ -576,6 +576,7 @@ Desarrollado para monitoreo y auditoría de recursos en clusters GKE.
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-09-10 | 1.7.75 | generate_gcp_dashboard.py: Fix _sql_database_count no parseaba strings numéricos ('16','63') del campo databases. KPI Bases de Datos ahora muestra 326 (antes 0) y columna BDs muestra conteos reales |
 | 2026-09-10 | 1.7.74 | generate_gcp_dashboard.py: Fix TypeError en _build_network_row que impedía generar HTML cuando pods_running o services_used venían como string ("N/A"). Sanitización con _safe_int() |
 | 2026-09-10 | 1.7.72 | gcp_monitor.py: _enrich_data_with_metrics ahora persiste pods_running, pods_not_running, CIDRs, subnet, ip_status, version_status y databases en el JSON exportado para que el dashboard HTML muestre todos los datos |
 | 2026-09-10 | 1.7.71 | gcp_monitor.py: GKE mueve ESTADO/STATUS SUMMARY al final; Red GKE colorea PODs/SVCS IPs por semaforo; Compute fix diskSizeGb y Estado al final; Cloud Run sustituye metricas por VPC y Estado (PUBLIC_URL/INTERNAL) |

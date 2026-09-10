@@ -744,8 +744,8 @@ def _build_network_row(project_id: str, cluster: Dict[str, Any]) -> Dict[str, An
 def _sql_database_count(instance: Dict[str, Any]) -> Optional[int]:
     """Obtiene el conteo de bases de datos de una instancia Cloud SQL del JSON.
 
-    Busca el campo 'databases' (lista o numero) o claves de conteo equivalentes
-    que pueda haber agregado gcp_monitor.py al exportar.
+    Busca el campo 'databases' (lista, numero o string numerico) o claves de
+    conteo equivalentes que pueda haber agregado gcp_monitor.py al exportar.
     """
     if 'databases' in instance:
         databases = instance.get('databases')
@@ -754,6 +754,8 @@ def _sql_database_count(instance: Dict[str, Any]) -> Optional[int]:
         if isinstance(databases, bool):
             return None
         if isinstance(databases, (int, float)):
+            return int(databases)
+        if isinstance(databases, str) and databases.isdigit():
             return int(databases)
     for key in ('database_count', 'databases_count', 'db_count', 'dbs'):
         value = instance.get(key)
