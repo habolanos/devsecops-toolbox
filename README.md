@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.65-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.66-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1339,6 +1339,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Versión | Fecha | Descripción | Archivos / Scope |
 |---|---|---|---|
+| **1.7.66** | 2026-09-09 | **feat(gcp): Estados con color en tablas de `gcp_monitor`**: Nueva función `format_status_color()` que aplica Rich markup automáticamente: STOPPED/TERMINATED/SUSPENDED en `[red]rojo[/]`, RUNNING/RUNNABLE/ACTIVE en `[green]verde[/]`, otros estados sin cambio. Aplicada en tablas de Cloud SQL e Instancias Compute Engine (consolidado y single proyecto) para identificar visualmente recursos detenidos. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.65** | 2026-09-09 | **feat(gcp): Formato legible de tiempo de ejecución en `gcp_monitor` + retiro de columnas de uso en tabla Compute Engine**: (1) Nueva función `format_duration()` que convierte segundos a formato legible automático: `X.XXs` (< 1 min), `Xm Ys` (1-60 min), `Xh Ym Zs` (> 1 hora). Aplicada en tablas de resumen single y consolidado (Rich y print plano). Ej: 1282.19s → 21m 22s. (2) Retiradas columnas "CPU Usado (%)", "Memoria Usada (%)" y "Disco Usado (%)" de la tabla "Instancias Compute Engine" (consolidado) junto con su cálculo de métricas y bloque de obtención (`get_compute_metrics_parallel`), reduciendo el tiempo de ejecución. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.64** | 2026-09-09 | **refactor(gcp): Retirar columnas de IPs de Pods y Servicios de la tabla "Clusters GKE" en `gcp_monitor`**: Se eliminan las columnas PODS IPs, SERVICES IPs e IP STATUS para reducir el ancho de la tabla y mejorar legibilidad. Esta información sigue disponible en la tabla "Capacidad de Red de Clusters GKE". | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.63** | 2026-09-09 | **perf(gcp): Paralelizar `get_gke_metrics_parallel` en `gcp_monitor`**: El loop secuencial que obtenía métricas de CPU/memoria cluster por cluster (con `max_workers=1`) ahora se ejecuta en paralelo con `ThreadPoolExecutor(max_workers=min(6, n_clusters))`. Con ~24 clusters, el tiempo de obtención de métricas pasa de ~24 × T a ~(24/6) × T. | `scm/gcp/monitoring/gcp_monitor.py`, `VERSION`, `README.md`, `README.version.md` |

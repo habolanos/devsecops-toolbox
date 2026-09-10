@@ -1062,7 +1062,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             all_sql.append((
                 project_id,
                 instance.get('name', 'N/A')[:30],
-                instance.get('state', 'N/A'),
+                format_status_color(instance.get('state', 'N/A')),
                 instance.get('databaseVersion', 'N/A')[:20],
                 instance.get('settings', {}).get('tier', 'N/A')[:20],
                 str(disk)
@@ -1106,7 +1106,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             all_compute.append((
                 project_id,
                 vm.get('name', 'N/A'),
-                vm.get('status', 'N/A'),
+                format_status_color(vm.get('status', 'N/A')),
                 machine,
                 zone,
                 cpu_str,
@@ -1295,7 +1295,7 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
             disk = instance.get('settings', {}).get('dataDiskSizeGb', 'N/A')
             table.add_row(
                 instance.get('name', 'N/A')[:30],
-                instance.get('state', 'N/A'),
+                format_status_color(instance.get('state', 'N/A')),
                 instance.get('databaseVersion', 'N/A')[:20],
                 instance.get('settings', {}).get('tier', 'N/A')[:20],
                 str(disk)
@@ -1318,7 +1318,7 @@ def create_detailed_tables(data: Dict[str, Any], console) -> None:
             zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
             table.add_row(
                 vm.get('name', 'N/A')[:30],
-                vm.get('status', 'N/A'),
+                format_status_color(vm.get('status', 'N/A')),
                 machine[:20],
                 zone
             )
@@ -1777,6 +1777,18 @@ def format_duration(seconds: float) -> str:
         minutes = int((seconds % 3600) // 60)
         secs = seconds % 60
         return f"{hours}h {minutes}m {secs:.0f}s"
+
+
+def format_status_color(status: str) -> str:
+    """Aplica color Rich a un estado: STOPPED en rojo, RUNNING/RUNNABLE en verde."""
+    if not status or status == 'N/A':
+        return status
+    upper = status.upper()
+    if 'STOPPED' in upper or 'TERMINATED' in upper or 'SUSPENDED' in upper:
+        return f"[red]{status}[/red]"
+    if 'RUNNING' in upper or 'RUNNABLE' in upper or 'ACTIVE' in upper:
+        return f"[green]{status}[/green]"
+    return status
 
 
 def print_execution_summary(start_time: datetime, console, project_id: str, data: Dict[str, Any]) -> None:
