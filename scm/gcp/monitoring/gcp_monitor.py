@@ -1966,34 +1966,103 @@ def print_consolidated_execution_summary(start_time: datetime, console, all_data
 
 
 def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) -> Dict[str, Dict[str, Any]]:
-    """Enriquece los datos con métricas de uso (CPU, Memoria, Disco).
-    
-    Obtiene métricas de Cloud Monitoring API y las agrega a los datos.
+    """Enriquece los datos con métricas de uso (CPU, Memoria, Disco) y enriquecimiento de GKE/Cloud SQL.
+
+    Agrega a cada recurso los campos que el dashboard HTML necesita para mostrar
+    pods, bases de datos, capacidad de red, versiones, etc.:
+      - GKE clusters: usage_metrics + pods_running, pods_not_running, pods_used,
+        pods_total, pods_pct, services_used, services_total, services_pct,
+        pods_cidr, services_cidr, subnet, ip_status, version_status, status_text
+      - Cloud SQL instances: databases (conteo de bases de datos)
+      - Compute instances: usage_metrics (CPU, memoria, disco)
     """
     import copy
     enriched_data = {}
-    
+
     for project_id, proj_data in all_data.items():
         # Hacer copia profunda para no modificar datos originales
         enriched_proj = copy.deepcopy(proj_data)
-        
-        # Enriquecer GKE clusters con métricas de uso
-        if MONITORING_AVAILABLE and 'gke_clusters' in enriched_proj:
+
+        # Enriquecer GKE clusters con métricas de uso + enriquecimiento (pods, red, versiones)
+        if 'gke_clusters' in enriched_proj:
             clusters = enriched_proj.get('gke_clusters', [])
             if clusters:
+                # Métricas de uso (CPU/memoria) en paralelo
+                if MONITORING_AVAILABLE:
+                    if logger:
+                        logger.info(f"Obteniendo métricas de {len(clusters)} clusters GKE en {project_id}...")
+                    gke_metrics = get_gke_metrics_parallel(project_id, clusters, max_workers=6, logger=logger)
+                    for cluster in enriched_proj['gke_clusters']:
+                        cluster_name = cluster.get('name')
+                        metrics = gke_metrics.get(cluster_name, {})
+                        cluster['usage_metrics'] = {
+                            'cpu_used_percent': metrics.get('cpu_used_percent'),
+                            'memory_used_percent': metrics.get('memory_used_percent'),
+                            'status': metrics.get('status', 'unavailable')
+                        }
+
+                # Enriquecimiento de pods, red, versiones en paralelo
                 if logger:
-                    logger.info(f"Obteniendo métricas de {len(clusters)} clusters GKE en {project_id}...")
-                gke_metrics = get_gke_metrics_parallel(project_id, clusters, max_workers=6, logger=logger)
-                
+                    logger.info(f"Enriqueciendo {len(clusters)} clusters GKE en {project_id} (pods, red, versiones)...")
+                cluster_keys = [(project_id, c) for c in clusters]
+                gke_extras = {}
+                if cluster_keys:
+                    with ThreadPoolExecutor(max_workers=min(6, len(cluster_keys))) as executor:
+                        futures = {
+                            executor.submit(build_gke_cluster_enrichment, pid, cl, False, logger): (pid, cl)
+                            for pid, cl in cluster_keys
+                        }
+                        for fut in as_completed(futures):
+                            pid, cl = futures[fut]
+                            try:
+                                gke_extras[(pid, cl.get('name', 'N/A'))] = fut.result()
+                            except Exception as e:
+                                if logger:
+                                    logger.warning(f"Error enriqueciendo cluster {cl.get('name', 'UNKNOWN')}: {e}")
+
                 for cluster in enriched_proj['gke_clusters']:
-                    cluster_name = cluster.get('name')
-                    metrics = gke_metrics.get(cluster_name, {})
-                    cluster['usage_metrics'] = {
-                        'cpu_used_percent': metrics.get('cpu_used_percent'),
-                        'memory_used_percent': metrics.get('memory_used_percent'),
-                        'status': metrics.get('status', 'unavailable')
-                    }
-        
+                    cluster_name = cluster.get('name', 'N/A')
+                    extra = gke_extras.get((project_id, cluster_name), {})
+                    if extra:
+                        cluster['pods_running'] = extra.get('pods_running', 'N/A')
+                        cluster['pods_not_running'] = extra.get('pods_not_running', 'N/A')
+                        cluster['pods_used'] = extra.get('pods_used', 0)
+                        cluster['pods_total'] = extra.get('pods_total', 0)
+                        cluster['pods_pct'] = extra.get('pods_pct', 0.0)
+                        cluster['services_used'] = extra.get('services_used', 0)
+                        cluster['services_total'] = extra.get('services_total', 0)
+                        cluster['services_pct'] = extra.get('services_pct', 0.0)
+                        cluster['pods_cidr'] = extra.get('pods_cidr', 'N/A')
+                        cluster['services_cidr'] = extra.get('services_cidr', 'N/A')
+                        cluster['subnet'] = extra.get('subnet', 'N/A')
+                        cluster['ip_status'] = extra.get('ip_status', 'N/A')
+                        cluster['version_status'] = extra.get('version_status', 'UNKNOWN')
+                        cluster['status_text'] = extra.get('status_text', 'UNKNOWN')
+
+        # Enriquecer Cloud SQL instances con conteo de bases de datos
+        if 'sql_instances' in enriched_proj:
+            sql_instances = enriched_proj.get('sql_instances', [])
+            if sql_instances:
+                if logger:
+                    logger.info(f"Obteniendo conteo de bases de datos de {len(sql_instances)} instancias Cloud SQL en {project_id}...")
+                sql_tasks = [(inst.get('name', 'N/A')) for inst in sql_instances[:50]]
+                sql_db_counts = {}
+                if sql_tasks:
+                    with ThreadPoolExecutor(max_workers=min(6, len(sql_tasks))) as executor:
+                        futures = {
+                            executor.submit(get_cloud_sql_database_count, project_id, iname, False, None, logger): iname
+                            for iname in sql_tasks
+                        }
+                        for fut in as_completed(futures):
+                            iname = futures[fut]
+                            try:
+                                sql_db_counts[iname] = fut.result()
+                            except Exception:
+                                sql_db_counts[iname] = "N/A"
+                for instance in enriched_proj['sql_instances']:
+                    inst_name = instance.get('name', 'N/A')
+                    instance['databases'] = sql_db_counts.get(inst_name, "N/A")
+
         # Enriquecer Compute instances con métricas de uso
         if MONITORING_AVAILABLE and 'compute_instances' in enriched_proj:
             instances = enriched_proj.get('compute_instances', [])
@@ -2001,7 +2070,7 @@ def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) 
                 if logger:
                     logger.info(f"Obteniendo métricas de {len(instances)} instancias Compute en {project_id}...")
                 compute_metrics = get_compute_metrics_parallel(project_id, instances, max_workers=6, logger=logger)
-                
+
                 for instance in enriched_proj['compute_instances']:
                     instance_name = instance.get('name')
                     metrics = compute_metrics.get(instance_name, {})
@@ -2011,9 +2080,9 @@ def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) 
                         'disk_used_percent': metrics.get('disk_used_percent'),
                         'status': metrics.get('status', 'unavailable')
                     }
-        
+
         enriched_data[project_id] = enriched_proj
-    
+
     return enriched_data
 
 
