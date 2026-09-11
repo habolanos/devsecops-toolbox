@@ -212,6 +212,8 @@ def http_get(url: str, headers: Dict[str, str], params: Dict = None, debug: bool
 
 def vsrm_base(org_url: str) -> str:
     """Transforma dev.azure.com/{org} → vsrm.dev.azure.com/{org} para Release APIs."""
+    if "vsrm.dev.azure.com" in org_url:
+        return org_url
     return org_url.replace("dev.azure.com", "vsrm.dev.azure.com")
 
 

@@ -339,7 +339,7 @@ def backup_single_pipeline(
                 "revision": revision,
                 "pipelinePath": path_val,
             },
-            "definition": definition,
+            "definition": redact_secret_values(definition),
             "resolved_names": resolved,
             "secrets_list": secrets,
         }
@@ -481,6 +481,33 @@ def backup_all_pipelines(
         "index_file": str(index_path),
         "backups": results,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECRETS REDACTION
+# ═══════════════════════════════════════════════════════════════════════════════
+def redact_secret_values(definition: Any) -> Any:
+    """Redacta valores de variables marcadas como secret antes de persistir."""
+    if isinstance(definition, dict):
+        result = {}
+        for k, v in definition.items():
+            if k == "variables" and isinstance(v, dict):
+                redacted_vars = {}
+                for var_name, var_val in v.items():
+                    if isinstance(var_val, dict) and var_val.get("isSecret", False):
+                        redacted = dict(var_val)
+                        if "value" in redacted:
+                            redacted["value"] = "***REDACTED***"
+                        redacted_vars[var_name] = redacted
+                    else:
+                        redacted_vars[var_name] = redact_secret_values(var_val)
+                result[k] = redacted_vars
+            else:
+                result[k] = redact_secret_values(v)
+        return result
+    elif isinstance(definition, list):
+        return [redact_secret_values(item) for item in definition]
+    return definition
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -968,6 +995,10 @@ def convert_json_to_yaml(backup_file: str, output_dir: str = "") -> Dict:
 
     with open(backup_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
+
+    # Redactar secrets antes de generar YAML
+    if "definition" in data:
+        data["definition"] = redact_secret_values(data["definition"])
 
     yaml_content = humanize_yaml(data)
 

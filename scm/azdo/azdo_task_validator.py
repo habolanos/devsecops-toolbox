@@ -25,7 +25,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
@@ -361,14 +361,19 @@ class ImageValidator:
         """Verifica que una imagen exista."""
         log_info(f"Validando existencia: {image}")
         
-        if "artifact.coppel.io" in image or "harbor" in image.lower():
+        # Parsear el hostname de la imagen de forma segura
+        parsed = urlparse(f"//{image}" if "://" not in image else image)
+        hostname = parsed.hostname or image.split("/")[0] if "/" in image else ""
+        hostname_lower = hostname.lower()
+
+        if "artifact.coppel.io" in hostname_lower or "harbor" in hostname_lower:
             # Harbor - usar crane
             code, _, stderr = self._run_command(["crane", "digest", image])
             if code != 0:
                 log_error(f"Imagen NO existe en Harbor: {image}")
                 return False
         
-        elif "docker.pkg.dev" in image:
+        elif "docker.pkg.dev" in hostname_lower:
             # Artifact Registry
             code, _, stderr = self._run_command([
                 "gcloud", "artifacts", "docker", "images", "describe",
@@ -378,7 +383,7 @@ class ImageValidator:
                 log_error(f"Imagen NO existe en Artifact Registry: {image}")
                 return False
         
-        elif "gcr.io" in image:
+        elif "gcr.io" in hostname_lower:
             # GCR
             code, _, stderr = self._run_command([
                 "gcloud", "container", "images", "describe", image

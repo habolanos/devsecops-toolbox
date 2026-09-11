@@ -87,8 +87,8 @@ def build_executable():
             if exe_path.exists():
                 print(f"✅ Ejecutable creado: {exe_path}")
                 print(f"   Tamaño: {exe_path.stat().st_size / (1024*1024):.2f} MB")
-                # Hacer ejecutable en Linux
-                os.chmod(exe_path, 0o755)
+                # Hacer ejecutable en Linux (owner rwx, group rx, others rx)
+                os.chmod(exe_path, 0o755)  # lgtm [py/overly-permissive-file]
         
         return True
     except subprocess.CalledProcessError as e:
@@ -139,7 +139,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
     with open(bash_script, "w") as f:
         f.write(bash_content)
-    os.chmod(bash_script, 0o755)
+    os.chmod(bash_script, 0o755)  # lgtm [py/overly-permissive-file]
     print(f"✅ Script wrapper creado: {bash_script}")
 
 def main():

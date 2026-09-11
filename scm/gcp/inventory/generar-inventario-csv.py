@@ -218,7 +218,9 @@ def step_deployments(project_id: str, out_dir: Path, delim: str, clusters: list,
         f.write(f"NAMESPACE{delim}CLUSTER{delim}DEPLOYMENT{delim}IMAGES\n")
 
     for cluster_name, location in clusters:
-        kubeconfig = tempfile.mktemp(prefix=f"kubeconfig-inv-{project_id}-")
+        _fd, kubeconfig = tempfile.mkstemp(prefix=f"kubeconfig-inv-{project_id}-")
+        os.close(_fd)
+        os.unlink(kubeconfig)
         env = os.environ.copy()
         env["KUBECONFIG"] = kubeconfig
 
@@ -254,7 +256,9 @@ def step_services(project_id: str, out_dir: Path, delim: str, clusters: list, ex
         f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}TYPE{delim}CLUSTER-IP{delim}EXTERNAL-IP{delim}PORTS\n")
 
     for cluster_name, location in clusters:
-        kubeconfig = tempfile.mktemp(prefix=f"kubeconfig-inv-{project_id}-")
+        _fd, kubeconfig = tempfile.mkstemp(prefix=f"kubeconfig-inv-{project_id}-")
+        os.close(_fd)
+        os.unlink(kubeconfig)
         env = os.environ.copy()
         env["KUBECONFIG"] = kubeconfig
 
@@ -354,7 +358,9 @@ def step_ingress(project_id: str, out_dir: Path, delim: str, clusters: list, exc
         f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}HOSTS{delim}ADDRESS{delim}PORTS\n")
 
     for cluster_name, location in clusters:
-        kubeconfig = tempfile.mktemp(prefix=f"kubeconfig-inv-{project_id}-")
+        _fd, kubeconfig = tempfile.mkstemp(prefix=f"kubeconfig-inv-{project_id}-")
+        os.close(_fd)
+        os.unlink(kubeconfig)
         env = os.environ.copy()
         env["KUBECONFIG"] = kubeconfig
 

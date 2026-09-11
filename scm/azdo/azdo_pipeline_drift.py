@@ -169,6 +169,9 @@ def api_get(
 
 
 def vsrm_base(org_url: str) -> str:
+    """Transforma dev.azure.com → vsrm.dev.azure.com de forma idempotente."""
+    if "vsrm.dev.azure.com" in org_url:
+        return org_url
     return org_url.replace("dev.azure.com", "vsrm.dev.azure.com")
 
 

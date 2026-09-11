@@ -539,14 +539,13 @@ class TestVsrm:
     def test_replaces_dev_azure(self):
         url = "https://dev.azure.com/myorg"
         result = vsrm(url)
-        assert "vsrm.dev.azure.com" in result
+        assert result == "https://vsrm.dev.azure.com/myorg"
 
     def test_no_change_if_already_vsrm(self):
         url = "https://vsrm.dev.azure.com/myorg"
         result = vsrm(url)
-        # vsrm() does a simple string replace, so already-vsrm URLs get doubled
-        # This is expected behavior - callers should pass non-vsrm URLs
-        assert "vsrm.dev.azure.com" in result
+        # vsrm() es idempotente: si ya contiene vsrm.dev.azure.com, no cambia
+        assert result == url
 
 
 # =============================================================================

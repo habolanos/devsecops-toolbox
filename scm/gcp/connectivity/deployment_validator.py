@@ -275,10 +275,32 @@ def get_args():
     return parser.parse_args()
 
 
+def _redact_cmd(cmd: List[str]) -> str:
+    """Redacta valores potencialmente sensibles en un comando antes de loguearlo."""
+    sensitive_flags = {"--password", "--token", "--api-key", "--secret", "--pat", "--credential"}
+    parts = []
+    skip_next = False
+    for i, arg in enumerate(cmd):
+        if skip_next:
+            parts.append("***REDACTED***")
+            skip_next = False
+            continue
+        low = arg.lower()
+        if low in sensitive_flags:
+            parts.append(arg)
+            skip_next = True
+        elif "=" in arg and any(s in low for s in ("password=", "token=", "api-key=", "secret=", "pat=", "credential=")):
+            key, _ = arg.split("=", 1)
+            parts.append(f"{key}=***REDACTED***")
+        else:
+            parts.append(arg)
+    return " ".join(parts)
+
+
 def run_command(cmd: List[str], debug: bool = False, timeout: Optional[int] = None) -> Tuple[int, str, str]:
     """Ejecuta un comando y retorna código, stdout, stderr."""
     if debug:
-        print(f"[DEBUG] Ejecutando: {' '.join(cmd)}")
+        print(f"[DEBUG] Ejecutando: {_redact_cmd(cmd)}")  # lgtm [py/clear-text-logging-sensitive-data]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         stdout = result.stdout.strip()
