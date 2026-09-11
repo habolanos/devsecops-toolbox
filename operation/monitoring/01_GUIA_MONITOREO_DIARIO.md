@@ -1,6 +1,6 @@
 # 📅 Guía de Monitoreo Diario DevSecOps
 
-**Versión:** 1.1.0  
+**Versión:** 1.2.0  
 **Objetivo:** Ejecutar monitoreo diario de ambientes GCP, Azure, AWS y AZDO con interpretación DevSecOps
 
 ---
@@ -67,14 +67,14 @@ El monitoreo matutino es el punto de partida del día. Se ejecuta a primera hora
 - ✅ Problemas en releases CD
 
 **Herramientas ejecutadas:**
-- Tool 1: Monitoreo de Recursos GCP
-- Tool 14: GKE Cluster Checker
+- Tool 1: Monitoreo de Recursos GCP (**AMPLIADO** — ahora incluye GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML)
+- Tool 14: GKE Cluster Checker (parcialmente cubierto por Tool 1)
 - Tool 5: Certificate Manager Checker
 - Tool 7: Cloud SQL Disk Monitor
-- Tool 13: IP Addresses Checker
+- Tool 13: IP Addresses Checker (parcialmente cubierto por Tool 1)
 - Tool 28: Cloud Run Health Analyzer
 - Tool 18: Pipeline Status AZDO
-- Tool 3: Release CD Health AZDO
+- Tool 3: Release CD Health AZDO (scoring: Recencia 70 + Deploy 20 + Definición 10)
 - AWS Tool 1: IAM Users & Policies Checker
 - AWS Tool 13: CloudWatch Alarms Checker
 
@@ -84,9 +84,17 @@ El monitoreo matutino es el punto de partida del día. Se ejecuta a primera hora
 ```bash
 # Navegación: python scm/main.py → 1 (GCP) → 1
 # O directo: python scm/gcp/tools.py → 1
-# Herramienta: Monitoreo de Recursos GCP
+# Herramienta: Monitoreo de Recursos GCP (AMPLIADO)
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: json
+#
+# 🆕 v1.2.0: Ahora incluye en una sola ejecución:
+#   - Enriquecimiento GKE (pods, red, versiones)
+#   - Cloud SQL DBs por instancia
+#   - Cloud Run VPC connector + estado seguridad
+#   - Compute Engine con disco raíz
+#   - Dashboard HTML interactivo
+#   - Multi-proyecto consolidado
 ```
 
 **Qué buscar:**
@@ -346,6 +354,9 @@ SI PIPELINES INACTIVOS > 20%:
 # Navegación: python scm/main.py → 4 (AZDO) → 3
 # Herramienta: Release CD Health
 # Output: json
+#
+# 🆕 v1.2.0: Nueva fórmula scoring:
+#   Recencia(70) + Deploy(20) + Definición(10) = 100 pts
 ```
 
 **Qué buscar:**
@@ -845,7 +856,7 @@ El monitoreo nocturno se ejecuta al final del día para auditar todos los cambio
 - Tool 4: Service Account Checker
 - Tool 8: Cloud SQL Database Checker
 - Tool 9: CICD Inventory AZDO
-- Tool 4: Pipeline Drift Analyzer AZDO
+- Tool 4: Pipeline Drift Analyzer AZDO (**sin límite de descarga** — paginación continuationToken)
 - Tool 28: Cloud Run Health Analyzer
 - AWS Tool 1: IAM Users & Policies Checker
 - AWS Tool 19: AWS Inventory Generator
@@ -967,6 +978,10 @@ SI REPO OBSOLETO:
 # Navegación: python scm/main.py → 4 (AZDO) → 4
 # Herramienta: Pipeline Drift Analyzer
 # Output: json
+#
+# 🆕 v1.2.0: Sin límite de descarga. Ahora usa paginación
+#   continuationToken para obtener TODOS los release pipelines
+#   (antes limitado a $top: 500)
 ```
 
 **Qué buscar:**
@@ -1381,5 +1396,11 @@ ACCIÓN:
 
 ---
 
-**Guía de Monitoreo Diario Completada**  
+**Guía de Monitoreo Diario v1.2.0**  
+**Cambios en v1.2.0:**
+- ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML
+- ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)
+- ✅ Tool 4 (Pipeline Drift): Sin límite de descarga (paginación continuationToken)
+- ✅ Agregadas notas sobre cobertura de Tools 13 y 14 por Tool 1
+
 **Próximo:** Guía de Auditoría Semanal

@@ -1,0 +1,49 @@
+metadata:
+  name: "Actualizar script y Contents en release existente con stages fijos y patron"
+  version: "1.0"
+  description: "Modifica inputs.script de una tarea y inputs.Contents de otra tarea en un release existente (Tool 42) que combina fixed_stages con stages que coinciden con un patron."
+  comment: |
+    Caso de uso:
+    - Actualizar tasks en releases existentes en stages específicos: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.).
+    - Task "Get file properties": reemplaza inputs.script por nuevo script
+  author: "DevOps Team"
+  created_at: "2026-09-09"
+
+release:
+  ids: []  # Vacio: debe especificarse via --release-id o modo interactivo
+
+search:
+  # Buscar stages: Develop, QA, y stages con patrón numérico (01-*, 02-*, etc.)
+  stages:
+    - name: "Develop"
+    - name: "QA"
+  
+  # Buscar tasks solo en los stages encontrados arriba
+  tasks:
+    - name: "Get file properties"
+
+update:
+  global_vars: []
+  env_vars: []
+
+  tasks:
+    - name: "Get file properties"
+      fields:
+        - path: "inputs.script"
+          # old_value es opcional: el engine sobrescribe todo el campo con new_value
+          new_value: |
+            echo -e "\n1- Get the properties from properties repo\n"
+            git clone -b $(branchProperties) $(path_projectsProperties) temp
+            ls -l /temp
+            
+            echo -e "\n2- Get and show the template from properties file\n"
+            mv -f temp/$(artifact.pathProperties)/$(artifact.fileProperties) ./$(artifact.fileProperties)
+            cat ./$(artifact.fileProperties)
+            
+            rm -rf temp
+
+  abandon: false
+
+options:
+  dry_run: false
+  backup_path: "./outcome/backups"

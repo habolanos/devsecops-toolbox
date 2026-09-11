@@ -1,8 +1,8 @@
 # 📊 Guía de Monitoreo DevSecOps - Índice
 
-**Versión:** 1.2.0  
-**Fecha:** 27 de Agosto de 2026  
-**Última actualización:** 27 de Agosto de 2026 (v1.2.0)  
+**Versión:** 1.3.0  
+**Fecha:** 11 de Septiembre de 2026  
+**Última actualización:** 11 de Septiembre de 2026 (v1.3.0)  
 **Objetivo:** Guía completa de monitoreo multi-cloud (GCP, Azure, AWS, AZDO) con herramientas integradas
 
 ---
@@ -65,6 +65,19 @@ python scm/main.py
 | CloudWatch Alarms Checker | AWS | `main.py → 3 (AWS) → 13` |
 | CloudWatch Metrics Monitor | AWS | `main.py → 3 (AWS) → 20` |
 | AWS Inventory Generator | AWS | `main.py → 3 (AWS) → 19` |
+
+> **🆕 Nota v1.3.0:** El **Tool 1 (Monitoreo de Recursos GCP)** fue significativamente ampliado. Ahora incluye en una sola ejecución:
+> - Enriquecimiento de clusters GKE (pods running, capacidad de red, CIDRs, estado de versión)
+> - Conteo de bases de datos Cloud SQL por instancia
+> - Servicios Cloud Run con VPC connector y estado de seguridad (PUBLIC_URL/INTERNAL)
+> - Instancias Compute Engine con disco raíz
+> - Vista consolidada multi-proyecto con tablas detalladas
+> - **Dashboard HTML interactivo** (8 tabs: Servicios, GKE, Red GKE, Cloud SQL, Compute, Cloud Run, Pub/Sub, Inventario) con filtros, sorting, paginación y badges de estado
+> - Exportación JSON con todos los datos enriquecidos
+>
+> **Tool 3 (Release CD Health)**: Nueva fórmula de scoring — Recencia(70) + Deploy(20) + Definición(10) = 100 pts.
+>
+> **Tool 4 (Pipeline Drift Analyzer)**: Eliminado límite de 500 release definitions. Ahora usa paginación `continuationToken` sin límite.
 
 > **💡 Tip:** También puedes ejecutar directamente el launcher de cada plataforma:
 > - `python scm/gcp/tools.py` — Herramientas GCP
@@ -562,8 +575,17 @@ Para preguntas o sugerencias sobre esta guía:
 
 ---
 
-**Guía de Monitoreo DevSecOps v1.2.0**  
-**Última actualización:** 27 de Agosto de 2026  
+**Guía de Monitoreo DevSecOps v1.3.0**  
+**Última actualización:** 11 de Septiembre de 2026  
+**Cambios en v1.3.0:**
+- ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment (pods, red, versiones), Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto consolidado
+- ✅ Tool 1 genera **dashboard HTML interactivo** (8 tabs, filtros, sorting, paginación, badges)
+- ✅ Tool 1 exporta JSON con todos los datos enriquecidos (pods, BDs, CIDRs, subnet, ip_status, version_status)
+- ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10) = 100
+- ✅ Tool 4 (Pipeline Drift): Eliminado límite 500, ahora usa paginación continuationToken sin límite
+- ✅ Fixes en dashboard HTML: TypeError en red GKE, parsing de strings numéricos en BDs
+- ✅ Actualizado tabla de navegación con notas de mejoras
+
 **Cambios en v1.2.0:**
 - ✅ Agregada sección "Cómo Navegar en el DevSecOps Toolbox" con tabla de navegación rápida
 - ✅ Agregada tabla de navegación rápida para todas las herramientas de monitoreo

@@ -1,6 +1,6 @@
 # 🚀 Guía de Pre-Deploy Validation DevSecOps
 
-**Versión:** 1.1.0  
+**Versión:** 1.2.0  
 **Objetivo:** Validar que un deployment es seguro antes de ejecutarlo
 
 ---
@@ -727,5 +727,10 @@ EOF
 
 ---
 
-**Guía de Pre-Deploy Validation v1.1.0**  
+**Guía de Pre-Deploy Validation v1.2.0**  
+**Cambios en v1.2.0:**
+- ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)
+- ✅ Tool 4 (Pipeline Drift): Sin límite de descarga (paginación continuationToken)
+- ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML
+
 **Próximo:** Documento Índice de Monitoreo

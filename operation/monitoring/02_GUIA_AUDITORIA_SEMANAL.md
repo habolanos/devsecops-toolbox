@@ -1,6 +1,6 @@
 # 📅 Guía de Auditoría Semanal DevSecOps
 
-**Versión:** 1.1.0  
+**Versión:** 1.2.0  
 **Objetivo:** Auditoría completa de seguridad, compliance y governance
 
 ---
@@ -574,6 +574,10 @@ RECOMENDACIÓN:
 # Navegación: python scm/main.py → 4 (AZDO) → 16
 # Herramienta: Pipeline Health Score
 # Output: json
+#
+# 🆕 v1.2.0: Release CD Health (Tool 3) ahora usa
+#   scoring Recencia(70) + Deploy(20) + Definición(10) = 100
+#   Pipeline Drift (Tool 4) sin límite de descarga
 ```
 
 **Qué buscar:**
@@ -761,5 +765,10 @@ PRESENTACIÓN VIERNES 15:00:
 
 ---
 
-**Guía de Auditoría Semanal v1.1.0**  
+**Guía de Auditoría Semanal v1.2.0**  
+**Cambios en v1.2.0:**
+- ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)
+- ✅ Tool 4 (Pipeline Drift): Sin límite de descarga (paginación continuationToken)
+- ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML
+
 **Próximo:** Guía de Pre-Deploy Validation

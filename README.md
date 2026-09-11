@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.75-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.76-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1339,6 +1339,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Versión | Fecha | Descripción | Archivos / Scope |
 |---|---|---|---|
+| **1.7.76** | 2026-09-11 | **docs(operation): Actualizar guías de monitoreo con mejoras recientes**: (1) README.md del índice actualizado a v1.3.0 con notas sobre Tool 1 (GCP Monitor) ampliado, Tool 3 (Release CD Health) nueva fórmula scoring, Tool 4 (Pipeline Drift) sin límite. (2) 00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md v1.2.0 con descripciones actualizadas. (3) 01_GUIA_MONITOREO_DIARIO.md v1.2.0 con notas sobre cobertura de Tools 13/14 por Tool 1. (4) 02_GUIA_AUDITORIA_SEMANAL.md v1.2.0 y 03_GUIA_PRE_DEPLOY_VALIDATION.md v1.2.0 con referencias actualizadas. | `operation/monitoring/README.md`, `operation/monitoring/00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md`, `operation/monitoring/01_GUIA_MONITOREO_DIARIO.md`, `operation/monitoring/02_GUIA_AUDITORIA_SEMANAL.md`, `operation/monitoring/03_GUIA_PRE_DEPLOY_VALIDATION.md`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.75** | 2026-09-10 | **fix(gcp): Fix Bases de Datos en 0 en dashboard HTML**: La función `_sql_database_count` de `generate_gcp_dashboard.py` no manejaba strings numéricos para el campo `databases` (ej: `'16'`, `'63'`). Como el JSON exportado por `gcp_monitor.py` guarda los conteos como strings, el KPI "Bases de Datos" mostraba 0 y la columna BDs mostraba "N/A" para todas las instancias Cloud SQL. Se agregó `isinstance(databases, str) and databases.isdigit()` para parsear strings numéricos. Ahora el KPI muestra 326 y las filas SQL muestran los conteos reales. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.74** | 2026-09-10 | **fix(gcp): Fix TypeError en generate_gcp_dashboard que impedía generar HTML**: La función `_build_network_row` fallaba con `TypeError: unsupported operand type(s) for /: 'str' and 'int'` cuando `pods_running` o `services_used` venían como string ("N/A") en el JSON exportado. Se agregó sanitización con `_safe_int()` que convierte valores no numéricos a `None` antes de hacer la división para calcular `pods_pct` y `services_pct`. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.73** | 2026-09-10 | **fix(azdo): Eliminar límite de 500 release definitions en Pipeline Drift Analyzer**: La función `get_release_definitions` de `azdo_pipeline_drift.py` ahora implementa paginación mediante `continuationToken` de la API de Azure DevOps. Se piden páginas de 200 resultados hasta agotar todos los pipelines, eliminando el límite anterior de `$top: 500`. Esto permite analizar drift en proyectos con más de 500 release pipelines. | `scm/azdo/azdo_pipeline_drift.py`, `VERSION`, `README.md`, `README.version.md` |

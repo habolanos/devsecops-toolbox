@@ -1,7 +1,7 @@
 # 📊 Análisis de Herramientas DevSecOps Toolbox
 
-**Fecha:** 27 de Agosto de 2026  
-**Versión:** 1.1.0  
+**Fecha:** 11 de Septiembre de 2026  
+**Versión:** 1.2.0  
 **Objetivo:** Extraer máximo valor de las herramientas GCP, Azure, AWS y AZDO para monitoreo de ambientes
 
 ---
@@ -81,7 +81,7 @@ El DevSecOps Toolbox contiene **40+ herramientas GCP**, **25 herramientas Azure*
 
 | ID | Herramienta | Descripción | Valor DevSecOps |
 |----|-------------|-------------|-----------------|
-| **1** | Monitoreo de Recursos GCP | CPU, memoria, SQL, etc. | ⭐⭐⭐⭐ Baseline de salud |
+| **1** | Monitoreo de Recursos GCP | **AMPLIADO**: GKE enrichment (pods, red, versiones), Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML | ⭐⭐⭐⭐⭐ Baseline + Dashboard |
 | **24** | GKE Node Resources Monitor | CPU/memoria por nodo (HTML) | ⭐⭐⭐⭐ Capacity planning |
 | **25** | GKE Pod Resources Monitor | CPU/memoria por pod | ⭐⭐⭐⭐⭐ Troubleshooting |
 | **2** | Reporte de Despliegues GKE | Detalle de despliegues | ⭐⭐⭐ Auditoría |
@@ -171,6 +171,8 @@ Auditoría de Networking:
 | **17** | Deploy Dependency Checker | ConfigMaps + conexiones a BD | ⭐⭐⭐⭐ Validación |
 | **18** | Cloud Run Checker | Servicios, revisiones, Jobs, IAM | ⭐⭐⭐⭐ Inventario |
 | **19** | Deployment Validator | Validación completa pre-deploy | ⭐⭐⭐⭐⭐ Quality gate |
+
+> **🆕 Nota v1.2.0:** Las herramientas **13 (IP Addresses Checker)** y **14 (GKE Cluster Checker)** están parcialmente cubiertas por el **Tool 1 (Monitoreo de Recursos GCP)** ampliado, que ahora incluye enriquecimiento de clusters GKE (pods, capacidad de red, CIDRs, estado de versión) en una sola ejecución.
 
 **Caso de Uso Integrado:**
 ```
@@ -269,7 +271,7 @@ Auditoría de Políticas:
 
 | ID | Herramienta | Descripción | Valor DevSecOps |
 |----|-------------|-------------|-----------------|
-| **3** | Release CD Health | Score de salud: recencia + estabilidad | ⭐⭐⭐⭐⭐ KPI |
+| **3** | Release CD Health | Score de salud: Recencia(70) + Deploy(20) + Definición(10) = 100 | ⭐⭐⭐⭐⭐ KPI |
 | **5** | Release Deep Dive | Análisis profundo de Release Definition | ⭐⭐⭐⭐ Troubleshooting |
 | **25** | Release Explorer | Explorador interactivo de releases | ⭐⭐⭐⭐ Investigación |
 
@@ -288,7 +290,7 @@ Release Health Monitoring:
 
 | ID | Herramienta | Descripción | Valor DevSecOps |
 |----|-------------|-------------|-----------------|
-| **4** | Pipeline Drift Analyzer | Detecta drift entre pipeline actual y snapshot | ⭐⭐⭐⭐⭐ Compliance |
+| **4** | Pipeline Drift Analyzer | Detecta drift entre pipeline actual y snapshot. **Sin límite de descarga** (paginación continuationToken) | ⭐⭐⭐⭐⭐ Compliance |
 | **19** | Properties Branch Diff | Compara configuración entre ramas | ⭐⭐⭐⭐ Drift detection |
 
 **Caso de Uso Integrado:**
@@ -512,5 +514,11 @@ DESPUÉS DE DEPLOY:
 
 ---
 
-**Documento de Análisis v1.1.0**  
+**Documento de Análisis v1.2.0**  
+**Cambios en v1.2.0:**
+- ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML
+- ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)
+- ✅ Tool 4 (Pipeline Drift): Sin límite de descarga (paginación continuationToken)
+- ✅ Agregada nota sobre cobertura de Tools 13 y 14 por Tool 1
+
 **Próximo:** Guía de Monitoreo Diario
