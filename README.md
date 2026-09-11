@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.77-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.78-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -53,26 +53,7 @@
 
 ## 📦 Instalación
 
-### Opción 1: Winget (Windows Package Manager) — Recomendado para Windows
-
-```powershell
-# Instalar
-winget install habolanos.devsecops-toolbox
-
-# Ejecutar desde cualquier terminal
-devsecops-toolbox
-```
-
-**Detalles:**
-- **Requisitos**: Windows 10 1709+ (build 16299) o Windows 11 con App Installer instalado
-- **Tamaño**: ~420 MB (ejecutable standalone con Python y todas las dependencias incluidas)
-- **Sin dependencias externas**: No requiere instalar Python, pip ni ningún otro prerequisito
-- **Actualización**: `winget upgrade habolanos.devsecops-toolbox`
-- **Desinstalación**: `winget uninstall habolanos.devsecops-toolbox`
-
-> **Nota**: Si `winget` no está disponible, descarga App Installer desde Microsoft Store o usa la Opción 2.
-
-### Opción 2: Ejecutable Compilado (Sin instalar nada)
+### Opción 1: Ejecutable Compilado (Sin instalar nada)
 
 Descarga el ejecutable directamente desde [GitHub Releases](https://github.com/habolanos/devsecops-toolbox/releases):
 
@@ -92,7 +73,7 @@ chmod +x devsecops-toolbox
 
 **Requisitos**: Ninguno (todo incluido en el ejecutable)
 
-### Opción 3: Clonar Repositorio (Para desarrollo)
+### Opción 2: Clonar Repositorio (Para desarrollo)
 
 ```bash
 git clone https://github.com/habolanos/devsecops-toolbox.git
@@ -102,7 +83,7 @@ pip install -e ".[test]"
 
 **Requisitos**: Python 3.11+
 
-### Opción 4: Docker
+### Opción 3: Docker
 
 ```bash
 # Descargar imagen
@@ -138,10 +119,9 @@ El ejecutable se genera en `dist/devsecops-toolbox.exe` (Windows) o `dist/devsec
 
 | Método | Requisitos | Complejidad | Velocidad |
 |--------|-----------|-----------|----------|
-| **Winget** (Opción 1) | Windows 10+ | ⭐ Muy Simple | ⚡ Inmediato |
-| **Ejecutable** (Opción 2) | Ninguno | ⭐ Muy Simple | ⚡ Inmediato |
-| **Clonar repo** (Opción 3) | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
-| **Docker** (Opción 4) | Docker 20.10+ | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
+| **Ejecutable** (Opción 1) | Ninguno | ⭐ Muy Simple | ⚡ Inmediato |
+| **Clonar repo** (Opción 2) | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
+| **Docker** (Opción 3) | Docker 20.10+ | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
 
 ---
 
@@ -1045,7 +1025,6 @@ El toolbox soporta múltiples flujos de despliegue contemporáneos para equipos 
 
 | Canal | Comando | Escenario |
 |-------|---------|-----------|
-| **Winget** | `winget install habolanos.devsecops-toolbox` | Usuarios Windows finales |
 | **Docker Hub** | `docker pull devsecops-toolbox:latest` | Runners CI/CD y entornos efímeros |
 | **GitHub Releases** | Descargar binario | Máquinas sin Python ni Docker |
 | **PyPI** | `pip install devsecops-toolbox` | Integración en otros proyectos Python |
@@ -1260,9 +1239,6 @@ devsecops-toolbox/
 │   ├── config.json.template      # Template de configuración
 │   └── README.md                 # Documentación detallada
 ├── build_executables.py          # Compilador de ejecutables (PyInstaller)
-├── winget/                       # Manifests de Windows Package Manager
-│   └── manifests/h/habolanos/devsecops-toolbox/
-│       └── 1.7.20/               # YAML manifests por versión
 ├── dist/                         # Ejecutables compilados
 ├── docker/                       # Configuración Docker
 │   ├── Dockerfile                # Imagen Docker
@@ -1339,6 +1315,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Versión | Fecha | Descripción | Archivos / Scope |
 |---|---|---|---|
+| **1.7.78** | 2026-09-11 | **refactor: Remover winget distribution del proyecto**: Eliminado el directorio `winget/` completo (manifests YAML, README). Removida la sección "Opción 1: Winget" de README.md. Opciones de instalación reenumeradas (Ejecutable=1, Clonar repo=2, Docker=3). Removida fila Winget de tabla comparativa y tabla de distribución multi-canal. Removida entrada `winget/` del árbol de estructura. Limpiadas referencias históricas en README.version.md (1.7.20 y 1.7.54). | `winget/` (eliminado), `README.md`, `README.version.md`, `VERSION` |
 | **1.7.77** | 2026-09-11 | **fix(security): Resolver 6 alerts de CodeQL code scanning**: (1) `toolbox_build_executables.py`: chmod 0o755 anotado como intencional para ejecutables. (2) `pipeline_cd_backup_restore.py`: agregada función `redact_secret_values()` que redacta valores de variables `isSecret=True` antes de persistir JSON/YAML. (3) `azdo_pipeline_history.py` + `azdo_release_deep_dive.py` + `azdo_pipeline_drift.py` + `azdo_release_cd_health.py` + `azdo_pr_pipeline_analyzer.py` + `azdo_pr_master_checker.py`: funciones `vsrm()`/`vsrm_base()` ahora idempotentes (no duplican `vsrm.` si ya está presente). (4) `generar-inventario-csv.py`: reemplazado `tempfile.mktemp` (deprecated/inseguro) por `tempfile.mkstemp`. (5) `deployment_validator.py`: agregada función `_redact_cmd()` que redacta passwords/tokens/api-keys antes de loguear comandos en debug. (6) `azdo_task_validator.py`: `check_image_exists()` ahora usa `urlparse` para validar hostname en lugar de `in` sobre URL completa. | `toolbox_build_executables.py`, `scm/azdo/pipeline_cd_backup_restore.py`, `scm/azdo/azdo_pipeline_history.py`, `scm/azdo/azdo_release_deep_dive.py`, `scm/azdo/azdo_pipeline_drift.py`, `scm/azdo/azdo_release_cd_health.py`, `scm/azdo/azdo_pr_pipeline_analyzer.py`, `scm/azdo/azdo_pr_master_checker.py`, `scm/gcp/inventory/generar-inventario-csv.py`, `scm/gcp/connectivity/deployment_validator.py`, `scm/azdo/azdo_task_validator.py`, `scm/tests/test_azdo_pipeline_history.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.76** | 2026-09-11 | **docs(operation): Actualizar guías de monitoreo con mejoras recientes**: (1) README.md del índice actualizado a v1.3.0 con notas sobre Tool 1 (GCP Monitor) ampliado, Tool 3 (Release CD Health) nueva fórmula scoring, Tool 4 (Pipeline Drift) sin límite. (2) 00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md v1.2.0 con descripciones actualizadas. (3) 01_GUIA_MONITOREO_DIARIO.md v1.2.0 con notas sobre cobertura de Tools 13/14 por Tool 1. (4) 02_GUIA_AUDITORIA_SEMANAL.md v1.2.0 y 03_GUIA_PRE_DEPLOY_VALIDATION.md v1.2.0 con referencias actualizadas. | `operation/monitoring/README.md`, `operation/monitoring/00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md`, `operation/monitoring/01_GUIA_MONITOREO_DIARIO.md`, `operation/monitoring/02_GUIA_AUDITORIA_SEMANAL.md`, `operation/monitoring/03_GUIA_PRE_DEPLOY_VALIDATION.md`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.75** | 2026-09-10 | **fix(gcp): Fix Bases de Datos en 0 en dashboard HTML**: La función `_sql_database_count` de `generate_gcp_dashboard.py` no manejaba strings numéricos para el campo `databases` (ej: `'16'`, `'63'`). Como el JSON exportado por `gcp_monitor.py` guarda los conteos como strings, el KPI "Bases de Datos" mostraba 0 y la columna BDs mostraba "N/A" para todas las instancias Cloud SQL. Se agregó `isinstance(databases, str) and databases.isdigit()` para parsear strings numéricos. Ahora el KPI muestra 326 y las filas SQL muestran los conteos reales. | `scm/gcp/monitoring/generate_gcp_dashboard.py`, `VERSION`, `README.md`, `README.version.md` |
