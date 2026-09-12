@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.80-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.81-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -30,6 +30,7 @@
 - [🏷️ Versionado Semántico](#️-versionado-semántico)
 - [📝 Contribuir](#-contribuir)
 - [📜 Licencia](#-licencia)
+- [📚 Historial de Cambios](README.version.md)
 
 ---
 
@@ -1286,6 +1287,8 @@ python scripts/bump_version.py --validate
 ## 📜 Licencia
 
 Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
+
+> **📚 Historial de cambios completo:** [`README.version.md`](README.version.md)
 
 ---
 
