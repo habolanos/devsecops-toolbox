@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.78-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.79-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -53,27 +53,7 @@
 
 ## 📦 Instalación
 
-### Opción 1: Ejecutable Compilado (Sin instalar nada)
-
-Descarga el ejecutable directamente desde [GitHub Releases](https://github.com/habolanos/devsecops-toolbox/releases):
-
-**Windows** 🪟
-```powershell
-# Descargar devsecops-toolbox.exe desde la página de releases
-# Ejecutar directamente
-.\devsecops-toolbox.exe
-```
-
-**Linux** 🐧
-```bash
-# Descargar devsecops-toolbox desde la página de releases
-chmod +x devsecops-toolbox
-./devsecops-toolbox
-```
-
-**Requisitos**: Ninguno (todo incluido en el ejecutable)
-
-### Opción 2: Clonar Repositorio (Para desarrollo)
+### Opción 1: Clonar Repositorio (Para desarrollo)
 
 ```bash
 git clone https://github.com/habolanos/devsecops-toolbox.git
@@ -83,7 +63,7 @@ pip install -e ".[test]"
 
 **Requisitos**: Python 3.11+
 
-### Opción 3: Docker
+### Opción 2: Docker
 
 ```bash
 # Descargar imagen
@@ -119,9 +99,8 @@ El ejecutable se genera en `dist/devsecops-toolbox.exe` (Windows) o `dist/devsec
 
 | Método | Requisitos | Complejidad | Velocidad |
 |--------|-----------|-----------|----------|
-| **Ejecutable** (Opción 1) | Ninguno | ⭐ Muy Simple | ⚡ Inmediato |
-| **Clonar repo** (Opción 2) | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
-| **Docker** (Opción 3) | Docker 20.10+ | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
+| **Clonar repo** (Opción 1) | Python 3.11+ | ⭐⭐ Simple | ⚡⚡ Rápido |
+| **Docker** (Opción 2) | Docker 20.10+ | ⭐⭐⭐ Moderado | ⚡⚡⚡ Más lento |
 
 ---
 
@@ -1315,6 +1294,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 | Versión | Fecha | Descripción | Archivos / Scope |
 |---|---|---|---|
+| **1.7.79** | 2026-09-11 | **refactor: Remover Opción Ejecutable Compilado de README**: Removida la sección "Opción 1: Ejecutable Compilado (Sin instalar nada)" que descargaba binarios desde GitHub Releases. Opciones reenumeradas: Clonar repo=1, Docker=2. Tabla comparativa actualizada. | `README.md`, `VERSION`, `README.version.md` |
 | **1.7.78** | 2026-09-11 | **refactor: Remover winget distribution del proyecto**: Eliminado el directorio `winget/` completo (manifests YAML, README). Removida la sección "Opción 1: Winget" de README.md. Opciones de instalación reenumeradas (Ejecutable=1, Clonar repo=2, Docker=3). Removida fila Winget de tabla comparativa y tabla de distribución multi-canal. Removida entrada `winget/` del árbol de estructura. Limpiadas referencias históricas en README.version.md (1.7.20 y 1.7.54). | `winget/` (eliminado), `README.md`, `README.version.md`, `VERSION` |
 | **1.7.77** | 2026-09-11 | **fix(security): Resolver 6 alerts de CodeQL code scanning**: (1) `toolbox_build_executables.py`: chmod 0o755 anotado como intencional para ejecutables. (2) `pipeline_cd_backup_restore.py`: agregada función `redact_secret_values()` que redacta valores de variables `isSecret=True` antes de persistir JSON/YAML. (3) `azdo_pipeline_history.py` + `azdo_release_deep_dive.py` + `azdo_pipeline_drift.py` + `azdo_release_cd_health.py` + `azdo_pr_pipeline_analyzer.py` + `azdo_pr_master_checker.py`: funciones `vsrm()`/`vsrm_base()` ahora idempotentes (no duplican `vsrm.` si ya está presente). (4) `generar-inventario-csv.py`: reemplazado `tempfile.mktemp` (deprecated/inseguro) por `tempfile.mkstemp`. (5) `deployment_validator.py`: agregada función `_redact_cmd()` que redacta passwords/tokens/api-keys antes de loguear comandos en debug. (6) `azdo_task_validator.py`: `check_image_exists()` ahora usa `urlparse` para validar hostname en lugar de `in` sobre URL completa. | `toolbox_build_executables.py`, `scm/azdo/pipeline_cd_backup_restore.py`, `scm/azdo/azdo_pipeline_history.py`, `scm/azdo/azdo_release_deep_dive.py`, `scm/azdo/azdo_pipeline_drift.py`, `scm/azdo/azdo_release_cd_health.py`, `scm/azdo/azdo_pr_pipeline_analyzer.py`, `scm/azdo/azdo_pr_master_checker.py`, `scm/gcp/inventory/generar-inventario-csv.py`, `scm/gcp/connectivity/deployment_validator.py`, `scm/azdo/azdo_task_validator.py`, `scm/tests/test_azdo_pipeline_history.py`, `VERSION`, `README.md`, `README.version.md` |
 | **1.7.76** | 2026-09-11 | **docs(operation): Actualizar guías de monitoreo con mejoras recientes**: (1) README.md del índice actualizado a v1.3.0 con notas sobre Tool 1 (GCP Monitor) ampliado, Tool 3 (Release CD Health) nueva fórmula scoring, Tool 4 (Pipeline Drift) sin límite. (2) 00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md v1.2.0 con descripciones actualizadas. (3) 01_GUIA_MONITOREO_DIARIO.md v1.2.0 con notas sobre cobertura de Tools 13/14 por Tool 1. (4) 02_GUIA_AUDITORIA_SEMANAL.md v1.2.0 y 03_GUIA_PRE_DEPLOY_VALIDATION.md v1.2.0 con referencias actualizadas. | `operation/monitoring/README.md`, `operation/monitoring/00_ANALISIS_HERRAMIENTAS_DISPONIBLES.md`, `operation/monitoring/01_GUIA_MONITOREO_DIARIO.md`, `operation/monitoring/02_GUIA_AUDITORIA_SEMANAL.md`, `operation/monitoring/03_GUIA_PRE_DEPLOY_VALIDATION.md`, `VERSION`, `README.md`, `README.version.md` |
