@@ -6,8 +6,25 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import sys
 import os
+import importlib.util
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+CLOUD_RUN_DIR = Path(__file__).parents[2] / "gcp" / "cloud-run"
+GCP_DIR = Path(__file__).parents[2] / "gcp"
+sys.path.insert(0, str(CLOUD_RUN_DIR))
+sys.path.insert(0, str(GCP_DIR))
+
+import tools as gcp_tools
+
+_module_spec = importlib.util.spec_from_file_location(
+    "gcp_cloudrun_vpc_ip_diagnostic",
+    CLOUD_RUN_DIR / "gcp_cloudrun_vpc_ip_diagnostic.py",
+)
+cloudrun_vpc_diagnostic = importlib.util.module_from_spec(_module_spec)
+sys.modules[_module_spec.name] = cloudrun_vpc_diagnostic
+_module_spec.loader.exec_module(cloudrun_vpc_diagnostic)
 
 
 class TestGCPTools:
@@ -64,6 +81,39 @@ class TestGCPTools:
         assert len(services) == 3
         active_count = sum(1 for s in services if s['status'] == 'ACTIVE')
         assert active_count == 2
+
+    def test_cloud_run_ip_usage_is_current_over_total(self):
+        """El formato de capacidad muestra IPs actuales sobre IPs totales."""
+        format_ip_usage = cloudrun_vpc_diagnostic.format_ip_usage
+
+        assert format_ip_usage(12, 252) == "12/252"
+        assert format_ip_usage(-1, 252) == "0/252"
+
+    def test_cloud_run_team_alias_expands_to_projects(self):
+        """Los alias de equipo se convierten en proyectos GCP predefinidos."""
+        assert gcp_tools.resolve_cloud_run_projects("WMS") == [
+            "cpl-cs-wms-dev-30112023",
+            "cpl-cs-wms-qa-30112023",
+            "cpl-cs-wms-stag-09042025",
+        ]
+        assert gcp_tools.resolve_cloud_run_projects("custom-project") == ["custom-project"]
+
+    def test_cloud_run_direct_vpc_network_is_extracted(self):
+        """La configuración Direct VPC Egress expone red y subred."""
+        extract = cloudrun_vpc_diagnostic.extract_direct_vpc_network
+
+        assert extract({
+            "run.googleapis.com/network-interfaces": (
+                '[{"network":"projects/host/global/networks/shared", '
+                '"subnetwork":"projects/host/regions/us-central1/subnetworks/run"}]'
+            )
+        }) == ("shared", "run")
+
+    def test_cloud_run_vpc_diagnostic_supports_html_output(self):
+        """La opción 35 declara salida HTML para el launcher."""
+        tool = gcp_tools.TOOLS["35"]
+        assert "--output" in tool["args"]
+        assert tool["path"].endswith("gcp_cloudrun_vpc_ip_diagnostic.py")
 
     def test_gcp_connectivity_checker(self):
         """Test Connectivity Checker"""

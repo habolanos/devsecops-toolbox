@@ -97,6 +97,7 @@ class Colors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+    DIM = '\033[2m'
 
 # Configuración de rutas
 BASE_DIR = Path(__file__).parent.absolute()
@@ -115,6 +116,22 @@ DEFAULT_CLUSTER_ID = "gke-cs-wms-qa-01"
 
 # Deployment por defecto para checkers de conectividad
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
+
+# Proyectos GCP predefinidos por equipo para el diagnóstico Cloud Run
+CLOUD_RUN_PROJECTS_BY_TEAM = {
+    "CMANAGER": ["cpl-cmanager-dev-13072023", "cpl-cmanager-qa-13072023", "cpl-cmanager-stag-01052025"],
+    "CSC": ["cpl-cs-csc-dev-16112023", "cpl-cs-csc-qa-16112023", "cpl-cs-csc-stag-11042025"],
+    "WMS": ["cpl-cs-wms-dev-30112023", "cpl-cs-wms-qa-30112023", "cpl-cs-wms-stag-09042025"],
+    "OMS": ["cpl-oms-dev-08082024", "cpl-oms-qa-08062023", "cpl-oms-stag-09042025"],
+}
+
+
+def resolve_cloud_run_projects(project_input: str):
+    """Expande un alias de equipo o devuelve los IDs ingresados."""
+    tokens = [item.strip() for item in project_input.split(",") if item.strip()]
+    if len(tokens) == 1 and tokens[0].upper() in CLOUD_RUN_PROJECTS_BY_TEAM:
+        return list(CLOUD_RUN_PROJECTS_BY_TEAM[tokens[0].upper()])
+    return tokens
 
 # Scripts que soportan multiples proyectos separados por coma en --project
 MULTI_PROJECT_SCRIPTS = {
@@ -423,8 +440,17 @@ TOOLS = {
         "group": "cloudrun",
         "status": "ready"
     },
-    # ══════════ CONSOLIDATION (35-37) ══════════
     "35": {
+        "name": "Cloud Run VPC IP Diagnostic",
+        "description": "Diagnóstico de saturación IPs en VPC Connectors y planificación de rangos CIDR por ambiente (Dev/QA/Stg/Prod)",
+        "path": "cloud-run/gcp_cloudrun_vpc_ip_diagnostic.py",
+        "args": ["--projects", "--host-project", "--host-projects", "--auto-detect-host", "--region", "--output", "--debug", "--parallel", "--max-workers", "--timezone"],
+        "requirements": "monitoring/requirements.txt",
+        "group": "cloudrun",
+        "status": "ready"
+    },
+    # ══════════ CONSOLIDATION (36-38) ══════════
+    "36": {
         "name": "Cloud Functions Analyzer",
         "description": "Análisis profundo de Cloud Functions (seguridad, costos, triggers, performance)",
         "path": "cloud-functions/gcp_cloud_functions_analyzer.py",
@@ -433,7 +459,7 @@ TOOLS = {
         "group": "consolidation",
         "status": "ready"
     },
-    "36": {
+    "37": {
         "name": "Infrastructure Consolidator",
         "description": "Consolida Load Balancers, Cloud Run y Cloud Functions con mapeo de relaciones",
         "path": "consolidation/gcp_infrastructure_consolidator.py",
@@ -442,7 +468,7 @@ TOOLS = {
         "group": "consolidation",
         "status": "ready"
     },
-    "37": {
+    "38": {
         "name": "Unified Infrastructure Dashboard",
         "description": "Dashboard ejecutivo unificado con alertas y recomendaciones automáticas",
         "path": "consolidation/gcp_unified_infrastructure_dashboard.py",
@@ -451,8 +477,8 @@ TOOLS = {
         "group": "consolidation",
         "status": "ready"
     },
-    # ══════════ SERVICE ACCOUNTS (38) ══════════
-    "38": {
+    # ══════════ SERVICE ACCOUNTS (40) ══════════
+    "40": {
         "name": "Service Accounts Multi-Project Reporter",
         "description": "Extrae, analiza y reporta service accounts de múltiples proyectos GCP con análisis de roles, permisos temporales y días restantes",
         "path": "service-accounts/gcp_sa_multi_project_reporter.py",
@@ -462,8 +488,8 @@ TOOLS = {
         "status": "ready",
         "additional_args": ["--config", "scm/config.json"]
     },
-    # ══════════ EVENT TRACKER (39) ══════════
-    "39": {
+    # ══════════ EVENT TRACKER (41) ══════════
+    "41": {
         "name": "Event Tracker - Rastreo de Eventos",
         "description": "Rastreo de eventos, caídas de servicio e interrupciones en Cloud Run y Kubernetes. Busca en Cloud Logging, Monitoring, Audit Logs, Kubernetes Events y Pod Logs. Genera reportes en JSON, CSV, HTML, Markdown con análisis de causa raíz",
         "path": "event-tracker/event_tracker.py",
@@ -472,8 +498,8 @@ TOOLS = {
         "group": "monitoring",
         "status": "ready"
     },
-    # ══════════ DEPLOYMENTS (40) ══════════
-    "40": {
+    # ══════════ DEPLOYMENTS (42) ══════════
+    "42": {
         "name": "Deployments Off Analyzer",
         "description": "Analiza deployments no running en GKE con diagnóstico automático de causa raíz y recomendaciones",
         "path": "deployments_off/gcp_deployments_off_analyzer.py",
@@ -482,8 +508,8 @@ TOOLS = {
         "group": "kubernetes",
         "status": "ready"
     },
-    # ══════════ PUB/SUB MONITOR (41) ══════════
-    "41": {
+    # ══════════ PUB/SUB MONITOR (43) ══════════
+    "43": {
         "name": "Pub/Sub Monitor - Multi-Proyecto",
         "description": "Monitoreo profesional de Google Cloud Pub/Sub con soporte multi-proyecto, alertas preventivas (25+ reglas) y dashboards ejecutivos. Soporta 12 proyectos GCP de CPL (cmanager, cs-csc, cs-wms, oms)",
         "path": "pubsub_monitor/run.py",
@@ -499,7 +525,7 @@ TOOLS = {
             "name": "Ejecutar Todos (Checkers)",
             "description": "Ejecuta todos los checkers con proyecto default y output JSON",
             "type": "auto_run",
-            "exclude": ["1", "2", "39"],
+            "exclude": ["1", "2", "41"],
             "reason": "Excluye: Pod Connectivity (requiere deployment), Artifact Registry (requiere CSV), Event Tracker (requiere argumentos interactivos)"
         },
         "Q": {
@@ -1079,6 +1105,163 @@ def run_tool(tool_key: str):
             print(f"{Colors.GREEN}Usando región: {region}{Colors.ENDC}")
         args.extend(["--region", region])
 
+    # Manejo específico para Cloud Run VPC IP Diagnostic (--projects, --host-project, --host-projects)
+    if "--projects" in tool_args:
+        print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}📦 PROYECTOS DE SERVICIOS (Service Projects){Colors.ENDC}")
+        print(f"{Colors.CYAN}   Donde están desplegados los servicios Cloud Run{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}")
+
+        print(f"{Colors.BOLD}Ingrese 1-4 proyectos GCP (dev,qa,stg,prod separados por comas):{Colors.ENDC}")
+        print(f"{Colors.DIM}Equipos disponibles:{Colors.ENDC}")
+        for team, projs in CLOUD_RUN_PROJECTS_BY_TEAM.items():
+            print(f"{Colors.DIM}  {team}: {', '.join(projs)}{Colors.ENDC}")
+        print(f"{Colors.DIM}Ejemplos combinados:{Colors.ENDC}")
+        print(f"{Colors.DIM}  1 ambiente: cpl-cs-wms-prod (o solo prod){Colors.ENDC}")
+        print(f"{Colors.DIM}  3 ambientes (CSC): cpl-cs-csc-dev-16112023,cpl-cs-csc-qa-16112023,cpl-cs-csc-stag-11042025{Colors.ENDC}")
+        print(f"{Colors.DIM}  También puede ingresar directamente: CMANAGER, CSC, WMS u OMS{Colors.ENDC}")
+        print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
+        projects_input = input().strip()
+        if not projects_input:
+            print(f"{Colors.FAIL}Se requiere al menos 1 proyecto o un equipo válido.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+
+        project_tokens = [p.strip() for p in projects_input.split(',') if p.strip()]
+        # Un alias de equipo selecciona automáticamente sus proyectos Dev/QA/Stg.
+        projects_list = resolve_cloud_run_projects(projects_input)
+        if projects_list != project_tokens:
+            print(f"{Colors.GREEN}✅ Equipo seleccionado: {project_tokens[0].upper()}{Colors.ENDC}")
+
+        if len(projects_list) < 1 or len(projects_list) > 4:
+            print(f"{Colors.FAIL}Se esperan entre 1 y 4 proyectos. Recibidos: {len(projects_list)}{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        env_names = ["dev", "qa", "stg", "prod"][:len(projects_list)]
+        proj_display = ", ".join([f"{env_names[i]}={projects_list[i]}" for i in range(len(projects_list))])
+        print(f"{Colors.GREEN}✅ Service Projects: {proj_display}{Colors.ENDC}")
+        args.extend(["--projects", ','.join(projects_list)])
+
+    if "--host-project" in tool_args and "--host-projects" in tool_args:
+        print(f"\n{Colors.CYAN}{'='*70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}🌐 PROYECTO HOST (Shared VPC Host Project){Colors.ENDC}")
+        print(f"{Colors.CYAN}   Donde viven los VPC Connectors, Subnets y Firewall rules{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}")
+
+        # Ofrecer auto-detección si el script lo soporta
+        if "--auto-detect-host" in tool_args:
+            print(f"{Colors.BOLD}¿Auto-detectar Host Project(s) consultando Shared VPC API? (s/n) [s]:{Colors.ENDC} ", end="")
+            auto_detect = input().strip().lower()
+            if auto_detect != "n":
+                args.append("--auto-detect-host")
+                print(f"{Colors.GREEN}✅ Auto-detección activada - el script consultará la Shared VPC de cada service project{Colors.ENDC}")
+            else:
+                # Preguntar manualmente
+                num_envs = len(projects_list)
+                print(f"{Colors.BOLD}¿Usar un solo Host Project (Shared VPC) para todos los {num_envs} ambiente(s)? (s/n) [s]:{Colors.ENDC} ", end="")
+                single_host = input().strip().lower()
+                if single_host != "n":
+                    print(f"{Colors.BOLD}Ingrese el Host Project ID (Shared VPC host):{Colors.ENDC}")
+                    print(f"{Colors.DIM}Ejemplo: cpl-corp-host-prod{Colors.ENDC}")
+                    print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
+                    host_project = input().strip()
+                    if not host_project:
+                        print(f"{Colors.FAIL}Se requiere el Host Project ID.{Colors.ENDC}")
+                        input("\nPresione Enter para continuar...")
+                        return
+                    print(f"{Colors.GREEN}✅ Host Project único: {host_project} (para {', '.join(env_names)}){Colors.ENDC}")
+                    args.extend(["--host-project", host_project])
+                else:
+                    print(f"{Colors.BOLD}Ingrese {num_envs} Host Project(s) (uno por ambiente, separados por comas):{Colors.ENDC}")
+                    print(f"{Colors.DIM}Ejemplo para {num_envs} ambiente(s): {','.join([f'cpl-corp-host-{e}' for e in env_names])}{Colors.ENDC}")
+                    print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
+                    host_projects_input = input().strip()
+                    if not host_projects_input:
+                        print(f"{Colors.FAIL}Se requieren {num_envs} host project(s).{Colors.ENDC}")
+                        input("\nPresione Enter para continuar...")
+                        return
+                    host_projects_list = [p.strip() for p in host_projects_input.split(',') if p.strip()]
+                    if len(host_projects_list) != num_envs:
+                        print(f"{Colors.FAIL}Se esperan exactamente {num_envs} host project(s). Recibidos: {len(host_projects_list)}{Colors.ENDC}")
+                        input("\nPresione Enter para continuar...")
+                        return
+                    host_display = ", ".join([f"{env_names[i]}={host_projects_list[i]}" for i in range(num_envs)])
+                    print(f"{Colors.GREEN}✅ Host Projects: {host_display}{Colors.ENDC}")
+                    args.extend(["--host-projects", ','.join(host_projects_list)])
+        else:
+            # Sin auto-detect, preguntar manualmente
+            num_envs = len(projects_list)
+            print(f"{Colors.BOLD}¿Usar un solo Host Project (Shared VPC) para todos los {num_envs} ambiente(s)? (s/n) [s]:{Colors.ENDC} ", end="")
+            single_host = input().strip().lower()
+            if single_host != "n":
+                print(f"{Colors.BOLD}Ingrese el Host Project ID (Shared VPC host):{Colors.ENDC}")
+                print(f"{Colors.DIM}Ejemplo: cpl-corp-host-prod{Colors.ENDC}")
+                print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
+                host_project = input().strip()
+                if not host_project:
+                    print(f"{Colors.FAIL}Se requiere el Host Project ID.{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    return
+                print(f"{Colors.GREEN}✅ Host Project único: {host_project} (para {', '.join(env_names)}){Colors.ENDC}")
+                args.extend(["--host-project", host_project])
+            else:
+                print(f"{Colors.BOLD}Ingrese {num_envs} Host Project(s) (uno por ambiente, separados por comas):{Colors.ENDC}")
+                print(f"{Colors.DIM}Ejemplo para {num_envs} ambiente(s): {','.join([f'cpl-corp-host-{e}' for e in env_names])}{Colors.ENDC}")
+                print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
+                host_projects_input = input().strip()
+                if not host_projects_input:
+                    print(f"{Colors.FAIL}Se requieren {num_envs} host project(s).{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    return
+                host_projects_list = [p.strip() for p in host_projects_input.split(',') if p.strip()]
+                if len(host_projects_list) != num_envs:
+                    print(f"{Colors.FAIL}Se esperan exactamente {num_envs} host project(s). Recibidos: {len(host_projects_list)}{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    return
+                host_display = ", ".join([f"{env_names[i]}={host_projects_list[i]}" for i in range(num_envs)])
+                print(f"{Colors.GREEN}✅ Host Projects: {host_display}{Colors.ENDC}")
+                args.extend(["--host-projects", ','.join(host_projects_list)])
+
+    # Argumentos opcionales para Cloud Run VPC IP Diagnostic
+    if "--debug" in tool_args:
+        print(f"\n{Colors.BOLD}¿Modo debug? (s/n) [n]:{Colors.ENDC} ", end="")
+        debug_choice = input().strip().lower()
+        if debug_choice == "s":
+            args.append("--debug")
+            print(f"{Colors.GREEN}Modo debug activado{Colors.ENDC}")
+
+    if "--parallel" in tool_args:
+        print(f"\n{Colors.BOLD}¿Ejecución paralela? (s/n) [s]:{Colors.ENDC} ", end="")
+        parallel_choice = input().strip().lower()
+        if parallel_choice == "n":
+            # El script usa --no-parallel para desactivar
+            pass  # No agregar nada, default es parallel
+        else:
+            print(f"{Colors.GREEN}Ejecución paralela activada (default){Colors.ENDC}")
+
+    if "--max-workers" in tool_args:
+        print(f"\n{Colors.BOLD}Max workers paralelos [4]:{Colors.ENDC} ", end="")
+        max_workers = input().strip()
+        if max_workers:
+            try:
+                mw = int(max_workers)
+                if mw > 0:
+                    args.extend(["--max-workers", str(mw)])
+                    print(f"{Colors.GREEN}Max workers: {mw}{Colors.ENDC}")
+                else:
+                    print(f"{Colors.GREEN}Usando default: 4{Colors.ENDC}")
+            except ValueError:
+                print(f"{Colors.GREEN}Usando default: 4{Colors.ENDC}")
+
+    if "--timezone" in tool_args:
+        print(f"\n{Colors.BOLD}Timezone [America/Mazatlan]:{Colors.ENDC} ", end="")
+        tz = input().strip()
+        if tz:
+            args.extend(["--timezone", tz])
+            print(f"{Colors.GREEN}Timezone: {tz}{Colors.ENDC}")
+        else:
+            print(f"{Colors.GREEN}Usando default: America/Mazatlan{Colors.ENDC}")
+
     if "--project1" in tool_args:
         print(f"\n{Colors.BOLD}Proyecto GCP 1 - referencia [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         project1 = input().strip()
@@ -1248,17 +1431,16 @@ def run_tool(tool_key: str):
     
     if "--output" in tool_args or "-o" in tool_args:
         is_gateway = "gateway-services" in tool.get("path", "")
-        default_fmt = "html" if is_gateway else "json"
-        options_text = "json/csv/html/ninguno" if is_gateway else "json/csv/ninguno"
+        is_cloudrun_vpc = "gcp_cloudrun_vpc_ip_diagnostic" in tool.get("path", "")
+        supports_html = is_gateway or is_cloudrun_vpc
+        default_fmt = "html" if supports_html else "json"
+        options_text = "json/csv/html/ninguno" if supports_html else "json/csv/ninguno"
         print(f"\n{Colors.BOLD}¿Exportar resultado? ({options_text}) [{default_fmt}]:{Colors.ENDC} ", end="")
         output_format = input().strip().lower()
         if output_format in ["json", "csv", "html"]:
             args.extend(["-o", output_format])
         elif output_format == "" or output_format == default_fmt:
-            if is_gateway:
-                args.extend(["-o", "html"])
-            else:
-                args.extend(["-o", "json"])
+            args.extend(["-o", default_fmt])
     
     # Añadir argumentos adicionales si los hay
     if "additional_args" in tool:

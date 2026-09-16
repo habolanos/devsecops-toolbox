@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.81-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.88-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1284,7 +1284,24 @@ python scripts/bump_version.py --validate
 
 ---
 
-## 📜 Licencia
+## � Historial reciente
+
+| Fecha | Versión | Cambio |
+|-------|---------|--------|
+| 2026-09-15 | **1.7.88** | La opción 35 instala automáticamente Rich mediante sus requirements y evita el error `Table is not defined` en venv nuevos. |
+| 2026-09-15 | **1.7.87** | La opción 35 ahora ofrece HTML y lo genera por defecto; el resumen terminal incluye IPs actuales/total y CIDR. |
+| 2026-09-15 | **1.7.86** | El resumen Cloud Run VPC IP ahora muestra IPs actuales/total y CIDR, incluyendo subredes de Direct VPC Egress. |
+| 2026-09-15 | **1.7.85** | Los alias `CMANAGER`, `CSC`, `WMS` y `OMS` ahora se convierten automáticamente en sus proyectos GCP Dev/QA/Stg. |
+| 2026-09-15 | **1.7.84** | Se conserva el spinner animado del diagnóstico Cloud Run, actualizando la misma línea para evitar repeticiones en WSL. |
+| 2026-09-15 | **1.7.83** | Se elimina el spinner de Rich del diagnóstico Cloud Run VPC IP para evitar que se imprima repetidamente en WSL/terminales incompatibles. |
+| 2026-09-15 | **1.7.82** | Diagnóstico Cloud Run VPC IP: tablas de terminal y HTML con IPs actuales/total (`actual/total`) y prueba unitaria de formato. |
+| 2026-09-11 | **1.7.81** | Mejoras previas del toolbox y consolidación de herramientas GCP. |
+
+El historial completo se encuentra en [`README.version.md`](README.version.md).
+
+---
+
+## �📜 Licencia
 
 Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
 
