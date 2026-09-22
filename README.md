@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.88-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.89-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-21 | **1.7.89** | Release Explorer diff: se restaura la tabla de Stages y se blinda el renderizado contra valores `None` y markup Rich en inputs de tasks. |
 | 2026-09-15 | **1.7.88** | La opción 35 instala automáticamente Rich mediante sus requirements y evita el error `Table is not defined` en venv nuevos. |
 | 2026-09-15 | **1.7.87** | La opción 35 ahora ofrece HTML y lo genera por defecto; el resumen terminal incluye IPs actuales/total y CIDR. |
 | 2026-09-15 | **1.7.86** | El resumen Cloud Run VPC IP ahora muestra IPs actuales/total y CIDR, incluyendo subredes de Direct VPC Egress. |

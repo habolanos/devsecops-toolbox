@@ -22,6 +22,7 @@ from rich.prompt import Prompt, IntPrompt
 from rich import box
 from rich.syntax import Syntax
 from rich.columns import Columns
+from rich.markup import escape
 
 try:
     from export_manager import ExportManager
@@ -116,15 +117,25 @@ def extract_build_ids(artifacts: List[Dict]) -> str:
     return ", ".join(ids) if ids else "N/A"
 
 
+def safe_str(value: Any, default: str = "N/A") -> str:
+    """Convierte cualquier valor a str seguro para renderizar con Rich."""
+    if value is None:
+        return default
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    return str(value)
+
+
 def status_color(status: str) -> str:
-    return STATUS_COLORS.get(status.lower().replace(" ", ""), "white")
+    return STATUS_COLORS.get(safe_str(status, "").lower().replace(" ", ""), "white")
 
 
-def cell(val_a: str, val_b: str) -> Tuple[str, str]:
+def cell(val_a: Any, val_b: Any) -> Tuple[str, str]:
     """Retorna string con color para tabla diff."""
-    if val_a == val_b:
-        return f"[green]{val_a}[/green]", f"[green]{val_b}[/green]"
-    return f"[red]{val_a}[/red]", f"[red]{val_b}[/red]"
+    sa, sb = safe_str(val_a), safe_str(val_b)
+    if sa == sb:
+        return f"[green]{escape(sa)}[/green]", f"[green]{escape(sb)}[/green]"
+    return f"[red]{escape(sa)}[/red]", f"[red]{escape(sb)}[/red]"
 
 
 def side_cell(val: str, exists: bool) -> str:
@@ -294,8 +305,8 @@ def print_diff(release_a: Dict, release_b: Dict):
 
         for label, key in fields:
             if isinstance(key, tuple):
-                val_a = release_a.get(key[0], {}).get(key[1], "N/A")
-                val_b = release_b.get(key[0], {}).get(key[1], "N/A")
+                val_a = (release_a.get(key[0]) or {}).get(key[1], "N/A")
+                val_b = (release_b.get(key[0]) or {}).get(key[1], "N/A")
             else:
                 val_a = release_a.get(key, "N/A") or "N/A"
                 val_b = release_b.get(key, "N/A") or "N/A"
@@ -314,21 +325,21 @@ def print_diff(release_a: Dict, release_b: Dict):
         t.add_column(f"BuildId #{id_b}")
         t.add_column(f"Versión #{id_b}")
 
-        arts_a = {a.get("alias", "N/A"): a for a in release_a.get("artifacts", [])}
-        arts_b = {a.get("alias", "N/A"): a for a in release_b.get("artifacts", [])}
+        arts_a = {safe_str(a.get("alias")): a for a in release_a.get("artifacts") or []}
+        arts_b = {safe_str(a.get("alias")): a for a in release_b.get("artifacts") or []}
         all_aliases = sorted(set(list(arts_a.keys()) + list(arts_b.keys())))
 
         for alias in all_aliases:
             in_a = alias in arts_a
             in_b = alias in arts_b
             def get_vals(art):
-                ref = art.get("definitionReference", {}).get("version", {})
+                ref = (art.get("definitionReference") or {}).get("version") or {}
                 return ref.get("id", "N/A"), ref.get("name", "N/A")
             bid_a, ver_a = get_vals(arts_a[alias]) if in_a else ("N/A", "N/A")
             bid_b, ver_b = get_vals(arts_b[alias]) if in_b else ("N/A", "N/A")
             cbid_a, cbid_b = cell(bid_a, bid_b)
             cver_a, cver_b = cell(ver_a, ver_b)
-            t.add_row(alias, cbid_a, cver_a, cbid_b, cver_b)
+            t.add_row(escape(safe_str(alias)), cbid_a, cver_a, cbid_b, cver_b)
         return t
 
     console.print(Panel(artifact_table(), title="📦 Artefactos", border_style="green"))
@@ -344,8 +355,8 @@ def print_diff(release_a: Dict, release_b: Dict):
         t.add_column(f"Pre-App #{id_b}")
         t.add_column(f"Post-App #{id_b}")
 
-        envs_a = {e.get("name", "N/A"): e for e in release_a.get("environments", [])}
-        envs_b = {e.get("name", "N/A"): e for e in release_b.get("environments", [])}
+        envs_a = {safe_str(e.get("name")): e for e in release_a.get("environments") or []}
+        envs_b = {safe_str(e.get("name")): e for e in release_b.get("environments") or []}
         all_stages = sorted(set(list(envs_a.keys()) + list(envs_b.keys())))
 
         for stage in all_stages:
@@ -353,24 +364,34 @@ def print_diff(release_a: Dict, release_b: Dict):
             in_b = stage in envs_b
 
             def env_vals(env):
-                st = env.get("status", "N/A")
-                pre = ", ".join([a.get("status", "?") for a in env.get("preDeployApprovals", [])]) or "N/A"
-                post = ", ".join([a.get("status", "?") for a in env.get("postDeployApprovals", [])]) or "N/A"
+                st = safe_str(env.get("status"))
+                pre = ", ".join([safe_str(a.get("status"), "?") for a in env.get("preDeployApprovals") or []]) or "N/A"
+                post = ", ".join([safe_str(a.get("status"), "?") for a in env.get("postDeployApprovals") or []]) or "N/A"
                 return st, pre, post
+
+            sta_a, pra_a, poa_a = env_vals(envs_a[stage]) if in_a else ("N/A", "N/A", "N/A")
+            sta_b, pra_b, poa_b = env_vals(envs_b[stage]) if in_b else ("N/A", "N/A", "N/A")
+
+            csta_a, csta_b = cell(sta_a, sta_b)
+            cpra_a, cpra_b = cell(pra_a, pra_b)
+            cpoa_a, cpoa_b = cell(poa_a, poa_b)
+
+            t.add_row(escape(safe_str(stage)), csta_a, cpra_a, cpoa_a, csta_b, cpra_b, cpoa_b)
+        return t
 
     def extract_tasks(env: Dict) -> List[Dict]:
         """Extrae tasks de deployPhases del environment."""
         tasks = []
-        for phase in env.get("deployPhases", []):
-            for task in phase.get("workflowTasks", []):
+        for phase in env.get("deployPhases") or []:
+            for task in phase.get("workflowTasks") or []:
                 tasks.append({
-                    "name": task.get("name", "N/A"),
-                    "task_id": task.get("task", {}).get("id", "N/A"),
-                    "version": task.get("version", "N/A"),
+                    "name": safe_str(task.get("name")),
+                    "task_id": safe_str((task.get("task") or {}).get("id")),
+                    "version": safe_str(task.get("version")),
                     "enabled": task.get("enabled", True),
                     "inputs": task.get("inputs") or {},
-                    "phase_name": phase.get("name", "N/A"),
-                    "phase_type": phase.get("phaseType", "N/A")
+                    "phase_name": safe_str(phase.get("name")),
+                    "phase_type": safe_str(phase.get("phaseType"))
                 })
         return tasks
 
@@ -386,17 +407,21 @@ def print_diff(release_a: Dict, release_b: Dict):
         all_keys = sorted(set(list(inputs_a.keys()) + list(inputs_b.keys())))
         parts_a = []
         parts_b = []
-        
+        missing = object()
+
         for key in all_keys:
-            val_a = inputs_a.get(key, "<no definido>")
-            val_b = inputs_b.get(key, "<no definido>")
-            if val_a == val_b:
-                parts_a.append(f"[green]{key}={val_a}[/green]")
-                parts_b.append(f"[green]{key}={val_b}[/green]")
+            raw_a = inputs_a.get(key, missing)
+            raw_b = inputs_b.get(key, missing)
+            val_a = "<no definido>" if raw_a is missing else safe_str(raw_a)
+            val_b = "<no definido>" if raw_b is missing else safe_str(raw_b)
+            ekey = escape(safe_str(key))
+            if raw_a is not missing and raw_b is not missing and safe_str(raw_a) == safe_str(raw_b):
+                parts_a.append(f"[green]{ekey}={escape(val_a)}[/green]")
+                parts_b.append(f"[green]{ekey}={escape(val_b)}[/green]")
             else:
-                parts_a.append(f"[red]{key}={val_a}[/red]")
-                parts_b.append(f"[red]{key}={val_b}[/red]")
-        
+                parts_a.append(f"[red]{ekey}={escape(val_a)}[/red]")
+                parts_b.append(f"[red]{ekey}={escape(val_b)}[/red]")
+
         return " | ".join(parts_a), " | ".join(parts_b)
 
     def compare_tasks(tasks_a: List[Dict], tasks_b: List[Dict]) -> Table:
@@ -423,38 +448,38 @@ def print_diff(release_a: Dict, release_b: Dict):
             if in_a and in_b:
                 task_a = tasks_by_name_a[task_name]
                 task_b = tasks_by_name_b[task_name]
-                phase_a = task_a.get("phase_name", "N/A")
-                phase_b = task_b.get("phase_name", "N/A")
+                phase_a = escape(safe_str(task_a.get("phase_name")))
+                phase_b = escape(safe_str(task_b.get("phase_name")))
                 ver_a = task_a.get("version", "N/A")
                 ver_b = task_b.get("version", "N/A")
-                en_a = str(task_a.get("enabled", True))
-                en_b = str(task_b.get("enabled", True))
+                en_a = safe_str(task_a.get("enabled", True))
+                en_b = safe_str(task_b.get("enabled", True))
                 cver_a, cver_b = cell(ver_a, ver_b)
                 cen_a, cen_b = cell(en_a, en_b)
-                inp_a, inp_b = compare_inputs(task_a.get("inputs", {}), task_b.get("inputs", {}))
-                t.add_row(task_name, f"{phase_a} / {phase_b}", cver_a, cen_a, cver_b, cen_b, inp_a, inp_b)
+                inp_a, inp_b = compare_inputs(task_a.get("inputs"), task_b.get("inputs"))
+                t.add_row(escape(safe_str(task_name)), f"{phase_a} / {phase_b}", cver_a, cen_a, cver_b, cen_b, inp_a, inp_b)
             elif in_a:
                 task_a = tasks_by_name_a[task_name]
-                phase_a = task_a.get("phase_name", "N/A")
-                ver_a = task_a.get("version", "N/A")
-                en_a = str(task_a.get("enabled", True))
-                inp_a, inp_b = compare_inputs(task_a.get("inputs", {}), {})
-                t.add_row(task_name, f"{phase_a} / <ausente>", f"[green]{ver_a}[/green]", f"[green]{en_a}[/green]", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", inp_a, inp_b)
+                phase_a = escape(safe_str(task_a.get("phase_name")))
+                ver_a = escape(safe_str(task_a.get("version")))
+                en_a = escape(safe_str(task_a.get("enabled", True)))
+                inp_a, inp_b = compare_inputs(task_a.get("inputs"), {})
+                t.add_row(escape(safe_str(task_name)), f"{phase_a} / <ausente>", f"[green]{ver_a}[/green]", f"[green]{en_a}[/green]", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", inp_a, inp_b)
             else:
                 task_b = tasks_by_name_b[task_name]
-                phase_b = task_b.get("phase_name", "N/A")
-                ver_b = task_b.get("version", "N/A")
-                en_b = str(task_b.get("enabled", True))
-                inp_a, inp_b = compare_inputs({}, task_b.get("inputs", {}))
-                t.add_row(task_name, f"<ausente> / {phase_b}", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", f"[green]{ver_b}[/green]", f"[green]{en_b}[/green]", inp_a, inp_b)
+                phase_b = escape(safe_str(task_b.get("phase_name")))
+                ver_b = escape(safe_str(task_b.get("version")))
+                en_b = escape(safe_str(task_b.get("enabled", True)))
+                inp_a, inp_b = compare_inputs({}, task_b.get("inputs"))
+                t.add_row(escape(safe_str(task_name)), f"<ausente> / {phase_b}", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", f"[green]{ver_b}[/green]", f"[green]{en_b}[/green]", inp_a, inp_b)
         return t
 
     console.print(Panel(stage_table(), title="🎭 Stages / Environments", border_style="yellow"))
 
     # --- Tasks (DeployPhases / WorkflowTasks) ---
     # Build tasks tables per stage
-    envs_a = {e.get("name", "N/A"): e for e in release_a.get("environments", [])}
-    envs_b = {e.get("name", "N/A"): e for e in release_b.get("environments", [])}
+    envs_a = {safe_str(e.get("name")): e for e in release_a.get("environments") or []}
+    envs_b = {safe_str(e.get("name")): e for e in release_b.get("environments") or []}
     all_stages = sorted(set(list(envs_a.keys()) + list(envs_b.keys())))
 
     for stage in all_stages:
@@ -473,22 +498,22 @@ def print_diff(release_a: Dict, release_b: Dict):
         t.add_column(f"Valor #{id_a}")
         t.add_column(f"Valor #{id_b}")
 
-        vars_a = release_a.get("variables", {})
-        vars_b = release_b.get("variables", {})
+        vars_a = release_a.get("variables") or {}
+        vars_b = release_b.get("variables") or {}
         all_vars = sorted(set(list(vars_a.keys()) + list(vars_b.keys())))
 
         for vname in all_vars:
             in_a = vname in vars_a
             in_b = vname in vars_b
-            val_a = vars_a[vname].get("value", "N/A") if isinstance(vars_a.get(vname), dict) else str(vars_a.get(vname, "N/A"))
-            val_b = vars_b[vname].get("value", "N/A") if isinstance(vars_b.get(vname), dict) else str(vars_b.get(vname, "N/A"))
+            val_a = vars_a[vname].get("value", "N/A") if isinstance(vars_a.get(vname), dict) else vars_a.get(vname, "N/A")
+            val_b = vars_b[vname].get("value", "N/A") if isinstance(vars_b.get(vname), dict) else vars_b.get(vname, "N/A")
 
             cva, cvb = cell(val_a, val_b)
-            t.add_row(vname, cva, cvb)
+            t.add_row(escape(safe_str(vname)), cva, cvb)
         return t
 
-    vars_a = release_a.get("variables", {})
-    vars_b = release_b.get("variables", {})
+    vars_a = release_a.get("variables") or {}
+    vars_b = release_b.get("variables") or {}
     if vars_a or vars_b:
         console.print(Panel(variable_table(), title="🔧 Variables del Release", border_style="magenta"))
 
