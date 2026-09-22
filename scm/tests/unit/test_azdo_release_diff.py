@@ -185,3 +185,37 @@ class TestPrintDiff:
             explorer.console = original
         out = buf.getvalue()
         assert "No se encontraron tasks" in out
+
+    def test_print_diff_muestra_resumen(self):
+        release_a, release_b = self._releases_con_none()
+        buf, console = _console()
+        original = explorer.console
+        explorer.console = console
+        try:
+            explorer.print_diff(release_a, release_b)
+        finally:
+            explorer.console = original
+        out = buf.getvalue()
+        assert "Resumen de Cambios" in out
+        assert "TOTAL" in out
+        assert "Diferentes" in out
+
+    def test_print_diff_exporta_txt_y_html(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        release_a, release_b = self._releases_con_none()
+        buf, console = _console()
+        original = explorer.console
+        explorer.console = console
+        try:
+            explorer.print_diff(release_a, release_b)
+        finally:
+            explorer.console = original
+        out_dir = tmp_path / "outcome"
+        txts = list(out_dir.glob("release_diff_41727_vs_59806_*.txt"))
+        htmls = list(out_dir.glob("release_diff_41727_vs_59806_*.html"))
+        assert txts, "no se generó el TXT"
+        assert htmls, "no se generó el HTML"
+        txt = txts[0].read_text(encoding="utf-8")
+        html = htmls[0].read_text(encoding="utf-8")
+        assert "Resumen de Cambios" in txt
+        assert "<" in html and "Resumen" in html

@@ -10,6 +10,7 @@ import base64
 import json
 import os
 import sys
+from datetime import datetime
 import urllib.request
 import urllib.error
 from typing import List, Dict, Optional, Any, Tuple
@@ -284,26 +285,30 @@ def print_release_details(release: Dict):
 def print_diff(release_a: Dict, release_b: Dict):
     id_a = release_a.get("id", "A")
     id_b = release_b.get("id", "B")
+
+    # Grabar salida para exportar a TXT/HTML al final
+    console.record = True
+
     title = f"[bold]🔍 DIFF: Release #{id_a} vs Release #{id_b}[/bold]"
     console.print(Panel(title, border_style="bright_cyan", expand=False))
 
     # --- Info General ---
+    diff_fields = [
+        ("Nombre", "name"),
+        ("Status", "status"),
+        ("Creado por", ("createdBy", "displayName")),
+        ("Fecha Creación", "createdOn"),
+        ("Fecha Modif.", "modifiedOn"),
+        ("Descripción", "description"),
+    ]
+
     def info_table():
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
         t.add_column("Campo")
         t.add_column(f"Release #{id_a}", style="cyan")
         t.add_column(f"Release #{id_b}", style="magenta")
 
-        fields = [
-            ("Nombre", "name"),
-            ("Status", "status"),
-            ("Creado por", ("createdBy", "displayName")),
-            ("Fecha Creación", "createdOn"),
-            ("Fecha Modif.", "modifiedOn"),
-            ("Descripción", "description"),
-        ]
-
-        for label, key in fields:
+        for label, key in diff_fields:
             if isinstance(key, tuple):
                 val_a = (release_a.get(key[0]) or {}).get(key[1], "N/A")
                 val_b = (release_b.get(key[0]) or {}).get(key[1], "N/A")
@@ -545,6 +550,127 @@ def print_diff(release_a: Dict, release_b: Dict):
     vars_b = release_b.get("variables") or {}
     if vars_a or vars_b:
         console.print(Panel(variable_table(), title="🔧 Variables del Release", border_style="magenta"))
+
+    # --- Resumen de cambios ---
+    _MISSING = object()
+
+    def _counts(da: Dict, db: Dict, eq_fn) -> Tuple[int, int, int, int]:
+        """Retorna (iguales, diferentes, solo_a, solo_b) entre dos dicts."""
+        equal = diff = only_a = only_b = 0
+        for k in set(da) | set(db):
+            va, vb = da.get(k, _MISSING), db.get(k, _MISSING)
+            if va is _MISSING:
+                only_b += 1
+            elif vb is _MISSING:
+                only_a += 1
+            elif eq_fn(va, vb):
+                equal += 1
+            else:
+                diff += 1
+        return equal, diff, only_a, only_b
+
+    def _field_val(rel, key):
+        if isinstance(key, tuple):
+            return safe_str((rel.get(key[0]) or {}).get(key[1]))
+        return safe_str(rel.get(key))
+
+    info_map_a = {lbl: _field_val(release_a, k) for lbl, k in diff_fields}
+    info_map_b = {lbl: _field_val(release_b, k) for lbl, k in diff_fields}
+    c_info = _counts(info_map_a, info_map_b, lambda x, y: x == y)
+
+    def _art_sig(art):
+        ref = (art.get("definitionReference") or {}).get("version") or {}
+        return (safe_str(ref.get("id")), safe_str(ref.get("name")))
+
+    arts_map_a = {safe_str(a.get("alias")): _art_sig(a) for a in release_a.get("artifacts") or []}
+    arts_map_b = {safe_str(a.get("alias")): _art_sig(a) for a in release_b.get("artifacts") or []}
+    c_art = _counts(arts_map_a, arts_map_b, lambda x, y: x == y)
+
+    def _env_sig(env):
+        st = safe_str(env.get("status"))
+        pre = ",".join(safe_str(a.get("status"), "?") for a in env.get("preDeployApprovals") or [])
+        post = ",".join(safe_str(a.get("status"), "?") for a in env.get("postDeployApprovals") or [])
+        return (st, pre, post)
+
+    c_stg = _counts(envs_a, envs_b, lambda x, y: _env_sig(x) == _env_sig(y))
+
+    tasks_map_a, tasks_map_b = {}, {}
+    for stage in all_stages:
+        for task in (extract_tasks(envs_a[stage]) if stage in envs_a else []):
+            tasks_map_a[f"{stage}/{task['name']}"] = task
+        for task in (extract_tasks(envs_b[stage]) if stage in envs_b else []):
+            tasks_map_b[f"{stage}/{task['name']}"] = task
+
+    def _task_sig(t):
+        return (t.get("version"), safe_str(t.get("enabled")),
+                json.dumps(t.get("inputs") or {}, sort_keys=True, default=str))
+
+    c_task = _counts(tasks_map_a, tasks_map_b, lambda x, y: _task_sig(x) == _task_sig(y))
+
+    def _var_val(v):
+        return v.get("value") if isinstance(v, dict) else v
+
+    vars_map_a = {k: _var_val(v) for k, v in vars_a.items()}
+    vars_map_b = {k: _var_val(v) for k, v in vars_b.items()}
+    c_var = _counts(vars_map_a, vars_map_b, lambda x, y: safe_str(x) == safe_str(y))
+
+    def summary_table():
+        t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        t.add_column("Sección")
+        t.add_column("Iguales", justify="right")
+        t.add_column("Diferentes", justify="right")
+        t.add_column(f"Solo #{id_a}", justify="right")
+        t.add_column(f"Solo #{id_b}", justify="right")
+
+        totals = [0, 0, 0, 0]
+        for label, (eq, df, oa, ob) in [
+            ("Información General", c_info),
+            ("Artefactos", c_art),
+            ("Stages", c_stg),
+            ("Tasks", c_task),
+            ("Variables", c_var),
+        ]:
+            totals[0] += eq; totals[1] += df; totals[2] += oa; totals[3] += ob
+            t.add_row(
+                label,
+                str(eq),
+                f"[red]{df}[/red]" if df else "0",
+                f"[yellow]{oa}[/yellow]" if oa else "0",
+                f"[yellow]{ob}[/yellow]" if ob else "0",
+            )
+        t.add_row(
+            "[bold]TOTAL[/bold]",
+            f"[bold]{totals[0]}[/bold]",
+            f"[bold red]{totals[1]}[/bold red]" if totals[1] else "[bold]0[/bold]",
+            f"[bold yellow]{totals[2]}[/bold yellow]" if totals[2] else "[bold]0[/bold]",
+            f"[bold yellow]{totals[3]}[/bold yellow]" if totals[3] else "[bold]0[/bold]",
+        )
+        return t
+
+    console.print(Panel(summary_table(), title="📊 Resumen de Cambios", border_style="bright_yellow"))
+
+    # --- Exportar salida plana (TXT) y HTML ---
+    try:
+        outcome_dir = "outcome"
+        os.makedirs(outcome_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        txt_path = os.path.join(outcome_dir, f"release_diff_{id_a}_vs_{id_b}_{ts}.txt")
+        html_path = os.path.join(outcome_dir, f"release_diff_{id_a}_vs_{id_b}_{ts}.html")
+
+        txt_content = console.export_text(styles=False, clear=False)
+        html_content = console.export_html(inline_styles=True, clear=True)
+
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(txt_content)
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+        console.print(f"[dim]📄 TXT:  {txt_path}[/dim]")
+        console.print(f"[dim]🌐 HTML: {html_path}[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]⚠️ No se pudo exportar el diff: {e}[/yellow]")
+    finally:
+        console.record = False
 
 
 # ------------------------------------------------------------------
