@@ -358,17 +358,83 @@ def print_diff(release_a: Dict, release_b: Dict):
                 post = ", ".join([a.get("status", "?") for a in env.get("postDeployApprovals", [])]) or "N/A"
                 return st, pre, post
 
-            sta_a, pra_a, poa_a = env_vals(envs_a[stage]) if in_a else ("N/A", "N/A", "N/A")
-            sta_b, pra_b, poa_b = env_vals(envs_b[stage]) if in_b else ("N/A", "N/A", "N/A")
+    def extract_tasks(env: Dict) -> List[Dict]:
+        """Extrae tasks de deployPhases del environment."""
+        tasks = []
+        for phase in env.get("deployPhases", []):
+            for task in phase.get("workflowTasks", []):
+                tasks.append({
+                    "name": task.get("name", "N/A"),
+                    "task_id": task.get("task", {}).get("id", "N/A"),
+                    "version": task.get("version", "N/A"),
+                    "enabled": task.get("enabled", True),
+                    "inputs": task.get("inputs", {}),
+                    "phase_name": phase.get("name", "N/A"),
+                    "phase_type": phase.get("phaseType", "N/A")
+                })
+        return tasks
 
-            csta_a, csta_b = cell(sta_a, sta_b)
-            cpra_a, cpra_b = cell(pra_a, pra_b)
-            cpoa_a, cpoa_b = cell(poa_a, poa_b)
+    def compare_tasks(tasks_a: List[Dict], tasks_b: List[Dict]) -> Table:
+        """Compara tasks entre dos environments."""
+        t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        t.add_column("Task")
+        t.add_column("Phase")
+        t.add_column(f"Version #{id_a}", width=12)
+        t.add_column(f"Enabled #{id_a}", width=10)
+        t.add_column(f"Version #{id_b}", width=12)
+        t.add_column(f"Enabled #{id_b}", width=10)
 
-            t.add_row(stage, csta_a, cpra_a, cpoa_a, csta_b, cpra_b, cpoa_b)
+        # Agrupar por nombre de task
+        tasks_by_name_a = {task["name"]: task for task in tasks_a}
+        tasks_by_name_b = {task["name"]: task for task in tasks_b}
+        all_task_names = sorted(set(list(tasks_by_name_a.keys()) + list(tasks_by_name_b.keys())))
+
+        for task_name in all_task_names:
+            in_a = task_name in tasks_by_name_a
+            in_b = task_name in tasks_by_name_b
+
+            if in_a and in_b:
+                task_a = tasks_by_name_a[task_name]
+                task_b = tasks_by_name_b[task_name]
+                phase_a = task_a.get("phase_name", "N/A")
+                phase_b = task_b.get("phase_name", "N/A")
+                ver_a = task_a.get("version", "N/A")
+                ver_b = task_b.get("version", "N/A")
+                en_a = str(task_a.get("enabled", True))
+                en_b = str(task_b.get("enabled", True))
+                cver_a, cver_b = cell(ver_a, ver_b)
+                cen_a, cen_b = cell(en_a, en_b)
+                t.add_row(task_name, f"{phase_a} / {phase_b}", cver_a, cen_a, cver_b, cen_b)
+            elif in_a:
+                task_a = tasks_by_name_a[task_name]
+                phase_a = task_a.get("phase_name", "N/A")
+                ver_a = task_a.get("version", "N/A")
+                en_a = str(task_a.get("enabled", True))
+                t.add_row(task_name, f"{phase_a} / <ausente>", f"[green]{ver_a}[/green]", f"[green]{en_a}[/green]", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]")
+            else:
+                task_b = tasks_by_name_b[task_name]
+                phase_b = task_b.get("phase_name", "N/A")
+                ver_b = task_b.get("version", "N/A")
+                en_b = str(task_b.get("enabled", True))
+                t.add_row(task_name, f"<ausente> / {phase_b}", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", f"[green]{ver_b}[/green]", f"[green]{en_b}[/green]")
         return t
 
     console.print(Panel(stage_table(), title="🎭 Stages / Environments", border_style="yellow"))
+
+    # --- Tasks (DeployPhases / WorkflowTasks) ---
+    # Build tasks tables per stage
+    envs_a = {e.get("name", "N/A"): e for e in release_a.get("environments", [])}
+    envs_b = {e.get("name", "N/A"): e for e in release_b.get("environments", [])}
+    all_stages = sorted(set(list(envs_a.keys()) + list(envs_b.keys())))
+
+    for stage in all_stages:
+        in_a = stage in envs_a
+        in_b = stage in envs_b
+        tasks_a = extract_tasks(envs_a[stage]) if in_a else []
+        tasks_b = extract_tasks(envs_b[stage]) if in_b else []
+        if tasks_a or tasks_b:
+            task_table = compare_tasks(tasks_a, tasks_b)
+            console.print(Panel(task_table, title=f"⚙️ Tasks - Stage: {stage}", border_style="cyan"))
 
     # --- Variables ---
     def variable_table():
