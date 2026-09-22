@@ -753,33 +753,37 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Release Diff #{e(id_a)} vs #{e(id_b)}</title>
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
-        .container {{ max-width: 1600px; margin: 0 auto; }}
-        h1 {{ color: #1a73e8; }}
-        h2 {{ color: #202124; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; }}
-        .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }}
-        .card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .card h3 {{ margin: 0 0 10px 0; color: #5f6368; font-size: 14px; text-transform: uppercase; }}
-        .card .value {{ font-size: 32px; font-weight: bold; color: #202124; }}
-        .eq {{ color: #34a853; }} .diff {{ color: #ea4335; }} .miss {{ color: #f9ab00; }}
-        table {{ width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; table-layout: auto; }}
-        th, td {{ padding: 10px 14px; text-align: left; border-bottom: 1px solid #e0e0e0; vertical-align: top; }}
-        th {{ background: #1a73e8; color: white; font-weight: 600; }}
-        tr:hover {{ background: #f8f9fa; }}
-        .badge {{ padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }}
-        .badge-diff {{ background: #fce8e6; color: #ea4335; }}
-        .badge-eq {{ background: #e6f4ea; color: #34a853; }}
-        .badge-miss {{ background: #fef7e0; color: #f9ab00; }}
-        .section {{ margin-bottom: 40px; }}
-        .meta {{ color: #5f6368; font-size: 14px; margin-bottom: 30px; }}
-        .kv {{ font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }}
+        .header {{ background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 24px 32px; border-bottom: 1px solid #475569; }}
+        .header h1 {{ font-size: 1.75rem; color: #38bdf8; }}
+        .header .meta {{ display: flex; gap: 24px; margin-top: 12px; flex-wrap: wrap; font-size: .875rem; color: #94a3b8; }}
+        .container {{ max-width: 1600px; margin: 0 auto; padding: 24px; }}
+        h2 {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 16px; color: #f1f5f9; }}
+        .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px; }}
+        .card {{ background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; transition: transform .15s, border-color .15s; }}
+        .card:hover {{ transform: translateY(-2px); border-color: #475569; }}
+        .card h3 {{ margin: 0 0 10px 0; color: #94a3b8; font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; }}
+        .card .value {{ font-size: 2rem; font-weight: 700; margin-top: 4px; }}
+        .eq {{ color: #4ade80; }} .diff {{ color: #f87171; }} .miss {{ color: #facc15; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: .8125rem; table-layout: auto; }}
+        thead th {{ text-align: left; padding: 10px 14px; background: #1e293b; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155; white-space: nowrap; }}
+        tbody td {{ padding: 8px 14px; border-bottom: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }}
+        tbody tr:hover {{ background: #1e293b; }}
+        .table-wrap {{ overflow-x: auto; border-radius: 8px; border: 1px solid #334155; margin-bottom: 30px; }}
+        .section {{ margin-bottom: 32px; }}
+        .meta {{ color: #94a3b8; font-size: .875rem; }}
+        .kv {{ font-family: 'Consolas', 'Courier New', monospace; font-size: .75rem; white-space: pre-wrap; word-break: break-all; }}
         td.inputs {{ min-width: 300px; }}
+        .footer {{ text-align: center; padding: 20px; color: #64748b; font-size: .75rem; margin-top: 20px; }}
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="header">
         <h1>🔍 Release Diff: #{e(id_a)} vs #{e(id_b)}</h1>
-        <p class="meta">Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Azure DevOps Release Explorer</p>
+        <div class="meta"><span>Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</span><span>Azure DevOps Release Explorer</span></div>
+    </div>
+    <div class="container">
 
         <div class="summary">
             <div class="card"><h3>Elementos Iguales</h3><div class="value eq">{totals[1]}</div></div>
@@ -793,18 +797,18 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
     page += f"""
         <div class="section">
             <h2>📋 Información General</h2>
-            <table><thead><tr><th>Campo</th><th>Release #{e(id_a)}</th><th>Release #{e(id_b)}</th></tr></thead><tbody>
+            <div class="table-wrap"><table><thead><tr><th>Campo</th><th>Release #{e(id_a)}</th><th>Release #{e(id_b)}</th></tr></thead><tbody>
 """
     for label, va, vb in d["info"]:
         page += f'                <tr><td><strong>{e(label)}</strong></td><td class="{cmp_cls(va, vb)}">{e(va)}</td><td class="{cmp_cls(va, vb)}">{e(vb)}</td></tr>\n'
-    page += "            </tbody></table>\n        </div>\n"
+    page += "            </tbody></table></div>\n        </div>\n"
 
     # Artefactos
     if d["artifacts"]:
         page += f"""
         <div class="section">
             <h2>📦 Artefactos</h2>
-            <table><thead><tr><th>Alias</th><th>BuildId #{e(id_a)}</th><th>Versión #{e(id_a)}</th><th>BuildId #{e(id_b)}</th><th>Versión #{e(id_b)}</th></tr></thead><tbody>
+            <div class="table-wrap"><table><thead><tr><th>Alias</th><th>BuildId #{e(id_a)}</th><th>Versión #{e(id_a)}</th><th>BuildId #{e(id_b)}</th><th>Versión #{e(id_b)}</th></tr></thead><tbody>
 """
         for alias, bid_a, ver_a, bid_b, ver_b in d["artifacts"]:
             page += (f'                <tr><td><strong>{e(alias)}</strong></td>'
@@ -812,14 +816,14 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
                      f'<td class="{cmp_cls(ver_a, ver_b)}">{e(ver_a)}</td>'
                      f'<td class="{cmp_cls(bid_a, bid_b)}">{e(bid_b)}</td>'
                      f'<td class="{cmp_cls(ver_a, ver_b)}">{e(ver_b)}</td></tr>\n')
-        page += "            </tbody></table>\n        </div>\n"
+        page += "            </tbody></table></div>\n        </div>\n"
 
     # Stages
     if d["stages"]:
         page += f"""
         <div class="section">
             <h2>🎭 Stages / Environments</h2>
-            <table><thead><tr><th>Stage</th><th>Estado #{e(id_a)}</th><th>Pre-App #{e(id_a)}</th><th>Post-App #{e(id_a)}</th><th>Estado #{e(id_b)}</th><th>Pre-App #{e(id_b)}</th><th>Post-App #{e(id_b)}</th></tr></thead><tbody>
+            <div class="table-wrap"><table><thead><tr><th>Stage</th><th>Estado #{e(id_a)}</th><th>Pre-App #{e(id_a)}</th><th>Post-App #{e(id_a)}</th><th>Estado #{e(id_b)}</th><th>Pre-App #{e(id_b)}</th><th>Post-App #{e(id_b)}</th></tr></thead><tbody>
 """
         for stage, sta_a, pra_a, poa_a, sta_b, pra_b, poa_b in d["stages"]:
             page += (f'                <tr><td><strong>{e(stage)}</strong></td>'
@@ -829,7 +833,7 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
                      f'<td class="{cmp_cls(sta_a, sta_b)}">{e(sta_b)}</td>'
                      f'<td class="{cmp_cls(pra_a, pra_b)}">{e(pra_b)}</td>'
                      f'<td class="{cmp_cls(poa_a, poa_b)}">{e(poa_b)}</td></tr>\n')
-        page += "            </tbody></table>\n        </div>\n"
+        page += "            </tbody></table></div>\n        </div>\n"
 
     # Tasks por stage
     for stage, tasks_a, tasks_b in d["tasks"]:
@@ -839,7 +843,7 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
         page += f"""
         <div class="section">
             <h2>⚙️ Tasks - Stage: {e(stage)}</h2>
-            <table><thead><tr><th>Task</th><th>Phase</th><th>Version #{e(id_a)}</th><th>Enabled #{e(id_a)}</th><th>Version #{e(id_b)}</th><th>Enabled #{e(id_b)}</th><th>Inputs #{e(id_a)}</th><th>Inputs #{e(id_b)}</th></tr></thead><tbody>
+            <div class="table-wrap"><table><thead><tr><th>Task</th><th>Phase</th><th>Version #{e(id_a)}</th><th>Enabled #{e(id_a)}</th><th>Version #{e(id_b)}</th><th>Enabled #{e(id_b)}</th><th>Inputs #{e(id_a)}</th><th>Inputs #{e(id_b)}</th></tr></thead><tbody>
 """
         for name in names:
             ta, tb = by_a.get(name), by_b.get(name)
@@ -855,24 +859,24 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
                      f'<td class="{cls_ver}">{e(ver_a)}</td><td class="{cls_en}">{e(en_a)}</td>'
                      f'<td class="{cls_ver}">{e(ver_b)}</td><td class="{cls_en}">{e(en_b)}</td>'
                      f'<td class="inputs">{in_a}</td><td class="inputs">{in_b}</td></tr>\n')
-        page += "            </tbody></table>\n        </div>\n"
+        page += "            </tbody></table></div>\n        </div>\n"
 
     # Variables
     if d["variables"]:
         page += f"""
         <div class="section">
             <h2>🔧 Variables del Release</h2>
-            <table><thead><tr><th>Variable</th><th>Valor #{e(id_a)}</th><th>Valor #{e(id_b)}</th></tr></thead><tbody>
+            <div class="table-wrap"><table><thead><tr><th>Variable</th><th>Valor #{e(id_a)}</th><th>Valor #{e(id_b)}</th></tr></thead><tbody>
 """
         for vname, va, vb in d["variables"]:
             page += f'                <tr><td><strong>{e(vname)}</strong></td><td class="{cmp_cls(va, vb)}">{e(va)}</td><td class="{cmp_cls(va, vb)}">{e(vb)}</td></tr>\n'
-        page += "            </tbody></table>\n        </div>\n"
+        page += "            </tbody></table></div>\n        </div>\n"
 
     # Resumen
     page += f"""
         <div class="section">
             <h2>📊 Resumen de Cambios</h2>
-            <table><thead><tr><th>Sección</th><th>Iguales</th><th>Diferentes</th><th>Solo #{e(id_a)}</th><th>Solo #{e(id_b)}</th></tr></thead><tbody>
+            <div class="table-wrap"><table><thead><tr><th>Sección</th><th>Iguales</th><th>Diferentes</th><th>Solo #{e(id_a)}</th><th>Solo #{e(id_b)}</th></tr></thead><tbody>
 """
     for label, eq, df, oa, ob in d["summary"]:
         bold_a = "<strong>" if label == "TOTAL" else ""
@@ -880,8 +884,9 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
         page += (f'                <tr><td>{bold_a}{e(label)}{bold_b}</td>'
                  f'<td class="eq">{eq}</td><td class="diff">{df}</td>'
                  f'<td class="miss">{oa}</td><td class="miss">{ob}</td></tr>\n')
-    page += """            </tbody></table>
+    page += """            </tbody></table></div>
         </div>
+        <div class="footer">Generado por DevSecOps Toolbox — Azure DevOps Release Explorer</div>
     </div>
 </body>
 </html>
