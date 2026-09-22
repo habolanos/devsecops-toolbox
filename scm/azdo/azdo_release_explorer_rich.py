@@ -7,10 +7,13 @@ Cross-platform: Windows, Linux, macOS
 
 import argparse
 import base64
+import html
+import io
 import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 import urllib.request
 import urllib.error
 from typing import List, Dict, Optional, Any, Tuple
@@ -34,6 +37,25 @@ except ImportError:
 
 API_VERSION = "7.0"
 console = Console()
+
+
+def _resolve_output_dir(default: str = "outcome") -> str:
+    """Resuelve el directorio de salida según global.output_dir de config.json.
+
+    Orden: DEVSECOPS_OUTPUT_DIR (inyectada por main.py) > scm/config.json > default.
+    """
+    env_dir = os.environ.get("DEVSECOPS_OUTPUT_DIR")
+    if env_dir:
+        return env_dir
+    scm_root = Path(__file__).resolve().parent.parent
+    cfg_path = scm_root / "config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        out = cfg.get("global", {}).get("output_dir", default)
+        p = Path(out)
+        return str(p if p.is_absolute() else (scm_root / p).resolve())
+    except Exception:
+        return default
 
 STATUS_COLORS = {
     "succeeded": "green",
@@ -286,11 +308,24 @@ def print_diff(release_a: Dict, release_b: Dict):
     id_a = release_a.get("id", "A")
     id_b = release_b.get("id", "B")
 
-    # Grabar salida para exportar a TXT/HTML al final
-    console.record = True
+    # Renderizables para exportar a TXT (se re-renderizan en consola ancha)
+    # y datos estructurados para el HTML custom
+    exportables: List[Any] = []
+    diff_rows = {
+        "info": [],       # (label, val_a, val_b)
+        "artifacts": [],  # (alias, bid_a, ver_a, bid_b, ver_b)
+        "stages": [],     # (stage, sta_a, pra_a, poa_a, sta_b, pra_b, poa_b)
+        "tasks": [],      # (stage, merged_task_rows)
+        "variables": [],  # (vname, val_a, val_b)
+        "summary": [],    # (label, iguales, diferentes, solo_a, solo_b)
+    }
+
+    def emit(renderable):
+        console.print(renderable)
+        exportables.append(renderable)
 
     title = f"[bold]🔍 DIFF: Release #{id_a} vs Release #{id_b}[/bold]"
-    console.print(Panel(title, border_style="bright_cyan", expand=False))
+    emit(Panel(title, border_style="bright_cyan", expand=False))
 
     # --- Info General ---
     diff_fields = [
@@ -315,11 +350,12 @@ def print_diff(release_a: Dict, release_b: Dict):
             else:
                 val_a = release_a.get(key, "N/A") or "N/A"
                 val_b = release_b.get(key, "N/A") or "N/A"
+            diff_rows["info"].append((label, safe_str(val_a), safe_str(val_b)))
             ca, cb = cell(val_a, val_b)
             t.add_row(label, ca, cb)
         return t
 
-    console.print(Panel(info_table(), title="📋 Información General", border_style="blue"))
+    emit(Panel(info_table(), title="📋 Información General", border_style="blue"))
 
     # --- Artefactos ---
     def artifact_table():
@@ -342,12 +378,13 @@ def print_diff(release_a: Dict, release_b: Dict):
                 return ref.get("id", "N/A"), ref.get("name", "N/A")
             bid_a, ver_a = get_vals(arts_a[alias]) if in_a else ("N/A", "N/A")
             bid_b, ver_b = get_vals(arts_b[alias]) if in_b else ("N/A", "N/A")
+            diff_rows["artifacts"].append((safe_str(alias), safe_str(bid_a), safe_str(ver_a), safe_str(bid_b), safe_str(ver_b)))
             cbid_a, cbid_b = cell(bid_a, bid_b)
             cver_a, cver_b = cell(ver_a, ver_b)
             t.add_row(escape(safe_str(alias)), cbid_a, cver_a, cbid_b, cver_b)
         return t
 
-    console.print(Panel(artifact_table(), title="📦 Artefactos", border_style="green"))
+    emit(Panel(artifact_table(), title="📦 Artefactos", border_style="green"))
 
     # --- Stages / Environments ---
     def stage_table():
@@ -377,6 +414,7 @@ def print_diff(release_a: Dict, release_b: Dict):
             sta_a, pra_a, poa_a = env_vals(envs_a[stage]) if in_a else ("N/A", "N/A", "N/A")
             sta_b, pra_b, poa_b = env_vals(envs_b[stage]) if in_b else ("N/A", "N/A", "N/A")
 
+            diff_rows["stages"].append((safe_str(stage), sta_a, pra_a, poa_a, sta_b, pra_b, poa_b))
             csta_a, csta_b = cell(sta_a, sta_b)
             cpra_a, cpra_b = cell(pra_a, pra_b)
             cpoa_a, cpoa_b = cell(poa_a, poa_b)
@@ -458,12 +496,12 @@ def print_diff(release_a: Dict, release_b: Dict):
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
         t.add_column("Task")
         t.add_column("Phase")
-        t.add_column(f"Version #{id_a}", width=12)
-        t.add_column(f"Enabled #{id_a}", width=10)
-        t.add_column(f"Version #{id_b}", width=12)
-        t.add_column(f"Enabled #{id_b}", width=10)
-        t.add_column(f"Inputs #{id_a}", width=40)
-        t.add_column(f"Inputs #{id_b}", width=40)
+        t.add_column(f"Version #{id_a}")
+        t.add_column(f"Enabled #{id_a}")
+        t.add_column(f"Version #{id_b}")
+        t.add_column(f"Enabled #{id_b}")
+        t.add_column(f"Inputs #{id_a}", ratio=1)
+        t.add_column(f"Inputs #{id_b}", ratio=1)
 
         # Agrupar por nombre de task
         tasks_by_name_a = {task["name"]: task for task in tasks_a}
@@ -520,10 +558,11 @@ def print_diff(release_a: Dict, release_b: Dict):
         if tasks_a or tasks_b:
             tasks_found = True
             task_table = compare_tasks(tasks_a, tasks_b)
-            console.print(Panel(task_table, title=f"⚙️ Tasks - Stage: {escape(safe_str(stage))}", border_style="cyan"))
+            emit(Panel(task_table, title=f"⚙️ Tasks - Stage: {escape(safe_str(stage))}", border_style="cyan"))
+            diff_rows["tasks"].append((safe_str(stage), tasks_a, tasks_b))
 
     if not tasks_found:
-        console.print("[dim]ℹ️ No se encontraron tasks en deployPhases/deployPhasesSnapshot de los environments.[/dim]")
+        emit("[dim]ℹ️ No se encontraron tasks en deployPhases/deployPhasesSnapshot de los environments.[/dim]")
 
     # --- Variables ---
     def variable_table():
@@ -542,6 +581,7 @@ def print_diff(release_a: Dict, release_b: Dict):
             val_a = vars_a[vname].get("value", "N/A") if isinstance(vars_a.get(vname), dict) else vars_a.get(vname, "N/A")
             val_b = vars_b[vname].get("value", "N/A") if isinstance(vars_b.get(vname), dict) else vars_b.get(vname, "N/A")
 
+            diff_rows["variables"].append((safe_str(vname), safe_str(val_a), safe_str(val_b)))
             cva, cvb = cell(val_a, val_b)
             t.add_row(escape(safe_str(vname)), cva, cvb)
         return t
@@ -549,7 +589,7 @@ def print_diff(release_a: Dict, release_b: Dict):
     vars_a = release_a.get("variables") or {}
     vars_b = release_b.get("variables") or {}
     if vars_a or vars_b:
-        console.print(Panel(variable_table(), title="🔧 Variables del Release", border_style="magenta"))
+        emit(Panel(variable_table(), title="🔧 Variables del Release", border_style="magenta"))
 
     # --- Resumen de cambios ---
     _MISSING = object()
@@ -631,6 +671,7 @@ def print_diff(release_a: Dict, release_b: Dict):
             ("Variables", c_var),
         ]:
             totals[0] += eq; totals[1] += df; totals[2] += oa; totals[3] += ob
+            diff_rows["summary"].append((label, eq, df, oa, ob))
             t.add_row(
                 label,
                 str(eq),
@@ -638,6 +679,7 @@ def print_diff(release_a: Dict, release_b: Dict):
                 f"[yellow]{oa}[/yellow]" if oa else "0",
                 f"[yellow]{ob}[/yellow]" if ob else "0",
             )
+        diff_rows["summary"].append(("TOTAL", totals[0], totals[1], totals[2], totals[3]))
         t.add_row(
             "[bold]TOTAL[/bold]",
             f"[bold]{totals[0]}[/bold]",
@@ -647,30 +689,204 @@ def print_diff(release_a: Dict, release_b: Dict):
         )
         return t
 
-    console.print(Panel(summary_table(), title="📊 Resumen de Cambios", border_style="bright_yellow"))
+    emit(Panel(summary_table(), title="📊 Resumen de Cambios", border_style="bright_yellow"))
 
     # --- Exportar salida plana (TXT) y HTML ---
     try:
-        outcome_dir = "outcome"
+        outcome_dir = _resolve_output_dir()
         os.makedirs(outcome_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         txt_path = os.path.join(outcome_dir, f"release_diff_{id_a}_vs_{id_b}_{ts}.txt")
         html_path = os.path.join(outcome_dir, f"release_diff_{id_a}_vs_{id_b}_{ts}.html")
 
-        txt_content = console.export_text(styles=False, clear=False)
-        html_content = console.export_html(inline_styles=True, clear=True)
-
+        # TXT: re-renderizar en consola ancha para no cortar valores
+        buf = io.StringIO()
+        wide_console = Console(file=buf, width=500, force_terminal=False, color_system=None)
+        for renderable in exportables:
+            wide_console.print(renderable)
         with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(txt_content)
+            f.write("\n".join(line.rstrip() for line in buf.getvalue().splitlines()))
+
         with open(html_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
+            f.write(_diff_html_report(id_a, id_b, diff_rows))
 
         console.print(f"[dim]📄 TXT:  {txt_path}[/dim]")
         console.print(f"[dim]🌐 HTML: {html_path}[/dim]")
     except Exception as e:
         console.print(f"[yellow]⚠️ No se pudo exportar el diff: {e}[/yellow]")
-    finally:
-        console.record = False
+
+
+def _inputs_html(inputs_a: Dict, inputs_b: Dict) -> Tuple[str, str]:
+    """Renderiza inputs como líneas key=value con clases eq/diff/miss."""
+    inputs_a = inputs_a or {}
+    inputs_b = inputs_b or {}
+    if not inputs_a and not inputs_b:
+        return '<span class="miss">—</span>', '<span class="miss">—</span>'
+    keys = sorted(set(inputs_a) | set(inputs_b))
+    missing = object()
+    pa, pb = [], []
+    for k in keys:
+        ra, rb = inputs_a.get(k, missing), inputs_b.get(k, missing)
+        va = "<no definido>" if ra is missing else safe_str(ra)
+        vb = "<no definido>" if rb is missing else safe_str(rb)
+        cls = "eq" if (ra is not missing and rb is not missing and safe_str(ra) == safe_str(rb)) else "diff"
+        cls_a = "miss" if ra is missing else cls
+        cls_b = "miss" if rb is missing else cls
+        pa.append(f'<div class="kv {cls_a}"><b>{html.escape(safe_str(k))}</b>={html.escape(va)}</div>')
+        pb.append(f'<div class="kv {cls_b}"><b>{html.escape(safe_str(k))}</b>={html.escape(vb)}</div>')
+    return "".join(pa), "".join(pb)
+
+
+def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
+    """Genera reporte HTML del diff con el estilo del toolbox (cards + badges)."""
+    e = lambda v: html.escape(safe_str(v))  # noqa: E731
+
+    def cmp_cls(a, b):
+        return "eq" if a == b else "diff"
+
+    totals = d["summary"][-1] if d["summary"] else ("TOTAL", 0, 0, 0, 0)
+
+    page = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Release Diff #{e(id_a)} vs #{e(id_b)}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1600px; margin: 0 auto; }}
+        h1 {{ color: #1a73e8; }}
+        h2 {{ color: #202124; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; }}
+        .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }}
+        .card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        .card h3 {{ margin: 0 0 10px 0; color: #5f6368; font-size: 14px; text-transform: uppercase; }}
+        .card .value {{ font-size: 32px; font-weight: bold; color: #202124; }}
+        .eq {{ color: #34a853; }} .diff {{ color: #ea4335; }} .miss {{ color: #f9ab00; }}
+        table {{ width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; table-layout: auto; }}
+        th, td {{ padding: 10px 14px; text-align: left; border-bottom: 1px solid #e0e0e0; vertical-align: top; }}
+        th {{ background: #1a73e8; color: white; font-weight: 600; }}
+        tr:hover {{ background: #f8f9fa; }}
+        .badge {{ padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }}
+        .badge-diff {{ background: #fce8e6; color: #ea4335; }}
+        .badge-eq {{ background: #e6f4ea; color: #34a853; }}
+        .badge-miss {{ background: #fef7e0; color: #f9ab00; }}
+        .section {{ margin-bottom: 40px; }}
+        .meta {{ color: #5f6368; font-size: 14px; margin-bottom: 30px; }}
+        .kv {{ font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }}
+        td.inputs {{ min-width: 300px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Release Diff: #{e(id_a)} vs #{e(id_b)}</h1>
+        <p class="meta">Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Azure DevOps Release Explorer</p>
+
+        <div class="summary">
+            <div class="card"><h3>Elementos Iguales</h3><div class="value eq">{totals[1]}</div></div>
+            <div class="card"><h3>Diferencias</h3><div class="value diff">{totals[2]}</div></div>
+            <div class="card"><h3>Solo en #{e(id_a)}</h3><div class="value miss">{totals[3]}</div></div>
+            <div class="card"><h3>Solo en #{e(id_b)}</h3><div class="value miss">{totals[4]}</div></div>
+        </div>
+"""
+
+    # Información General
+    page += f"""
+        <div class="section">
+            <h2>📋 Información General</h2>
+            <table><thead><tr><th>Campo</th><th>Release #{e(id_a)}</th><th>Release #{e(id_b)}</th></tr></thead><tbody>
+"""
+    for label, va, vb in d["info"]:
+        page += f'                <tr><td><strong>{e(label)}</strong></td><td class="{cmp_cls(va, vb)}">{e(va)}</td><td class="{cmp_cls(va, vb)}">{e(vb)}</td></tr>\n'
+    page += "            </tbody></table>\n        </div>\n"
+
+    # Artefactos
+    if d["artifacts"]:
+        page += f"""
+        <div class="section">
+            <h2>📦 Artefactos</h2>
+            <table><thead><tr><th>Alias</th><th>BuildId #{e(id_a)}</th><th>Versión #{e(id_a)}</th><th>BuildId #{e(id_b)}</th><th>Versión #{e(id_b)}</th></tr></thead><tbody>
+"""
+        for alias, bid_a, ver_a, bid_b, ver_b in d["artifacts"]:
+            page += (f'                <tr><td><strong>{e(alias)}</strong></td>'
+                     f'<td class="{cmp_cls(bid_a, bid_b)}">{e(bid_a)}</td>'
+                     f'<td class="{cmp_cls(ver_a, ver_b)}">{e(ver_a)}</td>'
+                     f'<td class="{cmp_cls(bid_a, bid_b)}">{e(bid_b)}</td>'
+                     f'<td class="{cmp_cls(ver_a, ver_b)}">{e(ver_b)}</td></tr>\n')
+        page += "            </tbody></table>\n        </div>\n"
+
+    # Stages
+    if d["stages"]:
+        page += f"""
+        <div class="section">
+            <h2>🎭 Stages / Environments</h2>
+            <table><thead><tr><th>Stage</th><th>Estado #{e(id_a)}</th><th>Pre-App #{e(id_a)}</th><th>Post-App #{e(id_a)}</th><th>Estado #{e(id_b)}</th><th>Pre-App #{e(id_b)}</th><th>Post-App #{e(id_b)}</th></tr></thead><tbody>
+"""
+        for stage, sta_a, pra_a, poa_a, sta_b, pra_b, poa_b in d["stages"]:
+            page += (f'                <tr><td><strong>{e(stage)}</strong></td>'
+                     f'<td class="{cmp_cls(sta_a, sta_b)}">{e(sta_a)}</td>'
+                     f'<td class="{cmp_cls(pra_a, pra_b)}">{e(pra_a)}</td>'
+                     f'<td class="{cmp_cls(poa_a, poa_b)}">{e(poa_a)}</td>'
+                     f'<td class="{cmp_cls(sta_a, sta_b)}">{e(sta_b)}</td>'
+                     f'<td class="{cmp_cls(pra_a, pra_b)}">{e(pra_b)}</td>'
+                     f'<td class="{cmp_cls(poa_a, poa_b)}">{e(poa_b)}</td></tr>\n')
+        page += "            </tbody></table>\n        </div>\n"
+
+    # Tasks por stage
+    for stage, tasks_a, tasks_b in d["tasks"]:
+        by_a = {t["name"]: t for t in tasks_a}
+        by_b = {t["name"]: t for t in tasks_b}
+        names = sorted(set(by_a) | set(by_b))
+        page += f"""
+        <div class="section">
+            <h2>⚙️ Tasks - Stage: {e(stage)}</h2>
+            <table><thead><tr><th>Task</th><th>Phase</th><th>Version #{e(id_a)}</th><th>Enabled #{e(id_a)}</th><th>Version #{e(id_b)}</th><th>Enabled #{e(id_b)}</th><th>Inputs #{e(id_a)}</th><th>Inputs #{e(id_b)}</th></tr></thead><tbody>
+"""
+        for name in names:
+            ta, tb = by_a.get(name), by_b.get(name)
+            ph_a = safe_str(ta.get("phase_name")) if ta else "<ausente>"
+            ph_b = safe_str(tb.get("phase_name")) if tb else "<ausente>"
+            ver_a = safe_str(ta.get("version")) if ta else "<ausente>"
+            ver_b = safe_str(tb.get("version")) if tb else "<ausente>"
+            en_a = safe_str(ta.get("enabled")) if ta else "<ausente>"
+            en_b = safe_str(tb.get("enabled")) if tb else "<ausente>"
+            in_a, in_b = _inputs_html(ta.get("inputs") if ta else {}, tb.get("inputs") if tb else {})
+            cls_ver, cls_en = cmp_cls(ver_a, ver_b), cmp_cls(en_a, en_b)
+            page += (f'                <tr><td><strong>{e(name)}</strong></td><td>{e(ph_a)} / {e(ph_b)}</td>'
+                     f'<td class="{cls_ver}">{e(ver_a)}</td><td class="{cls_en}">{e(en_a)}</td>'
+                     f'<td class="{cls_ver}">{e(ver_b)}</td><td class="{cls_en}">{e(en_b)}</td>'
+                     f'<td class="inputs">{in_a}</td><td class="inputs">{in_b}</td></tr>\n')
+        page += "            </tbody></table>\n        </div>\n"
+
+    # Variables
+    if d["variables"]:
+        page += f"""
+        <div class="section">
+            <h2>🔧 Variables del Release</h2>
+            <table><thead><tr><th>Variable</th><th>Valor #{e(id_a)}</th><th>Valor #{e(id_b)}</th></tr></thead><tbody>
+"""
+        for vname, va, vb in d["variables"]:
+            page += f'                <tr><td><strong>{e(vname)}</strong></td><td class="{cmp_cls(va, vb)}">{e(va)}</td><td class="{cmp_cls(va, vb)}">{e(vb)}</td></tr>\n'
+        page += "            </tbody></table>\n        </div>\n"
+
+    # Resumen
+    page += f"""
+        <div class="section">
+            <h2>📊 Resumen de Cambios</h2>
+            <table><thead><tr><th>Sección</th><th>Iguales</th><th>Diferentes</th><th>Solo #{e(id_a)}</th><th>Solo #{e(id_b)}</th></tr></thead><tbody>
+"""
+    for label, eq, df, oa, ob in d["summary"]:
+        bold_a = "<strong>" if label == "TOTAL" else ""
+        bold_b = "</strong>" if label == "TOTAL" else ""
+        page += (f'                <tr><td>{bold_a}{e(label)}{bold_b}</td>'
+                 f'<td class="eq">{eq}</td><td class="diff">{df}</td>'
+                 f'<td class="miss">{oa}</td><td class="miss">{ob}</td></tr>\n')
+    page += """            </tbody></table>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    return page
 
 
 # ------------------------------------------------------------------

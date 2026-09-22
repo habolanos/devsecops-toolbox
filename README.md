@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.91-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.92-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-21 | **1.7.92** | Release Explorer diff: los archivos se generan según `global.output_dir` de `scm/config.json`, el HTML usa el formato de reportes del toolbox (cards/badges) y el TXT/HTML ya no cortan valores. |
 | 2026-09-21 | **1.7.91** | Release Explorer diff: agrega panel `Resumen de Cambios` (iguales/diferentes/por lado) y exporta automáticamente la salida a TXT plano y HTML en `outcome/`. |
 | 2026-09-21 | **1.7.90** | Release Explorer diff: la comparación de tasks ahora lee `deployPhasesSnapshot` (clave real de la API de releases) con fallback a `deployPhases` y `deploySteps`. |
 | 2026-09-21 | **1.7.89** | Release Explorer diff: se restaura la tabla de Stages y se blinda el renderizado contra valores `None` y markup Rich en inputs de tasks. |

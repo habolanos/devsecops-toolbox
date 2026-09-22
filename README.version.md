@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.91`** — 2026-09-21
+**`1.7.92`** — 2026-09-21
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-21 | **1.7.92** | **fix(azdo): Exportar diff según global.output_dir, HTML estilo toolbox y valores sin cortar**: `_resolve_output_dir()` lee `DEVSECOPS_OUTPUT_DIR` o `global.output_dir` de `scm/config.json`. El HTML se genera con el formato de reportes del toolbox (cards, badges, tablas con clases eq/diff/miss) en lugar del export genérico de Rich. El TXT se re-renderiza en una consola de ancho 500 y se quitan los anchos fijos de columnas para no cortar valores. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-21 | **1.7.91** | **feat(azdo): Resumen de cambios y exportación TXT/HTML en diff de Release Explorer**: Al final del diff se muestra un panel `Resumen de Cambios` con conteos de elementos iguales, diferentes y exclusivos por release (info general, artefactos, stages, tasks, variables). La salida se graba con `console.record` y se exporta automáticamente a `outcome/release_diff_<a>_vs_<b>_<ts>.txt` (plano) y `.html` (estilos inline). | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-21 | **1.7.90** | **fix(azdo): Extraer tasks desde deployPhasesSnapshot en el diff de Release Explorer**: La API de releases expone las fases del environment como `deployPhasesSnapshot` (no `deployPhases`, que pertenece a la definición), por lo que la comparación de tasks quedaba vacía. Se agregan fallback a `deployPhases` y a `deploySteps[].deploymentJobs[].tasks`, y un aviso cuando no hay tasks. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-21 | **1.7.89** | **fix(azdo): Restaurar tabla de Stages y blindar diff de Release Explorer contra None**: Se restaura el cuerpo de `stage_table()` perdido en 502fefa (causaba `Unable to render None`), se agrega `safe_str()` para normalizar valores, escape de markup Rich en inputs/tasks y guards `or {}`/`or []` en `.get()` encadenados. Incluye tests unitarios del diff. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |

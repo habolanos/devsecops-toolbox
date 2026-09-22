@@ -155,13 +155,16 @@ class TestPrintDiff:
         finally:
             explorer.console = original
         out = buf.getvalue()
-        # inputs comparados
-        assert "script=echo" in out
-        assert "no definido" in out
+        # normalizar wraps de Rich para assertions sobre texto
+        flat = " ".join(out.split())
+        # inputs comparados (Rich puede partir palabras al wrappear)
+        compact = flat.replace(" ", "")
+        assert "script=echo" in compact
+        assert "definido" in flat
         # valor con corchetes renderizado literal
-        assert "new[0]" in out
+        assert "new[0]" in compact
         # input None -> N/A
-        assert "nullable=N/A" in out
+        assert "nullable=N/A" in compact
 
     def test_print_diff_releases_vacios(self):
         buf, console = _console()
@@ -201,7 +204,7 @@ class TestPrintDiff:
         assert "Diferentes" in out
 
     def test_print_diff_exporta_txt_y_html(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
         release_a, release_b = self._releases_con_none()
         buf, console = _console()
         original = explorer.console
@@ -210,12 +213,17 @@ class TestPrintDiff:
             explorer.print_diff(release_a, release_b)
         finally:
             explorer.console = original
-        out_dir = tmp_path / "outcome"
-        txts = list(out_dir.glob("release_diff_41727_vs_59806_*.txt"))
-        htmls = list(out_dir.glob("release_diff_41727_vs_59806_*.html"))
+        txts = list(tmp_path.glob("release_diff_41727_vs_59806_*.txt"))
+        htmls = list(tmp_path.glob("release_diff_41727_vs_59806_*.html"))
         assert txts, "no se generó el TXT"
         assert htmls, "no se generó el HTML"
         txt = txts[0].read_text(encoding="utf-8")
         html = htmls[0].read_text(encoding="utf-8")
         assert "Resumen de Cambios" in txt
-        assert "<" in html and "Resumen" in html
+        # HTML custom estilo toolbox: cards + tabla de resumen
+        assert "<!DOCTYPE html>" in html
+        assert "Resumen de Cambios" in html
+        assert "card" in html
+        # valores completos sin cortar en inputs (formato <b>key</b>=value)
+        assert "<b>script</b>=echo hi" in html
+        assert "<b>script</b>=echo bye" in html
