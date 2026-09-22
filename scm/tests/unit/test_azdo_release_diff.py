@@ -84,6 +84,7 @@ class TestPrintDiff:
                 {"name": "Dev", "status": "succeeded",
                  "preDeployApprovals": [{"status": "approved"}, {"status": None}],
                  "postDeployApprovals": [],
+                 # release A usa la clave de la definición del pipeline
                  "deployPhases": [
                      {"name": "Deploy", "phaseType": "agent",
                       "workflowTasks": [
@@ -111,7 +112,8 @@ class TestPrintDiff:
                 {"name": "Dev", "status": "succeeded",
                  "preDeployApprovals": [{"status": "approved"}],
                  "postDeployApprovals": [{"status": "approved"}],
-                 "deployPhases": [
+                 # release B usa la clave real de la API de releases
+                 "deployPhasesSnapshot": [
                      {"name": "Deploy", "phaseType": "agent",
                       "workflowTasks": [
                           {"name": "Azure CLI", "task": {"id": "t1"}, "version": "2.*",
@@ -170,3 +172,16 @@ class TestPrintDiff:
         finally:
             explorer.console = original
         assert "DIFF" in buf.getvalue()
+
+    def test_print_diff_sin_tasks_muestra_aviso(self):
+        release_a = {"id": 1, "environments": [{"name": "Dev", "status": "ok"}]}
+        release_b = {"id": 2, "environments": [{"name": "Dev", "status": "ok"}]}
+        buf, console = _console()
+        original = explorer.console
+        explorer.console = console
+        try:
+            explorer.print_diff(release_a, release_b)
+        finally:
+            explorer.console = original
+        out = buf.getvalue()
+        assert "No se encontraron tasks" in out

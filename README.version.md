@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.89`** — 2026-09-21
+**`1.7.90`** — 2026-09-21
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-21 | **1.7.90** | **fix(azdo): Extraer tasks desde deployPhasesSnapshot en el diff de Release Explorer**: La API de releases expone las fases del environment como `deployPhasesSnapshot` (no `deployPhases`, que pertenece a la definición), por lo que la comparación de tasks quedaba vacía. Se agregan fallback a `deployPhases` y a `deploySteps[].deploymentJobs[].tasks`, y un aviso cuando no hay tasks. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-21 | **1.7.89** | **fix(azdo): Restaurar tabla de Stages y blindar diff de Release Explorer contra None**: Se restaura el cuerpo de `stage_table()` perdido en 502fefa (causaba `Unable to render None`), se agrega `safe_str()` para normalizar valores, escape de markup Rich en inputs/tasks y guards `or {}`/`or []` en `.get()` encadenados. Incluye tests unitarios del diff. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-15 | **1.7.88** | **fix(gcp): Resolver ejecución de Cloud Run VPC IP Diagnostic sin Rich en venv nuevo**: Se agregan anotaciones diferidas y se vincula `monitoring/requirements.txt` para instalar Rich automáticamente antes de ejecutar la opción 35. | `scm/gcp/tools.py`, `scm/gcp/cloud-run/gcp_cloudrun_vpc_ip_diagnostic.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-15 | **1.7.87** | **fix(gcp): Habilitar HTML por defecto y mostrar columnas IP/CIDR en Cloud Run VPC IP Diagnostic**: La opción 35 ahora ofrece `json/csv/html/ninguno`, usa HTML por defecto y mantiene el resumen terminal con `IPs Actuales / Total` y `CIDR`. | `scm/gcp/tools.py`, `scm/gcp/cloud-run/gcp_cloudrun_vpc_ip_diagnostic.py`, `scm/tests/unit/test_gcp_tools.py`, `VERSION`, `README.md`, `README.version.md` |

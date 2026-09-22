@@ -380,19 +380,43 @@ def print_diff(release_a: Dict, release_b: Dict):
         return t
 
     def extract_tasks(env: Dict) -> List[Dict]:
-        """Extrae tasks de deployPhases del environment."""
+        """Extrae tasks de deployPhases/deployPhasesSnapshot del environment.
+
+        La API de releases expone las fases como 'deployPhasesSnapshot';
+        'deployPhases' existe en la definición del pipeline.
+        """
         tasks = []
-        for phase in env.get("deployPhases") or []:
+        phases = env.get("deployPhases") or env.get("deployPhasesSnapshot") or []
+        for phase in phases:
             for task in phase.get("workflowTasks") or []:
                 tasks.append({
                     "name": safe_str(task.get("name")),
                     "task_id": safe_str((task.get("task") or {}).get("id")),
-                    "version": safe_str(task.get("version")),
+                    "version": safe_str(task.get("version") or (task.get("task") or {}).get("version")),
                     "enabled": task.get("enabled", True),
                     "inputs": task.get("inputs") or {},
                     "phase_name": safe_str(phase.get("name")),
                     "phase_type": safe_str(phase.get("phaseType"))
                 })
+        if not tasks:
+            # Fallback: tasks ejecutados en el último deployStep -> deploymentJobs -> tasks
+            steps = env.get("deploySteps") or []
+            step = steps[-1] if steps else {}
+            jobs = list(step.get("deploymentJobs") or [])
+            last_job = step.get("lastDeploymentJob")
+            if last_job and last_job not in jobs:
+                jobs.append(last_job)
+            for job in jobs:
+                for task in job.get("tasks") or []:
+                    tasks.append({
+                        "name": safe_str(task.get("name")),
+                        "task_id": safe_str((task.get("task") or {}).get("id")),
+                        "version": safe_str(task.get("version") or (task.get("task") or {}).get("version")),
+                        "enabled": task.get("enabled", True),
+                        "inputs": task.get("inputs") or {},
+                        "phase_name": safe_str(job.get("job") or step.get("operation") or "Deploy"),
+                        "phase_type": "deploymentJob"
+                    })
         return tasks
 
     def compare_inputs(inputs_a: Optional[Dict], inputs_b: Optional[Dict]) -> Tuple[str, str]:
@@ -482,14 +506,19 @@ def print_diff(release_a: Dict, release_b: Dict):
     envs_b = {safe_str(e.get("name")): e for e in release_b.get("environments") or []}
     all_stages = sorted(set(list(envs_a.keys()) + list(envs_b.keys())))
 
+    tasks_found = False
     for stage in all_stages:
         in_a = stage in envs_a
         in_b = stage in envs_b
         tasks_a = extract_tasks(envs_a[stage]) if in_a else []
         tasks_b = extract_tasks(envs_b[stage]) if in_b else []
         if tasks_a or tasks_b:
+            tasks_found = True
             task_table = compare_tasks(tasks_a, tasks_b)
-            console.print(Panel(task_table, title=f"⚙️ Tasks - Stage: {stage}", border_style="cyan"))
+            console.print(Panel(task_table, title=f"⚙️ Tasks - Stage: {escape(safe_str(stage))}", border_style="cyan"))
+
+    if not tasks_found:
+        console.print("[dim]ℹ️ No se encontraron tasks en deployPhases/deployPhasesSnapshot de los environments.[/dim]")
 
     # --- Variables ---
     def variable_table():
