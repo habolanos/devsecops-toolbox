@@ -374,6 +374,27 @@ def print_diff(release_a: Dict, release_b: Dict):
                 })
         return tasks
 
+    def compare_inputs(inputs_a: Dict, inputs_b: Dict) -> Tuple[str, str]:
+        """Compara inputs de dos tasks y retorna representación con colores."""
+        if not inputs_a and not inputs_b:
+            return "—", "—"
+        
+        all_keys = sorted(set(list(inputs_a.keys()) + list(inputs_b.keys())))
+        parts_a = []
+        parts_b = []
+        
+        for key in all_keys:
+            val_a = inputs_a.get(key, "<no definido>")
+            val_b = inputs_b.get(key, "<no definido>")
+            if val_a == val_b:
+                parts_a.append(f"[green]{key}={val_a}[/green]")
+                parts_b.append(f"[green]{key}={val_b}[/green]")
+            else:
+                parts_a.append(f"[red]{key}={val_a}[/red]")
+                parts_b.append(f"[red]{key}={val_b}[/red]")
+        
+        return " | ".join(parts_a), " | ".join(parts_b)
+
     def compare_tasks(tasks_a: List[Dict], tasks_b: List[Dict]) -> Table:
         """Compara tasks entre dos environments."""
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -383,6 +404,8 @@ def print_diff(release_a: Dict, release_b: Dict):
         t.add_column(f"Enabled #{id_a}", width=10)
         t.add_column(f"Version #{id_b}", width=12)
         t.add_column(f"Enabled #{id_b}", width=10)
+        t.add_column(f"Inputs #{id_a}", width=40)
+        t.add_column(f"Inputs #{id_b}", width=40)
 
         # Agrupar por nombre de task
         tasks_by_name_a = {task["name"]: task for task in tasks_a}
@@ -404,19 +427,22 @@ def print_diff(release_a: Dict, release_b: Dict):
                 en_b = str(task_b.get("enabled", True))
                 cver_a, cver_b = cell(ver_a, ver_b)
                 cen_a, cen_b = cell(en_a, en_b)
-                t.add_row(task_name, f"{phase_a} / {phase_b}", cver_a, cen_a, cver_b, cen_b)
+                inp_a, inp_b = compare_inputs(task_a.get("inputs", {}), task_b.get("inputs", {}))
+                t.add_row(task_name, f"{phase_a} / {phase_b}", cver_a, cen_a, cver_b, cen_b, inp_a, inp_b)
             elif in_a:
                 task_a = tasks_by_name_a[task_name]
                 phase_a = task_a.get("phase_name", "N/A")
                 ver_a = task_a.get("version", "N/A")
                 en_a = str(task_a.get("enabled", True))
-                t.add_row(task_name, f"{phase_a} / <ausente>", f"[green]{ver_a}[/green]", f"[green]{en_a}[/green]", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]")
+                inp_a, inp_b = compare_inputs(task_a.get("inputs", {}), {})
+                t.add_row(task_name, f"{phase_a} / <ausente>", f"[green]{ver_a}[/green]", f"[green]{en_a}[/green]", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", inp_a, inp_b)
             else:
                 task_b = tasks_by_name_b[task_name]
                 phase_b = task_b.get("phase_name", "N/A")
                 ver_b = task_b.get("version", "N/A")
                 en_b = str(task_b.get("enabled", True))
-                t.add_row(task_name, f"<ausente> / {phase_b}", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", f"[green]{ver_b}[/green]", f"[green]{en_b}[/green]")
+                inp_a, inp_b = compare_inputs({}, task_b.get("inputs", {}))
+                t.add_row(task_name, f"<ausente> / {phase_b}", "[yellow]<ausente>[/yellow]", "[yellow]<ausente>[/yellow]", f"[green]{ver_b}[/green]", f"[green]{en_b}[/green]", inp_a, inp_b)
         return t
 
     console.print(Panel(stage_table(), title="🎭 Stages / Environments", border_style="yellow"))
