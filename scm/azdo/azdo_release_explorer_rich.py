@@ -368,14 +368,18 @@ def print_diff(release_a: Dict, release_b: Dict):
                     "task_id": task.get("task", {}).get("id", "N/A"),
                     "version": task.get("version", "N/A"),
                     "enabled": task.get("enabled", True),
-                    "inputs": task.get("inputs", {}),
+                    "inputs": task.get("inputs") or {},
                     "phase_name": phase.get("name", "N/A"),
                     "phase_type": phase.get("phaseType", "N/A")
                 })
         return tasks
 
-    def compare_inputs(inputs_a: Dict, inputs_b: Dict) -> Tuple[str, str]:
+    def compare_inputs(inputs_a: Optional[Dict], inputs_b: Optional[Dict]) -> Tuple[str, str]:
         """Compara inputs de dos tasks y retorna representación con colores."""
+        # Normalizar None a dict vacío
+        inputs_a = inputs_a or {}
+        inputs_b = inputs_b or {}
+        
         if not inputs_a and not inputs_b:
             return "—", "—"
         
