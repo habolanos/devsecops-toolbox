@@ -566,7 +566,20 @@ def print_diff(release_a: Dict, release_b: Dict):
 
     # --- Variables (release + por stage + variable groups) en una sola tabla ---
     def variable_table(scoped: List[Tuple[str, Dict, Dict]]) -> Table:
-        """Una tabla con columna Scope para variables de release y stages."""
+        """Una tabla con columna Scope para variables de release y stages.
+
+        Naranja = la variable existe solo en un release dentro de este scope,
+        pero existe en OTRO scope en el release contrario (cambió de scope).
+        """
+        # Mapa: nombre de variable -> scopes donde está definida, por release
+        name_scopes_a: Dict[str, set] = {}
+        name_scopes_b: Dict[str, set] = {}
+        for scope, va_map, vb_map in scoped:
+            for k in va_map:
+                name_scopes_a.setdefault(k, set()).add(scope)
+            for k in vb_map:
+                name_scopes_b.setdefault(k, set()).add(scope)
+
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
         t.add_column("Scope")
         t.add_column("Variable")
@@ -585,8 +598,21 @@ def print_diff(release_a: Dict, release_b: Dict):
                 if isinstance(raw_b, dict) and raw_b.get("isSecret") and val_b in (None, "", "N/A"):
                     val_b = "🔒 (secreto)"
 
-                diff_rows["variables"].append((safe_str(scope), safe_str(vname), safe_str(val_a), safe_str(val_b)))
-                cva, cvb = cell(val_a, val_b)
+                # Detección de cambio de scope: existe solo de un lado en este
+                # scope, pero la variable existe en otro scope del otro release
+                exists_a = vname in vars_a
+                exists_b = vname in vars_b
+                moved = False
+                if exists_a != exists_b:
+                    other_scopes = (name_scopes_b if exists_a else name_scopes_a).get(vname, set()) - {scope}
+                    moved = bool(other_scopes)
+
+                diff_rows["variables"].append((safe_str(scope), safe_str(vname), safe_str(val_a), safe_str(val_b), moved))
+                if moved:
+                    cva = f"[orange1]{escape(safe_str(val_a))}[/orange1]"
+                    cvb = f"[orange1]{escape(safe_str(val_b))}[/orange1]"
+                else:
+                    cva, cvb = cell(val_a, val_b)
                 t.add_row(escape(safe_str(scope)), escape(safe_str(vname)), cva, cvb)
         return t
 
@@ -685,6 +711,8 @@ def print_diff(release_a: Dict, release_b: Dict):
         for k, v in env_variables(envs_b.get(stage)).items():
             vars_map_b[f"{stage}/{k}"] = _var_val(v)
     c_var = _counts(vars_map_a, vars_map_b, lambda x, y: safe_str(x) == safe_str(y))
+    # Variables que solo cambiaron de scope (excluir del conteo "solo en un lado")
+    moved_vars = sum(1 for row in diff_rows["variables"] if len(row) > 4 and row[4])
 
     def summary_table():
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -710,6 +738,15 @@ def print_diff(release_a: Dict, release_b: Dict):
                 f"[red]{df}[/red]" if df else "0",
                 f"[yellow]{oa}[/yellow]" if oa else "0",
                 f"[yellow]{ob}[/yellow]" if ob else "0",
+            )
+        if moved_vars:
+            diff_rows["summary"].append(("↳ Vars. cambio de scope", 0, moved_vars, 0, 0))
+            t.add_row(
+                "[orange1]↳ Vars. cambio de scope[/orange1]",
+                "0",
+                f"[orange1]{moved_vars}[/orange1]",
+                "0",
+                "0",
             )
         diff_rows["summary"].append(("TOTAL", totals[0], totals[1], totals[2], totals[3]))
         t.add_row(
@@ -797,7 +834,11 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
         .card:hover {{ transform: translateY(-2px); border-color: #475569; }}
         .card h3 {{ margin: 0 0 10px 0; color: #94a3b8; font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; }}
         .card .value {{ font-size: 2rem; font-weight: 700; margin-top: 4px; }}
-        .eq {{ color: #4ade80; }} .diff {{ color: #f87171; }} .miss {{ color: #facc15; }}
+        .eq {{ color: #4ade80; }} .diff {{ color: #f87171; }} .miss {{ color: #facc15; }} .moved {{ color: #fb923c; }}
+        .legend {{ display: flex; gap: 18px; margin-bottom: 24px; font-size: .75rem; color: #94a3b8; flex-wrap: wrap; }}
+        .legend span::before {{ content: '●'; margin-right: 6px; }}
+        .legend .l-eq::before {{ color: #4ade80; }} .legend .l-diff::before {{ color: #f87171; }}
+        .legend .l-miss::before {{ color: #facc15; }} .legend .l-moved::before {{ color: #fb923c; }}
         table {{ width: 100%; border-collapse: collapse; font-size: .8125rem; table-layout: auto; }}
         thead th {{ text-align: left; padding: 10px 14px; background: #1e293b; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155; white-space: nowrap; }}
         tbody td {{ padding: 8px 14px; border-bottom: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }}
@@ -822,6 +863,12 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
             <div class="card"><h3>Diferencias</h3><div class="value diff">{totals[2]}</div></div>
             <div class="card"><h3>Solo en #{e(id_a)}</h3><div class="value miss">{totals[3]}</div></div>
             <div class="card"><h3>Solo en #{e(id_b)}</h3><div class="value miss">{totals[4]}</div></div>
+        </div>
+        <div class="legend">
+            <span class="l-eq">Igual</span>
+            <span class="l-diff">Diferente</span>
+            <span class="l-miss">Solo en un release</span>
+            <span class="l-moved">Cambió de scope</span>
         </div>
 """
 
@@ -900,11 +947,13 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
             <h2>🔧 Variables (Release + Stages)</h2>
             <div class="table-wrap"><table><thead><tr><th>Scope</th><th>Variable</th><th>Valor #{e(id_a)}</th><th>Valor #{e(id_b)}</th></tr></thead><tbody>
 """
-        for scope, vname, va, vb in d["variables"]:
+        for scope, vname, va, vb, *rest in d["variables"]:
+            moved = rest[0] if rest else False
+            cls = "moved" if moved else cmp_cls(va, vb)
             page += (f'                <tr><td><span class="meta">{e(scope)}</span></td>'
                      f'<td><strong>{e(vname)}</strong></td>'
-                     f'<td class="{cmp_cls(va, vb)}">{e(va)}</td>'
-                     f'<td class="{cmp_cls(va, vb)}">{e(vb)}</td></tr>\n')
+                     f'<td class="{cls}">{e(va)}</td>'
+                     f'<td class="{cls}">{e(vb)}</td></tr>\n')
         page += "            </tbody></table></div>\n        </div>\n"
 
     # Resumen
@@ -916,8 +965,9 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
     for label, eq, df, oa, ob in d["summary"]:
         bold_a = "<strong>" if label == "TOTAL" else ""
         bold_b = "</strong>" if label == "TOTAL" else ""
+        cls_df = "moved" if "cambio de scope" in label else "diff"
         page += (f'                <tr><td>{bold_a}{e(label)}{bold_b}</td>'
-                 f'<td class="eq">{eq}</td><td class="diff">{df}</td>'
+                 f'<td class="eq">{eq}</td><td class="{cls_df}">{df}</td>'
                  f'<td class="miss">{oa}</td><td class="miss">{ob}</td></tr>\n')
     page += """            </tbody></table></div>
         </div>

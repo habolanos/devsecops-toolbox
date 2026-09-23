@@ -239,6 +239,40 @@ class TestPrintDiff:
         # secreto se muestra como tal, no como N/A
         assert "secreto" in flat
 
+    def test_print_diff_variable_cambio_scope_naranja(self, tmp_path, monkeypatch):
+        """Variable presente en scope distinto entre releases -> naranja."""
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        release_a = {
+            "id": 1,
+            "variables": {"globalVar": {"value": "x"}},
+            "environments": [{"name": "Dev", "status": "ok",
+                              "variables": {"artifact.nameSpaceGateway": {"value": "gw-dev"}}}],
+        }
+        release_b = {
+            "id": 2,
+            # la variable movio de scope Dev -> Release
+            "variables": {"globalVar": {"value": "x"},
+                          "artifact.nameSpaceGateway": {"value": "gw-prod"}},
+            "environments": [{"name": "Dev", "status": "ok", "variables": {}}],
+        }
+        buf, console = _console()
+        original = explorer.console
+        explorer.console = console
+        try:
+            explorer.print_diff(release_a, release_b)
+        finally:
+            explorer.console = original
+        out = buf.getvalue()
+        # fila de resumen de cambio de scope
+        assert "cambio de scope" in out
+        # en el HTML las celdas llevan class="moved" (naranja)
+        htmls = list(tmp_path.glob("release_diff_1_vs_2_*.html"))
+        assert htmls
+        html = htmls[0].read_text(encoding="utf-8")
+        assert 'class="moved"' in html
+        # la variable aparece en ambos scopes
+        assert "artifact.nameSpaceGateway" in html
+
     def test_print_diff_exporta_txt_y_html(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
         release_a, release_b = self._releases_con_none()
