@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.95-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.96-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-22 | **1.7.96** | Release Explorer diff: las variables se comparan en una sola tabla con columna `Scope` (Release/stage) en lugar de un panel por stage. |
 | 2026-09-22 | **1.7.95** | Release Explorer diff: ahora compara todas las variables — scope release, por stage (`env.variables`) y `variableGroups` vinculados; las secretas se muestran como 🔒. |
 | 2026-09-22 | **1.7.94** | Release Explorer diff: las rutas de los archivos TXT/HTML exportados se imprimen con mayor contraste (verde/cyan en bold) para facilitar su lectura. |
 | 2026-09-21 | **1.7.93** | Release Explorer diff: el reporte HTML ahora usa el tema oscuro del toolbox (fondo `#0f172a`, cards `#1e293b`, acentos cyan) igual que los dashboards de AZDO/GCP. |

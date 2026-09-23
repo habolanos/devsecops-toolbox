@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.95`** — 2026-09-22
+**`1.7.96`** — 2026-09-22
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-22 | **1.7.96** | **refactor(azdo): Variables en tabla única con columna Scope en diff de Release Explorer**: Los paneles por stage se reemplazan por una sola tabla `Scope | Variable | Valor A | Valor B` (scope `Release` para las globales, nombre de stage para las de environment). El HTML y el resumen usan la misma estructura. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-22 | **1.7.95** | **feat(azdo): Comparar todas las variables en diff de Release Explorer**: Además de `release.variables` (scope global), ahora se comparan `environments[].variables` por stage y los `variableGroups` vinculados como pseudo-vars `[grupo] nombre`. Variables con `isSecret` se muestran como `🔒 (secreto)`. El resumen agrega todas las variables con clave `stage/nombre`. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-22 | **1.7.94** | **fix(azdo): Mayor contraste en rutas de archivos exportados del diff**: Las líneas `TXT:`/`HTML:` al final del diff pasan de `[dim]` a `bold green` + `bold cyan` para que los paths sean legibles en la terminal. | `scm/azdo/azdo_release_explorer_rich.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-21 | **1.7.93** | **fix(azdo): Tema oscuro en el reporte HTML del diff de Release Explorer**: El CSS del reporte pasa a la paleta oscura del toolbox (`#0f172a` fondo, `#1e293b` cards/tablas, `#38bdf8` acentos, texto `#e2e8f0`), header con gradiente, `.table-wrap` con scroll horizontal y footer, igual que `azdo_release_cd_health` y `dashboard_generator`. | `scm/azdo/azdo_release_explorer_rich.py`, `VERSION`, `README.md`, `README.version.md` |

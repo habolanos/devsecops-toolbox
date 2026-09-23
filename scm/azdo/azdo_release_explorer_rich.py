@@ -564,31 +564,30 @@ def print_diff(release_a: Dict, release_b: Dict):
     if not tasks_found:
         emit("[dim]ℹ️ No se encontraron tasks en deployPhases/deployPhasesSnapshot de los environments.[/dim]")
 
-    # --- Variables (release + por stage + variable groups) ---
-    def variable_table(vars_a: Dict, vars_b: Dict, scope: str = "") -> Table:
-        """Compara dos dicts de variables. `scope` prefija el nombre (stage) en la tabla."""
+    # --- Variables (release + por stage + variable groups) en una sola tabla ---
+    def variable_table(scoped: List[Tuple[str, Dict, Dict]]) -> Table:
+        """Una tabla con columna Scope para variables de release y stages."""
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        t.add_column("Scope")
         t.add_column("Variable")
         t.add_column(f"Valor #{id_a}")
         t.add_column(f"Valor #{id_b}")
 
-        all_vars = sorted(set(list(vars_a.keys()) + list(vars_b.keys())))
+        for scope, vars_a, vars_b in scoped:
+            for vname in sorted(set(list(vars_a.keys()) + list(vars_b.keys()))):
+                raw_a = vars_a.get(vname)
+                raw_b = vars_b.get(vname)
+                val_a = raw_a.get("value", "N/A") if isinstance(raw_a, dict) else raw_a
+                val_b = raw_b.get("value", "N/A") if isinstance(raw_b, dict) else raw_b
+                # Variables secretas no exponen valor en la API
+                if isinstance(raw_a, dict) and raw_a.get("isSecret") and val_a in (None, "", "N/A"):
+                    val_a = "🔒 (secreto)"
+                if isinstance(raw_b, dict) and raw_b.get("isSecret") and val_b in (None, "", "N/A"):
+                    val_b = "🔒 (secreto)"
 
-        for vname in all_vars:
-            raw_a = vars_a.get(vname)
-            raw_b = vars_b.get(vname)
-            val_a = raw_a.get("value", "N/A") if isinstance(raw_a, dict) else raw_a
-            val_b = raw_b.get("value", "N/A") if isinstance(raw_b, dict) else raw_b
-            # Variables secretas no exponen valor en la API
-            if isinstance(raw_a, dict) and raw_a.get("isSecret") and val_a in (None, "", "N/A"):
-                val_a = "🔒 (secreto)"
-            if isinstance(raw_b, dict) and raw_b.get("isSecret") and val_b in (None, "", "N/A"):
-                val_b = "🔒 (secreto)"
-
-            label = f"{scope}/{vname}" if scope else safe_str(vname)
-            diff_rows["variables"].append((label, safe_str(val_a), safe_str(val_b)))
-            cva, cvb = cell(val_a, val_b)
-            t.add_row(escape(label), cva, cvb)
+                diff_rows["variables"].append((safe_str(scope), safe_str(vname), safe_str(val_a), safe_str(val_b)))
+                cva, cvb = cell(val_a, val_b)
+                t.add_row(escape(safe_str(scope)), escape(safe_str(vname)), cva, cvb)
         return t
 
     def env_variables(env: Optional[Dict]) -> Dict:
@@ -607,15 +606,13 @@ def print_diff(release_a: Dict, release_b: Dict):
 
     vars_a = release_a.get("variables") or {}
     vars_b = release_b.get("variables") or {}
-    if vars_a or vars_b:
-        emit(Panel(variable_table(vars_a, vars_b), title="🔧 Variables del Release (scope global)", border_style="magenta"))
 
+    scoped_vars = [("Release", vars_a, vars_b)]
     for stage in all_stages:
-        ev_a = env_variables(envs_a.get(stage))
-        ev_b = env_variables(envs_b.get(stage))
-        if ev_a or ev_b:
-            emit(Panel(variable_table(ev_a, ev_b, scope=stage),
-                       title=f"🔧 Variables - Stage: {escape(safe_str(stage))}", border_style="magenta"))
+        scoped_vars.append((stage, env_variables(envs_a.get(stage)), env_variables(envs_b.get(stage))))
+    scoped_vars = [(s, a, b) for s, a, b in scoped_vars if a or b]
+    if scoped_vars:
+        emit(Panel(variable_table(scoped_vars), title="🔧 Variables (Release + Stages)", border_style="magenta"))
 
     # --- Resumen de cambios ---
     _MISSING = object()
@@ -901,10 +898,13 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
         page += f"""
         <div class="section">
             <h2>🔧 Variables (Release + Stages)</h2>
-            <div class="table-wrap"><table><thead><tr><th>Variable</th><th>Valor #{e(id_a)}</th><th>Valor #{e(id_b)}</th></tr></thead><tbody>
+            <div class="table-wrap"><table><thead><tr><th>Scope</th><th>Variable</th><th>Valor #{e(id_a)}</th><th>Valor #{e(id_b)}</th></tr></thead><tbody>
 """
-        for vname, va, vb in d["variables"]:
-            page += f'                <tr><td><strong>{e(vname)}</strong></td><td class="{cmp_cls(va, vb)}">{e(va)}</td><td class="{cmp_cls(va, vb)}">{e(vb)}</td></tr>\n'
+        for scope, vname, va, vb in d["variables"]:
+            page += (f'                <tr><td><span class="meta">{e(scope)}</span></td>'
+                     f'<td><strong>{e(vname)}</strong></td>'
+                     f'<td class="{cmp_cls(va, vb)}">{e(va)}</td>'
+                     f'<td class="{cmp_cls(va, vb)}">{e(vb)}</td></tr>\n')
         page += "            </tbody></table></div>\n        </div>\n"
 
     # Resumen

@@ -228,12 +228,14 @@ class TestPrintDiff:
         finally:
             explorer.console = original
         flat = " ".join(buf.getvalue().split())
-        # tabla de variables por stage
-        assert "Variables - Stage: Dev" in flat
-        assert "Dev/envVar" in flat
+        compact = flat.replace(" ", "")
+        # tabla única con columna Scope
+        assert "Variables (Release + Stages)" in flat
+        assert "Scope" in flat
+        assert "envVar" in flat
         # grupo existente en ambos + grupo solo en B
-        assert "Dev/[grupo] vg-shared" in flat
-        assert "Dev/[grupo] vg-new" in flat
+        assert "[grupo]vg-shared" in compact
+        assert "[grupo]vg-new" in compact
         # secreto se muestra como tal, no como N/A
         assert "secreto" in flat
 
