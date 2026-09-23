@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.94`** — 2026-09-22
+**`1.7.95`** — 2026-09-22
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-22 | **1.7.95** | **feat(azdo): Comparar todas las variables en diff de Release Explorer**: Además de `release.variables` (scope global), ahora se comparan `environments[].variables` por stage y los `variableGroups` vinculados como pseudo-vars `[grupo] nombre`. Variables con `isSecret` se muestran como `🔒 (secreto)`. El resumen agrega todas las variables con clave `stage/nombre`. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-22 | **1.7.94** | **fix(azdo): Mayor contraste en rutas de archivos exportados del diff**: Las líneas `TXT:`/`HTML:` al final del diff pasan de `[dim]` a `bold green` + `bold cyan` para que los paths sean legibles en la terminal. | `scm/azdo/azdo_release_explorer_rich.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-21 | **1.7.93** | **fix(azdo): Tema oscuro en el reporte HTML del diff de Release Explorer**: El CSS del reporte pasa a la paleta oscura del toolbox (`#0f172a` fondo, `#1e293b` cards/tablas, `#38bdf8` acentos, texto `#e2e8f0`), header con gradiente, `.table-wrap` con scroll horizontal y footer, igual que `azdo_release_cd_health` y `dashboard_generator`. | `scm/azdo/azdo_release_explorer_rich.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-21 | **1.7.92** | **fix(azdo): Exportar diff según global.output_dir, HTML estilo toolbox y valores sin cortar**: `_resolve_output_dir()` lee `DEVSECOPS_OUTPUT_DIR` o `global.output_dir` de `scm/config.json`. El HTML se genera con el formato de reportes del toolbox (cards, badges, tablas con clases eq/diff/miss) en lugar del export genérico de Rich. El TXT se re-renderiza en una consola de ancho 500 y se quitan los anchos fijos de columnas para no cortar valores. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |

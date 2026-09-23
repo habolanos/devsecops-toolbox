@@ -564,32 +564,58 @@ def print_diff(release_a: Dict, release_b: Dict):
     if not tasks_found:
         emit("[dim]ℹ️ No se encontraron tasks en deployPhases/deployPhasesSnapshot de los environments.[/dim]")
 
-    # --- Variables ---
-    def variable_table():
+    # --- Variables (release + por stage + variable groups) ---
+    def variable_table(vars_a: Dict, vars_b: Dict, scope: str = "") -> Table:
+        """Compara dos dicts de variables. `scope` prefija el nombre (stage) en la tabla."""
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
         t.add_column("Variable")
         t.add_column(f"Valor #{id_a}")
         t.add_column(f"Valor #{id_b}")
 
-        vars_a = release_a.get("variables") or {}
-        vars_b = release_b.get("variables") or {}
         all_vars = sorted(set(list(vars_a.keys()) + list(vars_b.keys())))
 
         for vname in all_vars:
-            in_a = vname in vars_a
-            in_b = vname in vars_b
-            val_a = vars_a[vname].get("value", "N/A") if isinstance(vars_a.get(vname), dict) else vars_a.get(vname, "N/A")
-            val_b = vars_b[vname].get("value", "N/A") if isinstance(vars_b.get(vname), dict) else vars_b.get(vname, "N/A")
+            raw_a = vars_a.get(vname)
+            raw_b = vars_b.get(vname)
+            val_a = raw_a.get("value", "N/A") if isinstance(raw_a, dict) else raw_a
+            val_b = raw_b.get("value", "N/A") if isinstance(raw_b, dict) else raw_b
+            # Variables secretas no exponen valor en la API
+            if isinstance(raw_a, dict) and raw_a.get("isSecret") and val_a in (None, "", "N/A"):
+                val_a = "🔒 (secreto)"
+            if isinstance(raw_b, dict) and raw_b.get("isSecret") and val_b in (None, "", "N/A"):
+                val_b = "🔒 (secreto)"
 
-            diff_rows["variables"].append((safe_str(vname), safe_str(val_a), safe_str(val_b)))
+            label = f"{scope}/{vname}" if scope else safe_str(vname)
+            diff_rows["variables"].append((label, safe_str(val_a), safe_str(val_b)))
             cva, cvb = cell(val_a, val_b)
-            t.add_row(escape(safe_str(vname)), cva, cvb)
+            t.add_row(escape(label), cva, cvb)
         return t
+
+    def env_variables(env: Optional[Dict]) -> Dict:
+        """Variables del environment + variable groups vinculados (como pseudo-vars)."""
+        if not env:
+            return {}
+        out = dict(env.get("variables") or {})
+        for g in env.get("variableGroups") or []:
+            if isinstance(g, dict):
+                gname = g.get("name") or g.get("id")
+                gid = g.get("id", "N/A")
+            else:
+                gname, gid = g, g
+            out[f"[grupo] {safe_str(gname)}"] = {"value": safe_str(gid)}
+        return out
 
     vars_a = release_a.get("variables") or {}
     vars_b = release_b.get("variables") or {}
     if vars_a or vars_b:
-        emit(Panel(variable_table(), title="🔧 Variables del Release", border_style="magenta"))
+        emit(Panel(variable_table(vars_a, vars_b), title="🔧 Variables del Release (scope global)", border_style="magenta"))
+
+    for stage in all_stages:
+        ev_a = env_variables(envs_a.get(stage))
+        ev_b = env_variables(envs_b.get(stage))
+        if ev_a or ev_b:
+            emit(Panel(variable_table(ev_a, ev_b, scope=stage),
+                       title=f"🔧 Variables - Stage: {escape(safe_str(stage))}", border_style="magenta"))
 
     # --- Resumen de cambios ---
     _MISSING = object()
@@ -648,10 +674,19 @@ def print_diff(release_a: Dict, release_b: Dict):
     c_task = _counts(tasks_map_a, tasks_map_b, lambda x, y: _task_sig(x) == _task_sig(y))
 
     def _var_val(v):
-        return v.get("value") if isinstance(v, dict) else v
+        if isinstance(v, dict):
+            if v.get("isSecret") and v.get("value") in (None, ""):
+                return "🔒 (secreto)"
+            return v.get("value")
+        return v
 
     vars_map_a = {k: _var_val(v) for k, v in vars_a.items()}
     vars_map_b = {k: _var_val(v) for k, v in vars_b.items()}
+    for stage in all_stages:
+        for k, v in env_variables(envs_a.get(stage)).items():
+            vars_map_a[f"{stage}/{k}"] = _var_val(v)
+        for k, v in env_variables(envs_b.get(stage)).items():
+            vars_map_b[f"{stage}/{k}"] = _var_val(v)
     c_var = _counts(vars_map_a, vars_map_b, lambda x, y: safe_str(x) == safe_str(y))
 
     def summary_table():
@@ -668,7 +703,7 @@ def print_diff(release_a: Dict, release_b: Dict):
             ("Artefactos", c_art),
             ("Stages", c_stg),
             ("Tasks", c_task),
-            ("Variables", c_var),
+            ("Variables (Release+Stages)", c_var),
         ]:
             totals[0] += eq; totals[1] += df; totals[2] += oa; totals[3] += ob
             diff_rows["summary"].append((label, eq, df, oa, ob))
@@ -865,7 +900,7 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
     if d["variables"]:
         page += f"""
         <div class="section">
-            <h2>🔧 Variables del Release</h2>
+            <h2>🔧 Variables (Release + Stages)</h2>
             <div class="table-wrap"><table><thead><tr><th>Variable</th><th>Valor #{e(id_a)}</th><th>Valor #{e(id_b)}</th></tr></thead><tbody>
 """
         for vname, va, vb in d["variables"]:

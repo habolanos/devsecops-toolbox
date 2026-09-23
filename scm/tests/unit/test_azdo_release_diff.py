@@ -203,6 +203,40 @@ class TestPrintDiff:
         assert "TOTAL" in out
         assert "Diferentes" in out
 
+    def test_print_diff_variables_de_stage(self):
+        """Variables de environment y variableGroups se comparan por stage."""
+        release_a = {
+            "id": 1,
+            "environments": [{"name": "Dev", "status": "ok",
+                              "variables": {"envVar": {"value": "a"},
+                                            "secretVar": {"value": None, "isSecret": True}},
+                              "variableGroups": [{"id": 10, "name": "vg-shared"}]}],
+        }
+        release_b = {
+            "id": 2,
+            "environments": [{"name": "Dev", "status": "ok",
+                              "variables": {"envVar": {"value": "b"},
+                                            "secretVar": {"value": None, "isSecret": True}},
+                              "variableGroups": [{"id": 10, "name": "vg-shared"},
+                                                 {"id": 11, "name": "vg-new"}]}],
+        }
+        buf, console = _console()
+        original = explorer.console
+        explorer.console = console
+        try:
+            explorer.print_diff(release_a, release_b)
+        finally:
+            explorer.console = original
+        flat = " ".join(buf.getvalue().split())
+        # tabla de variables por stage
+        assert "Variables - Stage: Dev" in flat
+        assert "Dev/envVar" in flat
+        # grupo existente en ambos + grupo solo en B
+        assert "Dev/[grupo] vg-shared" in flat
+        assert "Dev/[grupo] vg-new" in flat
+        # secreto se muestra como tal, no como N/A
+        assert "secreto" in flat
+
     def test_print_diff_exporta_txt_y_html(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
         release_a, release_b = self._releases_con_none()
