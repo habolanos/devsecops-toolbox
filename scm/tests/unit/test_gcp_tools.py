@@ -4,6 +4,7 @@ Tests para herramientas GCP (Google Cloud Platform)
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
+import io
 import json
 import sys
 import os
@@ -204,6 +205,87 @@ class TestGCPTools:
         assert label("cpl-cs-csc-qa-16112023") == "cs-csc-qa"
         assert label("cpl-oms-stag-09042025") == "oms-stg"
         assert label("custom-project") == "custom-project"
+
+    def _make_diag(self, env, project, connectors=None, recommendations=None):
+        return cloudrun_vpc_diagnostic.EnvironmentDiagnostic(
+            environment=env,
+            project_id=project,
+            host_project_id="host-x",
+            services=[],
+            connectors=connectors or [],
+            subnet_info={},
+            recommendations=recommendations or [],
+            risk_level="OK",
+        )
+
+    def _render(self, table):
+        from rich.console import Console
+        buf = io.StringIO()
+        Console(file=buf, width=220).print(table)
+        return buf.getvalue()
+
+    def test_consolidated_connectors_table_has_project_column(self):
+        """La tabla consolidada de connectors incluye Ambiente y Proyecto."""
+        conn = cloudrun_vpc_diagnostic.VPCConnectorInfo(
+            name="conn-1", region="us-central1", network="shared",
+            ip_cidr_range="10.8.0.0/28", min_instances=2, max_instances=10,
+            connected_services=["svc-a"], total_ips=16, used_ips_estimate=8,
+            available_ips=8, utilization_pct=50.0, status="OK")
+        diags = [
+            self._make_diag("dev", "proj-dev", connectors=[conn]),
+            self._make_diag("qa", "proj-qa", connectors=[conn]),
+        ]
+        helper = cloudrun_vpc_diagnostic.CloudRunVPCDiagnostic("p", "h")
+        table = helper.create_connectors_table(diags)
+        headers = [c.header for c in table.columns]
+        assert headers[:2] == ["Ambiente", "Proyecto"]
+        out = self._render(table)
+        assert "conn-1" in out
+        assert "proj-dev" in out and "proj-qa" in out
+        assert "DEV" in out and "QA" in out
+
+    def test_consolidated_recommendations_table_has_project_column(self):
+        """La tabla consolidada de recomendaciones incluye Ambiente y Proyecto."""
+        rec = {"priority": "HIGH", "type": "vpc_connector_cidr",
+               "title": "Ampliar CIDR", "current": "/28",
+               "recommended": "/27", "action": "Crear connector"}
+        diags = [
+            self._make_diag("dev", "proj-dev", recommendations=[rec]),
+            self._make_diag("stg", "proj-stg", recommendations=[rec]),
+        ]
+        helper = cloudrun_vpc_diagnostic.CloudRunVPCDiagnostic("p", "h")
+        table = helper.create_recommendations_table(diags)
+        headers = [c.header for c in table.columns]
+        assert headers[:2] == ["Ambiente", "Proyecto"]
+        out = self._render(table)
+        assert "vpc_connector_cidr" in out
+        assert "proj-dev" in out and "proj-stg" in out
+
+    def test_env_sort_key_orders_by_team_and_env(self):
+        """Orden determinista: equipo primero, luego dev<qa<stg<prod."""
+        key = cloudrun_vpc_diagnostic.env_sort_key
+        labels = ["cs-wms-stg", "dev", "cs-wms-dev", "qa", "cs-wms-qa", "x-raro"]
+        assert sorted(labels, key=key) == [
+            "dev", "qa", "cs-wms-dev", "cs-wms-qa", "cs-wms-stg", "x-raro"
+        ]
+
+    def test_spinner_non_tty_writes_single_line(self):
+        """En salida no-TTY el spinner no repite líneas por cada frame."""
+        import time
+        buf = io.StringIO()
+        old = sys.stdout
+        sys.stdout = buf
+        try:
+            sp = cloudrun_vpc_diagnostic.AnimatedSpinner("Trabajando")
+            sp.start()
+            time.sleep(0.3)
+            sp.stop("Listo")
+        finally:
+            sys.stdout = old
+        lines = [l for l in buf.getvalue().splitlines() if l.strip()]
+        assert len(lines) <= 2
+        assert "Trabajando" in lines[0]
+        assert "Listo" in buf.getvalue()
 
     def test_cloud_run_direct_vpc_network_is_extracted(self):
         """La configuración Direct VPC Egress expone red y subred."""

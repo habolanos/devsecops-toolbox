@@ -107,6 +107,16 @@ def env_key_from_text(text: str) -> Optional[str]:
     return None
 
 
+def env_sort_key(label: str):
+    """Clave de orden para etiquetas de ambiente: agrupa por equipo y ordena
+    dev < qa < stg < prod dentro de cada equipo."""
+    parts = label.split("-")
+    env_key = _ENV_KEY_ALIASES.get(parts[-1].lower())
+    rank = {"dev": 0, "qa": 1, "stg": 2, "prod": 3}.get(env_key, 9)
+    team = "-".join(parts[:-1]).lower() if rank != 9 else label.lower()
+    return (team, rank)
+
+
 def env_label_for_project(project: str) -> str:
     """Genera etiqueta '<equipo>-<env>' a partir del project ID.
 
@@ -151,6 +161,13 @@ class AnimatedSpinner:
         self._frames = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 
     def _animate(self):
+        # En salida no-TTY (pipes, captura por el launcher, CI) el \r no
+        # redibuja: cada frame quedaria como linea nueva. Se emite una sola
+        # linea estatica y el hilo termina.
+        if not sys.stdout.isatty():
+            sys.stdout.write(f"{self._frames[0]} {self.message}\n")
+            sys.stdout.flush()
+            return
         frame = 0
         while not self._stop_event.is_set():
             text = f"\r{self._frames[frame % len(self._frames)]} {self.message}"
@@ -168,8 +185,9 @@ class AnimatedSpinner:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=1)
-        # Limpia la línea anterior y deja un resultado final estable.
-        sys.stdout.write("\r\033[2K")
+        # Limpia la línea anterior solo en TTY (el escape no aplica en pipes).
+        if sys.stdout.isatty():
+            sys.stdout.write("\r\033[2K")
         if final_message:
             sys.stdout.write(final_message)
         sys.stdout.write("\n")
@@ -820,15 +838,17 @@ class CloudRunVPCDiagnostic(CloudRunBase):
         
         return table
     
-    def create_connector_table(self, connectors: List[VPCConnectorInfo], env: str) -> Table:
-        """Crea tabla de conectores"""
+    def create_connectors_table(self, diagnostics: List[EnvironmentDiagnostic]) -> Table:
+        """Tabla consolidada de VPC Connectors de todos los ambientes."""
         table = Table(
-            title=f"🔗 VPC Connectors - {env.upper()}",
+            title="🔗 VPC Connectors - Todos los ambientes",
             box=box.ROUNDED,
             show_header=True,
             header_style="bold cyan"
         )
-        
+
+        table.add_column("Ambiente", style="bold white")
+        table.add_column("Proyecto", style="dim")
         table.add_column("Connector", style="bold white")
         table.add_column("Red", style="yellow")
         table.add_column("CIDR", style="cyan")
@@ -837,64 +857,74 @@ class CloudRunVPCDiagnostic(CloudRunBase):
         table.add_column("Uso %", justify="right")
         table.add_column("Estado", justify="center")
         table.add_column("Servicios", style="dim", max_width=30)
-        
-        for conn in connectors:
-            status_style = {
-                "OK": "[green]OK[/green]",
-                "WARNING": "[yellow]WARNING[/yellow]",
-                "CRITICAL": "[red]CRITICAL[/red]"
-            }.get(conn.status, conn.status)
-            
-            services_str = ", ".join(conn.connected_services[:3])
-            if len(conn.connected_services) > 3:
-                services_str += f" +{len(conn.connected_services)-3} más"
-            
-            table.add_row(
-                conn.name,
-                conn.network,
-                conn.ip_cidr_range,
-                format_ip_usage(conn.used_ips_estimate, conn.total_ips),
-                str(conn.available_ips),
-                f"{conn.utilization_pct}%",
-                status_style,
-                services_str
-            )
-        
+
+        for diag in diagnostics:
+            env = diag.environment.upper()
+            for conn in diag.connectors:
+                status_style = {
+                    "OK": "[green]OK[/green]",
+                    "WARNING": "[yellow]WARNING[/yellow]",
+                    "CRITICAL": "[red]CRITICAL[/red]"
+                }.get(conn.status, conn.status)
+
+                services_str = ", ".join(conn.connected_services[:3])
+                if len(conn.connected_services) > 3:
+                    services_str += f" +{len(conn.connected_services)-3} más"
+
+                table.add_row(
+                    env,
+                    diag.project_id,
+                    conn.name,
+                    conn.network,
+                    conn.ip_cidr_range,
+                    format_ip_usage(conn.used_ips_estimate, conn.total_ips),
+                    str(conn.available_ips),
+                    f"{conn.utilization_pct}%",
+                    status_style,
+                    services_str
+                )
+
         return table
-    
-    def create_recommendations_table(self, recommendations: List[Dict], env: str) -> Table:
-        """Crea tabla de recomendaciones"""
+
+    def create_recommendations_table(self, diagnostics: List[EnvironmentDiagnostic]) -> Table:
+        """Tabla consolidada de recomendaciones de todos los ambientes."""
         table = Table(
-            title=f"💡 Recomendaciones - {env.upper()}",
+            title="💡 Recomendaciones - Todos los ambientes",
             box=box.ROUNDED,
             show_header=True,
             header_style="bold cyan"
         )
-        
+
+        table.add_column("Ambiente", style="bold white")
+        table.add_column("Proyecto", style="dim")
         table.add_column("Prioridad", justify="center")
         table.add_column("Tipo", style="cyan")
         table.add_column("Título", style="bold white", max_width=35)
         table.add_column("Actual", style="yellow", max_width=25)
         table.add_column("Recomendado", style="green", max_width=25)
         table.add_column("Acción", style="dim", max_width=40)
-        
-        for rec in recommendations:
-            priority_style = {
-                "CRITICAL": "[red]🔴 CRITICAL[/red]",
-                "HIGH": "[orange3]🟠 HIGH[/orange3]",
-                "MEDIUM": "[yellow]🟡 MEDIUM[/yellow]",
-                "LOW": "[green]🟢 LOW[/green]"
-            }.get(rec["priority"], rec["priority"])
-            
-            table.add_row(
-                priority_style,
-                rec["type"],
-                rec["title"][:35],
-                str(rec["current"])[:25],
-                str(rec["recommended"])[:25],
-                rec["action"][:40]
-            )
-        
+
+        for diag in diagnostics:
+            env = diag.environment.upper()
+            for rec in diag.recommendations:
+                priority_style = {
+                    "CRITICAL": "[red]🔴 CRITICAL[/red]",
+                    "HIGH": "[orange3]🟠 HIGH[/orange3]",
+                    "MEDIUM": "[yellow]🟡 MEDIUM[/yellow]",
+                    "LOW": "[green]🟢 LOW[/green]"
+                }.get(rec["priority"], rec["priority"])
+
+                table.add_row(
+                    env,
+                    diag.project_id,
+                    priority_style,
+                    rec["type"],
+                    rec["title"][:35],
+                    str(rec["current"])[:25],
+                    str(rec["recommended"])[:25],
+                    rec["action"][:40]
+                )
+
         return table
     
     def export_diagnostics(self, diagnostics: List[EnvironmentDiagnostic], format: str) -> str:
@@ -1295,7 +1325,11 @@ def main():
     if not diagnostics:
         console.print("[red]❌ No se pudieron diagnosticar ambientes[/red]")
         sys.exit(1)
-    
+
+    # Orden determinista: por equipo y dev/qa/stg/prod (los futures llegan en
+    # orden arbitrario al ejecutarse en paralelo)
+    diagnostics.sort(key=lambda d: env_sort_key(d.environment))
+
     # Crear instancia helper para métodos de tabla
     helper = CloudRunVPCDiagnostic(
         project=projects[0],
@@ -1310,13 +1344,12 @@ def main():
     console.print()
     console.print(helper.create_summary_table(diagnostics))
     console.print()
-    
-    # Mostrar detalle por ambiente
-    for diag in diagnostics:
-        console.print(helper.create_connector_table(diag.connectors, diag.environment))
-        console.print()
-        console.print(helper.create_recommendations_table(diag.recommendations, diag.environment))
-        console.print()
+
+    # Tablas consolidadas con columna Ambiente/Proyecto
+    console.print(helper.create_connectors_table(diagnostics))
+    console.print()
+    console.print(helper.create_recommendations_table(diagnostics))
+    console.print()
     
     # Exportar
     if args.output:
