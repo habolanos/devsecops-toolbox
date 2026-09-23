@@ -1159,13 +1159,26 @@ def run_tool(tool_key: str):
 
     project_list = None
     if "--project" in tool_args or "--multi-project" in tool_args:
+        script_stem = os.path.splitext(os.path.basename(tool.get("path", "")))[0]
+        supports_multi = script_stem in MULTI_PROJECT_SCRIPTS
+        multi_capable = supports_multi or "--multi-project" in tool_args
+
         print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+        if multi_capable:
+            teams = get_cloud_run_projects_by_team()
+            print(f"\n{Colors.DIM}Equipos: {', '.join(t.upper() for t in teams)} | ALL = todos los proyectos{Colors.ENDC}")
+            print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
         project_input = input().strip()
         if not project_input:
             project_list = [DEFAULT_PROJECT_ID]
             print(f"{Colors.GREEN}Usando proyecto: {DEFAULT_PROJECT_ID}{Colors.ENDC}")
         else:
-            project_list = [p.strip() for p in project_input.split(',') if p.strip()]
+            project_tokens = [p.strip() for p in project_input.split(',') if p.strip()]
+            project_list = resolve_cloud_run_projects(project_input) if multi_capable else project_tokens
+            if len(project_list) > 1 and len(project_tokens) == 1:
+                alias = project_tokens[0].upper()
+                label = "todos los equipos" if alias == "ALL" else f"equipo {alias}"
+                print(f"{Colors.GREEN}✅ Seleccionado {label}: {len(project_list)} proyecto(s){Colors.ENDC}")
             if len(project_list) == 1:
                 print(f"{Colors.GREEN}Usando proyecto: {project_list[0]}{Colors.ENDC}")
             else:
@@ -1173,6 +1186,8 @@ def run_tool(tool_key: str):
         # Si hay multiples proyectos y la tool soporta --multi-project, usarlo
         if len(project_list) > 1 and "--multi-project" in tool_args:
             args.extend(["--multi-project", ','.join(project_list)])
+        elif len(project_list) > 1 and supports_multi:
+            args.extend(["--project", ','.join(project_list)])
         else:
             args.extend(["--project", project_list[0]])
 

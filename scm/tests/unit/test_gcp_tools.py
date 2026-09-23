@@ -298,6 +298,13 @@ class TestGCPTools:
             )
         }) == ("shared", "run")
 
+    def test_gcp_monitor_is_multi_project_capable(self):
+        """La opción 1 soporta --multi-project para seleccion ALL/equipos."""
+        assert "gcp_monitor" in gcp_tools.MULTI_PROJECT_PARAM_SCRIPTS
+        tool = gcp_tools.TOOLS["1"]
+        assert "--multi-project" in tool["args"]
+        assert tool["path"].endswith("gcp_monitor.py")
+
     def test_cloud_run_vpc_diagnostic_supports_html_output(self):
         """La opción 35 declara salida HTML para el launcher."""
         tool = gcp_tools.TOOLS["35"]

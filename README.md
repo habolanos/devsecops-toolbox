@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.101-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.102-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-23 | **1.7.102** | Launcher GCP: el prompt de proyectos aplica la convención config.json a todas las tools multi-proyecto (opción 1 `gcp_monitor` y las de `MULTI_PROJECT_SCRIPTS`): se pueden ingresar aliases de equipo o `ALL`. Fix: los scripts con `--project` comma-separated ya no se truncaban al primer proyecto. |
 | 2026-09-23 | **1.7.101** | Cloud Run VPC IP Diagnostic: el spinner ya no imprime una línea por frame en salida no-TTY (pipes/launcher) — emite una línea estática. Las tablas de VPC Connectors y Recomendaciones se consolidan en una sola por sección con columnas `Ambiente` y `Proyecto`, y los diagnósticos se ordenan por equipo y dev/qa/stg/prod. |
 | 2026-09-23 | **1.7.100** | Cloud Run VPC IP Diagnostic (opción 35): los proyectos se cargan desde `config.json → gcp.service_accounts_reporter.projects`. Los equipos se agrupan dinámicamente derivando la clave del project ID (`cs-csc`, `oms`), los aliases legacy (CSC, WMS, OMS, CMANAGER) siguen funcionando por coincidencia de sufijo, y `ALL` toma la lista del config. Fallback al dict hardcoded si el config no existe. |
 | 2026-09-23 | **1.7.99** | Cloud Run VPC IP Diagnostic (opción 35): acepta el alias `ALL` para analizar los 12 proyectos de todos los equipos (CMANAGER/CSC/WMS/OMS) en una sola ejecución. Con más de 4 proyectos las etiquetas de ambiente se derivan del project ID (`cs-wms-dev`, `oms-stg`) y la config de capacidad se resuelve por el token de ambiente del ID. |

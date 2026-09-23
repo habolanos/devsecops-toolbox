@@ -17,6 +17,7 @@ en lugar de hardcodearlos**:
   - `cloud_run_env_names(projects)` → `dev/qa/stg/prod` posicional (≤4) o `<equipo>-<env>` derivado (>4).
 - **Reglas**:
   - `ALL` (case-insensitive) siempre debe expandir todos los proyectos configurados.
+  - Los aliases/equipos se resuelven en el prompt genérico solo para tools multi-proyecto (`--multi-project` en args o script en `MULTI_PROJECT_SCRIPTS`); tools de un solo proyecto reciben el input literal.
   - Tokens de ambiente reconocidos: `dev`, `qa`, `stg`, `stag`, `prod`, `prd` (normalizar `stag`→`stg`, `prd`→`prod`).
   - Si `config.json` no existe o la lista está vacía → fallback al dict hardcoded.
   - En el script diagnóstico Cloud Run (`gcp_cloudrun_vpc_ip_diagnostic.py`) existen equivalentes: `env_key_from_text()` y `env_label_for_project()`; `MAX_PROJECTS = 20`.
