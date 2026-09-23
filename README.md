@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.93-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.94-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-22 | **1.7.94** | Release Explorer diff: las rutas de los archivos TXT/HTML exportados se imprimen con mayor contraste (verde/cyan en bold) para facilitar su lectura. |
 | 2026-09-21 | **1.7.93** | Release Explorer diff: el reporte HTML ahora usa el tema oscuro del toolbox (fondo `#0f172a`, cards `#1e293b`, acentos cyan) igual que los dashboards de AZDO/GCP. |
 | 2026-09-21 | **1.7.92** | Release Explorer diff: los archivos se generan según `global.output_dir` de `scm/config.json`, el HTML usa el formato de reportes del toolbox (cards/badges) y el TXT/HTML ya no cortan valores. |
 | 2026-09-21 | **1.7.91** | Release Explorer diff: agrega panel `Resumen de Cambios` (iguales/diferentes/por lado) y exporta automáticamente la salida a TXT plano y HTML en `outcome/`. |

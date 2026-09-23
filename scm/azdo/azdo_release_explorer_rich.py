@@ -710,8 +710,8 @@ def print_diff(release_a: Dict, release_b: Dict):
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(_diff_html_report(id_a, id_b, diff_rows))
 
-        console.print(f"[dim]📄 TXT:  {txt_path}[/dim]")
-        console.print(f"[dim]🌐 HTML: {html_path}[/dim]")
+        console.print(f"[bold green]📄 TXT:[/bold green]  [bold cyan]{txt_path}[/bold cyan]")
+        console.print(f"[bold green]🌐 HTML:[/bold green] [bold cyan]{html_path}[/bold cyan]")
     except Exception as e:
         console.print(f"[yellow]⚠️ No se pudo exportar el diff: {e}[/yellow]")
 
