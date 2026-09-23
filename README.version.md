@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.99`** — 2026-09-23
+**`1.7.100`** — 2026-09-23
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-23 | **1.7.100** | **feat(gcp): Proyectos Cloud Run desde config.json en opción 35**: `load_projects_from_config()` lee `gcp.service_accounts_reporter.projects` de `scm/config.json`. `group_projects_by_team()`/`team_key_for_project()` derivan el equipo del project ID (`cpl-<equipo>-<env>-<fecha>`), por lo que agregar/quitar proyectos solo requiere editar config.json. `_match_team_key()` mantiene los aliases legacy (CSC→cs-csc, WMS→cs-wms) por coincidencia exacta o de sufijo. `ALL` expande la lista del config; si el archivo falta o la lista está vacía, se usa el dict hardcoded como fallback. | `scm/gcp/tools.py`, `scm/tests/unit/test_gcp_tools.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-23 | **1.7.99** | **feat(gcp): Alias ALL en Cloud Run VPC IP Diagnostic (opción 35)**: `resolve_cloud_run_projects("ALL")` expande los 12 proyectos de `CLOUD_RUN_PROJECTS_BY_TEAM` (CMANAGER, CSC, WMS, OMS). El launcher ya no limita a 4 proyectos (máx = total configurado). El script diagnóstico acepta hasta `MAX_PROJECTS=20`; con >4 proyectos genera etiquetas `<equipo>-<env>` vía `env_label_for_project()` y resuelve `ENVIRONMENT_CONFIG` con `env_key_from_text()` (soporta dev/qa/stg/stag/prod/prd). | `scm/gcp/tools.py`, `scm/gcp/cloud-run/gcp_cloudrun_vpc_ip_diagnostic.py`, `scm/tests/unit/test_gcp_tools.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-22 | **1.7.98** | **fix(azdo): Cuadrar sumas del resumen de diff con variables movidas de scope**: Las variables con `moved` se contaban dos veces (en `Solo #A/B` de Variables y en la fila `↳ Vars. cambio de scope`). Ahora se restan de la fila Variables y se muestran en la fila naranja bajo las columnas `Solo #A/B` (`moved=1` → Solo A, `moved=2` → Solo B), por lo que las columnas del resumen suman contra el TOTAL. | `scm/azdo/azdo_release_explorer_rich.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-22 | **1.7.97** | **feat(azdo): Resaltar en naranja variables que cambiaron de scope en diff**: Si una variable existe solo en un release dentro de un scope pero está presente en otro scope del release contrario (ej. `artifact.nameSpaceGateway` movió de `Develop` a `Release`), la fila se marca naranja en terminal (`orange1`) y HTML (`class=moved`). Se agrega fila `↳ Vars. cambio de scope` al resumen y leyenda de colores en el HTML. | `scm/azdo/azdo_release_explorer_rich.py`, `scm/tests/unit/test_azdo_release_diff.py`, `VERSION`, `README.md`, `README.version.md` |

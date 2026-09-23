@@ -17,6 +17,7 @@ Uso:
 """
 
 import datetime
+import json
 import os
 import sys
 import subprocess
@@ -117,7 +118,8 @@ DEFAULT_CLUSTER_ID = "gke-cs-wms-qa-01"
 # Deployment por defecto para checkers de conectividad
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 
-# Proyectos GCP predefinidos por equipo para el diagnóstico Cloud Run
+# Proyectos GCP predefinidos por equipo para el diagnóstico Cloud Run.
+# Fallback cuando config.json no existe o no define service_accounts_reporter.projects.
 CLOUD_RUN_PROJECTS_BY_TEAM = {
     "CMANAGER": ["cpl-cmanager-dev-13072023", "cpl-cmanager-qa-13072023", "cpl-cmanager-stag-01052025"],
     "CSC": ["cpl-cs-csc-dev-16112023", "cpl-cs-csc-qa-16112023", "cpl-cs-csc-stag-11042025"],
@@ -125,16 +127,90 @@ CLOUD_RUN_PROJECTS_BY_TEAM = {
     "OMS": ["cpl-oms-dev-08082024", "cpl-oms-qa-08062023", "cpl-oms-stag-09042025"],
 }
 
+_ENV_TOKENS = {"dev", "qa", "stg", "stag", "prod", "prd"}
+_CONFIG_PROJECT_GROUPS = None
+
+
+def _scm_config_path() -> Path:
+    """Ruta a scm/config.json relativa a este módulo (scm/gcp/tools.py)."""
+    return Path(__file__).resolve().parents[1] / "config.json"
+
+
+def load_projects_from_config(path: Optional[Path] = None) -> List[str]:
+    """Lee gcp.service_accounts_reporter.projects de scm/config.json.
+
+    Retorna [] si el archivo no existe, no parsea o la lista está vacía.
+    """
+    cfg_path = Path(path) if path else _scm_config_path()
+    try:
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        projects = (data.get("gcp", {}).get("service_accounts_reporter", {})
+                    .get("projects", []))
+        return [p.strip() for p in projects if isinstance(p, str) and p.strip()]
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return []
+
+
+def team_key_for_project(project: str) -> str:
+    """Deriva la clave de equipo desde el project ID.
+
+    'cpl-cs-csc-qa-16112023' -> 'cs-csc'; 'cpl-oms-stag-09042025' -> 'oms'.
+    IDs sin token de ambiente se agrupan bajo 'otros'.
+    """
+    tokens = project.split("-")
+    idx = next((i for i, t in enumerate(tokens) if t.lower() in _ENV_TOKENS), None)
+    if idx is None:
+        return "otros"
+    team = tokens[1:idx] if tokens and tokens[0].lower() == "cpl" else tokens[:idx]
+    return "-".join(team).lower() or "otros"
+
+
+def group_projects_by_team(projects: List[str]) -> Dict[str, List[str]]:
+    """Agrupa una lista plana de proyectos por equipo derivado del ID."""
+    groups: Dict[str, List[str]] = {}
+    for proj in projects:
+        groups.setdefault(team_key_for_project(proj), []).append(proj)
+    return groups
+
+
+def get_cloud_run_projects_by_team() -> Dict[str, List[str]]:
+    """Equipos -> proyectos. Lee config.json; fallback al dict hardcoded."""
+    global _CONFIG_PROJECT_GROUPS
+    if _CONFIG_PROJECT_GROUPS is None:
+        from_config = load_projects_from_config()
+        if from_config:
+            _CONFIG_PROJECT_GROUPS = group_projects_by_team(from_config)
+        else:
+            flat = [p for projs in CLOUD_RUN_PROJECTS_BY_TEAM.values() for p in projs]
+            _CONFIG_PROJECT_GROUPS = group_projects_by_team(flat)
+    return _CONFIG_PROJECT_GROUPS
+
+
+def _match_team_key(name: str, groups: Dict[str, List[str]]) -> Optional[str]:
+    """Resuelve un alias de equipo contra las claves derivadas.
+
+    Coincidencia exacta o por sufijo: 'csc' -> 'cs-csc', 'wms' -> 'cs-wms'.
+    """
+    norm = name.strip().lower()
+    if norm in groups:
+        return norm
+    for key in groups:
+        if key.endswith("-" + norm):
+            return key
+    return None
+
 
 def resolve_cloud_run_projects(project_input: str):
-    """Expande un alias de equipo, ALL (todos los equipos) o devuelve los IDs ingresados."""
+    """Expande ALL, un alias de equipo, o devuelve los IDs ingresados."""
     tokens = [item.strip() for item in project_input.split(",") if item.strip()]
     if len(tokens) == 1:
+        groups = get_cloud_run_projects_by_team()
         key = tokens[0].upper()
         if key == "ALL":
-            return [p for projs in CLOUD_RUN_PROJECTS_BY_TEAM.values() for p in projs]
-        if key in CLOUD_RUN_PROJECTS_BY_TEAM:
-            return list(CLOUD_RUN_PROJECTS_BY_TEAM[key])
+            return [p for projs in groups.values() for p in projs]
+        team_key = _match_team_key(tokens[0], groups)
+        if team_key:
+            return list(groups[team_key])
     return tokens
 
 
@@ -155,10 +231,9 @@ def cloud_run_env_names(projects_list):
         if idx is None:
             names.append(proj)
             continue
-        team = "-".join(tokens[1:idx]) if tokens and tokens[0].lower() == "cpl" \
-            else "-".join(tokens[:idx])
+        team = team_key_for_project(proj)
         env = env_alias[tokens[idx].lower()]
-        names.append(f"{team}-{env}" if team else env)
+        names.append(f"{team}-{env}" if team != "otros" else env)
     return names
 
 # Scripts que soportan multiples proyectos separados por coma en --project
@@ -1140,14 +1215,15 @@ def run_tool(tool_key: str):
         print(f"{Colors.CYAN}   Donde están desplegados los servicios Cloud Run{Colors.ENDC}")
         print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}")
 
+        teams = get_cloud_run_projects_by_team()
         print(f"{Colors.BOLD}Ingrese proyectos GCP (dev,qa,stg,prod separados por comas), un equipo o ALL:{Colors.ENDC}")
         print(f"{Colors.DIM}Equipos disponibles:{Colors.ENDC}")
-        for team, projs in CLOUD_RUN_PROJECTS_BY_TEAM.items():
-            print(f"{Colors.DIM}  {team}: {', '.join(projs)}{Colors.ENDC}")
+        for team, projs in teams.items():
+            print(f"{Colors.DIM}  {team.upper()}: {', '.join(projs)}{Colors.ENDC}")
         print(f"{Colors.DIM}Ejemplos combinados:{Colors.ENDC}")
         print(f"{Colors.DIM}  1 ambiente: cpl-cs-wms-prod (o solo prod){Colors.ENDC}")
         print(f"{Colors.DIM}  3 ambientes (CSC): cpl-cs-csc-dev-16112023,cpl-cs-csc-qa-16112023,cpl-cs-csc-stag-11042025{Colors.ENDC}")
-        print(f"{Colors.DIM}  También puede ingresar: CMANAGER, CSC, WMS, OMS o ALL (todos los equipos){Colors.ENDC}")
+        print(f"{Colors.DIM}  También puede ingresar un equipo (ej. CSC, WMS) o ALL (todos){Colors.ENDC}")
         print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
         projects_input = input().strip()
         if not projects_input:
@@ -1163,7 +1239,7 @@ def run_tool(tool_key: str):
             label = "todos los equipos" if alias == "ALL" else f"equipo {alias}"
             print(f"{Colors.GREEN}✅ Seleccionado {label}: {len(projects_list)} proyecto(s){Colors.ENDC}")
 
-        max_projects = sum(len(projs) for projs in CLOUD_RUN_PROJECTS_BY_TEAM.values())
+        max_projects = sum(len(projs) for projs in teams.values())
         if len(projects_list) < 1 or len(projects_list) > max_projects:
             print(f"{Colors.FAIL}Se esperan entre 1 y {max_projects} proyectos. Recibidos: {len(projects_list)}{Colors.ENDC}")
             input("\nPresione Enter para continuar...")

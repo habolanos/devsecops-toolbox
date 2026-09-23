@@ -4,6 +4,7 @@ Tests para herramientas GCP (Google Cloud Platform)
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
+import json
 import sys
 import os
 import importlib.util
@@ -106,6 +107,75 @@ class TestGCPTools:
         assert len(all_projects) == 12
         # case-insensitive
         assert gcp_tools.resolve_cloud_run_projects("all") == all_projects
+
+    def test_load_projects_from_config(self, tmp_path):
+        """Lee gcp.service_accounts_reporter.projects desde config.json."""
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "gcp": {"service_accounts_reporter": {
+                "projects": ["proj-a", " proj-b ", "", 123]
+            }}
+        }), encoding="utf-8")
+        assert gcp_tools.load_projects_from_config(cfg) == ["proj-a", "proj-b"]
+        # archivo inexistente o JSON inválido -> []
+        assert gcp_tools.load_projects_from_config(tmp_path / "nope.json") == []
+        bad = tmp_path / "bad.json"
+        bad.write_text("{invalid", encoding="utf-8")
+        assert gcp_tools.load_projects_from_config(bad) == []
+
+    def test_group_projects_by_team_derives_teams(self):
+        """La clave de equipo se deriva del project ID."""
+        groups = gcp_tools.group_projects_by_team([
+            "cpl-cmanager-dev-13072023",
+            "cpl-cs-csc-qa-16112023",
+            "cpl-cs-wms-stag-09042025",
+            "cpl-oms-prod-08082024",
+            "no-env-token",
+        ])
+        assert groups["cmanager"] == ["cpl-cmanager-dev-13072023"]
+        assert groups["cs-csc"] == ["cpl-cs-csc-qa-16112023"]
+        assert groups["cs-wms"] == ["cpl-cs-wms-stag-09042025"]
+        assert groups["oms"] == ["cpl-oms-prod-08082024"]
+        assert groups["otros"] == ["no-env-token"]
+
+    def test_cloud_run_projects_from_config_override(self, tmp_path, monkeypatch):
+        """Si config.json define projects, los aliases se resuelven contra ellos."""
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "gcp": {"service_accounts_reporter": {
+                "projects": [
+                    "acme-foo-dev-01",
+                    "acme-foo-prod-01",
+                    "acme-bar-qa-02",
+                ]
+            }}
+        }), encoding="utf-8")
+        monkeypatch.setattr(gcp_tools, "_scm_config_path", lambda: cfg)
+        gcp_tools._CONFIG_PROJECT_GROUPS = None
+        try:
+            # alias derivado por coincidencia de sufijo/exacta
+            assert gcp_tools.resolve_cloud_run_projects("FOO") == [
+                "acme-foo-dev-01", "acme-foo-prod-01"
+            ]
+            assert gcp_tools.resolve_cloud_run_projects("acme-bar") == ["acme-bar-qa-02"]
+            assert gcp_tools.resolve_cloud_run_projects("ALL") == [
+                "acme-foo-dev-01", "acme-foo-prod-01", "acme-bar-qa-02"
+            ]
+        finally:
+            gcp_tools._CONFIG_PROJECT_GROUPS = None
+
+    def test_cloud_run_projects_fallback_when_no_config(self, tmp_path, monkeypatch):
+        """Sin config.json se usa el dict hardcoded de fallback."""
+        monkeypatch.setattr(gcp_tools, "_scm_config_path", lambda: tmp_path / "missing.json")
+        gcp_tools._CONFIG_PROJECT_GROUPS = None
+        try:
+            assert gcp_tools.resolve_cloud_run_projects("WMS") == [
+                "cpl-cs-wms-dev-30112023",
+                "cpl-cs-wms-qa-30112023",
+                "cpl-cs-wms-stag-09042025",
+            ]
+        finally:
+            gcp_tools._CONFIG_PROJECT_GROUPS = None
 
     def test_cloud_run_env_names_for_many_projects(self):
         """Con >4 proyectos las etiquetas se derivan del project ID."""
