@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.97-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.98-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-22 | **1.7.98** | Release Explorer diff: corrige el resumen — las variables movidas de scope se descuentan de `Solo #A/B` en la fila Variables y se contabilizan en la fila `↳ Vars. cambio de scope`, de modo que cada columna del resumen suma correctamente contra el TOTAL. |
 | 2026-09-22 | **1.7.97** | Release Explorer diff: variables que cambiaron de scope entre releases se marcan en naranja (terminal `orange1`, HTML `.moved`); el resumen agrega la fila `Vars. cambio de scope` y el HTML incluye leyenda de colores. |
 | 2026-09-22 | **1.7.96** | Release Explorer diff: las variables se comparan en una sola tabla con columna `Scope` (Release/stage) en lugar de un panel por stage. |
 | 2026-09-22 | **1.7.95** | Release Explorer diff: ahora compara todas las variables — scope release, por stage (`env.variables`) y `variableGroups` vinculados; las secretas se muestran como 🔒. |

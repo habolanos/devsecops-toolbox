@@ -599,13 +599,15 @@ def print_diff(release_a: Dict, release_b: Dict):
                     val_b = "🔒 (secreto)"
 
                 # Detección de cambio de scope: existe solo de un lado en este
-                # scope, pero la variable existe en otro scope del otro release
+                # scope, pero la variable existe en otro scope del otro release.
+                # moved: 0 = no, 1 = solo existe en A en este scope, 2 = solo en B
                 exists_a = vname in vars_a
                 exists_b = vname in vars_b
-                moved = False
+                moved = 0
                 if exists_a != exists_b:
                     other_scopes = (name_scopes_b if exists_a else name_scopes_a).get(vname, set()) - {scope}
-                    moved = bool(other_scopes)
+                    if other_scopes:
+                        moved = 1 if exists_a else 2
 
                 diff_rows["variables"].append((safe_str(scope), safe_str(vname), safe_str(val_a), safe_str(val_b), moved))
                 if moved:
@@ -711,8 +713,13 @@ def print_diff(release_a: Dict, release_b: Dict):
         for k, v in env_variables(envs_b.get(stage)).items():
             vars_map_b[f"{stage}/{k}"] = _var_val(v)
     c_var = _counts(vars_map_a, vars_map_b, lambda x, y: safe_str(x) == safe_str(y))
-    # Variables que solo cambiaron de scope (excluir del conteo "solo en un lado")
-    moved_vars = sum(1 for row in diff_rows["variables"] if len(row) > 4 and row[4])
+    # Variables que solo cambiaron de scope: se excluyen de "Solo A/B" de la
+    # fila Variables y se muestran en su propia fila para que las sumas cuadren.
+    # moved == 1 -> solo existe en A en ese scope; moved == 2 -> solo en B.
+    moved_a = sum(1 for row in diff_rows["variables"] if len(row) > 4 and row[4] == 1)
+    moved_b = sum(1 for row in diff_rows["variables"] if len(row) > 4 and row[4] == 2)
+    moved_vars = moved_a + moved_b
+    c_var = (c_var[0], c_var[1], c_var[2] - moved_a, c_var[3] - moved_b)
 
     def summary_table():
         t = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -740,13 +747,14 @@ def print_diff(release_a: Dict, release_b: Dict):
                 f"[yellow]{ob}[/yellow]" if ob else "0",
             )
         if moved_vars:
-            diff_rows["summary"].append(("↳ Vars. cambio de scope", 0, moved_vars, 0, 0))
+            totals[2] += moved_a; totals[3] += moved_b
+            diff_rows["summary"].append(("↳ Vars. cambio de scope", 0, 0, moved_a, moved_b))
             t.add_row(
                 "[orange1]↳ Vars. cambio de scope[/orange1]",
                 "0",
-                f"[orange1]{moved_vars}[/orange1]",
                 "0",
-                "0",
+                f"[orange1]{moved_a}[/orange1]" if moved_a else "0",
+                f"[orange1]{moved_b}[/orange1]" if moved_b else "0",
             )
         diff_rows["summary"].append(("TOTAL", totals[0], totals[1], totals[2], totals[3]))
         t.add_row(
@@ -965,10 +973,13 @@ def _diff_html_report(id_a: Any, id_b: Any, d: Dict) -> str:
     for label, eq, df, oa, ob in d["summary"]:
         bold_a = "<strong>" if label == "TOTAL" else ""
         bold_b = "</strong>" if label == "TOTAL" else ""
-        cls_df = "moved" if "cambio de scope" in label else "diff"
+        is_moved = "cambio de scope" in label
+        cls_df = "diff"
+        cls_oa = "moved" if is_moved else "miss"
+        cls_ob = "moved" if is_moved else "miss"
         page += (f'                <tr><td>{bold_a}{e(label)}{bold_b}</td>'
                  f'<td class="eq">{eq}</td><td class="{cls_df}">{df}</td>'
-                 f'<td class="miss">{oa}</td><td class="miss">{ob}</td></tr>\n')
+                 f'<td class="{cls_oa}">{oa}</td><td class="{cls_ob}">{ob}</td></tr>\n')
     page += """            </tbody></table></div>
         </div>
         <div class="footer">Generado por DevSecOps Toolbox — Azure DevOps Release Explorer</div>
