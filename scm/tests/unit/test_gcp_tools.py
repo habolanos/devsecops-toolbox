@@ -98,6 +98,43 @@ class TestGCPTools:
         ]
         assert gcp_tools.resolve_cloud_run_projects("custom-project") == ["custom-project"]
 
+    def test_cloud_run_all_alias_expands_to_all_teams(self):
+        """El alias ALL expande los proyectos de todos los equipos."""
+        all_projects = gcp_tools.resolve_cloud_run_projects("ALL")
+        expected = [p for projs in gcp_tools.CLOUD_RUN_PROJECTS_BY_TEAM.values() for p in projs]
+        assert all_projects == expected
+        assert len(all_projects) == 12
+        # case-insensitive
+        assert gcp_tools.resolve_cloud_run_projects("all") == all_projects
+
+    def test_cloud_run_env_names_for_many_projects(self):
+        """Con >4 proyectos las etiquetas se derivan del project ID."""
+        names = gcp_tools.cloud_run_env_names([
+            "cpl-cs-wms-dev-30112023",
+            "cpl-cs-csc-qa-16112023",
+            "cpl-oms-stag-09042025",
+            "cpl-cmanager-dev-13072023",
+            "custom-project",
+        ])
+        assert names == ["cs-wms-dev", "cs-csc-qa", "oms-stg", "cmanager-dev", "custom-project"]
+        # <=4 proyectos: posicional
+        assert gcp_tools.cloud_run_env_names(["a", "b"]) == ["dev", "qa"]
+
+    def test_cloud_run_env_key_from_text(self):
+        """La clave de ambiente se extrae de labels compuestas."""
+        assert cloudrun_vpc_diagnostic.env_key_from_text("cs-wms-qa") == "qa"
+        assert cloudrun_vpc_diagnostic.env_key_from_text("oms-stg") == "stg"
+        assert cloudrun_vpc_diagnostic.env_key_from_text("cpl-x-prd-01") == "prod"
+        assert cloudrun_vpc_diagnostic.env_key_from_text("custom") is None
+
+    def test_cloud_run_env_label_for_project(self):
+        """La etiqueta '<equipo>-<env>' se deriva del project ID."""
+        label = cloudrun_vpc_diagnostic.env_label_for_project
+        assert label("cpl-cs-wms-dev-30112023") == "cs-wms-dev"
+        assert label("cpl-cs-csc-qa-16112023") == "cs-csc-qa"
+        assert label("cpl-oms-stag-09042025") == "oms-stg"
+        assert label("custom-project") == "custom-project"
+
     def test_cloud_run_direct_vpc_network_is_extracted(self):
         """La configuración Direct VPC Egress expone red y subred."""
         extract = cloudrun_vpc_diagnostic.extract_direct_vpc_network

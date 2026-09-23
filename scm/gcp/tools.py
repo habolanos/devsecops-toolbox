@@ -127,11 +127,39 @@ CLOUD_RUN_PROJECTS_BY_TEAM = {
 
 
 def resolve_cloud_run_projects(project_input: str):
-    """Expande un alias de equipo o devuelve los IDs ingresados."""
+    """Expande un alias de equipo, ALL (todos los equipos) o devuelve los IDs ingresados."""
     tokens = [item.strip() for item in project_input.split(",") if item.strip()]
-    if len(tokens) == 1 and tokens[0].upper() in CLOUD_RUN_PROJECTS_BY_TEAM:
-        return list(CLOUD_RUN_PROJECTS_BY_TEAM[tokens[0].upper()])
+    if len(tokens) == 1:
+        key = tokens[0].upper()
+        if key == "ALL":
+            return [p for projs in CLOUD_RUN_PROJECTS_BY_TEAM.values() for p in projs]
+        if key in CLOUD_RUN_PROJECTS_BY_TEAM:
+            return list(CLOUD_RUN_PROJECTS_BY_TEAM[key])
     return tokens
+
+
+def cloud_run_env_names(projects_list):
+    """Nombres de ambiente para mostrar junto a cada proyecto.
+
+    <=4 proyectos: posicional dev/qa/stg/prod. >4 (modo ALL): etiqueta
+    '<equipo>-<env>' derivada del project ID (ej. 'cs-wms-dev', 'oms-stg').
+    """
+    if len(projects_list) <= 4:
+        return ["dev", "qa", "stg", "prod"][:len(projects_list)]
+    env_alias = {"dev": "dev", "qa": "qa", "stg": "stg", "stag": "stg",
+                 "prod": "prod", "prd": "prod"}
+    names = []
+    for proj in projects_list:
+        tokens = proj.split("-")
+        idx = next((i for i, t in enumerate(tokens) if t.lower() in env_alias), None)
+        if idx is None:
+            names.append(proj)
+            continue
+        team = "-".join(tokens[1:idx]) if tokens and tokens[0].lower() == "cpl" \
+            else "-".join(tokens[:idx])
+        env = env_alias[tokens[idx].lower()]
+        names.append(f"{team}-{env}" if team else env)
+    return names
 
 # Scripts que soportan multiples proyectos separados por coma en --project
 MULTI_PROJECT_SCRIPTS = {
@@ -1112,14 +1140,14 @@ def run_tool(tool_key: str):
         print(f"{Colors.CYAN}   Donde están desplegados los servicios Cloud Run{Colors.ENDC}")
         print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}")
 
-        print(f"{Colors.BOLD}Ingrese 1-4 proyectos GCP (dev,qa,stg,prod separados por comas):{Colors.ENDC}")
+        print(f"{Colors.BOLD}Ingrese proyectos GCP (dev,qa,stg,prod separados por comas), un equipo o ALL:{Colors.ENDC}")
         print(f"{Colors.DIM}Equipos disponibles:{Colors.ENDC}")
         for team, projs in CLOUD_RUN_PROJECTS_BY_TEAM.items():
             print(f"{Colors.DIM}  {team}: {', '.join(projs)}{Colors.ENDC}")
         print(f"{Colors.DIM}Ejemplos combinados:{Colors.ENDC}")
         print(f"{Colors.DIM}  1 ambiente: cpl-cs-wms-prod (o solo prod){Colors.ENDC}")
         print(f"{Colors.DIM}  3 ambientes (CSC): cpl-cs-csc-dev-16112023,cpl-cs-csc-qa-16112023,cpl-cs-csc-stag-11042025{Colors.ENDC}")
-        print(f"{Colors.DIM}  También puede ingresar directamente: CMANAGER, CSC, WMS u OMS{Colors.ENDC}")
+        print(f"{Colors.DIM}  También puede ingresar: CMANAGER, CSC, WMS, OMS o ALL (todos los equipos){Colors.ENDC}")
         print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
         projects_input = input().strip()
         if not projects_input:
@@ -1128,16 +1156,19 @@ def run_tool(tool_key: str):
             return
 
         project_tokens = [p.strip() for p in projects_input.split(',') if p.strip()]
-        # Un alias de equipo selecciona automáticamente sus proyectos Dev/QA/Stg.
+        # Un alias de equipo (o ALL) selecciona automáticamente sus proyectos.
         projects_list = resolve_cloud_run_projects(projects_input)
         if projects_list != project_tokens:
-            print(f"{Colors.GREEN}✅ Equipo seleccionado: {project_tokens[0].upper()}{Colors.ENDC}")
+            alias = project_tokens[0].upper()
+            label = "todos los equipos" if alias == "ALL" else f"equipo {alias}"
+            print(f"{Colors.GREEN}✅ Seleccionado {label}: {len(projects_list)} proyecto(s){Colors.ENDC}")
 
-        if len(projects_list) < 1 or len(projects_list) > 4:
-            print(f"{Colors.FAIL}Se esperan entre 1 y 4 proyectos. Recibidos: {len(projects_list)}{Colors.ENDC}")
+        max_projects = sum(len(projs) for projs in CLOUD_RUN_PROJECTS_BY_TEAM.values())
+        if len(projects_list) < 1 or len(projects_list) > max_projects:
+            print(f"{Colors.FAIL}Se esperan entre 1 y {max_projects} proyectos. Recibidos: {len(projects_list)}{Colors.ENDC}")
             input("\nPresione Enter para continuar...")
             return
-        env_names = ["dev", "qa", "stg", "prod"][:len(projects_list)]
+        env_names = cloud_run_env_names(projects_list)
         proj_display = ", ".join([f"{env_names[i]}={projects_list[i]}" for i in range(len(projects_list))])
         print(f"{Colors.GREEN}✅ Service Projects: {proj_display}{Colors.ENDC}")
         args.extend(["--projects", ','.join(projects_list)])

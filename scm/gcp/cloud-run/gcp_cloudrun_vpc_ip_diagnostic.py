@@ -20,6 +20,7 @@ Autor: Harold Adrian
 import argparse
 import subprocess
 import json
+import re
 import sys
 import os
 import threading
@@ -83,6 +84,44 @@ ENVIRONMENT_CONFIG = {
         "reserved_ips": 4
     }
 }
+
+# Aliases de tokens de ambiente encontrados en project IDs -> clave de ENVIRONMENT_CONFIG
+_ENV_KEY_ALIASES = {
+    "dev": "dev",
+    "qa": "qa",
+    "stg": "stg",
+    "stag": "stg",
+    "prod": "prod",
+    "prd": "prod",
+}
+
+# Máximo de proyectos soportados por ejecución (el modo ALL del launcher usa 12)
+MAX_PROJECTS = 20
+
+
+def env_key_from_text(text: str) -> Optional[str]:
+    """Extrae la clave de ambiente (dev/qa/stg/prod) de un texto como un project ID."""
+    for token in re.split(r"[^a-z0-9]+", (text or "").lower()):
+        if token in _ENV_KEY_ALIASES:
+            return _ENV_KEY_ALIASES[token]
+    return None
+
+
+def env_label_for_project(project: str) -> str:
+    """Genera etiqueta '<equipo>-<env>' a partir del project ID.
+
+    Ej: 'cpl-cs-wms-dev-30112023' -> 'cs-wms-dev'; 'cpl-oms-stag-09042025' -> 'oms-stg'.
+    Si el ID no contiene un token de ambiente, se usa el ID completo.
+    """
+    tokens = project.split("-")
+    env_idx = next((i for i, t in enumerate(tokens) if t.lower() in _ENV_KEY_ALIASES), None)
+    if env_idx is None:
+        return project
+    env_key = _ENV_KEY_ALIASES[tokens[env_idx].lower()]
+    team_tokens = tokens[1:env_idx] if tokens and tokens[0].lower() == "cpl" else tokens[:env_idx]
+    team = "-".join(team_tokens)
+    return f"{team}-{env_key}" if team else env_key
+
 
 CIDR_TO_IPS = {
     "/28": 16,
@@ -200,7 +239,7 @@ def get_args():
         "--projects",
         type=str,
         required=True,
-        help="Proyectos GCP separados por coma: dev-proj,qa-proj,stg-prod,prod-proj"
+        help="Proyectos GCP separados por coma: dev-proj,qa-proj,stg-prod,prod-proj (hasta 20; >4 deriva etiquetas '<equipo>-<env>' del project ID)"
     )
     parser.add_argument(
         "--host-project",
@@ -385,7 +424,11 @@ class CloudRunVPCDiagnostic(CloudRunBase):
         super().__init__(project, region, debug, tz)
         self.host_project = host_project
         self.environment = environment
-        self.env_config = ENVIRONMENT_CONFIG.get(environment, ENVIRONMENT_CONFIG["dev"])
+        # La etiqueta puede ser compuesta (ej. 'cs-wms-qa' en modo ALL); se deriva
+        # la clave de ambiente del label o del project ID para la config de capacidad.
+        env_key = (environment if environment in ENVIRONMENT_CONFIG else None) or \
+            env_key_from_text(environment) or env_key_from_text(project) or "dev"
+        self.env_config = ENVIRONMENT_CONFIG[env_key]
     
     def validate_connection_silent(self) -> bool:
         """Valida conexión a GCP sin spinner (para uso en paralelo)"""
@@ -883,17 +926,21 @@ def run_diagnostics(projects: List[str], host_projects: List[str], region: str,
     # Entornos por defecto, pero se ajustan al número de proyectos
     default_environments = ["dev", "qa", "stg", "prod"]
     num_projects = len(projects)
-    
-    if num_projects < 1 or num_projects > 4:
-        print(f"❌ Se esperan entre 1 y 4 proyectos. Recibidos: {num_projects}")
+
+    if num_projects < 1 or num_projects > MAX_PROJECTS:
+        print(f"❌ Se esperan entre 1 y {MAX_PROJECTS} proyectos. Recibidos: {num_projects}")
         sys.exit(1)
-    
+
     if len(host_projects) not in [1, num_projects]:
         print(f"❌ host-projects debe ser 1 (compartido) o {num_projects} (uno por ambiente). Recibidos: {len(host_projects)}")
         sys.exit(1)
-    
-    # Usar solo los primeros N entornos según el número de proyectos
-    environments = default_environments[:num_projects]
+
+    # <=4 proyectos: ambientes posicionales dev/qa/stg/prod.
+    # >4 proyectos (modo ALL): etiqueta '<equipo>-<env>' derivada del project ID.
+    if num_projects <= len(default_environments):
+        environments = default_environments[:num_projects]
+    else:
+        environments = [env_label_for_project(p) for p in projects]
     
     # Expandir host_projects si es uno solo
     if len(host_projects) == 1:
