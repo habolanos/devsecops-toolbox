@@ -1166,7 +1166,10 @@ def run_tool(tool_key: str):
         print(f"\n{Colors.BOLD}Proyecto(s) GCP (separados por comas) [{Colors.CYAN}{DEFAULT_PROJECT_ID}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         if multi_capable:
             teams = get_cloud_run_projects_by_team()
-            print(f"\n{Colors.DIM}Equipos: {', '.join(t.upper() for t in teams)} | ALL = todos los proyectos{Colors.ENDC}")
+            print(f"\n{Colors.DIM}Equipos disponibles:{Colors.ENDC}")
+            for team, projs in teams.items():
+                print(f"{Colors.DIM}  {team.upper()}: {', '.join(projs)}{Colors.ENDC}")
+            print(f"{Colors.DIM}  También puede ingresar un equipo (ej. CSC, WMS) o ALL (todos){Colors.ENDC}")
             print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
         project_input = input().strip()
         if not project_input:
