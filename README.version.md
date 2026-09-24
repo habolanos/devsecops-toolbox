@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.7.103`** — 2026-09-23
+**`1.7.104`** — 2026-09-24
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-09-24 | **1.7.104** | **fix(gcp): ESTADO de clusters GKE considera pods no running**: `get_health_status()` (consola) y `compute_health_status()` (dashboard HTML) aceptan `pods_running`/`pods_not_running` y escalan a `🟡 ADVERTENCIA` cuando `not_running > running` — antes la columna `ESTADO` solo evaluaba CPU/memoria y reportaba `🟢 OK` aunque la mayoría de pods fallara (ej. 104 running vs 123 not running). La alerta de pods no degrada un `🔴 CRÍTICO` existente y valores `N/A`/None (Autopilot, kubectl fallido) se ignoran. Nuevos tests unitarios. | `scm/gcp/monitoring/gcp_monitor.py`, `scm/gcp/monitoring/generate_gcp_dashboard.py`, `scm/tests/unit/test_gke_pod_health.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-23 | **1.7.103** | **fix(gcp): Leyenda del prompt de proyectos con contenido por equipo**: El hint de tools multi-proyecto mostraba solo los nombres de equipo; ahora lista `EQUIPO: proj1, proj2, ...` como en la opción 35, más la nota de aliases/ALL. | `scm/gcp/tools.py`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-23 | **1.7.102** | **feat(gcp): Selección de proyectos por config.json en tools multi-proyecto**: El prompt genérico de proyectos resuelve aliases de equipo y `ALL` vía `resolve_cloud_run_projects()` para tools con `--multi-project` (opción 1 `gcp_monitor`) o en `MULTI_PROJECT_SCRIPTS` (gateway/LB/SA checkers). Tools de un solo proyecto reciben el input literal sin cambios. **fix**: scripts con `--project` comma-separated ahora reciben la lista completa (antes se truncaba al primer proyecto). | `scm/gcp/tools.py`, `scm/tests/unit/test_gcp_tools.py`, `AGENTS.md`, `VERSION`, `README.md`, `README.version.md` |
 | 2026-09-23 | **1.7.101** | **fix(gcp): Spinner sin líneas repetidas y tablas consolidadas en diagnóstico Cloud Run**: `AnimatedSpinner` detecta `sys.stdout.isatty()` — en pipes/captura emite una línea estática en vez de un frame por línea, y `stop()` solo envía el escape de borrado en TTY. `create_connector_table`/`create_recommendations_table` (por ambiente) se reemplazan por `create_connectors_table`/`create_recommendations_table` consolidadas con columnas `Ambiente` y `Proyecto`. Nueva `env_sort_key()` ordena los diagnósticos por equipo y dev/qa/stg/prod (el orden de llegada de futures en paralelo era arbitrario). | `scm/gcp/cloud-run/gcp_cloudrun_vpc_ip_diagnostic.py`, `scm/tests/unit/test_gcp_tools.py`, `VERSION`, `README.md`, `README.version.md` |

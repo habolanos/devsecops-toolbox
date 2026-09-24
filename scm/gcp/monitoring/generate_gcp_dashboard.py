@@ -321,25 +321,41 @@ def get_ip_status(pods_pct: Optional[float], services_pct: Optional[float]) -> s
 
 def compute_health_status(cpu_percent: Any, memory_percent: Any,
                           warning_threshold: float = 75.0,
-                          critical_threshold: float = 90.0) -> str:
-    """Estado de salud del cluster basado en CPU y memoria (umbrales de gcp_monitor.py)."""
+                          critical_threshold: float = 90.0,
+                          pods_running: Any = None,
+                          pods_not_running: Any = None) -> str:
+    """Estado de salud del cluster basado en CPU, memoria y pods (umbrales de gcp_monitor.py)."""
     if cpu_percent is None or memory_percent is None:
-        return 'SIN DATOS'
+        base_status = 'SIN DATOS'
+    else:
+        try:
+            cpu_pct = float(cpu_percent)
+            memory_pct = float(memory_percent)
+        except (TypeError, ValueError):
+            base_status = 'SIN DATOS'
+        else:
+            if cpu_pct <= 1:
+                cpu_pct *= 100
+            if memory_pct <= 1:
+                memory_pct *= 100
+            max_util = max(cpu_pct, memory_pct)
+            if max_util >= critical_threshold:
+                base_status = 'CRÍTICO'
+            elif max_util >= warning_threshold:
+                base_status = 'ADVERTENCIA'
+            else:
+                base_status = 'OK'
+
+    # Escalar a ADVERTENCIA si hay más pods no running que running
     try:
-        cpu_pct = float(cpu_percent)
-        memory_pct = float(memory_percent)
+        pods_alert = (pods_running is not None and pods_not_running is not None
+                      and int(pods_not_running) > int(pods_running))
     except (TypeError, ValueError):
-        return 'SIN DATOS'
-    if cpu_pct <= 1:
-        cpu_pct *= 100
-    if memory_pct <= 1:
-        memory_pct *= 100
-    max_util = max(cpu_pct, memory_pct)
-    if max_util >= critical_threshold:
-        return 'CRÍTICO'
-    if max_util >= warning_threshold:
+        pods_alert = False
+
+    if pods_alert and base_status != 'CRÍTICO':
         return 'ADVERTENCIA'
-    return 'OK'
+    return base_status
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -631,11 +647,16 @@ def _build_gke_row(project_id: str, cluster: Dict[str, Any]) -> Dict[str, Any]:
     metrics = cluster.get('usage_metrics') or {}
     cpu_used_pct = metrics.get('cpu_used_percent')
     memory_used_pct = metrics.get('memory_used_percent')
-    health = compute_health_status(cpu_used_pct, memory_used_pct)
 
     # Pods (disponible si el JSON fue enriquecido con ellos)
     pods_running = cluster.get('pods_running')
     pods_not_running = cluster.get('pods_not_running')
+
+    health = compute_health_status(
+        cpu_used_pct, memory_used_pct,
+        pods_running=pods_running,
+        pods_not_running=pods_not_running
+    )
 
     return {
         'project_id': project_id,

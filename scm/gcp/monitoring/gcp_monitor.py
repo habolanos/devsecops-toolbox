@@ -294,39 +294,54 @@ def get_machine_specs(machine_type: str) -> Dict[str, float]:
     return {'cpu': 0, 'memory': 0}
 
 
-def get_health_status(cpu_percent: Optional[float], memory_percent: Optional[float], 
-                     warning_threshold: float = 75.0, critical_threshold: float = 90.0) -> str:
-    """Calcula el estado de salud basado en CPU y memoria.
-    
+def get_health_status(cpu_percent: Optional[float], memory_percent: Optional[float],
+                     warning_threshold: float = 75.0, critical_threshold: float = 90.0,
+                     pods_running: Optional[Any] = None,
+                     pods_not_running: Optional[Any] = None) -> str:
+    """Calcula el estado de salud basado en CPU, memoria y pods.
+
     Basado en la lógica del script gcp-project-cluster-health.sh
-    
+
     Args:
         cpu_percent: Porcentaje de CPU utilizado (0-1 o None)
         memory_percent: Porcentaje de memoria utilizado (0-1 o None)
         warning_threshold: Umbral de advertencia (default: 75%)
         critical_threshold: Umbral crítico (default: 90%)
-    
+        pods_running: Pods en fase Running (int o 'N/A')
+        pods_not_running: Pods en otra fase (int o 'N/A')
+
     Returns:
         String con emoji y estado: '🟢 OK', '🟡 ADVERTENCIA', '🔴 CRÍTICO', '⚪ SIN DATOS'
     """
     # Si no hay datos
     if cpu_percent is None or memory_percent is None:
-        return '⚪ SIN DATOS'
-    
-    # Convertir a porcentaje si están en rango 0-1
-    cpu_pct = cpu_percent * 100 if cpu_percent <= 1 else cpu_percent
-    mem_pct = memory_percent * 100 if memory_percent <= 1 else memory_percent
-    
-    # Obtener el máximo de ambas métricas
-    max_util = max(cpu_pct, mem_pct)
-    
-    # Determinar estado
-    if max_util >= critical_threshold:
-        return '🔴 CRÍTICO'
-    elif max_util >= warning_threshold:
-        return '🟡 ADVERTENCIA'
+        base_status = '⚪ SIN DATOS'
     else:
-        return '🟢 OK'
+        # Convertir a porcentaje si están en rango 0-1
+        cpu_pct = cpu_percent * 100 if cpu_percent <= 1 else cpu_percent
+        mem_pct = memory_percent * 100 if memory_percent <= 1 else memory_percent
+
+        # Obtener el máximo de ambas métricas
+        max_util = max(cpu_pct, mem_pct)
+
+        # Determinar estado
+        if max_util >= critical_threshold:
+            base_status = '🔴 CRÍTICO'
+        elif max_util >= warning_threshold:
+            base_status = '🟡 ADVERTENCIA'
+        else:
+            base_status = '🟢 OK'
+
+    # Escalar a ADVERTENCIA si hay más pods no running que running
+    try:
+        pods_alert = (pods_running is not None and pods_not_running is not None
+                      and int(pods_not_running) > int(pods_running))
+    except (TypeError, ValueError):
+        pods_alert = False
+
+    if pods_alert and base_status != '🔴 CRÍTICO':
+        return '🟡 ADVERTENCIA'
+    return base_status
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN DE LOGGING
@@ -963,13 +978,17 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             cpu_used = format_percentage(cpu_used_percent)
             memory_used = format_percentage(memory_used_percent)
             
-            # Calcular estado de salud basado en umbrales
-            health_status = get_health_status(cpu_used_percent, memory_used_percent)
-            
             # Enriquecer con datos de opciones 13 y 14 (pre-calculado en paralelo)
             gke_extra = gke_extras.get((project_id, cluster_name), {})
             if not gke_extra:
                 gke_extra = build_gke_cluster_enrichment(project_id, cluster, debug=False, logger=logger)
+
+            # Calcular estado de salud basado en umbrales y pods
+            health_status = get_health_status(
+                cpu_used_percent, memory_used_percent,
+                pods_running=gke_extra.get('pods_running'),
+                pods_not_running=gke_extra.get('pods_not_running')
+            )
             
             # Formatear Version Status con color
             version_status = gke_extra['version_status']
