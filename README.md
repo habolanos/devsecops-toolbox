@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.107-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.108-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-29 | **1.7.108** | Tests: fix de colisión de `import tools` en `test_gcp_tools.py` (en CI otro `tools.py` quedaba cacheado en `sys.modules` según el orden de colección — ahora se carga por spec con nombre único) y `test_terminal_tools.py` ya no exige que `cer-io-2027.yml` exista en disco (está `.gitignore`ado por contener llave privada; el test verifica la protección en su lugar). |
 | 2026-09-29 | **1.7.107** | Cert Manager: `cert_backup_and_renew_tls_certs.sh` ahora agrupa todos sus artefactos (backups, `update-certs-*.yaml`, `evidencia-*.html`) en un solo folder `<outcome>/certs-<cluster>-<ts>/`, resolviendo el outcome desde `DEVSECOPS_OUTPUT_DIR` o `scm/config.json → global.output_dir`. |
 | 2026-09-29 | **1.7.106** | Terminal Tools: nueva opción **9 — Cert Manager Tools (GKE/GCP)**, submenú Python con interfaz Rich en `operation_update_certs_on_gke_gcp/tools.py` que agrupa las operaciones de certificados TLS (backup/renovación de Secrets K8s, validación TLS de endpoints, inventario ssl-certificates GCP) más verificación de prerrequisitos. |
 | 2026-09-29 | **1.7.105** | Terminal Tools: nueva opción **8 — Setup Entorno DevOps (Linux/WSL)** que ejecuta `operation_setup_initial/install-devops-tools.sh` para instalar el toolchain SCM DevOps (gcloud, kubectl, gke-auth-plugin, kubectx/kubens, k9s, jq, python3, pipx, nodejs, git) en Ubuntu/WSL. |

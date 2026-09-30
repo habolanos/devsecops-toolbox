@@ -18,7 +18,16 @@ GCP_DIR = Path(__file__).parents[2] / "gcp"
 sys.path.insert(0, str(CLOUD_RUN_DIR))
 sys.path.insert(0, str(GCP_DIR))
 
-import tools as gcp_tools
+# Cargar gcp/tools.py con nombre único: un `import tools` plano es ambiguo
+# porque existen varios tools.py (azdo, terminal, aws) y sys.modules['tools']
+# puede quedar cacheado por otro test según el orden de colección de pytest.
+_tools_spec = importlib.util.spec_from_file_location(
+    "gcp_tools_launcher",
+    GCP_DIR / "tools.py",
+)
+gcp_tools = importlib.util.module_from_spec(_tools_spec)
+sys.modules[_tools_spec.name] = gcp_tools
+_tools_spec.loader.exec_module(gcp_tools)
 
 _module_spec = importlib.util.spec_from_file_location(
     "gcp_cloudrun_vpc_ip_diagnostic",

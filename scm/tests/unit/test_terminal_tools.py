@@ -116,8 +116,14 @@ class TestCertManagerTools:
         assert cert_tools.OPERATIONS["4"]["action"] == "prereqs"
         assert cert_tools.OPERATIONS["4"]["path"] is None
 
-    def test_archivo_base_default_existe(self):
-        assert (cert_tools.BASE_DIR / cert_tools.DEFAULT_BASE_CERT).exists()
+    def test_archivo_base_default_definido_y_gitignored(self):
+        """El archivo base contiene llave privada: existe como default local,
+        pero nunca debe versionarse (cubierto por .gitignore)."""
+        assert cert_tools.DEFAULT_BASE_CERT.endswith((".yml", ".yaml"))
+        gitignore = (cert_tools.BASE_DIR.parents[2] / ".gitignore").read_text(
+            encoding="utf-8"
+        )
+        assert "operation_update_certs_on_gke_gcp" in gitignore
 
     def test_backup_script_salida_en_outcome_global(self):
         """El script de backup debe resolver el outcome global (env > config.json > scm/outcome)."""
