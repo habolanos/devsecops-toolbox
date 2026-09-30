@@ -3,16 +3,15 @@
 set -euo pipefail
 
 echo "============================================================"
-echo " DevOps Toolkit Installer - Ubuntu / WSL"
+echo " DevOps Toolkit Installer - Ubuntu / WSL: devsecops-toolbox"
 echo "============================================================"
 
 export DEBIAN_FRONTEND=noninteractive
 
-echo "[1/6] Installing base packages..."
+echo "[1/7] Installing base packages..."
 
 sudo apt-get update
 sudo apt --fix-broken install
-sudo apt -y upgrade
 sudo apt-get install -y \
   ca-certificates \
   curl \
@@ -29,9 +28,12 @@ sudo apt-get install -y \
   python3-venv \
   pipx \
   nodejs \
-  kubectx
+  kubectx \
+  golang-go \
+  rustc \
+  cargo
 
-echo "[2/6] Configuring pipx..."
+echo "[2/7] Configuring pipx..."
 
 pipx ensurepath || true
 export PATH="$HOME/.local/bin:$PATH"
@@ -40,7 +42,7 @@ if ! grep -q 'HOME/.local/bin' "$HOME/.bashrc" 2>/dev/null; then
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
 fi
 
-echo "[3/6] Configuring Google Cloud repository..."
+echo "[3/7] Configuring Google Cloud repository..."
 
 sudo mkdir -p /usr/share/keyrings
 
@@ -53,14 +55,18 @@ echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.clou
 
 sudo apt-get update
 
-echo "[4/6] Installing gcloud, kubectl and GKE auth plugin..."
+echo "[4/7] Installing gcloud, kubectl and GKE auth plugin..."
 
 sudo apt-get install -y \
   google-cloud-cli \
   google-cloud-cli-gke-gcloud-auth-plugin \
   kubectl
 
-echo "[5/6] Installing K9s..."
+echo "[5/7] Installing Helm..."
+
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+echo "[6/7] Installing K9s..."
 
 ARCH=$(dpkg --print-architecture)
 
@@ -85,7 +91,7 @@ sudo apt-get install -y "/tmp/${K9S_PACKAGE}"
 
 rm -f "/tmp/${K9S_PACKAGE}"
 
-echo "[6/6] Validating installations..."
+echo "[7/7] Validating installations..."
 
 echo
 printf "%-25s %s\n" "TOOL" "VERSION"
@@ -96,6 +102,7 @@ printf "%-25s %s\n" "kubectl" "$(kubectl version --client 2>/dev/null | head -1 
 printf "%-25s %s\n" "GKE Auth Plugin" "$(gke-gcloud-auth-plugin --version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "kubectx" "$(kubectx --version 2>/dev/null || echo INSTALLED)"
 printf "%-25s %s\n" "kubens" "$(command -v kubens 2>/dev/null || echo FAILED)"
+printf "%-25s %s\n" "Helm" "$(helm version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "k9s" "$(k9s version --short 2>/dev/null | head -1 || echo INSTALLED)"
 printf "%-25s %s\n" "jq" "$(jq --version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "Python" "$(python3 --version 2>/dev/null || echo FAILED)"
@@ -103,13 +110,29 @@ printf "%-25s %s\n" "pip" "$(python3 -m pip --version 2>/dev/null | cut -d' ' -f
 printf "%-25s %s\n" "pipx" "$(pipx --version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "Node.js" "$(node --version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "npm" "$(npm --version 2>/dev/null || echo FAILED)"
+printf "%-25s %s\n" "Go" "$(go version 2>/dev/null || echo FAILED)"
+printf "%-25s %s\n" "Rust" "$(rustc --version 2>/dev/null || echo FAILED)"
+printf "%-25s %s\n" "Cargo" "$(cargo --version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "Git" "$(git --version 2>/dev/null || echo FAILED)"
 
 echo
 echo "============================================================"
+echo " 🚀 DevSecOps Toolbox"
+echo "============================================================"
+echo
+echo "This installer is part of DevSecOps Toolbox:"
+echo "A practical collection of DevOps, Cloud, Kubernetes and"
+echo "DevSecOps tools, scripts and utilities for engineers."
+echo
+echo "⭐ If this project is useful to you, consider starring it:"
+echo
+echo "   https://github.com/habolanos/devsecops-toolbox"
+echo
+echo "Contributions, feedback and improvements are welcome."
+echo
+echo "============================================================"
 echo " Installation completed successfully"
 echo "============================================================"
-
 echo
 echo "Run:"
 echo "  source ~/.bashrc"
