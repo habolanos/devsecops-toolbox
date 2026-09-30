@@ -17,6 +17,10 @@
 secrets/
 **/.last_params.json
 
+#Certificados TLS base (contienen llave privada real)
+scm/terminal/operation_update_certs_on_gke_gcp/*.yml
+scm/terminal/operation_update_certs_on_gke_gcp/*.yaml
+
 #IAs
 .windsurf
 

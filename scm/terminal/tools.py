@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.2"
+__version__ = "1.0.6"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -180,6 +180,22 @@ SCRIPTS = {
         "args": [],
         "status": "ready",
         "type": "shell"
+    },
+    "8": {
+        "name": "Setup Entorno DevOps (Linux/WSL)",
+        "description": "Configura el entorno Linux para SCM DevOps Engineer: instala gcloud, kubectl, gke-gcloud-auth-plugin, kubectx/kubens, k9s, jq, python3, pipx, nodejs y git vía apt. Requiere Ubuntu/WSL y sudo.",
+        "path": "operation_setup_initial/install-devops-tools.sh",
+        "args": [],
+        "status": "ready",
+        "type": "shell"
+    },
+    "9": {
+        "name": "Cert Manager Tools (GKE/GCP)",
+        "description": "Submenú de operación de certificados TLS: backup/renovación de Secrets kubernetes.io/tls, validación TLS de endpoints e inventario de ssl-certificates de GCP con cartas para Multicloud.",
+        "path": "operation_update_certs_on_gke_gcp/tools.py",
+        "args": [],
+        "status": "ready",
+        "type": "python"
     },
     "_system_options": {
         "Q": {

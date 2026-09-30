@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.104-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.107-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,9 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-09-29 | **1.7.107** | Cert Manager: `cert_backup_and_renew_tls_certs.sh` ahora agrupa todos sus artefactos (backups, `update-certs-*.yaml`, `evidencia-*.html`) en un solo folder `<outcome>/certs-<cluster>-<ts>/`, resolviendo el outcome desde `DEVSECOPS_OUTPUT_DIR` o `scm/config.json → global.output_dir`. |
+| 2026-09-29 | **1.7.106** | Terminal Tools: nueva opción **9 — Cert Manager Tools (GKE/GCP)**, submenú Python con interfaz Rich en `operation_update_certs_on_gke_gcp/tools.py` que agrupa las operaciones de certificados TLS (backup/renovación de Secrets K8s, validación TLS de endpoints, inventario ssl-certificates GCP) más verificación de prerrequisitos. |
+| 2026-09-29 | **1.7.105** | Terminal Tools: nueva opción **8 — Setup Entorno DevOps (Linux/WSL)** que ejecuta `operation_setup_initial/install-devops-tools.sh` para instalar el toolchain SCM DevOps (gcloud, kubectl, gke-auth-plugin, kubectx/kubens, k9s, jq, python3, pipx, nodejs, git) en Ubuntu/WSL. |
 | 2026-09-24 | **1.7.104** | Monitor GCP (opción 1): la columna `ESTADO` de la tabla Clusters GKE ahora considera los pods — escala a `🟡 ADVERTENCIA` cuando `NOT RUNNING > PODS` (antes solo evaluaba CPU/memoria y mostraba `🟢 OK` aunque la mayoría de pods fallara). Mismo criterio aplicado al dashboard HTML. |
 | 2026-09-23 | **1.7.103** | Launcher GCP: la leyenda del prompt de proyectos ahora lista cada equipo con sus proyectos (igual que la opción 35), no solo los nombres de equipo. |
 | 2026-09-23 | **1.7.102** | Launcher GCP: el prompt de proyectos aplica la convención config.json a todas las tools multi-proyecto (opción 1 `gcp_monitor` y las de `MULTI_PROJECT_SCRIPTS`): se pueden ingresar aliases de equipo o `ALL`. Fix: los scripts con `--project` comma-separated ya no se truncaban al primer proyecto. |
