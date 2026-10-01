@@ -320,6 +320,28 @@ class TestGCPTools:
         assert "--output" in tool["args"]
         assert tool["path"].endswith("gcp_cloudrun_vpc_ip_diagnostic.py")
 
+    def test_gke_deployments_report_takes_project_arg(self):
+        """La opción 2 declara --project para que el launcher lo solicite
+        (los scripts corren con stdin=DEVNULL y no pueden usar input())."""
+        tool = gcp_tools.TOOLS["2"]
+        assert "--project" in tool["args"]
+        assert tool["path"].endswith("gke_deployments_report.py")
+
+    def test_gke_deployments_report_no_interactive_input_when_not_tty(self):
+        """gke_deployments_report.py acepta --project y solo llama input()
+        cuando stdin es una TTY real (evita EOFError bajo el launcher)."""
+        src = (GCP_DIR / "monitoring" / "gke_deployments_report.py").read_text(
+            encoding="utf-8"
+        )
+        assert '"--project"' in src
+        assert "sys.stdin.isatty()" in src
+
+    def test_gke_monitors_pause_solo_en_tty(self):
+        """gke_monitor_pod/gke_monitor_node no pausan con Enter bajo DEVNULL."""
+        for name in ("gke_monitor_pod.py", "gke_monitor_node.py"):
+            src = (GCP_DIR / "monitoring" / name).read_text(encoding="utf-8")
+            assert "sys.stdin.isatty()" in src, name
+
     def test_gcp_connectivity_checker(self):
         """Test Connectivity Checker"""
         # Simular verificación de conectividad

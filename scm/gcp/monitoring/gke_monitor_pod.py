@@ -835,7 +835,8 @@ def main():
     console.print("[dim]   Ábrelo en el navegador para ver con colores exactos.[/]")
 
     console.print()
-    console.input("[dim]Presione Enter para continuar...[/]")
+    if sys.stdin is not None and sys.stdin.isatty():
+        console.input("[dim]Presione Enter para continuar...[/]")
 
 
 if __name__ == "__main__":

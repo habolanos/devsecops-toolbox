@@ -409,7 +409,8 @@ Ejemplos:
         for cluster_name, nodes in all_data:
             show_summary_table(cluster_name, nodes)
 
-    console.input("[dim]Presione Enter para continuar...[/]")
+    if sys.stdin is not None and sys.stdin.isatty():
+        console.input("[dim]Presione Enter para continuar...[/]")
 
 
 if __name__ == "__main__":

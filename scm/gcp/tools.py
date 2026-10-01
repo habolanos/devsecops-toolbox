@@ -266,7 +266,7 @@ TOOLS = {
         "name": "Reporte de Despliegues GKE",
         "description": "Genera un reporte detallado de los despliegues en GKE",
         "path": "monitoring/gke_deployments_report.py",
-        "args": [],
+        "args": ["--project"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
         "status": "ready"

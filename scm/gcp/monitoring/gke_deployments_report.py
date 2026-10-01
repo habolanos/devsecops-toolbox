@@ -25,6 +25,7 @@ import argparse
 import csv
 import json
 import os
+import sys
 import logging
 import time
 from datetime import datetime, timezone
@@ -668,6 +669,8 @@ def main():
     )
     parser.add_argument(
         "--project-id",
+        "--project",
+        dest="project_id",
         default="default-gke-project",
         help="ID del proyecto GCP (default: default-gke-project)",
     )
@@ -689,13 +692,18 @@ def main():
     print("=" * 80)
     print()
     
-    print("📋 Ingrese el ID del proyecto GCP")
-    print("   (Presione Enter para usar el valor por defecto: 'default-gke-project')")
-    user_input = input("Proyecto GCP: ").strip()
-    if user_input:
-        project_id = user_input
-    else:
-        project_id = args.project_id or "default-gke-project"
+    project_id = args.project_id or "default-gke-project"
+    # El launcher ejecuta los scripts con stdin=DEVNULL: solo preguntar
+    # cuando hay una terminal interactiva real.
+    if sys.stdin is not None and sys.stdin.isatty():
+        print("📋 Ingrese el ID del proyecto GCP")
+        print(f"   (Presione Enter para usar el valor por defecto: '{project_id}')")
+        try:
+            user_input = input("Proyecto GCP: ").strip()
+        except EOFError:
+            user_input = ""
+        if user_input:
+            project_id = user_input
     
     print(f"✓ Proyecto GCP: {project_id}")
     logger.info(f"Proyecto GCP: {project_id}")
