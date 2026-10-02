@@ -1141,13 +1141,24 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             inst_name = instance.get('name', 'N/A')
             sql_tasks.append((project_id, inst_name))
 
-    if sql_tasks:
+    # Preferir los conteos ya recolectados en process_project; solo consultar
+    # lazily los que falten (p. ej. datos que no pasaron por ese flujo).
+    sql_db_counts = {}
+    missing_tasks = []
+    for pid, iname in sql_tasks:
+        cached = all_data.get(pid, {}).get('sql_db_counts', {}).get(iname)
+        if cached is not None:
+            sql_db_counts[(pid, iname)] = cached
+        else:
+            missing_tasks.append((pid, iname))
+
+    if missing_tasks:
         if logger:
-            logger.info(f"Obteniendo conteo de bases de datos de {len(sql_tasks)} instancias Cloud SQL en paralelo...")
-        with ThreadPoolExecutor(max_workers=min(6, len(sql_tasks))) as executor:
+            logger.info(f"Obteniendo conteo de bases de datos de {len(missing_tasks)} instancias Cloud SQL en paralelo...")
+        with ThreadPoolExecutor(max_workers=min(10, len(missing_tasks))) as executor:
             futures = {
                 executor.submit(get_cloud_sql_database_count, pid, iname, False, None, logger): (pid, iname)
-                for pid, iname in sql_tasks
+                for pid, iname in missing_tasks
             }
             for fut in as_completed(futures):
                 pid, iname = futures[fut]
@@ -1345,186 +1356,6 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         table.add_column("Estado", style="green")
         for row in all_topics:
             table.add_row(*row)
-        console.print(table)
-        console.print()
-
-
-def create_detailed_tables(data: Dict[str, Any], console, project_id: str = "") -> None:
-    """Crea y muestra tablas detalladas de recursos con Rich."""
-    if not RICH_AVAILABLE or not console:
-        return
-    
-    # Tabla de Servicios (resumen)
-    services = data.get('services', [])
-    if services:
-        enabled = sum(1 for svc in services if svc.get('state', 'ENABLED') == 'ENABLED')
-        total = len(services)
-        table = Table(title="📌 Servicios Habilitados (Resumen)", box=box.ROUNDED)
-        table.add_column("Habilitados", style="cyan", justify="right")
-        table.add_column("Estado", style="green")
-        if enabled == total:
-            estado = "✅ Todos habilitados"
-        else:
-            estado = f"⚠️ {total - enabled} con estado distinto"
-        table.add_row(str(enabled), estado)
-        console.print(table)
-        console.print()
-    
-    # Tabla de Clusters GKE
-    clusters = data.get('gke_clusters', [])
-    if clusters:
-        table = Table(title="☸️  Clusters GKE", box=box.ROUNDED)
-        table.add_column("Nombre", style="cyan")
-        table.add_column("Ubicación", style="yellow")
-        table.add_column("Estado", style="green")
-        table.add_column("Versión", style="magenta")
-        table.add_column("Nodos", style="blue", justify="right")
-        for cluster in clusters:
-            table.add_row(
-                cluster.get('name', 'N/A')[:30],
-                cluster.get('location', 'N/A'),
-                cluster.get('status', 'N/A'),
-                cluster.get('currentMasterVersion', 'N/A')[:15],
-                str(cluster.get('currentNodeCount', 0))
-            )
-        console.print(table)
-        console.print()
-    
-    # Tabla de Cloud SQL
-    sql_instances = data.get('sql_instances', [])
-    if sql_instances:
-        sql_db_counts = {}
-        sql_tasks = [(instance.get('name', 'N/A')) for instance in sql_instances[:10]]
-        if sql_tasks and project_id:
-            with ThreadPoolExecutor(max_workers=min(6, len(sql_tasks))) as executor:
-                futures = {
-                    executor.submit(get_cloud_sql_database_count, project_id, iname, False, None, None): iname
-                    for iname in sql_tasks
-                }
-                for fut in as_completed(futures):
-                    iname = futures[fut]
-                    try:
-                        sql_db_counts[iname] = fut.result()
-                    except Exception:
-                        sql_db_counts[iname] = "N/A"
-        table = Table(title="🗄️  Instancias Cloud SQL", box=box.ROUNDED)
-        table.add_column("Nombre", style="cyan")
-        table.add_column("Estado", style="green")
-        table.add_column("Versión", style="yellow")
-        table.add_column("Tier", style="magenta")
-        table.add_column("Disco (GB)", style="blue", justify="right")
-        table.add_column("BDs", style="cyan", justify="right")
-        for instance in sql_instances[:10]:
-            disk = instance.get('settings', {}).get('dataDiskSizeGb', 'N/A')
-            inst_name = instance.get('name', 'N/A')
-            db_count = sql_db_counts.get(inst_name, "N/A")
-            table.add_row(
-                inst_name[:30],
-                format_status_color(instance.get('state', 'N/A')),
-                instance.get('databaseVersion', 'N/A')[:20],
-                instance.get('settings', {}).get('tier', 'N/A')[:20],
-                str(disk),
-                db_count
-            )
-        if len(sql_instances) > 10:
-            table.add_row(f"... y {len(sql_instances) - 10} más", "", "", "", "", "")
-        console.print(table)
-        console.print()
-    
-    # Tabla de Compute Engine
-    compute_instances = data.get('compute_instances', [])
-    if compute_instances:
-        table = Table(title="💻 Instancias Compute Engine", box=box.ROUNDED)
-        table.add_column("Nombre", style="cyan")
-        table.add_column("Tipo", style="yellow")
-        table.add_column("Zona", style="magenta")
-        table.add_column("Estado", style="green")
-        for vm in compute_instances[:15]:
-            machine = vm.get('machineType', '').split('/')[-1] if vm.get('machineType') else 'N/A'
-            zone = vm.get('zone', '').split('/')[-1] if vm.get('zone') else 'N/A'
-            table.add_row(
-                vm.get('name', 'N/A')[:30],
-                machine[:20],
-                zone,
-                format_status_color(vm.get('status', 'N/A'))
-            )
-        if len(compute_instances) > 15:
-            table.add_row(f"... y {len(compute_instances) - 15} más", "", "", "")
-        console.print(table)
-        console.print()
-    
-    # Tabla de Cloud Run
-    run_services = data.get('cloud_run', [])
-    if run_services:
-        table = Table(title="🚀 Servicios Cloud Run", box=box.ROUNDED)
-        table.add_column("Nombre", style="cyan", no_wrap=False)
-        table.add_column("Región", style="yellow")
-        table.add_column("URL", style="blue", no_wrap=False)
-        table.add_column("Conc.", style="white", justify="right")
-        table.add_column("CPU Lim", style="white", justify="right")
-        table.add_column("Mem Lim", style="white", justify="right")
-        table.add_column("Ingress", style="white")
-        table.add_column("VPC", style="magenta")
-        table.add_column("Estado", style="green", justify="center")
-        for svc in run_services:
-            metadata = svc.get('metadata', {})
-            spec = svc.get('spec', {})
-            template = spec.get('template', {})
-            containers = template.get('spec', {}).get('containers', [])
-            annotations = metadata.get('annotations', {})
-            template_annotations = (template.get('metadata') or {}).get('annotations', {})
-            
-            url = svc.get('status', {}).get('url', 'N/A')
-            if url and url != 'N/A':
-                url = url.replace('https://', '')[:50]
-            
-            concurrency = template.get('spec', {}).get('containerConcurrency', 'N/A')
-            cpu_limit = 'N/A'
-            mem_limit = 'N/A'
-            if containers:
-                limits = containers[0].get('resources', {}).get('limits', {})
-                cpu_limit = limits.get('cpu', 'N/A')
-                mem_limit = limits.get('memory', 'N/A')
-            ingress = annotations.get('run.googleapis.com/ingress', 'all')
-            
-            # VPC connector
-            vpc = (template_annotations.get('run.googleapis.com/vpc-access-connector')
-                   or annotations.get('run.googleapis.com/vpc-access-connector')
-                   or 'N/A')
-            if vpc != 'N/A' and '/' in str(vpc):
-                vpc = str(vpc).split('/')[-1]
-            
-            # Estado: grave si tiene URL publica
-            if ingress == 'all' and url and url != 'N/A':
-                run_status = format_status_color('PUBLIC_URL')
-            elif ingress in ('internal', 'internal-and-cloud-load-balancing'):
-                run_status = format_status_color('INTERNAL')
-            else:
-                run_status = format_status_color('ACTIVE')
-            
-            table.add_row(
-                metadata.get('name', 'N/A')[:40],
-                metadata.get('namespace', 'N/A')[:20],
-                url,
-                str(concurrency),
-                cpu_limit,
-                mem_limit,
-                ingress,
-                vpc[:30] if vpc != 'N/A' else 'N/A',
-                run_status
-            )
-        console.print(table)
-        console.print()
-    
-    # Tabla de Pub/Sub
-    topics = data.get('pubsub_topics', [])
-    if topics:
-        table = Table(title="📬 Topics Pub/Sub", box=box.ROUNDED)
-        table.add_column("Nombre", style="cyan")
-        table.add_column("Estado", style="green")
-        for topic in topics:
-            name = topic.get('name', '').split('/')[-1] if topic.get('name') else 'N/A'
-            table.add_row(name, "✅ Activo")
         console.print(table)
         console.print()
 
@@ -2484,7 +2315,26 @@ def main() -> int:
                 data['compute_instances'] = get_compute_instances(project_id, debug, console, logger)
                 data['cloud_run'] = get_cloud_run_services(project_id, debug, console, logger)
                 data['pubsub_topics'] = get_pubsub_topics(project_id, debug, console, logger)
-            
+
+            # Conteo de BDs por instancia Cloud SQL — se adelanta aquí (paralelo
+            # dentro del proyecto) para que las tablas detalladas no re-consulten
+            # al final, que era la pausa donde la consola parecía colgada.
+            sql_db_counts = {}
+            sql_task_names = [i.get('name', 'N/A') for i in data.get('sql_instances', [])[:10]]
+            if sql_task_names:
+                with ThreadPoolExecutor(max_workers=min(10, len(sql_task_names))) as executor:
+                    futures = {
+                        executor.submit(get_cloud_sql_database_count, project_id, iname, False, None, logger): iname
+                        for iname in sql_task_names
+                    }
+                    for fut in as_completed(futures):
+                        iname = futures[fut]
+                        try:
+                            sql_db_counts[iname] = fut.result()
+                        except Exception:
+                            sql_db_counts[iname] = "N/A"
+            data['sql_db_counts'] = sql_db_counts
+
             return project_id, data
         
         # Procesar proyectos en paralelo si hay múltiples
@@ -2536,7 +2386,13 @@ def main() -> int:
             console.print("[bold cyan]📊 DETALLES DE RECURSOS (CONSOLIDADOS)[/]")
             console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/]")
             console.print()
-            create_consolidated_detailed_tables(all_data, console, logger)
+            # La fase de detalles consulta BDs por instancia Cloud SQL (puede tardar);
+            # se muestra un spinner para que la consola no parezca colgada.
+            if sys.stdout.isatty():
+                with _defer_console_prints(), console.status("[bold cyan]Generando detalles consolidados (contando bases de datos Cloud SQL)...[/]"):
+                    create_consolidated_detailed_tables(all_data, console, logger)
+            else:
+                create_consolidated_detailed_tables(all_data, console, logger)
         
         # Generar reporte consolidado para todos los proyectos
         print_consolidated_report(all_data, console, skipped_projects)
@@ -2570,7 +2426,11 @@ def main() -> int:
         
         # Generar HTML (siempre)
         try:
-            html_filepath = generate_html_dashboard_file(json_filepath, outcome_dir, logger)
+            if RICH_AVAILABLE and console and sys.stdout.isatty():
+                with console.status("[bold cyan]Generando dashboard HTML...[/]"):
+                    html_filepath = generate_html_dashboard_file(json_filepath, outcome_dir, logger)
+            else:
+                html_filepath = generate_html_dashboard_file(json_filepath, outcome_dir, logger)
             filepaths.append(html_filepath)
         except Exception as e:
             if logger:
