@@ -17,9 +17,13 @@ from threading import Lock
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import (get_output_dir, gke_kube_env, gke_context_name,
+                       gke_location_flag, ensure_gke_cluster_credentials)
 except ImportError:
     import os as _os
+    import atexit as _ax
+    import shutil as _sh
+    import tempfile as _tf
     from pathlib import Path as _Path
     def get_output_dir(default="."):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
@@ -30,6 +34,26 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
+    _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
+    def gke_kube_env(cluster_name):
+        env = _os.environ.copy()
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        return env
+    def gke_context_name(project_id, location, cluster_name):
+        return f"gke_{project_id}_{location}_{cluster_name}"
+    def gke_location_flag(location):
+        return f"--zone={location}" if location.count("-") == 2 else f"--region={location}"
+    def ensure_gke_cluster_credentials(project_id, cluster_name, location,
+                                       timeout=60, debug=False, logger=None):
+        cmd = (f"gcloud container clusters get-credentials {cluster_name} "
+               f"--project={project_id} {gke_location_flag(location)} --quiet")
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                               timeout=timeout, env=gke_kube_env(cluster_name))
+            return r.returncode == 0
+        except Exception:
+            return False
 # -------------------------------------------------------------------
 
 # Version
@@ -325,52 +349,56 @@ def get_cluster_utilization(project_id, cluster_name, debug=False):
 
 def get_pod_count(project_id, cluster_name, location, debug=False):
     """Obtiene el conteo de pods running y not running del cluster"""
-    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
-    
     # El contexto generado por gcloud tiene formato: gke_PROJECT_LOCATION_CLUSTER
-    context_name = f'gke_{project_id}_{location}_{cluster_name}'
-    
+    context_name = gke_context_name(project_id, location, cluster_name)
+    kube_env = gke_kube_env(cluster_name)
+
     try:
-        # Obtener credenciales del cluster
-        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True)
-        
-        if debug:
-            print(f"[DEBUG] get-credentials returncode: {creds_result.returncode}")
-            if creds_result.stderr:
-                print(f"[DEBUG] get-credentials stderr: {creds_result.stderr[:200]}")
-        
+        # KUBECONFIG aislado por cluster: seguro en paralelo (sin pisar ~/.kube/config)
+        if not ensure_gke_cluster_credentials(project_id, cluster_name, location, debug=debug):
+            if debug:
+                print(f"[DEBUG] get-credentials falló para {cluster_name}")
+            return None, None
+
         # Usar JSON output para contar pods (más confiable que wc -l)
-        cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json 2>/dev/null'
-        result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True)
-        
+        cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json'
+        result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True,
+                                timeout=30, env=kube_env)
+
         if debug:
             print(f"[DEBUG] kubectl get pods returncode: {result.returncode}, stdout length: {len(result.stdout)}")
-        
+
+        # kubectl falló: N/A en vez de ceros falsos (cluster realmente vacío = rc 0 + items[])
+        if result.returncode != 0 or not result.stdout.strip():
+            if debug:
+                stderr_hint = (result.stderr or "").strip().splitlines()
+                print(f"[DEBUG] kubectl failed for {cluster_name}: {stderr_hint[0][:200] if stderr_hint else 'sin stderr'}")
+            return None, None
+
         running = 0
         not_running = 0
-        
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                data = json.loads(result.stdout)
-                items = data.get('items', [])
-                for pod in items:
-                    phase = pod.get('status', {}).get('phase', 'Unknown')
-                    if phase == 'Running':
-                        running += 1
-                    else:
-                        not_running += 1
-                
-                if debug:
-                    print(f"[DEBUG] Pods {cluster_name}: total={len(items)}, running={running}, not_running={not_running}")
-            except json.JSONDecodeError as je:
-                if debug:
-                    print(f"[DEBUG] JSON decode error: {je}")
-        else:
+        try:
+            data = json.loads(result.stdout)
+            items = data.get('items', [])
+            for pod in items:
+                phase = pod.get('status', {}).get('phase', 'Unknown')
+                if phase == 'Running':
+                    running += 1
+                else:
+                    not_running += 1
+
             if debug:
-                print(f"[DEBUG] kubectl failed or empty output for {cluster_name}")
-        
+                print(f"[DEBUG] Pods {cluster_name}: total={len(items)}, running={running}, not_running={not_running}")
+        except json.JSONDecodeError as je:
+            if debug:
+                print(f"[DEBUG] JSON decode error: {je}")
+            return None, None
+
         return running, not_running
+    except subprocess.TimeoutExpired:
+        if debug:
+            print(f"[DEBUG] Timeout obteniendo pods para {cluster_name}")
+        return None, None
     except Exception as e:
         if debug:
             print(f"[DEBUG] Pod count error: {e}")
@@ -378,18 +406,19 @@ def get_pod_count(project_id, cluster_name, location, debug=False):
 
 def get_not_running_pods_detail(project_id, cluster_name, location, debug=False):
     """Obtiene detalle de pods que no están en estado Running"""
-    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
     pods_detail = []
-    
-    context_name = f'gke_{project_id}_{location}_{cluster_name}'
-    
+
+    context_name = gke_context_name(project_id, location, cluster_name)
+    kube_env = gke_kube_env(cluster_name)
+
     try:
-        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        subprocess.run(get_creds, shell=True, capture_output=True, text=True)
-        
-        cmd = f"kubectl --context={context_name} get pods --all-namespaces --field-selector=status.phase!=Running -o json 2>/dev/null"
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        
+        # KUBECONFIG aislado por cluster: seguro en paralelo
+        ensure_gke_cluster_credentials(project_id, cluster_name, location, debug=debug)
+
+        cmd = f"kubectl --context={context_name} get pods --all-namespaces --field-selector=status.phase!=Running -o json"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                                timeout=30, env=kube_env)
+
         if result.returncode == 0 and result.stdout.strip():
             data = json.loads(result.stdout)
             items = data.get('items', [])

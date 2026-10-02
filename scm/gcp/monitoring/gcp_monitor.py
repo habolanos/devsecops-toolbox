@@ -59,9 +59,13 @@ except ImportError:
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import (get_output_dir, gke_kube_env, gke_context_name,
+                       gke_location_flag, ensure_gke_cluster_credentials)
 except ImportError:
     import os as _os
+    import atexit as _ax
+    import shutil as _sh
+    import tempfile as _tf
     from pathlib import Path as _Path
     def get_output_dir(default="."):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
@@ -72,6 +76,26 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
+    _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
+    def gke_kube_env(cluster_name):
+        env = _os.environ.copy()
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        return env
+    def gke_context_name(project_id, location, cluster_name):
+        return f"gke_{project_id}_{location}_{cluster_name}"
+    def gke_location_flag(location):
+        return f"--zone={location}" if location.count("-") == 2 else f"--region={location}"
+    def ensure_gke_cluster_credentials(project_id, cluster_name, location,
+                                       timeout=60, debug=False, logger=None):
+        cmd = (f"gcloud container clusters get-credentials {cluster_name} "
+               f"--project={project_id} {gke_location_flag(location)} --quiet")
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                               timeout=timeout, env=gke_kube_env(cluster_name))
+            return r.returncode == 0
+        except Exception:
+            return False
 # -------------------------------------------------------------------
 
 try:
@@ -477,14 +501,14 @@ def get_pubsub_topics(project_id: str, debug: bool, console, logger=None) -> Lis
 
 def get_cloud_functions(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene Cloud Functions del proyecto."""
-    cmd = f'gcloud functions list --project={project_id} --format=json 2>/dev/null'
+    cmd = f'gcloud functions list --project={project_id} --format=json'
     result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
 
 def get_cloud_run_services(project_id: str, debug: bool, console, logger=None) -> List[Dict]:
     """Obtiene servicios Cloud Run del proyecto."""
-    cmd = f'gcloud run services list --project={project_id} --format=json 2>/dev/null'
+    cmd = f'gcloud run services list --project={project_id} --format=json'
     result = run_gcloud_command(cmd, debug, console, logger)
     return result if isinstance(result, list) else []
 
@@ -562,14 +586,14 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
 # FUNCIONES ADICIONALES GKE / IP CAPACITY (integradas de opciones 13 y 14)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def run_kubectl_command(command: str, debug: bool = False, logger=None, timeout: int = 30) -> Optional[str]:
+def run_kubectl_command(command: str, debug: bool = False, logger=None, timeout: int = 30, env: Optional[Dict[str, str]] = None) -> Optional[str]:
     """Ejecuta un comando kubectl y retorna el resultado como texto."""
     try:
         if logger:
             logger.info(f"Ejecutando kubectl: {command}")
         if debug:
             print(f"DEBUG kubectl: {command}")
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
         return None
@@ -612,63 +636,18 @@ def get_cluster_network_info(project_id: str, cluster_name: str, location: str, 
         return None
 
 
-def _ensure_cluster_credentials(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None) -> bool:
-    """Obtiene credenciales kubectl del cluster una sola vez (con cache por proceso)."""
-    cache_key = f"{project_id}:{location}:{cluster_name}"
-    if getattr(_ensure_cluster_credentials, "_cache", None) is None:
-        _ensure_cluster_credentials._cache = {}
-    if cache_key in _ensure_cluster_credentials._cache:
-        return _ensure_cluster_credentials._cache[cache_key]
-    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
-    cmd = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet'
-    ok = False
-    try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
-        ok = result.returncode == 0
-        if debug and logger:
-            logger.info(f"get-credentials returncode: {result.returncode}")
-        if not ok and logger:
-            stderr_hint = (result.stderr or "").strip().splitlines()
-            hint = stderr_hint[0][:200] if stderr_hint else "sin stderr"
-            logger.warning(
-                f"get-credentials falló para {cluster_name} "
-                f"(rc={result.returncode}): {hint}"
-            )
-    except subprocess.TimeoutExpired:
-        if logger:
-            logger.warning(f"Timeout (>60s) obteniendo credenciales para {cluster_name}")
-    except Exception as e:
-        if logger:
-            logger.warning(f"Error obteniendo credenciales para {cluster_name}: {e}")
-    _ensure_cluster_credentials._cache[cache_key] = ok
-    return ok
-
-
 def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None, skip_credentials: bool = False):
     """Obtiene el conteo de pods running y not running del cluster."""
-    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
-    context_name = f'gke_{project_id}_{location}_{cluster_name}'
+    context_name = gke_context_name(project_id, location, cluster_name)
     try:
-        if skip_credentials:
-            creds_ok = _ensure_cluster_credentials(project_id, cluster_name, location, debug, logger)
-        else:
-            creds_ok = True
-            get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet'
-            creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
-            creds_ok = creds_result.returncode == 0
-            if debug and logger:
-                logger.info(f"get-credentials returncode: {creds_result.returncode}")
-            if not creds_ok and logger:
-                stderr_hint = (creds_result.stderr or "").strip().splitlines()
-                hint = stderr_hint[0][:200] if stderr_hint else "sin stderr"
-                logger.warning(
-                    f"get-credentials falló para {cluster_name} "
-                    f"(rc={creds_result.returncode}): {hint}"
-                )
+        # ensure_gke_cluster_credentials usa KUBECONFIG aislado por cluster y
+        # cachea el resultado (seguro en paralelo)
+        creds_ok = ensure_gke_cluster_credentials(project_id, cluster_name, location, debug=debug, logger=logger)
         if not creds_ok:
             return None, None
         cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json'
-        result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True,
+                                timeout=30, env=gke_kube_env(cluster_name))
         if debug and logger:
             logger.info(f"kubectl get pods returncode: {result.returncode}, stdout length: {len(result.stdout)}")
         # kubectl falló (auth plugin ausente, RBAC, contexto inexistente, etc.):
@@ -710,22 +689,13 @@ def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool
 
 def get_services_count(project_id: str, cluster_name: str, location: str, debug: bool = False, logger=None, skip_credentials: bool = False) -> Optional[int]:
     """Cuenta servicios con ClusterIP usando kubectl."""
-    location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
-    context_name = f'gke_{project_id}_{location}_{cluster_name}'
+    context_name = gke_context_name(project_id, location, cluster_name)
     try:
-        if skip_credentials:
-            creds_ok = _ensure_cluster_credentials(project_id, cluster_name, location, debug, logger)
-        else:
-            creds_ok = True
-            get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-            creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
-            creds_ok = creds_result.returncode == 0
-            if debug and logger:
-                logger.info(f"get-credentials returncode: {creds_result.returncode}")
+        creds_ok = ensure_gke_cluster_credentials(project_id, cluster_name, location, debug=debug, logger=logger)
         if not creds_ok:
             return None
-        cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers 2>/dev/null'
-        result = run_kubectl_command(cmd, debug, logger, timeout=30)
+        cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers'
+        result = run_kubectl_command(cmd, debug, logger, timeout=30, env=gke_kube_env(cluster_name))
         if not result:
             return None
         lines = result.strip().split('\n')
@@ -843,7 +813,7 @@ def build_gke_cluster_enrichment(project_id: str, cluster: Dict[str, Any], debug
     status_summary = get_status_summary(cluster_status, version_status, is_autopilot)
 
     # Obtener credenciales una sola vez por cluster (evita gcloud get-credentials duplicado)
-    _ensure_cluster_credentials(project_id, cluster_name, location, debug, logger)
+    ensure_gke_cluster_credentials(project_id, cluster_name, location, debug=debug, logger=logger)
 
     # Ejecutar las 3 consultas (pods, red, servicios) en paralelo
     with ThreadPoolExecutor(max_workers=3) as executor:

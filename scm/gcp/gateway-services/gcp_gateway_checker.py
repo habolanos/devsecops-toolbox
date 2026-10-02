@@ -261,7 +261,7 @@ def get_cluster_credentials(project_id, cluster_name, location, debug=False):
         print(f"[DEBUG] Getting credentials: {cmd}")
     
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
         return result.returncode == 0
     except Exception as e:
         if debug:
@@ -313,7 +313,7 @@ def get_services(namespace="", debug=False):
 def get_healthcheckpolicies(namespace="", debug=False):
     """Obtiene lista de HealthCheckPolicies usando kubectl"""
     ns_flag = f"-n {namespace}" if namespace else "-A"
-    cmd = f'kubectl get healthcheckpolicies {ns_flag} -o json 2>/dev/null'
+    cmd = f'kubectl get healthcheckpolicies {ns_flag} -o json'
     result = run_kubectl_command(cmd, debug)
     return result.get('items', []) if result else []
 
@@ -321,7 +321,7 @@ def get_healthcheckpolicies(namespace="", debug=False):
 def get_gcpbackendpolicies(namespace="", debug=False):
     """Obtiene lista de GCPBackendPolicies usando kubectl"""
     ns_flag = f"-n {namespace}" if namespace else "-A"
-    cmd = f'kubectl get gcpbackendpolicies {ns_flag} -o json 2>/dev/null'
+    cmd = f'kubectl get gcpbackendpolicies {ns_flag} -o json'
     result = run_kubectl_command(cmd, debug)
     return result.get('items', []) if result else []
 

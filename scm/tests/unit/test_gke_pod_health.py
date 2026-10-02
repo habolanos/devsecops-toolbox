@@ -213,65 +213,54 @@ class TestBuildGkeRowPods:
 @requires_monitor
 class TestGetPodCount:
     """get_pod_count debe devolver (None, None) -> N/A cuando kubectl falla,
-    no (0, 0) que simularía un cluster vacío real."""
+    no (0, 0) que simularía un cluster vacío real.
+
+    Las credenciales se obtienen vía utils.ensure_gke_cluster_credentials
+    (KUBECONFIG aislado por cluster), por eso se mockea el seam del módulo
+    y solo kubectl va por gcp_monitor.subprocess.run.
+    """
 
     def _cp(self, returncode=0, stdout="", stderr=""):
         import subprocess as _sp
         return _sp.CompletedProcess(args=[], returncode=returncode,
                                     stdout=stdout, stderr=stderr)
 
+    def _call(self, kubectl_result):
+        from unittest.mock import patch
+        with patch.object(gcp_monitor, "ensure_gke_cluster_credentials",
+                          return_value=True), \
+             patch.object(gcp_monitor.subprocess, "run",
+                          return_value=kubectl_result):
+            return gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
+
     def test_kubectl_falla_devuelve_na(self):
         """Ej. falta gke-gcloud-auth-plugin: creds OK pero kubectl rc!=0."""
-        from unittest.mock import patch
-        calls = [
-            self._cp(returncode=0),                                   # get-credentials
-            self._cp(returncode=1, stderr="gke-gcloud-auth-plugin: executable file not found"),
-        ]
-        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
-            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
-        assert (running, not_running) == (None, None)
+        result = self._cp(returncode=1, stderr="gke-gcloud-auth-plugin: executable file not found")
+        assert self._call(result) == (None, None)
 
     def test_kubectl_salida_vacia_devuelve_na(self):
-        from unittest.mock import patch
-        calls = [self._cp(returncode=0), self._cp(returncode=0, stdout="")]
-        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
-            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
-        assert (running, not_running) == (None, None)
+        assert self._call(self._cp(returncode=0, stdout="")) == (None, None)
 
     def test_kubectl_json_invalido_devuelve_na(self):
-        from unittest.mock import patch
-        calls = [self._cp(returncode=0), self._cp(returncode=0, stdout="not-json")]
-        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
-            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
-        assert (running, not_running) == (None, None)
+        assert self._call(self._cp(returncode=0, stdout="not-json")) == (None, None)
 
     def test_cluster_vacio_real_devuelve_ceros(self):
         """items=[] sí es un cero legítimo (cluster accesible sin pods)."""
         import json as _json
-        from unittest.mock import patch
-        calls = [self._cp(returncode=0),
-                 self._cp(returncode=0, stdout=_json.dumps({"items": []}))]
-        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
-            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
-        assert (running, not_running) == (0, 0)
+        assert self._call(self._cp(returncode=0, stdout=_json.dumps({"items": []}))) == (0, 0)
 
     def test_pods_contados_correctamente(self):
         import json as _json
-        from unittest.mock import patch
         pods = {"items": [
             {"status": {"phase": "Running"}},
             {"status": {"phase": "Running"}},
             {"status": {"phase": "Pending"}},
         ]}
-        calls = [self._cp(returncode=0),
-                 self._cp(returncode=0, stdout=_json.dumps(pods))]
-        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
-            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
-        assert (running, not_running) == (2, 1)
+        assert self._call(self._cp(returncode=0, stdout=_json.dumps(pods))) == (2, 1)
 
     def test_get_credentials_falla_devuelve_na(self):
         from unittest.mock import patch
-        calls = [self._cp(returncode=1, stderr="ERROR: not found")]
-        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
+        with patch.object(gcp_monitor, "ensure_gke_cluster_credentials",
+                          return_value=False):
             running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
         assert (running, not_running) == (None, None)

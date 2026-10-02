@@ -34,9 +34,13 @@ from typing import Optional, List, Dict, Any, Tuple
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import (get_output_dir, gke_kube_env, gke_context_name,
+                       ensure_gke_cluster_credentials)
 except ImportError:
     import os as _os
+    import atexit as _ax
+    import shutil as _sh
+    import tempfile as _tf
     from pathlib import Path as _Path
     def get_output_dir(default="."):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
@@ -47,6 +51,26 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
+    _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
+    def gke_kube_env(cluster_name):
+        env = _os.environ.copy()
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        return env
+    def gke_context_name(project_id, location, cluster_name):
+        return f"gke_{project_id}_{location}_{cluster_name}"
+    def _gke_location_flag(location):
+        return f"--zone={location}" if location.count("-") == 2 else f"--region={location}"
+    def ensure_gke_cluster_credentials(project_id, cluster_name, location,
+                                       timeout=60, debug=False, logger=None):
+        cmd = (f"gcloud container clusters get-credentials {cluster_name} "
+               f"--project={project_id} {_gke_location_flag(location)} --quiet")
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                               timeout=timeout, env=gke_kube_env(cluster_name))
+            return r.returncode == 0
+        except Exception:
+            return False
 # -------------------------------------------------------------------
 
 try:
@@ -228,10 +252,11 @@ def run_gcloud_command(command: str, debug: bool = False) -> Optional[str]:
             print(f"[DEBUG] Exception: {e}")
         return None
 
-def run_kubectl_command(command: str, debug: bool = False) -> Optional[str]:
+def run_kubectl_command(command: str, debug: bool = False, env: Optional[dict] = None) -> Optional[str]:
     """Ejecuta un comando kubectl y retorna el resultado como texto."""
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True,
+                                timeout=30, env=env)
         if debug:
             print(f"[DEBUG] kubectl Command: {command}")
             print(f"[DEBUG] Return code: {result.returncode}")
@@ -267,22 +292,19 @@ def get_cluster_network_info(project_id: str, cluster_name: str, region: str, de
 
 def get_active_pods_count(project_id: str, cluster_name: str, region: str, debug: bool = False) -> Optional[int]:
     """Cuenta pods activos con IP asignada usando kubectl."""
-    location_flag = f'--zone={region}' if region.count('-') == 2 else f'--region={region}'
-    context_name = f'gke_{project_id}_{region}_{cluster_name}'
+    context_name = gke_context_name(project_id, region, cluster_name)
 
     try:
-        # Obtener credenciales del cluster
-        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True)
-
+        # KUBECONFIG aislado por cluster: seguro en paralelo
+        creds_ok = ensure_gke_cluster_credentials(project_id, cluster_name, region, debug=debug)
         if debug:
-            print(f"[DEBUG] get-credentials returncode: {creds_result.returncode}")
-            if creds_result.stderr:
-                print(f"[DEBUG] get-credentials stderr: {creds_result.stderr[:200]}")
+            print(f"[DEBUG] get-credentials ok: {creds_ok}")
+        if not creds_ok:
+            return None
 
         # Obtener pods con IP asignada (excluyendo Succeeded/Failed)
-        cmd = f'kubectl --context={context_name} get pods --all-namespaces -o json 2>/dev/null'
-        result = run_kubectl_command(cmd, debug)
+        cmd = f'kubectl --context={context_name} get pods --all-namespaces -o json'
+        result = run_kubectl_command(cmd, debug, env=gke_kube_env(cluster_name))
 
         if not result:
             return None
@@ -321,22 +343,19 @@ def get_active_pods_count(project_id: str, cluster_name: str, region: str, debug
 
 def get_services_count(project_id: str, cluster_name: str, region: str, debug: bool = False) -> Optional[int]:
     """Cuenta servicios con ClusterIP usando kubectl."""
-    location_flag = f'--zone={region}' if region.count('-') == 2 else f'--region={region}'
-    context_name = f'gke_{project_id}_{region}_{cluster_name}'
+    context_name = gke_context_name(project_id, region, cluster_name)
 
     try:
-        # Obtener credenciales del cluster
-        get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
-        creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True)
-
+        # KUBECONFIG aislado por cluster: seguro en paralelo
+        creds_ok = ensure_gke_cluster_credentials(project_id, cluster_name, region, debug=debug)
         if debug:
-            print(f"[DEBUG] get-credentials returncode: {creds_result.returncode}")
-            if creds_result.stderr:
-                print(f"[DEBUG] get-credentials stderr: {creds_result.stderr[:200]}")
+            print(f"[DEBUG] get-credentials ok: {creds_ok}")
+        if not creds_ok:
+            return None
 
         # Obtener servicios con ClusterIP
-        cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers 2>/dev/null'
-        result = run_kubectl_command(cmd, debug)
+        cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers'
+        result = run_kubectl_command(cmd, debug, env=gke_kube_env(cluster_name))
 
         if not result:
             return None

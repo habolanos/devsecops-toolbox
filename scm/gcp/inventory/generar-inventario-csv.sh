@@ -295,9 +295,12 @@ except: pass
 
   if [ -n "$CLUSTERS" ]; then
     echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
-      gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
+      # KUBECONFIG aislado por cluster: los proyectos corren en paralelo y
+      # get-credentials hace read-modify-write no atomico de ~/.kube/config
+      KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
+      KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
 
-      kubectl get deployments --all-namespaces \
+      KUBECONFIG="$KCFG" kubectl get deployments --all-namespaces \
         -o custom-columns="NAMESPACE:.metadata.namespace,DEPLOYMENT:.metadata.name,IMAGES:.spec.template.spec.containers[*].image" \
         --no-headers 2>/dev/null | filter_ns | \
         while read -r ns deploy images; do
@@ -305,6 +308,7 @@ except: pass
           printf '"%s"%s"%s"%s"%s"%s"%s"\n' "$ns" "$DELIM" "$CLUSTER" "$DELIM" "$deploy" "$DELIM" "$images_clean" \
             >> "$PROJECT_OUT_DIR/deployments.csv"
         done || true
+      rm -f "$KCFG"
     done
   fi
   echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] deployments: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
@@ -317,9 +321,10 @@ except: pass
 
   if [ -n "$CLUSTERS" ]; then
     echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
-      gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
+      KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
+      KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
 
-      kubectl get services --all-namespaces \
+      KUBECONFIG="$KCFG" kubectl get services --all-namespaces \
         -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP,EXTERNAL-IP:.status.loadBalancer.ingress[*].ip,PORTS:.spec.ports[*].port" \
         --no-headers 2>/dev/null | filter_ns | \
         while read -r ns name type cip eip ports; do
@@ -329,6 +334,7 @@ except: pass
             "$ns" "$DELIM" "$CLUSTER" "$DELIM" "$name" "$DELIM" "$type" "$DELIM" "$cip" "$DELIM" "$eip_clean" "$DELIM" "$ports_clean" \
             >> "$PROJECT_OUT_DIR/services.csv"
         done || true
+      rm -f "$KCFG"
     done
   fi
   echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] services: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
@@ -393,9 +399,10 @@ except: pass
 
   if [ -n "$CLUSTERS" ]; then
     echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
-      gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
+      KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
+      KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
 
-      kubectl get ingress --all-namespaces \
+      KUBECONFIG="$KCFG" kubectl get ingress --all-namespaces \
         -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.rules[*].host,ADDRESS:.status.loadBalancer.ingress[*].ip,PORTS:.spec.tls[*].secretName" \
         --no-headers 2>/dev/null | filter_ns | \
         while read -r ns name hosts addr ports; do
@@ -406,6 +413,7 @@ except: pass
             "$ns" "$DELIM" "$CLUSTER" "$DELIM" "$name" "$DELIM" "$hosts_clean" "$DELIM" "$addr_clean" "$DELIM" "$ports_clean" \
             >> "$PROJECT_OUT_DIR/ingress.csv"
         done || true
+      rm -f "$KCFG"
     done
   fi
   sed -i '/^$/d' "$PROJECT_OUT_DIR/ingress.csv"

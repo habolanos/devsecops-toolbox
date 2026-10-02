@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.111-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.114-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,9 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-10-03 | **1.7.114** | Refactor GCP: helpers K8s compartidos en `scm/utils.py` (`gke_kube_env`, `gke_context_name`, `gke_location_flag`, `ensure_gke_cluster_credentials` con kubeconfig aislado por cluster + caché + timeouts). Migrados `gcp_monitor`, `gcp_cluster_checker` (N/A real + timeouts), `gcp_ip_addresses_checker`, `gcp_gateway_checker` y `generar-inventario-csv.sh` (kubeconfig por cluster — los proyectos corren en paralelo). |
+| 2026-10-02 | **1.7.113** | Monitor GCP: paralelismo real restaurado — en vez de serializar `get-credentials` con lock (lento), cada cluster ahora usa un archivo `KUBECONFIG` aislado en un dir temporal (`_kube_env()`), por lo que las escrituras no comparten el `~/.kube/config` y vuelven a correr en paralelo sin race condition. El dir temporal se limpia al salir (`atexit`). |
+| 2026-10-02 | **1.7.112** | Monitor GCP: fix race condition — `gcloud get-credentials` corría en paralelo y sus escrituras no atómicas a `~/.kube/config` se pisaban entre sí, dejando contextos faltantes (`context was not found` → pods `N/A` aleatorios). Ahora `_ensure_cluster_credentials` se serializa con un `threading.Lock` (los `kubectl` de lectura siguen en paralelo) y `get_pod_count`/`get_services_count` reutilizan esa función cacheada en vez de duplicar el get-credentials. |
 | 2026-10-01 | **1.7.111** | Monitor GCP: `get-credentials` ya no falla en silencio — cuando `gcloud container clusters get-credentials` retorna error (gcloud roto/sin Python, auth expirada, sin acceso al proyecto), el `stderr` queda en `outcome/gcp_monitor_*.log` y el cluster muestra `N/A`. Se eliminó también su `2>/dev/null` (rompía el comando en cmd.exe). |
 | 2026-10-01 | **1.7.110** | Monitor GCP (opción 1): `get_pod_count` ya no muestra `0/0` falsos cuando `kubectl` falla (falta `gke-gcloud-auth-plugin`, RBAC, contexto inexistente) — ahora devuelve `N/A` y registra el `stderr` en el log, igual que `get_services_count`. `0/0` queda reservado para clusters accesibles sin pods. Se eliminó `2>/dev/null` de los comandos para capturar el error real. |
 | 2026-10-01 | **1.7.109** | Reporte Despliegues GKE (opción 2): fix `EOFError` — el launcher ejecuta los scripts con `stdin=DEVNULL`, por lo que el `input("Proyecto GCP:")` interno fallaba. Ahora la opción declara `--project` (el launcher solicita el proyecto y lo pasa por CLI, aceptado como alias de `--project-id`) y el script solo muestra el prompt cuando stdin es una TTY real. `gke_monitor_pod`/`gke_monitor_node`: la pausa final "Presione Enter" también se omite fuera de TTY. |
