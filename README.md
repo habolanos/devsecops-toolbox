@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.109-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.110-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-10-01 | **1.7.110** | Monitor GCP (opción 1): `get_pod_count` ya no muestra `0/0` falsos cuando `kubectl` falla (falta `gke-gcloud-auth-plugin`, RBAC, contexto inexistente) — ahora devuelve `N/A` y registra el `stderr` en el log, igual que `get_services_count`. `0/0` queda reservado para clusters accesibles sin pods. Se eliminó `2>/dev/null` de los comandos para capturar el error real. |
 | 2026-10-01 | **1.7.109** | Reporte Despliegues GKE (opción 2): fix `EOFError` — el launcher ejecuta los scripts con `stdin=DEVNULL`, por lo que el `input("Proyecto GCP:")` interno fallaba. Ahora la opción declara `--project` (el launcher solicita el proyecto y lo pasa por CLI, aceptado como alias de `--project-id`) y el script solo muestra el prompt cuando stdin es una TTY real. `gke_monitor_pod`/`gke_monitor_node`: la pausa final "Presione Enter" también se omite fuera de TTY. |
 | 2026-09-29 | **1.7.108** | Tests: fix de colisión de `import tools` en `test_gcp_tools.py` (en CI otro `tools.py` quedaba cacheado en `sys.modules` según el orden de colección — ahora se carga por spec con nombre único) y `test_terminal_tools.py` ya no exige que `cer-io-2027.yml` exista en disco (está `.gitignore`ado por contener llave privada; el test verifica la protección en su lugar). |
 | 2026-09-29 | **1.7.107** | Cert Manager: `cert_backup_and_renew_tls_certs.sh` ahora agrupa todos sus artefactos (backups, `update-certs-*.yaml`, `evidencia-*.html`) en un solo folder `<outcome>/certs-<cluster>-<ts>/`, resolviendo el outcome desde `DEVSECOPS_OUTPUT_DIR` o `scm/config.json → global.output_dir`. |

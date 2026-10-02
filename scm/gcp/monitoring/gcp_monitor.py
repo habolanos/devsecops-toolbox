@@ -646,31 +646,43 @@ def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool
             creds_ok = _ensure_cluster_credentials(project_id, cluster_name, location, debug, logger)
         else:
             creds_ok = True
-            get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
+            get_creds = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet'
             creds_result = subprocess.run(get_creds, shell=True, capture_output=True, text=True, timeout=60)
             creds_ok = creds_result.returncode == 0
             if debug and logger:
                 logger.info(f"get-credentials returncode: {creds_result.returncode}")
         if not creds_ok:
             return None, None
-        cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json 2>/dev/null'
+        cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json'
         result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True, timeout=30)
         if debug and logger:
             logger.info(f"kubectl get pods returncode: {result.returncode}, stdout length: {len(result.stdout)}")
+        # kubectl falló (auth plugin ausente, RBAC, contexto inexistente, etc.):
+        # devolver N/A en vez de ceros falsos que simulan un cluster vacio
+        if result.returncode != 0 or not result.stdout.strip():
+            if logger:
+                stderr_hint = (result.stderr or "").strip().splitlines()
+                hint = stderr_hint[0][:200] if stderr_hint else "sin stderr"
+                logger.warning(
+                    f"kubectl get pods falló para {cluster_name} "
+                    f"(rc={result.returncode}): {hint}"
+                )
+            return None, None
         running = 0
         not_running = 0
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                data = json.loads(result.stdout)
-                items = data.get('items', [])
-                for pod in items:
-                    phase = pod.get('status', {}).get('phase', 'Unknown')
-                    if phase == 'Running':
-                        running += 1
-                    else:
-                        not_running += 1
-            except json.JSONDecodeError:
-                pass
+        try:
+            data = json.loads(result.stdout)
+            items = data.get('items', [])
+            for pod in items:
+                phase = pod.get('status', {}).get('phase', 'Unknown')
+                if phase == 'Running':
+                    running += 1
+                else:
+                    not_running += 1
+        except json.JSONDecodeError:
+            if logger:
+                logger.warning(f"kubectl get pods devolvió JSON inválido para {cluster_name}")
+            return None, None
         return running, not_running
     except subprocess.TimeoutExpired:
         if logger:

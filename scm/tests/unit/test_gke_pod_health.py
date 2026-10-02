@@ -204,3 +204,74 @@ class TestBuildGkeRowPods:
         del cluster['pods_not_running']
         row = dashboard._build_gke_row('cpl-test-dev-01012024', cluster)
         assert row['health'] == 'OK'
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# gcp_monitor.get_pod_count (kubectl falla -> N/A, no ceros falsos)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@requires_monitor
+class TestGetPodCount:
+    """get_pod_count debe devolver (None, None) -> N/A cuando kubectl falla,
+    no (0, 0) que simularía un cluster vacío real."""
+
+    def _cp(self, returncode=0, stdout="", stderr=""):
+        import subprocess as _sp
+        return _sp.CompletedProcess(args=[], returncode=returncode,
+                                    stdout=stdout, stderr=stderr)
+
+    def test_kubectl_falla_devuelve_na(self):
+        """Ej. falta gke-gcloud-auth-plugin: creds OK pero kubectl rc!=0."""
+        from unittest.mock import patch
+        calls = [
+            self._cp(returncode=0),                                   # get-credentials
+            self._cp(returncode=1, stderr="gke-gcloud-auth-plugin: executable file not found"),
+        ]
+        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
+            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
+        assert (running, not_running) == (None, None)
+
+    def test_kubectl_salida_vacia_devuelve_na(self):
+        from unittest.mock import patch
+        calls = [self._cp(returncode=0), self._cp(returncode=0, stdout="")]
+        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
+            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
+        assert (running, not_running) == (None, None)
+
+    def test_kubectl_json_invalido_devuelve_na(self):
+        from unittest.mock import patch
+        calls = [self._cp(returncode=0), self._cp(returncode=0, stdout="not-json")]
+        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
+            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
+        assert (running, not_running) == (None, None)
+
+    def test_cluster_vacio_real_devuelve_ceros(self):
+        """items=[] sí es un cero legítimo (cluster accesible sin pods)."""
+        import json as _json
+        from unittest.mock import patch
+        calls = [self._cp(returncode=0),
+                 self._cp(returncode=0, stdout=_json.dumps({"items": []}))]
+        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
+            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
+        assert (running, not_running) == (0, 0)
+
+    def test_pods_contados_correctamente(self):
+        import json as _json
+        from unittest.mock import patch
+        pods = {"items": [
+            {"status": {"phase": "Running"}},
+            {"status": {"phase": "Running"}},
+            {"status": {"phase": "Pending"}},
+        ]}
+        calls = [self._cp(returncode=0),
+                 self._cp(returncode=0, stdout=_json.dumps(pods))]
+        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
+            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
+        assert (running, not_running) == (2, 1)
+
+    def test_get_credentials_falla_devuelve_na(self):
+        from unittest.mock import patch
+        calls = [self._cp(returncode=1, stderr="ERROR: not found")]
+        with patch.object(gcp_monitor.subprocess, "run", side_effect=calls):
+            running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
+        assert (running, not_running) == (None, None)
