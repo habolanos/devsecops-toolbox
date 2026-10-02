@@ -620,13 +620,20 @@ def _ensure_cluster_credentials(project_id: str, cluster_name: str, location: st
     if cache_key in _ensure_cluster_credentials._cache:
         return _ensure_cluster_credentials._cache[cache_key]
     location_flag = f'--zone={location}' if location.count('-') == 2 else f'--region={location}'
-    cmd = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet 2>/dev/null'
+    cmd = f'gcloud container clusters get-credentials {cluster_name} --project={project_id} {location_flag} --quiet'
     ok = False
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
         ok = result.returncode == 0
         if debug and logger:
             logger.info(f"get-credentials returncode: {result.returncode}")
+        if not ok and logger:
+            stderr_hint = (result.stderr or "").strip().splitlines()
+            hint = stderr_hint[0][:200] if stderr_hint else "sin stderr"
+            logger.warning(
+                f"get-credentials falló para {cluster_name} "
+                f"(rc={result.returncode}): {hint}"
+            )
     except subprocess.TimeoutExpired:
         if logger:
             logger.warning(f"Timeout (>60s) obteniendo credenciales para {cluster_name}")
@@ -651,6 +658,13 @@ def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool
             creds_ok = creds_result.returncode == 0
             if debug and logger:
                 logger.info(f"get-credentials returncode: {creds_result.returncode}")
+            if not creds_ok and logger:
+                stderr_hint = (creds_result.stderr or "").strip().splitlines()
+                hint = stderr_hint[0][:200] if stderr_hint else "sin stderr"
+                logger.warning(
+                    f"get-credentials falló para {cluster_name} "
+                    f"(rc={creds_result.returncode}): {hint}"
+                )
         if not creds_ok:
             return None, None
         cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json'
