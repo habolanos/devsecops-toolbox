@@ -24,6 +24,7 @@ import argparse
 import csv
 import json
 import os
+from contextlib import contextmanager
 import re
 import subprocess
 import sys
@@ -97,6 +98,37 @@ except ImportError:
         except Exception:
             return False
 # -------------------------------------------------------------------
+
+# --- Impresión diferida mientras hay un render en vivo (Progress/status) ---
+# Rich suspende el render, imprime y re-renderiza ante cada console.print de un
+# worker en paralelo → el spinner "salta" de línea. Difiriendo los prints hasta
+# que el render termine, la animación queda estable.
+_LIVE_DEPTH = 0
+_LIVE_BUFFER: list = []
+
+
+@contextmanager
+def _defer_console_prints():
+    """Envuelve un Progress/status para diferir console.print hasta que cierre."""
+    global _LIVE_DEPTH
+    _LIVE_DEPTH += 1
+    try:
+        yield
+    finally:
+        _LIVE_DEPTH -= 1
+        if _LIVE_DEPTH == 0:
+            while _LIVE_BUFFER:
+                _console, args, kwargs = _LIVE_BUFFER.pop(0)
+                _console.print(*args, **kwargs)
+
+
+def _print_or_defer(console, *args, **kwargs):
+    """console.print seguro bajo render en vivo: se difiere si hay uno activo."""
+    if _LIVE_DEPTH:
+        _LIVE_BUFFER.append((console, args, kwargs))
+    else:
+        console.print(*args, **kwargs)
+
 
 try:
     from rich.console import Console
@@ -411,7 +443,7 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None,
             logger.info(f"Ejecutando: {cmd}")
         
         if debug and console and RICH_AVAILABLE:
-            console.print(f"[dim]DEBUG: {cmd}[/dim]")
+            _print_or_defer(console, f"[dim]DEBUG: {cmd}[/dim]")
         elif debug:
             print(f"DEBUG: {cmd}")
         
@@ -422,7 +454,7 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None,
                 logger.error(f"Error en comando: {cmd} - {result.stderr[:200]}")
             if debug:
                 if console and RICH_AVAILABLE:
-                    console.print(f"[dim]Error: {result.stderr[:200]}[/dim]")
+                    _print_or_defer(console, f"[dim]Error: {result.stderr[:200]}[/dim]")
                 else:
                     print(f"DEBUG Error: {result.stderr[:200]}")
             return None
@@ -442,14 +474,14 @@ def run_gcloud_command(cmd: str, debug: bool = False, console=None, logger=None,
         if logger:
             logger.error(f"Timeout (>{timeout}s) en comando: {cmd[:80]}...")
         if console and RICH_AVAILABLE:
-            console.print(f"[yellow]⚠ Timeout en: {cmd[:60]}...[/yellow]")
+            _print_or_defer(console, f"[yellow]⚠ Timeout en: {cmd[:60]}...[/yellow]")
         return None
     except Exception as e:
         if logger:
             logger.error(f"Excepción en comando: {cmd} - {str(e)}")
         if debug:
             if console and RICH_AVAILABLE:
-                console.print(f"[dim]Exception: {e}[/dim]")
+                _print_or_defer(console, f"[dim]Exception: {e}[/dim]")
             else:
                 print(f"DEBUG Exception: {e}")
         return None
@@ -517,7 +549,7 @@ def check_gcp_connection(project_id: str, console, debug: bool = False) -> bool:
     """Verifica la conexión a GCP antes de ejecutar el script."""
     try:
         if RICH_AVAILABLE and console and sys.stdout.isatty():
-            with console.status("[bold cyan]Verificando conexión a GCP...[/]"):
+            with _defer_console_prints(), console.status("[bold cyan]Verificando conexión a GCP...[/]"):
                 return _verify_gcp_auth(project_id, console, debug)
         else:
             return _verify_gcp_auth(project_id, console, debug)
@@ -538,7 +570,7 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     auth_cmd = 'gcloud auth list --filter=status:ACTIVE --format="value(account)"'
     if debug:
         if RICH_AVAILABLE and console:
-            console.print(f"[dim]DEBUG: {auth_cmd}[/]")
+            _print_or_defer(console, f"[dim]DEBUG: {auth_cmd}[/]")
         else:
             print(f"DEBUG: {auth_cmd}")
     
@@ -546,7 +578,7 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     
     if auth_result.returncode != 0 or not auth_result.stdout.strip():
         if RICH_AVAILABLE and console:
-            console.print("[red]❌ No hay sesión activa de gcloud. Ejecuta: gcloud auth login[/]")
+            _print_or_defer(console, "[red]❌ No hay sesión activa de gcloud. Ejecuta: gcloud auth login[/]")
         else:
             print("❌ No hay sesión activa de gcloud. Ejecuta: gcloud auth login")
         return False
@@ -554,7 +586,7 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     active_account = auth_result.stdout.strip().split('\n')[0]
     if not _account_checked:
         if RICH_AVAILABLE and console:
-            console.print(f"[green]✓[/] Cuenta activa: [cyan]{active_account}[/]")
+            _print_or_defer(console, f"[green]✓[/] Cuenta activa: [cyan]{active_account}[/]")
         else:
             print(f"✓ Cuenta activa: {active_account}")
         _account_checked = True
@@ -562,7 +594,7 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     project_cmd = f'gcloud projects describe {project_id} --format="value(projectId)" 2>&1'
     if debug:
         if RICH_AVAILABLE and console:
-            console.print(f"[dim]DEBUG: {project_cmd}[/]")
+            _print_or_defer(console, f"[dim]DEBUG: {project_cmd}[/]")
         else:
             print(f"DEBUG: {project_cmd}")
     
@@ -570,13 +602,13 @@ def _verify_gcp_auth(project_id: str, console, debug: bool) -> bool:
     
     if project_result.returncode != 0:
         if RICH_AVAILABLE and console:
-            console.print(f"[red]❌ No tienes acceso al proyecto: {project_id}[/]")
+            _print_or_defer(console, f"[red]❌ No tienes acceso al proyecto: {project_id}[/]")
         else:
             print(f"❌ No tienes acceso al proyecto: {project_id}")
         return False
     
     if RICH_AVAILABLE and console:
-        console.print(f"[green]✓[/] Proyecto válido: [cyan]{project_id}[/]")
+        _print_or_defer(console, f"[green]✓[/] Proyecto válido: [cyan]{project_id}[/]")
     else:
         print(f"✓ Proyecto válido: {project_id}")
     return True
@@ -2458,7 +2490,7 @@ def main() -> int:
         # Procesar proyectos en paralelo si hay múltiples
         if len(project_ids) > 1 and use_parallel:
             if RICH_AVAILABLE and console and sys.stdout.isatty():
-                with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                with _defer_console_prints(), Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                     task = progress.add_task(f"[cyan]Procesando {len(project_ids)} proyectos en paralelo...", total=len(project_ids))
                     
                     with ThreadPoolExecutor(max_workers=min(len(project_ids), max_workers)) as executor:
@@ -2481,7 +2513,7 @@ def main() -> int:
             # Procesar proyectos secuencialmente
             for project_id in project_ids:
                 if RICH_AVAILABLE and console and sys.stdout.isatty():
-                    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                    with _defer_console_prints(), Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                         task = progress.add_task(f"[cyan]Recopilando recursos de {project_id}...", total=None)
                         _, data = process_project(project_id)
                         all_data[project_id] = data

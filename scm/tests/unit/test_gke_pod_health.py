@@ -264,3 +264,53 @@ class TestGetPodCount:
                           return_value=False):
             running, not_running = gcp_monitor.get_pod_count("proj", "cluster", "us-central1")
         assert (running, not_running) == (None, None)
+
+
+class TestDeferredConsolePrints:
+    """_defer_console_prints: los prints durante un render en vivo se difieren
+    para que el spinner no 'salte' de línea al intercalarse output de workers."""
+
+    @requires_monitor
+    def test_print_diferido_se_descarga_al_salir(self):
+        calls = []
+
+        class FakeConsole:
+            def print(self, *a, **k):
+                calls.append(a)
+
+        console = FakeConsole()
+        with gcp_monitor._defer_console_prints():
+            gcp_monitor._print_or_defer(console, "mensaje-1")
+            gcp_monitor._print_or_defer(console, "mensaje-2")
+            assert calls == []  # aun difriendo dentro del render en vivo
+
+        # al cerrar el contexto, el buffer se descarga en orden
+        assert calls == [("mensaje-1",), ("mensaje-2",)]
+
+    @requires_monitor
+    def test_print_sin_render_en_vivo_es_inmediato(self):
+        calls = []
+
+        class FakeConsole:
+            def print(self, *a, **k):
+                calls.append(a)
+
+        gcp_monitor._print_or_defer(FakeConsole(), "directo")
+        assert calls == [("directo",)]
+
+    @requires_monitor
+    def test_guard_anidado_descarga_solo_al_nivel_cero(self):
+        calls = []
+
+        class FakeConsole:
+            def print(self, *a, **k):
+                calls.append(a)
+
+        console = FakeConsole()
+        with gcp_monitor._defer_console_prints():
+            gcp_monitor._print_or_defer(console, "externo")
+            with gcp_monitor._defer_console_prints():
+                gcp_monitor._print_or_defer(console, "interno")
+            assert calls == []  # el guard interno no descarga
+
+        assert calls == [("externo",), ("interno",)]

@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.114-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.115-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-10-03 | **1.7.115** | Monitor GCP: el spinner de progreso "saltaba" de línea — los workers en paralelo hacían `console.print` durante el render en vivo de Rich (suspende/re-dibuja el spinner). Nuevo `_defer_console_prints()` + `_print_or_defer()`: los prints se acumulan mientras hay render activo y se descargan al terminar — animación estable, mensajes intactos. |
 | 2026-10-03 | **1.7.114** | Refactor GCP: helpers K8s compartidos en `scm/utils.py` (`gke_kube_env`, `gke_context_name`, `gke_location_flag`, `ensure_gke_cluster_credentials` con kubeconfig aislado por cluster + caché + timeouts). Migrados `gcp_monitor`, `gcp_cluster_checker` (N/A real + timeouts), `gcp_ip_addresses_checker`, `gcp_gateway_checker` y `generar-inventario-csv.sh` (kubeconfig por cluster — los proyectos corren en paralelo). |
 | 2026-10-02 | **1.7.113** | Monitor GCP: paralelismo real restaurado — en vez de serializar `get-credentials` con lock (lento), cada cluster ahora usa un archivo `KUBECONFIG` aislado en un dir temporal (`_kube_env()`), por lo que las escrituras no comparten el `~/.kube/config` y vuelven a correr en paralelo sin race condition. El dir temporal se limpia al salir (`atexit`). |
 | 2026-10-02 | **1.7.112** | Monitor GCP: fix race condition — `gcloud get-credentials` corría en paralelo y sus escrituras no atómicas a `~/.kube/config` se pisaban entre sí, dejando contextos faltantes (`context was not found` → pods `N/A` aleatorios). Ahora `_ensure_cluster_credentials` se serializa con un `threading.Lock` (los `kubectl` de lectura siguen en paralelo) y `get_pod_count`/`get_services_count` reutilizan esa función cacheada en vez de duplicar el get-credentials. |
