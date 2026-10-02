@@ -186,7 +186,7 @@ TOOLS: Dict = {
         "name":        "Release Deep Dive",
         "description": "Análisis profundo de un Release Definition por ID: PRs + Políticas + CD Health + Drift",
         "path":        "azdo_release_deep_dive.py",
-        "args":        ["--pat", "--org", "--project", "--release-id", "--branch", "--stage-name", "--output"],
+        "args":        ["--pat", "--org", "--project", "--definition-id", "--branch", "--stage-name", "--output"],
         "group":       "release",
         "status":      "ready",
     },

@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.116-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.117-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1288,6 +1288,7 @@ python scripts/bump_version.py --validate
 
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
+| 2026-10-03 | **1.7.117** | AzDO opción 5 (Release Deep Dive): `TOOLS["5"]["args"]` declaraba `--release-id` pero el script requiere `--definition-id` → el ID capturado nunca llegaba y argparse abortaba con exit 2. Corregido a `--definition-id`; tests nuevos en `test_azdo_tools.py`. |
 | 2026-10-03 | **1.7.116** | Monitor GCP: la consola quedaba "colgada" al entregar reportes finales — los conteos de BDs Cloud SQL se consultaban lazily al renderizar detalles (~25 llamadas sin indicador). Ahora `process_project` los prefetcha en la fase paralela inicial, la fase de detalles solo consulta lo que falte bajo `console.status` con impresión diferida, y la generación del HTML también muestra spinner. Se eliminó `create_detailed_tables` (código muerto que re-consultaría BDs). |
 | 2026-10-03 | **1.7.115** | Monitor GCP: el spinner de progreso "saltaba" de línea — los workers en paralelo hacían `console.print` durante el render en vivo de Rich (suspende/re-dibuja el spinner). Nuevo `_defer_console_prints()` + `_print_or_defer()`: los prints se acumulan mientras hay render activo y se descargan al terminar — animación estable, mensajes intactos. |
 | 2026-10-03 | **1.7.114** | Refactor GCP: helpers K8s compartidos en `scm/utils.py` (`gke_kube_env`, `gke_context_name`, `gke_location_flag`, `ensure_gke_cluster_credentials` con kubeconfig aislado por cluster + caché + timeouts). Migrados `gcp_monitor`, `gcp_cluster_checker` (N/A real + timeouts), `gcp_ip_addresses_checker`, `gcp_gateway_checker` y `generar-inventario-csv.sh` (kubeconfig por cluster — los proyectos corren en paralelo). |

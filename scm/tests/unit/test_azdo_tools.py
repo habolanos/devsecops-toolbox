@@ -202,3 +202,36 @@ class TestAZDOMetrics:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestReleaseDeepDiveLauncherArgs:
+    """Opcion 5 (Release Deep Dive): el launcher debe declarar --definition-id
+    (requerido por azdo_release_deep_dive.py), no --release-id."""
+
+    @staticmethod
+    def _load_launcher():
+        import importlib.util
+        from pathlib import Path
+        tools_py = (Path(__file__).parent.parent.parent
+                    / "azdo" / "tools.py")
+        spec = importlib.util.spec_from_file_location(
+            "azdo_tools_launcher", tools_py)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_tool5_declara_definition_id(self):
+        mod = self._load_launcher()
+        args = mod.TOOLS["5"]["args"]
+        assert "--definition-id" in args
+        assert "--release-id" not in args
+
+    def test_script_acepta_definition_id(self):
+        """azdo_release_deep_dive.py declara --definition-id/--id requerido."""
+        from pathlib import Path
+        script = (Path(__file__).parent.parent.parent
+                  / "azdo" / "azdo_release_deep_dive.py")
+        src = script.read_text(encoding="utf-8")
+        assert '"--definition-id"' in src
+        assert 'dest="definition_id"' in src
+        assert 'required=True' in src
