@@ -247,6 +247,7 @@ MULTI_PROJECT_SCRIPTS = {
 # Scripts que soportan --multi-project (parametro explicito para comma-separated)
 MULTI_PROJECT_PARAM_SCRIPTS = {
     "gcp_monitor",
+    "gke_deployments_report",
 }
 
 # Definición de las herramientas disponibles (con grupo asignado)
@@ -1624,8 +1625,11 @@ def run_tool(tool_key: str):
         # Script no soporta comma-separated: ejecutar una vez por proyecto
         for i, proj in enumerate(project_list):
             proj_args = list(args)
-            proj_idx = proj_args.index("--project") + 1
-            proj_args[proj_idx] = proj
+            if "--project" in proj_args:
+                proj_idx = proj_args.index("--project") + 1
+                proj_args[proj_idx] = proj
+            else:
+                proj_args.extend(["--project", proj])
 
             proj_cmd = list(cmd) + proj_args
 

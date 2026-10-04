@@ -339,3 +339,24 @@ class TestToolRegistration:
         assert tool is not None
         assert tool["path"].endswith("run_inventory.py")
         assert tool["group"] == "inventory"
+
+    def test_tool_2_multi_project_registered(self, gcp_tools):
+        """La opción 2 (deployments) soporta --multi-project y está registrada.
+
+        Regresión: con ALL/equipo (>1 proyecto) el launcher caía en el bucle
+        por-proyecto y `args.index("--project")` lanzaba ValueError porque
+        args solo contenía ['--multi-project', 'p1,...'].
+        """
+        assert "gke_deployments_report" in gcp_tools.MULTI_PROJECT_PARAM_SCRIPTS
+        assert "--multi-project" in gcp_tools.TOOLS["2"]["args"]
+
+    def test_every_multi_project_tool_registered(self, gcp_tools):
+        """Toda tool con --multi-project en args debe estar en el set PARAM.
+
+        Si falta, el bucle por-proyecto asume '--project' en args y crashea.
+        """
+        for key, tool in gcp_tools.TOOLS.items():
+            stem = os.path.splitext(os.path.basename(tool.get("path", "")))[0]
+            if "--multi-project" in tool.get("args", []):
+                assert stem in gcp_tools.MULTI_PROJECT_PARAM_SCRIPTS, \
+                    f"tool {key} ({stem}) declara --multi-project pero no está en MULTI_PROJECT_PARAM_SCRIPTS"
