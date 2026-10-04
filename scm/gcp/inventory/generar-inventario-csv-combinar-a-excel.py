@@ -21,34 +21,52 @@ from openpyxl.chart.series import DataPoint
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, PatternFill, Alignment
 
-# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+# --- Config global: DEVSECOPS_* env > scm/config.json > scm/outcome ---
 try:
-    from utils import get_output_dir
+    from utils import get_output_dir, resolve_outcome_dir
 except ImportError:
     import os as _os
+    import json as _json
     from pathlib import Path as _Path
+
+    _SCM_ROOT = _Path(__file__).resolve().parents[2]  # inventory -> gcp -> scm
+
     def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        p = _Path(env) if env else _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def resolve_outcome_dir(default="outcome"):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
         if env:
             p = _Path(env)
-            p.mkdir(parents=True, exist_ok=True)
-            return p
-        p = _Path(default)
+        else:
+            try:
+                cfg_file = _SCM_ROOT / "config.json"
+                cfg = _json.loads(cfg_file.read_text(encoding="utf-8")) \
+                    if cfg_file.exists() else {}
+                out = (cfg.get("global") or {}).get("output_dir") or default
+            except Exception:
+                out = default
+            p = _Path(out)
+            if not p.is_absolute():
+                p = _SCM_ROOT / p
         p.mkdir(parents=True, exist_ok=True)
-        return p
+        return p.resolve()
 # -------------------------------------------------------------------
 
 # Detecta automáticamente la carpeta donde está el script
 SCRIPT_DIR = Path(__file__).parent.resolve()
-OUTCOME_DIR = SCRIPT_DIR / "outcome"
+OUTCOME_DIR = resolve_outcome_dir()
 
 BASE_NAME = "Inventario_Completo_GKE_CloudSQL"
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-OUTPUT_EXCEL = SCRIPT_DIR / f"{BASE_NAME}_{timestamp}.xlsx"
+OUTPUT_EXCEL = OUTCOME_DIR / f"{BASE_NAME}_{timestamp}.xlsx"
 
 print("Script ubicado en :", SCRIPT_DIR)
 print("Buscando CSVs en   :", OUTCOME_DIR)
-print(f"Generando Excel    : {OUTPUT_EXCEL.name}")
+print("Generando Excel    :", OUTPUT_EXCEL)
 print("=" * 90)
 
 # Definición exacta de columnas por hoja

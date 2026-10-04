@@ -25,8 +25,22 @@ BG_YLW='\033[43m'  # BG Yellow
 
 # === RUTAS ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCM_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 CONFIG_FILE="${SCRIPT_DIR}/generar-inventario-csv.config"
-OUTCOME_DIR="${SCRIPT_DIR}/outcome"
+
+# Outcome global: DEVSECOPS_OUTPUT_DIR > scm/config.json (global.output_dir) > scm/outcome
+if [ -n "${DEVSECOPS_OUTPUT_DIR:-}" ]; then
+  OUTCOME_DIR="$DEVSECOPS_OUTPUT_DIR"
+elif [ -f "$SCM_ROOT/config.json" ] && command -v jq >/dev/null 2>&1; then
+  _cfg_out="$(jq -r '.global.output_dir // "outcome"' "$SCM_ROOT/config.json" 2>/dev/null)"
+  [ -z "$_cfg_out" ] && _cfg_out="outcome"
+  case "$_cfg_out" in
+    /*|[A-Za-z]:/*) OUTCOME_DIR="$_cfg_out" ;;
+    *)              OUTCOME_DIR="$SCM_ROOT/$_cfg_out" ;;
+  esac
+else
+  OUTCOME_DIR="$SCM_ROOT/outcome"
+fi
 DELIMITER=";"
 MAX_PARALLEL=4
 PROGRESS_DIR="/tmp/inventario-progress-$$"
@@ -139,8 +153,11 @@ pad_line() {
   echo -e "${text}$(printf '%*s' $pad '')${CYN}║${RST}"
 }
 
-# Output path relativo
-OUTCOME_SHORT="outcome/"
+# Output path para el cuadro: relativo a scm/ si es posible
+case "$OUTCOME_DIR" in
+  "$SCM_ROOT"/*) OUTCOME_SHORT="${OUTCOME_DIR#$SCM_ROOT/}/" ;;
+  *)             OUTCOME_SHORT="${OUTCOME_DIR}/" ;;
+esac
 
 echo -e "${CYN}╔$(printf '═%.0s' $(seq 1 $BOX_W))╗${RST}"
 pad_line "  ${BOLD}${WHT}📋 INVENTARIO GKE + CLOUD SQL${RST}"

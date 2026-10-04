@@ -21,9 +21,10 @@ from typing import Optional
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import get_output_dir, is_live_terminal
 except ImportError:
     import os as _os
+    import sys as _sys
     from pathlib import Path as _Path
     def get_output_dir(default="."):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
@@ -34,6 +35,11 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    def is_live_terminal():
+        if _sys.stdout.isatty():
+            return True
+        return _os.environ.get("TTY_COMPATIBLE", "").strip().lower() in {
+            "1", "true", "yes", "on"}
 # -------------------------------------------------------------------
 
 try:
@@ -49,6 +55,32 @@ except ImportError:
 
 console = Console()
 VERSION = "1.0.0"
+
+
+class _NullProgress:
+    """Fallback sin TTY: imprime las actualizaciones como líneas.
+    Rich Progress requiere terminal interactiva; en pipes dibuja un
+    frame por línea (el spinner 'salta')."""
+    def __init__(self, console):
+        self._console = console
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc):
+        return False
+    def add_task(self, description, total=None):
+        self._console.print(description)
+        return 0
+    def update(self, *args, description=None, **kwargs):
+        if description:
+            self._console.print(description)
+
+
+def _progress_ctx():
+    """Progress real en TTY (o TTY_COMPATIBLE vía launcher); si no, shim de líneas."""
+    if is_live_terminal():
+        return Progress(SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"))
+    return _NullProgress(console)
 
 
 
@@ -379,7 +411,7 @@ Ejemplos:
 
     all_data: list[tuple[str, list[dict]]] = []
 
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}")) as progress:
+    with _progress_ctx() as progress:
         for c in clusters:
             name = c.get("name", "unknown")
             location = c.get("zone") or c.get("location", "unknown")

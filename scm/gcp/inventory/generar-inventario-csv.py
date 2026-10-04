@@ -32,21 +32,64 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock
 
-# --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
+# --- Config global: DEVSECOPS_* env > scm/config.json > scm/outcome ---
 try:
-    from utils import get_output_dir
+    from utils import (get_output_dir, resolve_outcome_dir, global_flag,
+                       log_command)
 except ImportError:
     import os as _os
+    import json as _json
     from pathlib import Path as _Path
+    from datetime import datetime as _dt
+
+    _SCM_ROOT = _Path(__file__).resolve().parents[2]  # inventory -> gcp -> scm
+
     def get_output_dir(default="."):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        p = _Path(env) if env else _Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def _load_global_config():
+        try:
+            cfg_file = _SCM_ROOT / "config.json"
+            if cfg_file.exists():
+                section = _json.loads(
+                    cfg_file.read_text(encoding="utf-8")).get("global")
+                return section if isinstance(section, dict) else {}
+        except Exception:
+            pass
+        return {}
+
+    def resolve_outcome_dir(default="outcome"):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
         if env:
             p = _Path(env)
-            p.mkdir(parents=True, exist_ok=True)
-            return p
-        p = _Path(default)
+        else:
+            p = _Path(_load_global_config().get("output_dir") or default)
+            if not p.is_absolute():
+                p = _SCM_ROOT / p
         p.mkdir(parents=True, exist_ok=True)
-        return p
+        return p.resolve()
+
+    def global_flag(name):
+        env_val = _os.getenv(f"DEVSECOPS_{name.upper()}")
+        if env_val is not None:
+            return env_val.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(_load_global_config().get(name))
+
+    def log_command(cmd, status="EXEC", platform_name="GCP"):
+        if not global_flag("log_commands"):
+            return
+        log_dir = resolve_outcome_dir()
+        ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        today = _dt.now().strftime("%Y%m%d")
+        cmd_str = cmd if isinstance(cmd, str) else " ".join(str(c) for c in cmd)
+        try:
+            with open(log_dir / f"commands_{today}.log", "a", encoding="utf-8") as f:
+                f.write(f"[{ts}] [{platform_name}] [{status}] {cmd_str}\n")
+        except OSError:
+            pass
 # -------------------------------------------------------------------
 
 try:
@@ -68,8 +111,14 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 SCRIPT_DIR = Path(__file__).parent.resolve()
 CONFIG_FILE = SCRIPT_DIR / "generar-inventario-csv.config"
-OUTCOME_DIR = SCRIPT_DIR / "outcome"
+OUTCOME_DIR = resolve_outcome_dir()
 TOTAL_STEPS = 8
+
+# Flags de configuración global (se setean en main() desde args/env/config)
+_DEBUG = False
+_VERBOSE = False
+_CONSOLE = None      # Console Rich activa (para prints thread-safe)
+_PRINT_LOCK = None   # Lock compartido para prints durante Progress
 
 STEP_NAMES = {
     1: "clusters",
@@ -162,15 +211,45 @@ def format_time(seconds: float) -> str:
 # FUNCIONES DE INVENTARIO (una por paso)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _emit(msg: str) -> None:
+    """Print thread-safe de mensajes debug/verbose (usa la Console Rich si existe)."""
+    if _CONSOLE is not None and _PRINT_LOCK is not None:
+        with _PRINT_LOCK:
+            _CONSOLE.print(msg)
+    else:
+        print(msg)
+
+
 def run_cmd(cmd: list, env: dict = None, capture: bool = True) -> str:
     """Ejecuta un comando y retorna su stdout."""
+    log_command(cmd)
+    if _DEBUG:
+        _emit(f"[dim]→ {' '.join(cmd)}[/dim]" if _CONSOLE else f"→ {' '.join(cmd)}")
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True,
             env=env, timeout=300
         )
+        if result.returncode != 0:
+            log_command(cmd, "ERROR")
+            if _VERBOSE:
+                stderr = (result.stderr or "").strip()
+                hint = stderr.splitlines()[0][:200] if stderr else "sin stderr"
+                _emit(f"  [yellow]⚠ rc={result.returncode}[/yellow] [dim]{' '.join(cmd)}[/dim]"
+                      f"\n    [dim]{hint}[/dim]" if _CONSOLE else
+                      f"  ⚠ rc={result.returncode} {' '.join(cmd)}\n    {hint}")
         return result.stdout if capture else ""
-    except (subprocess.TimeoutExpired, Exception):
+    except subprocess.TimeoutExpired:
+        log_command(cmd, "TIMEOUT")
+        if _VERBOSE:
+            _emit(f"  [yellow]⏱ timeout (300s)[/yellow] [dim]{' '.join(cmd)}[/dim]"
+                  if _CONSOLE else f"  ⏱ timeout (300s) {' '.join(cmd)}")
+        return ""
+    except Exception as e:
+        log_command(cmd, "ERROR")
+        if _VERBOSE:
+            _emit(f"  [red]✘ {e}[/red] [dim]{' '.join(cmd)}[/dim]"
+                  if _CONSOLE else f"  ✘ {e} {' '.join(cmd)}")
         return ""
 
 
@@ -530,7 +609,8 @@ def process_project(project_id: str, delim: str, exclude_ns: list,
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def print_header_rich(console: Console, projects: list, exclude_ns: list,
-                      delimiter: str, max_parallel: int, sequential: bool):
+                      delimiter: str, max_parallel: int, sequential: bool,
+                      out_dir: Path):
     """Muestra header con Rich Panel."""
     content = Text()
     content.append("📋 INVENTARIO GKE + CLOUD SQL\n\n", style="bold white")
@@ -545,14 +625,15 @@ def print_header_rich(console: Console, projects: list, exclude_ns: list,
     content.append("Hilos        : ", style="dim")
     content.append(f"{'1 (secuencial)' if sequential else str(max_parallel)}\n", style="blue")
     content.append("Output       : ", style="dim")
-    content.append("outcome/\n", style="green")
+    content.append(f"{out_dir}\n", style="green")
 
     panel = Panel(content, border_style="cyan", box=HEAVY, padding=(1, 2), expand=False)
     console.print(panel)
     console.print()
 
 
-def print_summary_rich(console: Console, results: list, total_time: float, max_parallel: int):
+def print_summary_rich(console: Console, results: list, total_time: float,
+                       max_parallel: int, out_dir: Path):
     """Muestra resumen final con Rich."""
     content = Text()
     content.append("🎉 ¡Proceso COMPLETO finalizado exitosamente!\n\n", style="bold white")
@@ -563,7 +644,7 @@ def print_summary_rich(console: Console, results: list, total_time: float, max_p
     content.append("Proyectos    : ", style="dim")
     content.append(f"{len(results)}\n", style="white")
     content.append("Carpeta       : ", style="dim")
-    content.append("outcome/\n", style="cyan")
+    content.append(f"{out_dir}\n", style="cyan")
 
     # Detalle por proyecto
     content.append("\n", style="")
@@ -580,7 +661,7 @@ def print_summary_rich(console: Console, results: list, total_time: float, max_p
 # MODO FALLBACK (sin Rich)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def print_header_fallback(projects, exclude_ns, delimiter, max_parallel, sequential):
+def print_header_fallback(projects, exclude_ns, delimiter, max_parallel, sequential, out_dir):
     print("=" * 60)
     print("  INVENTARIO GKE + CLOUD SQL - CSV")
     print(f"  Separador    : '{delimiter}'")
@@ -589,18 +670,18 @@ def print_header_fallback(projects, exclude_ns, delimiter, max_parallel, sequent
         print(f"    • {p}")
     print(f"  NS excluidos : {', '.join(exclude_ns) if exclude_ns else 'ninguno'}")
     print(f"  Hilos        : {'1 (secuencial)' if sequential else max_parallel}")
-    print(f"  Output       : outcome/")
+    print(f"  Output       : {out_dir}")
     print("=" * 60)
 
 
-def print_summary_fallback(results, total_time, max_parallel):
+def print_summary_fallback(results, total_time, max_parallel, out_dir):
     print()
     print("=" * 60)
     print("  ¡Proceso COMPLETO finalizado exitosamente!")
     print(f"  Tiempo total : {format_time(total_time)}")
     print(f"  Hilos usados : {max_parallel}")
     print(f"  Proyectos    : {len(results)}")
-    print(f"  Carpeta       : outcome/")
+    print(f"  Carpeta       : {out_dir}")
     print("=" * 60)
 
 
@@ -617,7 +698,16 @@ def main():
     parser.add_argument("--delimiter", default=";", help="Separador CSV (default: ;)")
     parser.add_argument("--threads", type=int, default=4, help="Hilos paralelos (default: 4)")
     parser.add_argument("--sequential", action="store_true", help="Deshabilitar paralelismo")
+    parser.add_argument("--debug", action="store_true",
+                        help="Modo debug (también global.debug en config.json)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Salida detallada (también global.verbose en config.json)")
     args = parser.parse_args()
+
+    # Flags de config global (DEVSECOPS_* env > config.json global) + CLI
+    global _DEBUG, _VERBOSE, _CONSOLE, _PRINT_LOCK
+    _DEBUG = args.debug or global_flag("debug")
+    _VERBOSE = args.verbose or global_flag("verbose") or _DEBUG
 
     # Leer configuración
     projects = list(args.projects)
@@ -637,11 +727,14 @@ def main():
 
     if RICH_AVAILABLE:
         console = Console()
-        print_header_rich(console, projects, exclude_ns, args.delimiter, args.threads, args.sequential)
+        print_header_rich(console, projects, exclude_ns, args.delimiter,
+                          args.threads, args.sequential, OUTCOME_DIR)
 
         start_total = time.time()
         results = []
         print_lock = Lock()
+        _CONSOLE = console
+        _PRINT_LOCK = print_lock
 
         with Progress(
             SpinnerColumn(),
@@ -683,11 +776,12 @@ def main():
 
         total_time = time.time() - start_total
         console.print()
-        print_summary_rich(console, results, total_time, args.threads)
+        print_summary_rich(console, results, total_time, args.threads, OUTCOME_DIR)
 
     else:
         # Modo fallback sin Rich
-        print_header_fallback(projects, exclude_ns, args.delimiter, args.threads, args.sequential)
+        print_header_fallback(projects, exclude_ns, args.delimiter, args.threads,
+                              args.sequential, OUTCOME_DIR)
         start_total = time.time()
         results = []
 
@@ -732,7 +826,7 @@ def main():
             results.append({"project": p, "steps": {}, "time": total})
 
         total_time = time.time() - start_total
-        print_summary_fallback(results, total_time, args.threads)
+        print_summary_fallback(results, total_time, args.threads, OUTCOME_DIR)
 
 
 if __name__ == "__main__":

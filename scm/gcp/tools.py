@@ -266,7 +266,7 @@ TOOLS = {
         "name": "Reporte de Despliegues GKE",
         "description": "Genera un reporte detallado de los despliegues en GKE",
         "path": "monitoring/gke_deployments_report.py",
-        "args": ["--project"],
+        "args": ["--project", "--multi-project"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
         "status": "ready"
@@ -1019,12 +1019,34 @@ def get_project_id() -> Optional[str]:
 
 _PLATFORM = "GCP"
 
+
+def _global_config() -> dict:
+    """Sección 'global' de scm/config.json. {} si no existe o falla."""
+    try:
+        cfg_path = BASE_DIR.parent / "config.json"
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            section = cfg.get("global")
+            return section if isinstance(section, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _resolve_output_dir() -> Path:
+    """DEVSECOPS_OUTPUT_DIR > scm/config.json global.output_dir > scm/outcome."""
+    env_dir = os.environ.get("DEVSECOPS_OUTPUT_DIR")
+    if env_dir:
+        return Path(env_dir)
+    p = Path(_global_config().get("output_dir") or "outcome")
+    return p if p.is_absolute() else (BASE_DIR.parent / p).resolve()
+
+
 def log_command(cmd: List[str], status: str = "EXEC") -> None:
-    """Registra el comando en el log global si DEVSECOPS_LOG_COMMANDS=1."""
-    if os.environ.get("DEVSECOPS_LOG_COMMANDS") != "1":
+    """Registra el comando en el log global si log_commands está activo."""
+    if os.environ.get("DEVSECOPS_LOG_COMMANDS") != "1" and not _global_config().get("log_commands"):
         return
-    output_dir_env = os.environ.get("DEVSECOPS_OUTPUT_DIR")
-    log_dir = Path(output_dir_env) if output_dir_env else BASE_DIR / "outcome"
+    log_dir = _resolve_output_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.datetime.now().strftime("%Y%m%d")
     log_file = log_dir / f"commands_{today}.log"
@@ -1048,6 +1070,10 @@ def _run_with_spinner(cmd: List[str]):
     env = _os.environ.copy()
     env["FORCE_COLOR"] = "1"
     env["ANSI_COLORS_ENABLED"] = "1"
+    # UTF-8 en el hijo: evita UnicodeEncodeError (cp1252) con emojis/spinners
+    # si alguna vez el venv es Windows-nativo en vez de WSL.
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
 
     # Pasar dimensiones del terminal para que Rich del subprocess use ancho correcto
     try:
@@ -1055,6 +1081,23 @@ def _run_with_spinner(cmd: List[str]):
         env["COLUMNS"] = str(term_width)
     except Exception:
         env["COLUMNS"] = "120"
+
+    # Config global: propagar flags a herramientas que corren como subprocess.
+    # main.py ya las inyecta; esto cubre la ejecución standalone del launcher.
+    _g = _global_config()
+    env.setdefault("DEVSECOPS_OUTPUT_DIR", str(_resolve_output_dir()))
+    if _g.get("log_commands"):
+        env.setdefault("DEVSECOPS_LOG_COMMANDS", "1")
+    if _g.get("debug"):
+        env.setdefault("DEVSECOPS_DEBUG", "1")
+    if _g.get("verbose"):
+        env.setdefault("DEVSECOPS_VERBOSE", "1")
+
+    # Si el launcher corre en un TTY real, avisar al hijo con TTY_COMPATIBLE
+    # (Rich lo honra en Console.is_terminal) para que emita secuencias ANSI de
+    # animación; el relay de abajo las pasa intactas al terminal. Sin TTY
+    # (CI / redirect a archivo) se fuerza 0 → salida estática limpia.
+    env["TTY_COMPATIBLE"] = "1" if sys.stdout.isatty() else "0"
 
     proc = subprocess.Popen(
         cmd,

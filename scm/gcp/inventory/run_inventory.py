@@ -14,10 +14,54 @@ Uso:
 """
 
 import importlib.util
+import os
 import runpy
 import subprocess
 import sys
 from pathlib import Path
+
+# --- Config global: DEVSECOPS_* env > scm/config.json > scm/outcome ---
+try:
+    from utils import resolve_outcome_dir, log_command
+except ImportError:
+    import os as _os
+    import json as _json
+    from pathlib import Path as _Path
+    from datetime import datetime as _dt
+
+    _SCM_ROOT = _Path(__file__).resolve().parents[2]  # inventory -> gcp -> scm
+
+    def resolve_outcome_dir(default="outcome"):
+        env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = _Path(env)
+        else:
+            try:
+                cfg_file = _SCM_ROOT / "config.json"
+                cfg = _json.loads(cfg_file.read_text(encoding="utf-8")) \
+                    if cfg_file.exists() else {}
+                out = (cfg.get("global") or {}).get("output_dir") or default
+            except Exception:
+                out = default
+            p = _Path(out)
+            if not p.is_absolute():
+                p = _SCM_ROOT / p
+        p.mkdir(parents=True, exist_ok=True)
+        return p.resolve()
+
+    def log_command(cmd, status="EXEC", platform_name="GCP"):
+        if _os.getenv("DEVSECOPS_LOG_COMMANDS") != "1":
+            return
+        log_dir = resolve_outcome_dir()
+        ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        today = _dt.now().strftime("%Y%m%d")
+        cmd_str = cmd if isinstance(cmd, str) else " ".join(str(c) for c in cmd)
+        try:
+            with open(log_dir / f"commands_{today}.log", "a", encoding="utf-8") as f:
+                f.write(f"[{ts}] [{platform_name}] [{status}] {cmd_str}\n")
+        except OSError:
+            pass
+# ----------------------------------------------------------------------
 
 try:
     from rich.console import Console
@@ -38,8 +82,21 @@ try:
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
 
+def ensure_output_env() -> Path:
+    """Resuelve el outcome global y lo fija en DEVSECOPS_OUTPUT_DIR si falta.
+
+    Garantiza que el generador CSV (mismo proceso) y el consolidador Excel
+    (subproceso) resuelvan exactamente el mismo directorio.
+    """
+    out_dir = resolve_outcome_dir()
+    os.environ.setdefault("DEVSECOPS_OUTPUT_DIR", str(out_dir))
+    return out_dir
+
+
 def main():
     skip_csv = "--skip-csv" in sys.argv
+
+    out_dir = ensure_output_env()
 
     if RICH_AVAILABLE:
         console = Console()
@@ -49,11 +106,14 @@ def main():
                 ("Pipeline completo de inventario:\n", "dim"),
                 ("  1. CSVs por proyecto (Rich UI)\n", "cyan"),
                 ("  2. Consolidación en Excel\n", "cyan"),
+                ("  Output: ", "dim"),
+                (f"{out_dir}\n", "green"),
             ),
             border_style="cyan", box=HEAVY, padding=(1, 2), expand=False,
         ))
     else:
         print("📋 Inventario GKE + Cloud SQL - Launcher")
+        print(f"  Output: {out_dir}")
 
     # ── Paso 1: Generar CSVs ──────────────────────────────────────────────
     if not skip_csv:
@@ -102,13 +162,24 @@ def main():
         print(f"❌ No se encontró: {excel_script}")
         sys.exit(1)
 
+    excel_cmd = [sys.executable, str(excel_script)]
+    log_command(excel_cmd)
+
     if RICH_AVAILABLE:
+        # Capturar salida del consolidador para que no se interponga con el
+        # spinner en vivo; se imprime al terminar.
         with console.status("[bold cyan]⏳ Paso 2/2 – Consolidando CSVs en Excel[/bold cyan]", spinner="dots"):
             result = subprocess.run(
-                [sys.executable, str(excel_script)],
+                excel_cmd,
                 cwd=str(SCRIPT_DIR),
+                capture_output=True, text=True,
             )
+        if result.stdout:
+            console.print(result.stdout.rstrip())
         if result.returncode != 0:
+            if result.stderr:
+                console.print(f"[dim]{result.stderr.rstrip()}[/dim]")
+            log_command(excel_cmd, "ERROR")
             console.print(f"[red]❌ Error consolidando Excel (código {result.returncode})[/red]")
             sys.exit(1)
         console.print()
@@ -121,10 +192,11 @@ def main():
         print("  Paso 2/2 – Consolidando CSVs en Excel")
         print(f"{'='*60}")
         result = subprocess.run(
-            [sys.executable, str(excel_script)],
+            excel_cmd,
             cwd=str(SCRIPT_DIR),
         )
         if result.returncode != 0:
+            log_command(excel_cmd, "ERROR")
             print(f"❌ Error consolidando Excel (código {result.returncode})")
             sys.exit(1)
         print(f"\n{'='*60}")

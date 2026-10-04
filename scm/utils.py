@@ -7,6 +7,8 @@ main.py y los tools.py agregan scm/ a PYTHONPATH antes de lanzar scripts.
 """
 
 import os
+import sys
+import json
 import atexit
 import shutil
 import subprocess
@@ -14,6 +16,88 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
+
+
+SCM_ROOT = Path(__file__).resolve().parent
+SCM_CONFIG_FILE = SCM_ROOT / "config.json"
+
+
+def load_global_config() -> dict:
+    """Lee la sección `global` de scm/config.json. Retorna {} si no existe o falla."""
+    try:
+        if SCM_CONFIG_FILE.exists():
+            cfg = json.loads(SCM_CONFIG_FILE.read_text(encoding="utf-8"))
+            section = cfg.get("global")
+            return section if isinstance(section, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def resolve_outcome_dir(default: str = "outcome") -> Path:
+    """
+    Resuelve el directorio de salida global del toolbox.
+
+    Orden de resolución:
+      1. Variable de entorno DEVSECOPS_OUTPUT_DIR (inyectada por main.py)
+      2. scm/config.json → global.output_dir (relativa se resuelve bajo scm/)
+      3. scm/<default>
+
+    El directorio se crea automáticamente si no existe.
+    """
+    env = os.getenv("DEVSECOPS_OUTPUT_DIR")
+    if env:
+        p = Path(env)
+    else:
+        p = Path(load_global_config().get("output_dir") or default)
+        if not p.is_absolute():
+            p = SCM_ROOT / p
+    p.mkdir(parents=True, exist_ok=True)
+    return p.resolve()
+
+
+def global_flag(name: str) -> bool:
+    """
+    Flag booleano de la configuración global.
+
+    Orden: variable DEVSECOPS_<NAME> (inyectada por main.py) >
+    config.json → global.<name>.
+    """
+    env_val = os.getenv(f"DEVSECOPS_{name.upper()}")
+    if env_val is not None:
+        return env_val.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(load_global_config().get(name))
+
+
+def is_live_terminal() -> bool:
+    """
+    True si stdout puede renderizar animaciones de Rich (spinners/Progress).
+
+    sys.stdout.isatty() cubre la ejecución directa en terminal. Además, el
+    launcher (tools.py) inyecta TTY_COMPATIBLE=1 cuando él sí corre en un TTY
+    pero reenvía la salida del proceso hijo por un pipe — las secuencias ANSI
+    del hijo llegan intactas al terminal real, por lo que el hijo puede (y
+    debe) animar. Rich honra TTY_COMPATIBLE en Console.is_terminal.
+    """
+    if sys.stdout.isatty():
+        return True
+    return os.environ.get("TTY_COMPATIBLE", "").strip().lower() in {
+        "1", "true", "yes", "on"}
+
+
+def log_command(cmd, status: str = "EXEC", platform_name: str = "GCP") -> None:
+    """Registra un comando en <outcome>/commands_YYYYMMDD.log si log_commands está activo."""
+    if not global_flag("log_commands"):
+        return
+    log_dir = resolve_outcome_dir()
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    today = datetime.now().strftime("%Y%m%d")
+    cmd_str = cmd if isinstance(cmd, str) else " ".join(str(c) for c in cmd)
+    try:
+        with open(log_dir / f"commands_{today}.log", "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] [{platform_name}] [{status}] {cmd_str}\n")
+    except OSError:
+        pass
 
 
 def get_output_dir(default: str = ".") -> Path:

@@ -27,7 +27,9 @@ import json
 import os
 import sys
 import logging
+import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
 
@@ -48,9 +50,15 @@ except ImportError:
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import (get_output_dir, gke_kube_env, gke_context_name,
+                       gke_location_flag, ensure_gke_cluster_credentials,
+                       is_live_terminal)
 except ImportError:
     import os as _os
+    import sys as _sys
+    import atexit as _ax
+    import shutil as _sh
+    import tempfile as _tf
     from pathlib import Path as _Path
     def get_output_dir(default="."):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
@@ -61,6 +69,31 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    def is_live_terminal():
+        if _sys.stdout.isatty():
+            return True
+        return _os.environ.get("TTY_COMPATIBLE", "").strip().lower() in {
+            "1", "true", "yes", "on"}
+    _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
+    _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
+    def gke_kube_env(cluster_name):
+        env = _os.environ.copy()
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        return env
+    def gke_context_name(project_id, location, cluster_name):
+        return f"gke_{project_id}_{location}_{cluster_name}"
+    def gke_location_flag(location):
+        return f"--zone={location}" if location.count("-") == 2 else f"--region={location}"
+    def ensure_gke_cluster_credentials(project_id, cluster_name, location,
+                                       timeout=60, debug=False, logger=None):
+        cmd = (f"gcloud container clusters get-credentials {cluster_name} "
+               f"--project={project_id} {gke_location_flag(location)} --quiet")
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                               timeout=timeout, env=gke_kube_env(cluster_name))
+            return r.returncode == 0
+        except Exception:
+            return False
 # -------------------------------------------------------------------
 
 
@@ -258,21 +291,29 @@ def format_memory(mib):
 # Lógica principal para obtener información de Deployments y Pods
 # ---------------------------------------------------------------------------
 
-def load_kube_config():
+def list_gke_clusters(project_id: str, logger=None) -> list:
+    """Lista clusters GKE del proyecto: [(name, location), ...]."""
+    cmd = f'gcloud container clusters list --project={project_id} --format=json'
+    if logger:
+        logger.info(f"Ejecutando: {cmd}")
     try:
-        config.load_kube_config()
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            if logger:
+                logger.error(f"clusters list falló para {project_id}: {r.stderr[:200]}")
+            return []
+        return [(c.get('name', ''), c.get('location', '')) for c in json.loads(r.stdout)]
     except Exception as e:
-        raise RuntimeError(
-            f"No se pudo cargar la configuración de Kubernetes: {e}\n"
-            "Asegúrate de tener un contexto válido en ~/.kube/config y de "
-            "que puedes ejecutar 'kubectl get pods' sin problemas."
-        )
+        if logger:
+            logger.error(f"Excepción listando clusters de {project_id}: {e}")
+        return []
 
 
-def get_deployments_report():
+def get_deployments_report(project_id: str, cluster_name: str, location: str, logger=None):
     """
     Devuelve una lista de dicts con la información de cada Deployment:
 
+      - project
       - cluster
       - namespace
       - deployment
@@ -288,16 +329,21 @@ def get_deployments_report():
       - limit_cpu (suma limits containers)
       - limit_memory (suma limits containers)
     """
-    load_kube_config()
+    if not ensure_gke_cluster_credentials(project_id, cluster_name, location, logger=logger):
+        if logger:
+            logger.error(f"Sin credenciales para {cluster_name} ({project_id})")
+        return []
 
-    contexts, active_context = config.list_kube_config_contexts()
-    if not active_context:
-        raise RuntimeError("No se encontró un contexto activo en kubeconfig.")
-    cluster_name = active_context.get("name", "desconocido")
+    # KUBECONFIG aislado por cluster — seguro en paralelo (no toca ~/.kube/config)
+    kubeconfig_path = gke_kube_env(cluster_name)["KUBECONFIG"]
+    context = gke_context_name(project_id, location, cluster_name)
 
-    apps_v1 = client.AppsV1Api()
-    core_v1 = client.CoreV1Api()
-    custom_api = client.CustomObjectsApi()
+    api_client = config.new_client_from_config(
+        config_file=kubeconfig_path, context=context
+    )
+    apps_v1 = client.AppsV1Api(api_client)
+    core_v1 = client.CoreV1Api(api_client)
+    custom_api = client.CustomObjectsApi(api_client)
 
     try:
         ns_list = core_v1.list_namespace(_request_timeout=10)
@@ -407,6 +453,7 @@ def get_deployments_report():
             status_str = determine_deployment_status(pod_statuses, desired_replicas, ready_pods)
 
             row = {
+                "project": project_id,
                 "cluster": cluster_name,
                 "namespace": ns,
                 "deployment": dep_name,
@@ -516,6 +563,7 @@ def determine_deployment_status(pod_statuses, desired, ready):
 
 def format_detailed_table(report_data):
     headers = [
+        "Project",
         "Cluster",
         "Namespace",
         "Deployment",
@@ -534,6 +582,7 @@ def format_detailed_table(report_data):
     for r in report_data:
         rows.append(
             [
+                r["project"],
                 r["cluster"],
                 r["namespace"],
                 r["deployment"],
@@ -554,9 +603,15 @@ def format_detailed_table(report_data):
 
 
 def format_status_summary(report_data):
-    counter = Counter(r["status"] for r in report_data)
-    rows = [[status, count] for status, count in sorted(counter.items())]
-    return tabulate(rows, headers=["Status", "Deployments"], tablefmt="github")
+    """Resumen por Proyecto + Status."""
+    counter = Counter((r.get("project", "N/A"), r["status"]) for r in report_data)
+    rows = [
+        [project, status, count]
+        for (project, status), count in sorted(counter.items())
+    ]
+    return tabulate(
+        rows, headers=["Project", "Status", "Deployments"], tablefmt="github"
+    )
 
 
 def format_limits_status_summary(report_data):
@@ -567,6 +622,7 @@ def format_limits_status_summary(report_data):
     groups = defaultdict(lambda: {"deployments": 0, "pods_ready": 0, "restarts": 0})
 
     for r in report_data:
+        project = r.get("project", "N/A")
         status = r["status"]
         lim_cpu = r["limit_cpu"]
         lim_mem = r["limit_memory"]
@@ -579,17 +635,19 @@ def format_limits_status_summary(report_data):
         except Exception:
             ready_int = 0
 
-        key = (status, lim_cpu, lim_mem)
+        key = (project, status, lim_cpu, lim_mem)
         groups[key]["deployments"] += 1
         groups[key]["pods_ready"] += ready_int
         groups[key]["restarts"] += restarts
 
     rows = []
-    for (status, lim_cpu, lim_mem), agg in sorted(
-        groups.items(), key=lambda x: (-x[1]["deployments"], x[0][0], x[0][1], x[0][2])
+    for (project, status, lim_cpu, lim_mem), agg in sorted(
+        groups.items(),
+        key=lambda x: (x[0][0], -x[1]["deployments"], x[0][1], x[0][2], x[0][3]),
     ):
         rows.append(
             [
+                project,
                 agg["deployments"],
                 lim_cpu,
                 lim_mem,
@@ -606,6 +664,7 @@ def format_limits_status_summary(report_data):
     table = tabulate(
         rows,
         headers=[
+            "PROJECT",
             "DEPLOYMENTS",
             "LIMIT_CPU",
             "LIMIT_MEM",
@@ -626,6 +685,7 @@ def format_limits_status_summary(report_data):
 
 def write_csv(report_data, filepath):
     fieldnames = [
+        "project",
         "cluster",
         "namespace",
         "deployment",
@@ -675,6 +735,12 @@ def main():
         help="ID del proyecto GCP (default: default-gke-project)",
     )
     parser.add_argument(
+        "--multi-project",
+        dest="multi_project",
+        default=None,
+        help="IDs de multiples proyectos GCP separados por comas (ej: proj1,proj2)",
+    )
+    parser.add_argument(
         "--output-dir",
         default=None,
         help="Directorio donde guardar el reporte (default: outcome)",
@@ -693,36 +759,69 @@ def main():
     print()
     
     project_id = args.project_id or "default-gke-project"
-    # El launcher ejecuta los scripts con stdin=DEVNULL: solo preguntar
-    # cuando hay una terminal interactiva real.
-    if sys.stdin is not None and sys.stdin.isatty():
-        print("📋 Ingrese el ID del proyecto GCP")
-        print(f"   (Presione Enter para usar el valor por defecto: '{project_id}')")
-        try:
-            user_input = input("Proyecto GCP: ").strip()
-        except EOFError:
-            user_input = ""
-        if user_input:
-            project_id = user_input
-    
-    print(f"✓ Proyecto GCP: {project_id}")
-    logger.info(f"Proyecto GCP: {project_id}")
+    if args.multi_project:
+        project_ids = [p.strip() for p in args.multi_project.split(",") if p.strip()]
+    else:
+        # El launcher ejecuta los scripts con stdin=DEVNULL: solo preguntar
+        # cuando hay una terminal interactiva real.
+        if sys.stdin is not None and sys.stdin.isatty():
+            print("📋 Ingrese el ID del proyecto GCP")
+            print(f"   (Presione Enter para usar el valor por defecto: '{project_id}')")
+            try:
+                user_input = input("Proyecto GCP: ").strip()
+            except EOFError:
+                user_input = ""
+            if user_input:
+                project_id = user_input
+        project_ids = [project_id]
+
+    print(f"✓ Proyecto(s) GCP: {', '.join(project_ids)}")
+    logger.info(f"Proyecto(s) GCP: {', '.join(project_ids)}")
     print()
 
     try:
         generated_at = datetime.now(timezone.utc).isoformat()
 
-        if RICH_AVAILABLE and console:
-            with console.status("[bold cyan]🔍 Consultando deployments en el cluster...", spinner="dots"):
-                logger.info("Consultando deployments en el cluster")
-                report_data = get_deployments_report()
-            console.print(f"[green]✓[/green] Se encontraron [bold]{len(report_data)}[/bold] deployments")
+        # Resolver todos los (proyecto, cluster) a consultar
+        targets = []
+        for pid in project_ids:
+            clusters = list_gke_clusters(pid, logger)
+            if not clusters:
+                print(f"⚠️  Sin clusters GKE accesibles en {pid}")
+                logger.warning(f"Sin clusters GKE accesibles en {pid}")
+                continue
+            for cname, cloc in clusters:
+                targets.append((pid, cname, cloc))
+
+        if not targets:
+            print("❌ No se encontraron clusters GKE en los proyectos seleccionados.")
+            return
+
+        report_data = []
+        msg = (f"🔍 Consultando deployments en {len(targets)} cluster(s) "
+               f"de {len(project_ids)} proyecto(s)...")
+        if RICH_AVAILABLE and console and is_live_terminal():
+            with console.status(f"[bold cyan]{msg}[/]", spinner="dots"):
+                logger.info(msg)
+                with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+                    futures = {
+                        executor.submit(get_deployments_report, pid, cname, cloc, logger): (pid, cname)
+                        for pid, cname, cloc in targets
+                    }
+                    for fut in as_completed(futures):
+                        report_data.extend(fut.result())
         else:
-            print("[INFO] Consultando deployments en el cluster...")
-            logger.info("Consultando deployments en el cluster")
-            report_data = get_deployments_report()
-            print(f"[INFO] Se encontraron {len(report_data)} deployments")
-        
+            print(f"[INFO] {msg}")
+            logger.info(msg)
+            with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+                futures = {
+                    executor.submit(get_deployments_report, pid, cname, cloc, logger): (pid, cname)
+                    for pid, cname, cloc in targets
+                }
+                for fut in as_completed(futures):
+                    report_data.extend(fut.result())
+
+        print(f"✓ Se encontraron {len(report_data)} deployments")
         logger.info(f"Se encontraron {len(report_data)} deployments")
 
         for row in report_data:
@@ -766,7 +865,7 @@ def main():
             output_dir_path, f"gke_deployments_report_{ts_for_filename}.json"
         )
 
-        if RICH_AVAILABLE and console:
+        if RICH_AVAILABLE and console and is_live_terminal():
             with console.status("[bold cyan]💾 Guardando archivos...", spinner="dots"):
                 with open(txt_path, "w", encoding="utf-8") as f:
                     f.write("=" * 80 + "\n")

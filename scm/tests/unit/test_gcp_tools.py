@@ -327,6 +327,16 @@ class TestGCPTools:
         assert "--project" in tool["args"]
         assert tool["path"].endswith("gke_deployments_report.py")
 
+    def test_gke_deployments_report_is_multi_project_capable(self):
+        """La opción 2 declara --multi-project (selección ALL/equipos como la
+        opción 1) y el script acepta --multi-project."""
+        tool = gcp_tools.TOOLS["2"]
+        assert "--multi-project" in tool["args"]
+        src = (GCP_DIR / "monitoring" / "gke_deployments_report.py").read_text(
+            encoding="utf-8"
+        )
+        assert '"--multi-project"' in src
+
     def test_gke_deployments_report_no_interactive_input_when_not_tty(self):
         """gke_deployments_report.py acepta --project y solo llama input()
         cuando stdin es una TTY real (evita EOFError bajo el launcher)."""

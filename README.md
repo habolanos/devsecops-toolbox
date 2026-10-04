@@ -1,7 +1,7 @@
 # 🔐 DevSecOps Toolbox
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.117-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.120-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/license-GNUv3-green.svg" alt="License">
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker">
@@ -1284,57 +1284,15 @@ python scripts/bump_version.py --validate
 
 ---
 
-## � Historial reciente
+## 👾 Historial reciente
 
-| Fecha | Versión | Cambio |
-|-------|---------|--------|
-| 2026-10-03 | **1.7.117** | AzDO opción 5 (Release Deep Dive): `TOOLS["5"]["args"]` declaraba `--release-id` pero el script requiere `--definition-id` → el ID capturado nunca llegaba y argparse abortaba con exit 2. Corregido a `--definition-id`; tests nuevos en `test_azdo_tools.py`. |
-| 2026-10-03 | **1.7.116** | Monitor GCP: la consola quedaba "colgada" al entregar reportes finales — los conteos de BDs Cloud SQL se consultaban lazily al renderizar detalles (~25 llamadas sin indicador). Ahora `process_project` los prefetcha en la fase paralela inicial, la fase de detalles solo consulta lo que falte bajo `console.status` con impresión diferida, y la generación del HTML también muestra spinner. Se eliminó `create_detailed_tables` (código muerto que re-consultaría BDs). |
-| 2026-10-03 | **1.7.115** | Monitor GCP: el spinner de progreso "saltaba" de línea — los workers en paralelo hacían `console.print` durante el render en vivo de Rich (suspende/re-dibuja el spinner). Nuevo `_defer_console_prints()` + `_print_or_defer()`: los prints se acumulan mientras hay render activo y se descargan al terminar — animación estable, mensajes intactos. |
-| 2026-10-03 | **1.7.114** | Refactor GCP: helpers K8s compartidos en `scm/utils.py` (`gke_kube_env`, `gke_context_name`, `gke_location_flag`, `ensure_gke_cluster_credentials` con kubeconfig aislado por cluster + caché + timeouts). Migrados `gcp_monitor`, `gcp_cluster_checker` (N/A real + timeouts), `gcp_ip_addresses_checker`, `gcp_gateway_checker` y `generar-inventario-csv.sh` (kubeconfig por cluster — los proyectos corren en paralelo). |
-| 2026-10-02 | **1.7.113** | Monitor GCP: paralelismo real restaurado — en vez de serializar `get-credentials` con lock (lento), cada cluster ahora usa un archivo `KUBECONFIG` aislado en un dir temporal (`_kube_env()`), por lo que las escrituras no comparten el `~/.kube/config` y vuelven a correr en paralelo sin race condition. El dir temporal se limpia al salir (`atexit`). |
-| 2026-10-02 | **1.7.112** | Monitor GCP: fix race condition — `gcloud get-credentials` corría en paralelo y sus escrituras no atómicas a `~/.kube/config` se pisaban entre sí, dejando contextos faltantes (`context was not found` → pods `N/A` aleatorios). Ahora `_ensure_cluster_credentials` se serializa con un `threading.Lock` (los `kubectl` de lectura siguen en paralelo) y `get_pod_count`/`get_services_count` reutilizan esa función cacheada en vez de duplicar el get-credentials. |
-| 2026-10-01 | **1.7.111** | Monitor GCP: `get-credentials` ya no falla en silencio — cuando `gcloud container clusters get-credentials` retorna error (gcloud roto/sin Python, auth expirada, sin acceso al proyecto), el `stderr` queda en `outcome/gcp_monitor_*.log` y el cluster muestra `N/A`. Se eliminó también su `2>/dev/null` (rompía el comando en cmd.exe). |
-| 2026-10-01 | **1.7.110** | Monitor GCP (opción 1): `get_pod_count` ya no muestra `0/0` falsos cuando `kubectl` falla (falta `gke-gcloud-auth-plugin`, RBAC, contexto inexistente) — ahora devuelve `N/A` y registra el `stderr` en el log, igual que `get_services_count`. `0/0` queda reservado para clusters accesibles sin pods. Se eliminó `2>/dev/null` de los comandos para capturar el error real. |
-| 2026-10-01 | **1.7.109** | Reporte Despliegues GKE (opción 2): fix `EOFError` — el launcher ejecuta los scripts con `stdin=DEVNULL`, por lo que el `input("Proyecto GCP:")` interno fallaba. Ahora la opción declara `--project` (el launcher solicita el proyecto y lo pasa por CLI, aceptado como alias de `--project-id`) y el script solo muestra el prompt cuando stdin es una TTY real. `gke_monitor_pod`/`gke_monitor_node`: la pausa final "Presione Enter" también se omite fuera de TTY. |
-| 2026-09-29 | **1.7.108** | Tests: fix de colisión de `import tools` en `test_gcp_tools.py` (en CI otro `tools.py` quedaba cacheado en `sys.modules` según el orden de colección — ahora se carga por spec con nombre único) y `test_terminal_tools.py` ya no exige que `cer-io-2027.yml` exista en disco (está `.gitignore`ado por contener llave privada; el test verifica la protección en su lugar). |
-| 2026-09-29 | **1.7.107** | Cert Manager: `cert_backup_and_renew_tls_certs.sh` ahora agrupa todos sus artefactos (backups, `update-certs-*.yaml`, `evidencia-*.html`) en un solo folder `<outcome>/certs-<cluster>-<ts>/`, resolviendo el outcome desde `DEVSECOPS_OUTPUT_DIR` o `scm/config.json → global.output_dir`. |
-| 2026-09-29 | **1.7.106** | Terminal Tools: nueva opción **9 — Cert Manager Tools (GKE/GCP)**, submenú Python con interfaz Rich en `operation_update_certs_on_gke_gcp/tools.py` que agrupa las operaciones de certificados TLS (backup/renovación de Secrets K8s, validación TLS de endpoints, inventario ssl-certificates GCP) más verificación de prerrequisitos. |
-| 2026-09-29 | **1.7.105** | Terminal Tools: nueva opción **8 — Setup Entorno DevOps (Linux/WSL)** que ejecuta `operation_setup_initial/install-devops-tools.sh` para instalar el toolchain SCM DevOps (gcloud, kubectl, gke-auth-plugin, kubectx/kubens, k9s, jq, python3, pipx, nodejs, git) en Ubuntu/WSL. |
-| 2026-09-24 | **1.7.104** | Monitor GCP (opción 1): la columna `ESTADO` de la tabla Clusters GKE ahora considera los pods — escala a `🟡 ADVERTENCIA` cuando `NOT RUNNING > PODS` (antes solo evaluaba CPU/memoria y mostraba `🟢 OK` aunque la mayoría de pods fallara). Mismo criterio aplicado al dashboard HTML. |
-| 2026-09-23 | **1.7.103** | Launcher GCP: la leyenda del prompt de proyectos ahora lista cada equipo con sus proyectos (igual que la opción 35), no solo los nombres de equipo. |
-| 2026-09-23 | **1.7.102** | Launcher GCP: el prompt de proyectos aplica la convención config.json a todas las tools multi-proyecto (opción 1 `gcp_monitor` y las de `MULTI_PROJECT_SCRIPTS`): se pueden ingresar aliases de equipo o `ALL`. Fix: los scripts con `--project` comma-separated ya no se truncaban al primer proyecto. |
-| 2026-09-23 | **1.7.101** | Cloud Run VPC IP Diagnostic: el spinner ya no imprime una línea por frame en salida no-TTY (pipes/launcher) — emite una línea estática. Las tablas de VPC Connectors y Recomendaciones se consolidan en una sola por sección con columnas `Ambiente` y `Proyecto`, y los diagnósticos se ordenan por equipo y dev/qa/stg/prod. |
-| 2026-09-23 | **1.7.100** | Cloud Run VPC IP Diagnostic (opción 35): los proyectos se cargan desde `config.json → gcp.service_accounts_reporter.projects`. Los equipos se agrupan dinámicamente derivando la clave del project ID (`cs-csc`, `oms`), los aliases legacy (CSC, WMS, OMS, CMANAGER) siguen funcionando por coincidencia de sufijo, y `ALL` toma la lista del config. Fallback al dict hardcoded si el config no existe. |
-| 2026-09-23 | **1.7.99** | Cloud Run VPC IP Diagnostic (opción 35): acepta el alias `ALL` para analizar los 12 proyectos de todos los equipos (CMANAGER/CSC/WMS/OMS) en una sola ejecución. Con más de 4 proyectos las etiquetas de ambiente se derivan del project ID (`cs-wms-dev`, `oms-stg`) y la config de capacidad se resuelve por el token de ambiente del ID. |
-| 2026-09-22 | **1.7.98** | Release Explorer diff: corrige el resumen — las variables movidas de scope se descuentan de `Solo #A/B` en la fila Variables y se contabilizan en la fila `↳ Vars. cambio de scope`, de modo que cada columna del resumen suma correctamente contra el TOTAL. |
-| 2026-09-22 | **1.7.97** | Release Explorer diff: variables que cambiaron de scope entre releases se marcan en naranja (terminal `orange1`, HTML `.moved`); el resumen agrega la fila `Vars. cambio de scope` y el HTML incluye leyenda de colores. |
-| 2026-09-22 | **1.7.96** | Release Explorer diff: las variables se comparan en una sola tabla con columna `Scope` (Release/stage) en lugar de un panel por stage. |
-| 2026-09-22 | **1.7.95** | Release Explorer diff: ahora compara todas las variables — scope release, por stage (`env.variables`) y `variableGroups` vinculados; las secretas se muestran como 🔒. |
-| 2026-09-22 | **1.7.94** | Release Explorer diff: las rutas de los archivos TXT/HTML exportados se imprimen con mayor contraste (verde/cyan en bold) para facilitar su lectura. |
-| 2026-09-21 | **1.7.93** | Release Explorer diff: el reporte HTML ahora usa el tema oscuro del toolbox (fondo `#0f172a`, cards `#1e293b`, acentos cyan) igual que los dashboards de AZDO/GCP. |
-| 2026-09-21 | **1.7.92** | Release Explorer diff: los archivos se generan según `global.output_dir` de `scm/config.json`, el HTML usa el formato de reportes del toolbox (cards/badges) y el TXT/HTML ya no cortan valores. |
-| 2026-09-21 | **1.7.91** | Release Explorer diff: agrega panel `Resumen de Cambios` (iguales/diferentes/por lado) y exporta automáticamente la salida a TXT plano y HTML en `outcome/`. |
-| 2026-09-21 | **1.7.90** | Release Explorer diff: la comparación de tasks ahora lee `deployPhasesSnapshot` (clave real de la API de releases) con fallback a `deployPhases` y `deploySteps`. |
-| 2026-09-21 | **1.7.89** | Release Explorer diff: se restaura la tabla de Stages y se blinda el renderizado contra valores `None` y markup Rich en inputs de tasks. |
-| 2026-09-15 | **1.7.88** | La opción 35 instala automáticamente Rich mediante sus requirements y evita el error `Table is not defined` en venv nuevos. |
-| 2026-09-15 | **1.7.87** | La opción 35 ahora ofrece HTML y lo genera por defecto; el resumen terminal incluye IPs actuales/total y CIDR. |
-| 2026-09-15 | **1.7.86** | El resumen Cloud Run VPC IP ahora muestra IPs actuales/total y CIDR, incluyendo subredes de Direct VPC Egress. |
-| 2026-09-15 | **1.7.85** | Los alias `CMANAGER`, `CSC`, `WMS` y `OMS` ahora se convierten automáticamente en sus proyectos GCP Dev/QA/Stg. |
-| 2026-09-15 | **1.7.84** | Se conserva el spinner animado del diagnóstico Cloud Run, actualizando la misma línea para evitar repeticiones en WSL. |
-| 2026-09-15 | **1.7.83** | Se elimina el spinner de Rich del diagnóstico Cloud Run VPC IP para evitar que se imprima repetidamente en WSL/terminales incompatibles. |
-| 2026-09-15 | **1.7.82** | Diagnóstico Cloud Run VPC IP: tablas de terminal y HTML con IPs actuales/total (`actual/total`) y prueba unitaria de formato. |
-| 2026-09-11 | **1.7.81** | Mejoras previas del toolbox y consolidación de herramientas GCP. |
-
-El historial completo se encuentra en [`README.version.md`](README.version.md).
+> **📚 Historial de cambios completo:** [`README.version.md`](README.version.md)
 
 ---
 
-## �📜 Licencia
+## 📜 Licencia
 
 Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
-
-> **📚 Historial de cambios completo:** [`README.version.md`](README.version.md)
 
 ---
 

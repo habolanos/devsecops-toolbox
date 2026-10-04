@@ -61,9 +61,11 @@ except ImportError:
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
     from utils import (get_output_dir, gke_kube_env, gke_context_name,
-                       gke_location_flag, ensure_gke_cluster_credentials)
+                       gke_location_flag, ensure_gke_cluster_credentials,
+                       is_live_terminal)
 except ImportError:
     import os as _os
+    import sys as _sys
     import atexit as _ax
     import shutil as _sh
     import tempfile as _tf
@@ -77,6 +79,11 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    def is_live_terminal():
+        if _sys.stdout.isatty():
+            return True
+        return _os.environ.get("TTY_COMPATIBLE", "").strip().lower() in {
+            "1", "true", "yes", "on"}
     _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
     _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
     def gke_kube_env(cluster_name):
@@ -548,7 +555,7 @@ def get_cloud_run_services(project_id: str, debug: bool, console, logger=None) -
 def check_gcp_connection(project_id: str, console, debug: bool = False) -> bool:
     """Verifica la conexión a GCP antes de ejecutar el script."""
     try:
-        if RICH_AVAILABLE and console and sys.stdout.isatty():
+        if RICH_AVAILABLE and console and is_live_terminal():
             with _defer_console_prints(), console.status("[bold cyan]Verificando conexión a GCP...[/]"):
                 return _verify_gcp_auth(project_id, console, debug)
         else:
@@ -2339,7 +2346,7 @@ def main() -> int:
         
         # Procesar proyectos en paralelo si hay múltiples
         if len(project_ids) > 1 and use_parallel:
-            if RICH_AVAILABLE and console and sys.stdout.isatty():
+            if RICH_AVAILABLE and console and is_live_terminal():
                 with _defer_console_prints(), Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                     task = progress.add_task(f"[cyan]Procesando {len(project_ids)} proyectos en paralelo...", total=len(project_ids))
                     
@@ -2362,7 +2369,7 @@ def main() -> int:
         else:
             # Procesar proyectos secuencialmente
             for project_id in project_ids:
-                if RICH_AVAILABLE and console and sys.stdout.isatty():
+                if RICH_AVAILABLE and console and is_live_terminal():
                     with _defer_console_prints(), Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                         task = progress.add_task(f"[cyan]Recopilando recursos de {project_id}...", total=None)
                         _, data = process_project(project_id)
@@ -2388,7 +2395,7 @@ def main() -> int:
             console.print()
             # La fase de detalles consulta BDs por instancia Cloud SQL (puede tardar);
             # se muestra un spinner para que la consola no parezca colgada.
-            if sys.stdout.isatty():
+            if is_live_terminal():
                 with _defer_console_prints(), console.status("[bold cyan]Generando detalles consolidados (contando bases de datos Cloud SQL)...[/]"):
                     create_consolidated_detailed_tables(all_data, console, logger)
             else:
@@ -2426,7 +2433,7 @@ def main() -> int:
         
         # Generar HTML (siempre)
         try:
-            if RICH_AVAILABLE and console and sys.stdout.isatty():
+            if RICH_AVAILABLE and console and is_live_terminal():
                 with console.status("[bold cyan]Generando dashboard HTML...[/]"):
                     html_filepath = generate_html_dashboard_file(json_filepath, outcome_dir, logger)
             else:

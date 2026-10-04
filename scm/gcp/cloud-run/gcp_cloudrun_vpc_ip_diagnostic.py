@@ -151,6 +151,14 @@ def format_ip_usage(current_ips: int, total_ips: int) -> str:
     return f"{max(0, current_ips)}/{max(0, total_ips)}"
 
 
+def _stdout_live() -> bool:
+    """TTY real o TTY_COMPATIBLE=1 (el launcher reenvía la salida a un TTY por pipe)."""
+    if sys.stdout.isatty():
+        return True
+    return os.environ.get("TTY_COMPATIBLE", "").strip().lower() in {
+        "1", "true", "yes", "on"}
+
+
 class AnimatedSpinner:
     """Spinner compatible con terminales Linux y WSL usando una sola línea."""
 
@@ -163,8 +171,9 @@ class AnimatedSpinner:
     def _animate(self):
         # En salida no-TTY (pipes, captura por el launcher, CI) el \r no
         # redibuja: cada frame quedaria como linea nueva. Se emite una sola
-        # linea estatica y el hilo termina.
-        if not sys.stdout.isatty():
+        # linea estatica y el hilo termina. Excepción: TTY_COMPATIBLE=1
+        # (el launcher reenvía la salida a un TTY real por pipe).
+        if not _stdout_live():
             sys.stdout.write(f"{self._frames[0]} {self.message}\n")
             sys.stdout.flush()
             return
@@ -186,7 +195,7 @@ class AnimatedSpinner:
         if self._thread:
             self._thread.join(timeout=1)
         # Limpia la línea anterior solo en TTY (el escape no aplica en pipes).
-        if sys.stdout.isatty():
+        if _stdout_live():
             sys.stdout.write("\r\033[2K")
         if final_message:
             sys.stdout.write(final_message)

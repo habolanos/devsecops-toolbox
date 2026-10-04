@@ -24,9 +24,10 @@ from typing import Optional
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
-    from utils import get_output_dir
+    from utils import get_output_dir, is_live_terminal
 except ImportError:
     import os as _os
+    import sys as _sys
     from pathlib import Path as _Path
     def get_output_dir(default="."):
         env = _os.getenv("DEVSECOPS_OUTPUT_DIR")
@@ -37,6 +38,11 @@ except ImportError:
         p = _Path(default)
         p.mkdir(parents=True, exist_ok=True)
         return p
+    def is_live_terminal():
+        if _sys.stdout.isatty():
+            return True
+        return _os.environ.get("TTY_COMPATIBLE", "").strip().lower() in {
+            "1", "true", "yes", "on"}
 # -------------------------------------------------------------------
 
 try:
@@ -52,6 +58,33 @@ except ImportError:
 
 console = Console()
 VERSION = "1.0.0"
+
+
+class _NullProgress:
+    """Fallback sin TTY: imprime las actualizaciones como líneas.
+    Rich Progress requiere terminal interactiva; en pipes dibuja un
+    frame por línea (el spinner 'salta')."""
+    def __init__(self, console):
+        self._console = console
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc):
+        return False
+    def add_task(self, description, total=None):
+        self._console.print(description)
+        return 0
+    def update(self, *args, description=None, **kwargs):
+        if description:
+            self._console.print(description)
+
+
+def _progress_ctx():
+    """Progress real en TTY (o TTY_COMPATIBLE vía launcher); si no, shim de líneas."""
+    if is_live_terminal():
+        return Progress(SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        console=console, transient=True)
+    return _NullProgress(console)
 
 
 # ─────────────────────────────────────────────
@@ -679,11 +712,7 @@ def main():
         "us-central1-cial-corp-compo-e0b3ed5c-gke",
     ]
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console, transient=True,
-    ) as progress:
+    with _progress_ctx() as progress:
         task = progress.add_task("Obteniendo clusters...", total=None)
         clusters = get_cluster_list(project)
         progress.update(task, description="✓ Clusters obtenidos")
@@ -718,11 +747,7 @@ def main():
         # ── Credenciales ──────────────────────────────────────
         context = f"gke_{project or 'default'}_{location}_{cluster_name}"
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console, transient=True,
-        ) as progress:
+        with _progress_ctx() as progress:
             task = progress.add_task(f"Conectando a {cluster_name}...", total=None)
             ok = get_credentials(cluster_name, location, project)
 
@@ -733,11 +758,7 @@ def main():
         # ── Selección de namespace (solo si es 1 cluster) ─────
         namespace = args.namespace
         if not namespace and len(clusters_to_process) == 1:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console, transient=True,
-            ) as progress:
+            with _progress_ctx() as progress:
                 task = progress.add_task("Obteniendo namespaces...", total=None)
                 namespaces = get_namespaces(context)
 
@@ -750,11 +771,7 @@ def main():
         console.print(f"✓ Namespace: [cyan]{ns_label}[/] — Cluster: [cyan]{cluster_name}[/]")
 
         # ── Obtener pods + uso ────────────────────────────────
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console, transient=True,
-        ) as progress:
+        with _progress_ctx() as progress:
             task = progress.add_task(f"Obteniendo pods de {cluster_name}...", total=None)
             pods = get_pods_info(context, namespace)
             progress.update(task, description=f"✓ {len(pods)} pods encontrados")
@@ -763,11 +780,7 @@ def main():
             console.print("  [dim]--no-metrics: saltando kubectl top pods[/]")
             usage = {}
         else:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console, transient=True,
-            ) as progress:
+            with _progress_ctx() as progress:
                 task = progress.add_task(f"Obteniendo metricas de {cluster_name}...", total=None)
                 usage = get_pods_usage(context, namespace)
                 if usage:
