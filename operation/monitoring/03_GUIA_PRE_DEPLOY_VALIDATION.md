@@ -1,6 +1,6 @@
 # 🚀 Guía de Pre-Deploy Validation DevSecOps
 
-**Versión:** 1.2.0  
+**Versión:** 1.2.1  
 **Objetivo:** Validar que un deployment es seguro antes de ejecutarlo
 
 ---
@@ -588,6 +588,11 @@ kubectl rollout status deployment/[nombre] -n production
 
 # Navegación: python scm/main.py → 1 (GCP) → 1
 # Herramienta: Monitoreo de Recursos GCP
+
+# Navegación: python scm/main.py → 1 (GCP) → 2
+# Herramienta: Reporte de Despliegues GKE (restarts/salud post-deploy)
+# 🆕 v1.8.2+: multi-proyecto consolidado, restarts >10 blanco/rojo y >4
+#   negro/amarillo, reporte HTML en outcome/
 ```
 
 **Checklist:**
@@ -596,6 +601,7 @@ kubectl rollout status deployment/[nombre] -n production
 - [ ] Sin errores en logs
 - [ ] Conectividad funcionando
 - [ ] Sin alertas críticas
+- [ ] Restarts de deployments <= 4 (verificar en Tool 1 tab Deployments o Tool 2)
 
 ---
 
@@ -727,7 +733,12 @@ EOF
 
 ---
 
-**Guía de Pre-Deploy Validation v1.2.0**  
+**Guía de Pre-Deploy Validation v1.2.1**  
+**Cambios en v1.2.1:**
+- ✅ Paso "Monitorear Deployment" incluye GCP Tool 2 (Reporte Despliegues GKE) para verificar restarts post-deploy (>10 crítico, >4 advertencia)
+- ✅ Tool 1 (GCP Monitor) ahora muestra nodos y deployments+restarts por cluster en consola y dashboard — sirve como verificación post-deploy de un vistazo
+- ✅ Checklist agrega criterio de restarts <= 4
+
 **Cambios en v1.2.0:**
 - ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)
 - ✅ Tool 4 (Pipeline Drift): Sin límite de descarga (paginación continuationToken)

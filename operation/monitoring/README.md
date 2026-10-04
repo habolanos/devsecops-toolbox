@@ -1,8 +1,8 @@
 # 📊 Guía de Monitoreo DevSecOps - Índice
 
-**Versión:** 1.3.0  
+**Versión:** 1.3.1  
 **Fecha:** 11 de Septiembre de 2026  
-**Última actualización:** 11 de Septiembre de 2026 (v1.3.0)  
+**Última actualización:** 4 de Octubre de 2026 (v1.3.1)  
 **Objetivo:** Guía completa de monitoreo multi-cloud (GCP, Azure, AWS, AZDO) con herramientas integradas
 
 ---
@@ -45,6 +45,7 @@ python scm/main.py
 | Herramienta | Plataforma | Ruta en el Menú |
 |-------------|-----------|-----------------|
 | Monitoreo de Recursos GCP | GCP | `main.py → 1 (GCP) → 1` |
+| Reporte de Despliegues GKE | GCP | `main.py → 1 (GCP) → 2` |
 | GKE Cluster Checker | GCP | `main.py → 1 (GCP) → 14` |
 | GKE Node Resources Monitor | GCP | `main.py → 1 (GCP) → 24` |
 | GKE Pod Resources Monitor | GCP | `main.py → 1 (GCP) → 25` |
@@ -78,6 +79,12 @@ python scm/main.py
 > **Tool 3 (Release CD Health)**: Nueva fórmula de scoring — Recencia(70) + Deploy(20) + Definición(10) = 100 pts.
 >
 > **Tool 4 (Pipeline Drift Analyzer)**: Eliminado límite de 500 release definitions. Ahora usa paginación `continuationToken` sin límite.
+>
+> **🆕 Nota v1.3.1 (v1.8.x toolbox):** Capacidades GKE incorporadas al flujo multi-proyecto:
+> - **Tool 1 (GCP Monitor)** ahora enriquece cada cluster con **recursos por nodo** (CPU/memoria, equivalente a Tool 24) y **deployments con restarts** (equivalente a Tool 2). El dashboard pasa a **10 tabs** (nuevas: Nodos GKE y Deployments GKE) y la consola agrega tablas "Nodos GKE" y "Deployments — atención requerida". El ESTADO del cluster escala a `ADVERTENCIA` si `pods not running > running`.
+> - **Tool 2 (Reporte de Despliegues GKE)** es **multi-proyecto consolidado** (selección por equipo/ALL igual que Tool 1), con restarts resaltados (`>10` blanco/rojo, `>4` negro/amarillo) y **reporte HTML** tipo dashboard. Clusters inaccesibles se reportan aparte sin abortar el reporte.
+> - **Tool 24 (Node Resources Monitor)** soporta **multi-proyecto** con tabla consolidada (columna Project) y **dashboard HTML** propio.
+> - Transversal: todos los reportes escriben en `outcome/` resuelto (`DEVSECOPS_OUTPUT_DIR`/`global.output_dir`), kubeconfig aislado por proyecto+cluster, spinners animados vía launcher.
 
 > **💡 Tip:** También puedes ejecutar directamente el launcher de cada plataforma:
 > - `python scm/gcp/tools.py` — Herramientas GCP
@@ -575,8 +582,16 @@ Para preguntas o sugerencias sobre esta guía:
 
 ---
 
-**Guía de Monitoreo DevSecOps v1.3.0**  
-**Última actualización:** 11 de Septiembre de 2026  
+**Guía de Monitoreo DevSecOps v1.3.1**  
+**Última actualización:** 4 de Octubre de 2026  
+**Cambios en v1.3.1:**
+- ✅ Tool 1 (GCP Monitor) incorpora **nodos GKE** (CPU/mem por nodo, eq. Tool 24) y **deployments + restarts** (eq. Tool 2) en el enriquecimiento por cluster — consola con tablas "Nodos GKE" y "Deployments — atención requerida", dashboard con 10 tabs (nuevas: Nodos GKE, Deployments GKE)
+- ✅ Tool 2 (Reporte Despliegues GKE): **multi-proyecto consolidado** (equipo/ALL como Tool 1), restarts resaltados `>10`/`>4`, **reporte HTML** tipo dashboard, clusters inaccesibles reportados sin abortar
+- ✅ Tool 24 (Node Resources): **multi-proyecto** + tabla consolidada con columna Project + **dashboard HTML**
+- ✅ Kubeconfig aislado por proyecto+cluster en todos los checkers GKE
+- ✅ Reportes/logs en `outcome/` resuelto (`DEVSECOPS_OUTPUT_DIR`/`global.output_dir`); spinners animados vía launcher
+- ✅ Agregada Tool 2 a la tabla de navegación rápida
+
 **Cambios en v1.3.0:**
 - ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment (pods, red, versiones), Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto consolidado
 - ✅ Tool 1 genera **dashboard HTML interactivo** (8 tabs, filtros, sorting, paginación, badges)

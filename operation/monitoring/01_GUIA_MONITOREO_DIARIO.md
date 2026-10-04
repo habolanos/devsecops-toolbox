@@ -1,6 +1,6 @@
 # 📅 Guía de Monitoreo Diario DevSecOps
 
-**Versión:** 1.2.0  
+**Versión:** 1.2.1  
 **Objetivo:** Ejecutar monitoreo diario de ambientes GCP, Azure, AWS y AZDO con interpretación DevSecOps
 
 ---
@@ -67,7 +67,7 @@ El monitoreo matutino es el punto de partida del día. Se ejecuta a primera hora
 - ✅ Problemas en releases CD
 
 **Herramientas ejecutadas:**
-- Tool 1: Monitoreo de Recursos GCP (**AMPLIADO** — ahora incluye GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML)
+- Tool 1: Monitoreo de Recursos GCP (**AMPLIADO** — ahora incluye GKE enrichment: pods, **nodos CPU/mem**, **deployments+restarts**, red, versiones; Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML de 10 tabs)
 - Tool 14: GKE Cluster Checker (parcialmente cubierto por Tool 1)
 - Tool 5: Certificate Manager Checker
 - Tool 7: Cloud SQL Disk Monitor
@@ -95,6 +95,13 @@ El monitoreo matutino es el punto de partida del día. Se ejecuta a primera hora
 #   - Compute Engine con disco raíz
 #   - Dashboard HTML interactivo
 #   - Multi-proyecto consolidado
+#
+# 🆕 v1.8.4 (toolbox): el enriquecimiento GKE agrega por cluster:
+#   - Recursos por NODO (CPU/memoria, eq. Tool 24) → tabla "Nodos GKE" + tab dashboard
+#   - DEPLOYMENTS con restarts (eq. Tool 2) → tabla "Deployments — atención requerida"
+#     (restarts >10 blanco/rojo, >4 negro/amarillo) + tab dashboard
+#   - ESTADO del cluster = ADVERTENCIA si pods not running > running
+#   - Clusters inaccesibles se reportan sin abortar el monitoreo
 ```
 
 **Qué buscar:**
@@ -137,6 +144,7 @@ SI DISCO > 90%:
 - ✅ Versión de Kubernetes actualizada
 - ✅ Pods corriendo > 95%
 - ⚠️ Alertar si hay nodos NotReady
+- ⚠️ Tool 1 marca ESTADO `ADVERTENCIA` cuando `pods not running > running` en un cluster
 
 **Interpretación DevSecOps:**
 ```
@@ -602,6 +610,12 @@ SI MÚLTIPLES APROBACIONES PENDIENTES:
 # Herramienta: GKE Node Resources Monitor
 # Proyecto: cpl-corp-cial-prod-17042024
 # Output: html
+#
+# 🆕 v1.8.3 (toolbox): acepta equipo/ALL → ejecución consolidada multi-proyecto
+#   (una sola corrida, tabla unificada con columna Project + dashboard HTML).
+#   Los clusters inaccesibles se listan aparte sin abortar.
+# Nota: la tabla "Nodos GKE" de Tool 1 ya cubre esta vista dentro del dashboard
+#   general — usar Tool 24 para el HTML dedicado por nodo.
 ```
 
 **Qué buscar:**
@@ -647,6 +661,14 @@ SI NODO NUEVO CON BAJO USO:
 - ✅ Sin deployments en estado no running
 - ⚠️ Alertar si hay deployments con replicas < desired
 - ⚠️ Alertar si severidad = CRITICAL
+- ⚠️ Alertar si restarts > 4 (Tool 1/Tool 2 lo resaltan automáticamente)
+
+> **💡 Detalle de restarts por cluster:** para un desglose por namespace/deployment
+> ejecutar **Tool 2 (Reporte de Despliegues GKE)** — `main.py → 1 (GCP) → 2`.
+> Acepta equipo/ALL (consolidado), resalta restarts `>10` (blanco/rojo) y `>4`
+> (negro/amarillo), y genera un **reporte HTML** en `outcome/`.
+> La misma info aparece consolidada en la tabla "Deployments — atención
+> requerida" y tab "Deployments GKE" del dashboard de Tool 1.
 
 **Interpretación DevSecOps:**
 ```
@@ -1180,6 +1202,7 @@ Reporte guardado: outcome/daily_night_report_20260708.json
 - [ ] Ejecutar GCP Tool 14 (GKE Cluster Checker)
 - [ ] Verificar: Nodos Ready, Versión actualizada, Pods > 95%
 - [ ] Alertar si hay nodos NotReady
+- [ ] Alertar si Tool 1 reporta cluster en ADVERTENCIA por pods not running > running
 
 **Paso 3: Certificados SSL/TLS**
 - [ ] Ejecutar GCP Tool 5 (Certificate Manager Checker)
@@ -1240,7 +1263,7 @@ Reporte guardado: outcome/daily_night_report_20260708.json
 - [ ] Alertar si > 3 aprobaciones pendientes
 
 **Paso 3: Node Resources**
-- [ ] Ejecutar GCP Tool 24 (GKE Node Resources Monitor)
+- [ ] Ejecutar GCP Tool 24 (GKE Node Resources Monitor — acepta equipo/ALL consolidado)
 - [ ] Verificar: Distribución uniforme, CPU < 70%, Memoria < 75%
 - [ ] Alertar si algún nodo > 85%
 
@@ -1248,6 +1271,8 @@ Reporte guardado: outcome/daily_night_report_20260708.json
 - [ ] Ejecutar GCP Tool 40 (Deployments Off Analyzer)
 - [ ] Verificar: Sin deployments no running
 - [ ] Alertar si hay deployments con replicas < desired
+- [ ] Ejecutar GCP Tool 2 (Reporte Despliegues GKE) o revisar tab Deployments del Tool 1
+- [ ] Alertar si restarts > 4 (⚠️) o > 10 (🔴 crítico)
 
 **Paso 5: Cloud SQL Disk**
 - [ ] Ejecutar GCP Tool 7 (Cloud SQL Disk Monitor)
@@ -1396,7 +1421,13 @@ ACCIÓN:
 
 ---
 
-**Guía de Monitoreo Diario v1.2.0**  
+**Guía de Monitoreo Diario v1.2.1**  
+**Cambios en v1.2.1:**
+- ✅ Tool 1 (GCP Monitor): enriquecimiento GKE ahora incluye recursos por nodo (eq. Tool 24) y deployments+restarts (eq. Tool 2); nuevas tablas consola y tabs del dashboard; ESTADO ADVERTENCIA si pods not running > running
+- ✅ Tool 2 (Reporte Despliegues GKE): multi-proyecto consolidado, restarts resaltados >10/>4, reporte HTML — recomendado como detalle en el paso de deployments
+- ✅ Tool 24: acepta equipo/ALL (ejecución consolidada) y genera dashboard HTML; clusters inaccesibles se reportan sin abortar
+- ✅ Checklist actualizado: alerta de pods not running, revisión de restarts >4/>10
+
 **Cambios en v1.2.0:**
 - ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML
 - ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)

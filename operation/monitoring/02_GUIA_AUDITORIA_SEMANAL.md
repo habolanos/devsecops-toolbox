@@ -1,6 +1,6 @@
 # 📅 Guía de Auditoría Semanal DevSecOps
 
-**Versión:** 1.2.0  
+**Versión:** 1.2.1  
 **Objetivo:** Auditoría completa de seguridad, compliance y governance
 
 ---
@@ -737,6 +737,7 @@ PRESENTACIÓN VIERNES 15:00:
 - [ ] Ejecutar Tool 29 (Cloud Run Security)
 - [ ] Ejecutar Tool 7 (Pipeline Logs)
 - [ ] Ejecutar Tool 8 (Repo Vulnerabilities)
+- [ ] Ejecutar GCP Tool 2 (Reporte Despliegues GKE — restarts/salud de pods, adjuntar HTML como evidencia)
 - [ ] Generar reporte de compliance
 - [ ] Revisar hallazgos críticos
 
@@ -765,7 +766,13 @@ PRESENTACIÓN VIERNES 15:00:
 
 ---
 
-**Guía de Auditoría Semanal v1.2.0**  
+**Guía de Auditoría Semanal v1.2.1**  
+**Cambios en v1.2.1:**
+- ✅ GCP Tool 2 (Reporte Despliegues GKE): multi-proyecto consolidado, restarts resaltados >10/>4 y reporte HTML — agregado al checklist de compliance como evidencia de salud de workloads GKE
+- ✅ Tool 1 (GCP Monitor) ahora cubre nodos y deployments+restarts por cluster (dashboard 10 tabs), útil para auditoría de capacidad y salud
+- ✅ Tool 24 (Node Resources): multi-proyecto + dashboard HTML para evidencias de capacidad
+- ✅ Checklist semanal actualizado con ítem de auditoría de despliegues GKE
+
 **Cambios en v1.2.0:**
 - ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)
 - ✅ Tool 4 (Pipeline Drift): Sin límite de descarga (paginación continuationToken)

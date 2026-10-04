@@ -1,7 +1,7 @@
 # 📊 Análisis de Herramientas DevSecOps Toolbox
 
 **Fecha:** 11 de Septiembre de 2026  
-**Versión:** 1.2.0  
+**Versión:** 1.2.1  
 **Objetivo:** Extraer máximo valor de las herramientas GCP, Azure, AWS y AZDO para monitoreo de ambientes
 
 ---
@@ -81,10 +81,10 @@ El DevSecOps Toolbox contiene **40+ herramientas GCP**, **25 herramientas Azure*
 
 | ID | Herramienta | Descripción | Valor DevSecOps |
 |----|-------------|-------------|-----------------|
-| **1** | Monitoreo de Recursos GCP | **AMPLIADO**: GKE enrichment (pods, red, versiones), Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML | ⭐⭐⭐⭐⭐ Baseline + Dashboard |
-| **24** | GKE Node Resources Monitor | CPU/memoria por nodo (HTML) | ⭐⭐⭐⭐ Capacity planning |
+| **1** | Monitoreo de Recursos GCP | **AMPLIADO**: GKE enrichment (pods, nodos CPU/mem, deployments+restarts, red, versiones), Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML (10 tabs) | ⭐⭐⭐⭐⭐ Baseline + Dashboard |
+| **24** | GKE Node Resources Monitor | CPU/memoria por nodo, **multi-proyecto consolidado + dashboard HTML** | ⭐⭐⭐⭐ Capacity planning |
 | **25** | GKE Pod Resources Monitor | CPU/memoria por pod | ⭐⭐⭐⭐⭐ Troubleshooting |
-| **2** | Reporte de Despliegues GKE | Detalle de despliegues | ⭐⭐⭐ Auditoría |
+| **2** | Reporte de Despliegues GKE | Detalle de despliegues, **multi-proyecto consolidado, restarts resaltados (>10/>4), reporte HTML, clusters inaccesibles reportados** | ⭐⭐⭐⭐ Auditoría |
 
 **Caso de Uso Integrado:**
 ```
@@ -514,7 +514,13 @@ DESPUÉS DE DEPLOY:
 
 ---
 
-**Documento de Análisis v1.2.0**  
+**Documento de Análisis v1.2.1**  
+**Cambios en v1.2.1:**
+- ✅ Tool 1 (GCP Monitor): agrega recursos por nodo (eq. Tool 24) y deployments+restarts (eq. Tool 2) al enriquecimiento por cluster; dashboard 10 tabs (Nodos GKE, Deployments GKE); ESTADO ADVERTENCIA si pods not running > running
+- ✅ Tool 2 (Reporte Despliegues): multi-proyecto consolidado (equipo/ALL), restarts resaltados >10 (blanco/rojo) y >4 (negro/amarillo), reporte HTML, clusters inaccesibles sin abortar
+- ✅ Tool 24 (Node Resources): multi-proyecto consolidado con columna Project + dashboard HTML
+- ✅ Transversal GKE: kubeconfig aislado por proyecto+cluster, salidas a outcome resuelto, spinners animados vía launcher
+
 **Cambios en v1.2.0:**
 - ✅ Tool 1 (GCP Monitor) ampliado: GKE enrichment, Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML
 - ✅ Tool 3 (Release CD Health): Nueva fórmula scoring Recencia(70) + Deploy(20) + Definición(10)
