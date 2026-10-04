@@ -249,6 +249,7 @@ MULTI_PROJECT_PARAM_SCRIPTS = {
     "gcp_monitor",
     "gke_deployments_report",
     "gke_monitor_node",
+    "event_tracker",
 }
 
 # Definición de las herramientas disponibles (con grupo asignado)
@@ -600,7 +601,7 @@ TOOLS = {
         "name": "Event Tracker - Rastreo de Eventos",
         "description": "Rastreo de eventos, caídas de servicio e interrupciones en Cloud Run y Kubernetes. Busca en Cloud Logging, Monitoring, Audit Logs, Kubernetes Events y Pod Logs. Genera reportes en JSON, CSV, HTML, Markdown con análisis de causa raíz",
         "path": "event-tracker/event_tracker.py",
-        "args": ["--component-name", "--project-id", "--start-time", "--end-time", "--output-format", "--output-file"],
+        "args": ["--component-name", "--project-id", "--multi-project", "--hours", "--start-time", "--end-time", "--output-format", "--output-file"],
         "requirements": "event-tracker/requirements.txt",
         "group": "monitoring",
         "status": "ready"
@@ -1232,7 +1233,7 @@ def run_tool(tool_key: str):
     tool_args = tool.get("args", [])
 
     project_list = None
-    if "--project" in tool_args or "--multi-project" in tool_args:
+    if "--project" in tool_args or "--project-id" in tool_args or "--multi-project" in tool_args:
         script_stem = os.path.splitext(os.path.basename(tool.get("path", "")))[0]
         supports_multi = script_stem in MULTI_PROJECT_SCRIPTS
         multi_capable = supports_multi or "--multi-project" in tool_args
@@ -1261,12 +1262,13 @@ def run_tool(tool_key: str):
             else:
                 print(f"{Colors.GREEN}Usando {len(project_list)} proyectos: {', '.join(project_list)}{Colors.ENDC}")
         # Si hay multiples proyectos y la tool soporta --multi-project, usarlo
+        project_flag = "--project-id" if "--project-id" in tool_args else "--project"
         if len(project_list) > 1 and "--multi-project" in tool_args:
             args.extend(["--multi-project", ','.join(project_list)])
         elif len(project_list) > 1 and supports_multi:
-            args.extend(["--project", ','.join(project_list)])
+            args.extend([project_flag, ','.join(project_list)])
         else:
-            args.extend(["--project", project_list[0]])
+            args.extend([project_flag, project_list[0]])
 
     if "--cluster" in tool_args:
         tool_path = tool.get("path", "")
@@ -1299,6 +1301,49 @@ def run_tool(tool_key: str):
             region = "us-central1"
             print(f"{Colors.GREEN}Usando región: {region}{Colors.ENDC}")
         args.extend(["--region", region])
+
+    # Manejo específico para Event Tracker (--component-name, --hours/--start-time/--end-time)
+    if "--component-name" in tool_args:
+        print(f"\n{Colors.BOLD}Nombre del componente a rastrear (servicio Cloud Run / pod / recurso):{Colors.ENDC} ", end="")
+        component_name = input().strip()
+        if not component_name:
+            print(f"{Colors.FAIL}Se requiere el nombre del componente.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        args.extend(["--component-name", component_name])
+
+    if "--hours" in tool_args:
+        print(f"\n{Colors.BOLD}Ventana de análisis — últimas N horas [24] (o 'rango' para fechas ISO):{Colors.ENDC} ", end="")
+        hours_input = input().strip().lower()
+        if hours_input in ("rango", "range", "r"):
+            start_in = input(f"{Colors.BOLD}Hora inicio (ISO 8601, ej 2026-10-03T00:00:00Z):{Colors.ENDC} ").strip()
+            end_in = input(f"{Colors.BOLD}Hora fin (ISO 8601, ej 2026-10-04T00:00:00Z):{Colors.ENDC} ").strip()
+            if not start_in or not end_in:
+                print(f"{Colors.FAIL}Se requieren hora de inicio y fin.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                return
+            args.extend(["--start-time", start_in, "--end-time", end_in])
+        else:
+            hours_val = 24
+            if hours_input:
+                try:
+                    hours_val = int(hours_input)
+                    if hours_val <= 0:
+                        raise ValueError
+                except ValueError:
+                    print(f"{Colors.GREEN}Valor inválido, usando: 24{Colors.ENDC}")
+                    hours_val = 24
+            args.extend(["--hours", str(hours_val)])
+            print(f"{Colors.GREEN}Analizando últimas {hours_val} horas{Colors.ENDC}")
+
+    if "--output-format" in tool_args:
+        print(f"\n{Colors.BOLD}Formato del reporte (json/csv/html/markdown) [html]:{Colors.ENDC} ", end="")
+        out_fmt = input().strip().lower()
+        if out_fmt not in ["json", "csv", "html", "markdown"]:
+            if out_fmt:
+                print(f"{Colors.GREEN}Formato inválido, usando: html{Colors.ENDC}")
+            out_fmt = "html"
+        args.extend(["--output-format", out_fmt])
 
     # Manejo específico para Cloud Run VPC IP Diagnostic (--projects, --host-project, --host-projects)
     if "--projects" in tool_args:

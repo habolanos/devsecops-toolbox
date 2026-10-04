@@ -11,7 +11,7 @@ y generar reportes de caídas de servicio.
 import json
 import sys
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 
@@ -22,6 +22,21 @@ try:
     GCP_AVAILABLE = True
 except ImportError:
     GCP_AVAILABLE = False
+
+# Directorio de salida compartido (DEVSECOPS_OUTPUT_DIR > config.json > scm/outcome)
+try:
+    from utils import resolve_outcome_dir
+except ImportError:
+    try:
+        _scm_dir = Path(__file__).resolve().parents[2]
+        if str(_scm_dir) not in sys.path:
+            sys.path.insert(0, str(_scm_dir))
+        from utils import resolve_outcome_dir
+    except ImportError:
+        def resolve_outcome_dir(default: str = "outcome") -> Path:
+            p = Path(__file__).resolve().parents[2] / default
+            p.mkdir(parents=True, exist_ok=True)
+            return p
 
 try:
     from kubernetes import client, config
@@ -363,6 +378,7 @@ class EventTracker:
         
         for event in events:
             normalized.append({
+                'project': event.get('project') or self.project_id,
                 'timestamp': event.get('timestamp', ''),
                 'component_name': event.get('component_name', ''),
                 'event_type': event.get('event_type', 'unknown'),
@@ -384,6 +400,7 @@ class EventTracker:
         
         for event in events:
             key = (
+                event.get('project', self.project_id),
                 event['timestamp'],
                 event['component_name'],
                 event['event_type'],
@@ -470,20 +487,20 @@ class EventTracker:
     def _generate_csv_report(self, events: List[Dict[str, Any]]) -> str:
         """Genera reporte en CSV."""
         if not events:
-            return "timestamp,component_name,event_type,severity,message,source\n"
+            return "project,timestamp,component_name,event_type,severity,message,source\n"
         
-        lines = ["timestamp,component_name,event_type,severity,message,source"]
+        lines = ["project,timestamp,component_name,event_type,severity,message,source"]
         
         for event in events:
             message = event['message'].replace(',', ';').replace('\n', ' ')[:100]
-            line = f"{event['timestamp']},{event['component_name']},{event['event_type']},{event['severity']},{message},{event['source']}"
+            line = f"{event.get('project', self.project_id)},{event['timestamp']},{event['component_name']},{event['event_type']},{event['severity']},{message},{event['source']}"
             lines.append(line)
         
         return '\n'.join(lines)
     
     def _generate_html_report(self, events: List[Dict[str, Any]]) -> str:
         """Genera reporte en HTML."""
-        html = """
+        template = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -509,10 +526,12 @@ class EventTracker:
         <p><strong>Critical:</strong> {critical}</p>
         <p><strong>Warning:</strong> {warning}</p>
         <p><strong>Info:</strong> {info}</p>
+        <p><strong>Projects:</strong> {projects}</p>
     </div>
     <h2>Events</h2>
     <table>
         <tr>
+            <th>Project</th>
             <th>Timestamp</th>
             <th>Component</th>
             <th>Type</th>
@@ -531,6 +550,7 @@ class EventTracker:
             severity_class = event['severity'].lower()
             rows.append(f"""
         <tr class="{severity_class}">
+            <td>{event.get('project', self.project_id)}</td>
             <td>{event['timestamp']}</td>
             <td>{event['component_name']}</td>
             <td>{event['event_type']}</td>
@@ -543,14 +563,16 @@ class EventTracker:
         critical = len([e for e in events if e['severity'] == 'CRITICAL'])
         warning = len([e for e in events if e['severity'] == 'WARNING'])
         info = len([e for e in events if e['severity'] == 'INFO'])
-        
-        return html.format(
-            total=len(events),
-            critical=critical,
-            warning=warning,
-            info=info,
-            rows='\n'.join(rows)
-        )
+        projects = len(set(e.get('project', self.project_id) for e in events)) or 1
+
+        # Reemplazo de tokens (la plantilla contiene llaves CSS, no sirve .format)
+        return (template
+                .replace('{total}', str(len(events)))
+                .replace('{critical}', str(critical))
+                .replace('{warning}', str(warning))
+                .replace('{info}', str(info))
+                .replace('{projects}', str(projects))
+                .replace('{rows}', '\n'.join(rows)))
     
     def _generate_markdown_report(self, events: List[Dict[str, Any]]) -> str:
         """Genera reporte en Markdown."""
@@ -562,18 +584,38 @@ class EventTracker:
             f"- **Warning**: {len([e for e in events if e['severity'] == 'WARNING'])}",
             f"- **Info**: {len([e for e in events if e['severity'] == 'INFO'])}\n",
             "## Events\n",
-            "| Timestamp | Component | Type | Severity | Message | Source |",
-            "|-----------|-----------|------|----------|---------|--------|"
+            "| Project | Timestamp | Component | Type | Severity | Message | Source |",
+            "|---------|-----------|-----------|------|----------|---------|--------|"
         ]
         
         for event in events:
             message = event['message'][:50].replace('|', '\\|')
             lines.append(
-                f"| {event['timestamp']} | {event['component_name']} | "
-                f"{event['event_type']} | {event['severity']} | {message} | {event['source']} |"
+                f"| {event.get('project', self.project_id)} | {event['timestamp']} | "
+                f"{event['component_name']} | {event['event_type']} | "
+                f"{event['severity']} | {message} | {event['source']} |"
             )
         
         return '\n'.join(lines)
+
+
+_FORMAT_EXTENSIONS = {
+    'json': 'json',
+    'csv': 'csv',
+    'html': 'html',
+    'markdown': 'md',
+}
+
+
+def _resolve_time_window(args, parser) -> tuple:
+    """Resuelve la ventana temporal: --hours N o rango --start-time/--end-time."""
+    if args.hours:
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(hours=args.hours)
+        return start.strftime('%Y-%m-%dT%H:%M:%SZ'), end.strftime('%Y-%m-%dT%H:%M:%SZ')
+    if args.start_time and args.end_time:
+        return args.start_time, args.end_time
+    parser.error('Se requiere --hours N o el rango --start-time/--end-time')
 
 
 def main():
@@ -581,25 +623,32 @@ def main():
     parser = argparse.ArgumentParser(
         description='GCP Event Tracker - Rastreo de eventos y caídas de servicio'
     )
-    
+
     parser.add_argument(
         '--component-name',
         required=True,
         help='Nombre del componente a rastrear'
     )
-    parser.add_argument(
+    project_group = parser.add_mutually_exclusive_group(required=True)
+    project_group.add_argument(
         '--project-id',
-        required=True,
         help='ID del proyecto GCP'
+    )
+    project_group.add_argument(
+        '--multi-project',
+        help='IDs de proyectos GCP separados por coma (reporte consolidado)'
+    )
+    parser.add_argument(
+        '--hours',
+        type=int,
+        help='Analizar las ultimas N horas (alternativa a --start-time/--end-time)'
     )
     parser.add_argument(
         '--start-time',
-        required=True,
         help='Hora de inicio (ISO 8601, ej: 2026-07-13T00:00:00Z)'
     )
     parser.add_argument(
         '--end-time',
-        required=True,
         help='Hora de fin (ISO 8601, ej: 2026-07-14T00:00:00Z)'
     )
     parser.add_argument(
@@ -610,40 +659,67 @@ def main():
     )
     parser.add_argument(
         '--output-file',
-        help='Archivo de salida (si no se especifica, se imprime en consola)'
+        help='Archivo de salida (default: <outcome>/event_tracker_<componente>_<ts>.<ext>)'
     )
     parser.add_argument(
         '--credentials-file',
         help='Ruta al archivo de credenciales de Service Account'
     )
-    
+
     args = parser.parse_args()
-    
-    # Crear tracker
-    tracker = EventTracker(
-        project_id=args.project_id,
-        credentials_file=args.credentials_file
-    )
-    
-    # Buscar eventos
-    events = tracker.search_component_events(
-        component_name=args.component_name,
-        start_time=args.start_time,
-        end_time=args.end_time
-    )
-    
-    # Generar reporte
-    report = tracker.generate_report(events, format=args.output_format)
-    
-    # Guardar o imprimir
+    start_time, end_time = _resolve_time_window(args, parser)
+
+    projects = ([p.strip() for p in args.multi_project.split(',') if p.strip()]
+                if args.multi_project else [args.project_id])
+
+    all_events = []
+    all_correlations = []
+    project_errors = []
+    reporter = None
+    for project_id in projects:
+        try:
+            tracker = EventTracker(
+                project_id=project_id,
+                credentials_file=args.credentials_file
+            )
+            all_events.extend(tracker.search_component_events(
+                component_name=args.component_name,
+                start_time=start_time,
+                end_time=end_time
+            ))
+            all_correlations.extend(getattr(tracker, 'correlations', []) or [])
+            reporter = tracker
+        except Exception as e:
+            project_errors.append((project_id, str(e)))
+            print(f"[ERROR] {project_id}: {e}")
+
+    if reporter is None:
+        print("[ERROR] No se pudo consultar ningun proyecto")
+        return 1
+
+    # Reordenar por timestamp tras consolidar proyectos
+    all_events.sort(key=lambda x: x.get('timestamp', ''))
+
+    if project_errors:
+        print(f"\n[WARNING] {len(project_errors)}/{len(projects)} proyecto(s) sin acceso: "
+              f"{', '.join(p for p, _ in project_errors)}")
+
+    # Reporte consolidado (el ultimo tracker sirve de formateador)
+    reporter.events = all_events
+    reporter.correlations = all_correlations
+    report = reporter.generate_report(all_events, format=args.output_format)
+
+    # Guardar en archivo (--output-file o default en outcome resuelto)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    ext = _FORMAT_EXTENSIONS.get(args.output_format, 'txt')
     if args.output_file:
         output_path = Path(args.output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(report)
-        print(f"[OK] Reporte guardado en: {output_path}")
     else:
-        print(report)
+        output_path = resolve_outcome_dir() / f"event_tracker_{args.component_name}_{ts}.{ext}"
+    output_path.write_text(report, encoding='utf-8')
+    print(f"[OK] Reporte guardado en: {output_path}")
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
