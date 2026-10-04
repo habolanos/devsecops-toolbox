@@ -560,6 +560,53 @@ def determine_deployment_status(pod_statuses, desired, ready):
 # Formateo de tablas y resúmenes
 # ---------------------------------------------------------------------------
 
+def restart_level(restarts) -> str:
+    """Severidad por restarts: 'high' >10, 'warn' >4, 'ok' el resto."""
+    try:
+        n = int(restarts)
+    except (TypeError, ValueError):
+        return "ok"
+    if n > 10:
+        return "high"
+    if n > 4:
+        return "warn"
+    return "ok"
+
+
+def restart_markup(restarts) -> str:
+    """Celda de restarts con markup Rich: blanco/rojo >10, negro/amarillo >4."""
+    level = restart_level(restarts)
+    if level == "high":
+        return f"[white on red] {restarts} [/]"
+    if level == "warn":
+        return f"[black on yellow] {restarts} [/]"
+    return str(restarts)
+
+
+def build_detailed_rich_table(report_data):
+    """Tabla Rich del detalle con la columna Restarts resaltada por severidad.
+
+    (tabulate_to_rich_table no permite estilos por celda: se construye nativa)
+    """
+    headers = [
+        "Project", "Cluster", "Namespace", "Deployment",
+        "Pods (ready/desired)", "Status", "Restarts", "Age",
+        "CPU usage", "Memory usage", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem",
+    ]
+    table = Table(title="📊 Reporte Detallado de Deployments",
+                  show_header=True, header_style="bold cyan")
+    for h in headers:
+        table.add_column(h, style="white")
+    keys = ["project", "cluster", "namespace", "deployment", "pods", "status",
+            "restarts", "age", "cpu", "memory", "request_cpu", "request_memory",
+            "limit_cpu", "limit_memory"]
+    for r in report_data:
+        row = [restart_markup(r["restarts"]) if k == "restarts" else str(r[k])
+               for k in keys]
+        table.add_row(*row)
+    return table
+
+
 def format_detailed_table(report_data):
     headers = [
         "Project",
@@ -726,6 +773,357 @@ def write_json(report_data, filepath):
 
 
 # ---------------------------------------------------------------------------
+# Reporte HTML (estilo equivalente al dashboard de la opcion 1)
+# ---------------------------------------------------------------------------
+
+_REPORT_CSS = """
+:root {
+    --bg-dark: #0f1419;
+    --bg-card: #1a1f26;
+    --border: #2d3748;
+    --text-primary: #e2e8f0;
+    --text-secondary: #a0aec0;
+    --success: #48bb78;
+    --warning: #ed8936;
+    --danger: #f56565;
+    --info: #4299e1;
+    --gray: #718096;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.container { max-width: 1500px; margin: 0 auto; padding: 20px; }
+
+header { margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+h1 { font-size: 2.2em; margin-bottom: 10px; color: var(--info); }
+.header-meta { display: flex; flex-wrap: wrap; gap: 20px; color: var(--text-secondary); font-size: 0.9em; }
+
+.filters { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+.filters h3 { color: var(--info); margin-bottom: 15px; font-size: 1.05em; }
+.filter-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+.filter-label { display: block; margin-bottom: 5px; font-size: 0.85em; color: var(--text-secondary); }
+select, input { background-color: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 10px; font-size: 0.9em; width: 100%; }
+select:focus, input:focus { outline: none; border-color: var(--info); box-shadow: 0 0 5px rgba(66, 153, 225, 0.3); }
+.btn-reset { background-color: var(--info); color: #ffffff; border: none; border-radius: 4px; padding: 10px 20px; cursor: pointer; font-size: 0.9em; transition: background-color 0.3s ease; width: 100%; }
+.btn-reset:hover { background-color: #3182ce; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 15px; margin-bottom: 30px; }
+.kpi-card { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 18px; cursor: pointer; transition: all 0.3s ease; }
+.kpi-card:hover { border-color: var(--info); box-shadow: 0 0 10px rgba(66, 153, 225, 0.2); }
+.kpi-label { color: var(--text-secondary); font-size: 0.78em; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 1.9em; font-weight: bold; color: var(--info); }
+.kpi-value.danger { color: var(--danger); }
+.kpi-value.warn { color: var(--warning); }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background-color: var(--bg-card); }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+table.data-table th { background-color: var(--bg-dark); padding: 12px; text-align: left; font-weight: 600; color: var(--info); border-bottom: 1px solid var(--border); white-space: nowrap; }
+table.data-table th .th-label { cursor: pointer; user-select: none; }
+table.data-table th .th-label:hover { text-decoration: underline; }
+table.data-table th.sorted .th-label { color: var(--text-primary); }
+.sort-indicator { margin-left: 4px; font-size: 0.8em; color: var(--info); }
+table.data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+table.data-table tbody tr:hover td { background-color: rgba(66, 153, 225, 0.08); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.empty-row { text-align: center; color: var(--text-secondary); padding: 30px !important; white-space: normal !important; }
+
+.status-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.82em; font-weight: 500; white-space: nowrap; }
+.badge-ok { background-color: rgba(72, 187, 120, 0.2); color: var(--success); }
+.badge-warn { background-color: rgba(237, 137, 54, 0.2); color: var(--warning); }
+.badge-bad { background-color: rgba(245, 101, 101, 0.2); color: var(--danger); }
+.badge-muted { background-color: rgba(113, 128, 150, 0.2); color: var(--gray); }
+
+.restarts-high { background-color: #c53030; color: #ffffff; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+.restarts-warn { background-color: #ecc94b; color: #000000; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+
+.section-title { color: var(--info); margin: 30px 0 15px 0; font-size: 1.3em; }
+.row-count { color: var(--text-secondary); font-size: 0.85em; margin: 12px 0 30px 0; }
+.footer { text-align: center; color: var(--text-secondary); font-size: 0.85em; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
+
+@media (max-width: 768px) {
+    .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    h1 { font-size: 1.6em; }
+    .header-meta { flex-direction: column; gap: 5px; }
+}
+"""
+
+# JS plano (sin f-strings) — los datos se inyectan en var REPORT del <script> previo.
+_REPORT_JS = r"""
+var sortKey = null;
+var sortDir = 1;
+
+var BADGE = {
+    'Running': 'ok',
+    'Progressing': 'warn',
+    'Degraded': 'bad',
+    'Failed': 'bad',
+    'ScaledToZero': 'muted',
+    'Unknown': 'muted'
+};
+
+function badgeFor(status) {
+    var cls = BADGE[status] || 'muted';
+    return '<span class="status-badge badge-' + cls + '">' + esc(status) + '</span>';
+}
+
+function restartsCell(n) {
+    if (n > 10) return '<span class="restarts-high">' + n + '</span>';
+    if (n > 4) return '<span class="restarts-warn">' + n + '</span>';
+    return String(n);
+}
+
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function filteredRows() {
+    var p = document.getElementById('filterProject').value;
+    var s = document.getElementById('filterStatus').value;
+    var q = document.getElementById('filterSearch').value.toLowerCase();
+    var minR = parseInt(document.getElementById('filterRestarts').value || '0', 10);
+    return REPORT.rows.filter(function (r) {
+        if (p && r.project !== p) return false;
+        if (s && r.status !== s) return false;
+        if (r.restarts < minR) return false;
+        if (q && JSON.stringify(r).toLowerCase().indexOf(q) === -1) return false;
+        return true;
+    });
+}
+
+var COLS = [
+    { key: 'project', label: 'Project' },
+    { key: 'cluster', label: 'Cluster' },
+    { key: 'namespace', label: 'Namespace' },
+    { key: 'deployment', label: 'Deployment' },
+    { key: 'pods', label: 'Pods (ready/desired)' },
+    { key: 'status', label: 'Status', badge: true },
+    { key: 'restarts', label: 'Restarts', right: true, restarts: true },
+    { key: 'age', label: 'Age' },
+    { key: 'cpu', label: 'CPU usage' },
+    { key: 'memory', label: 'Memory usage' },
+    { key: 'request_cpu', label: 'Req CPU' },
+    { key: 'request_memory', label: 'Req Mem' },
+    { key: 'limit_cpu', label: 'Lim CPU' },
+    { key: 'limit_memory', label: 'Lim Mem' }
+];
+
+function sortRows(rows) {
+    if (!sortKey) return rows;
+    return rows.slice().sort(function (a, b) {
+        var va = a[sortKey], vb = b[sortKey];
+        if (typeof va === 'number' && typeof vb === 'number') {
+            return (va - vb) * sortDir;
+        }
+        return String(va).localeCompare(String(vb)) * sortDir;
+    });
+}
+
+function sortBy(key) {
+    if (sortKey === key) { sortDir = -sortDir; } else { sortKey = key; sortDir = 1; }
+    render();
+}
+
+function render() {
+    var head = '<tr>' + COLS.map(function (c) {
+        var ind = sortKey === c.key ? '<span class="sort-indicator">' + (sortDir > 0 ? '▲' : '▼') + '</span>' : '';
+        var cls = sortKey === c.key ? ' class="sorted"' : '';
+        return '<th' + cls + '><span class="th-label" onclick="sortBy(\'' + c.key + '\')">' +
+               c.label + ind + '</span></th>';
+    }).join('') + '</tr>';
+
+    var rows = sortRows(filteredRows());
+    var body;
+    if (!rows.length) {
+        body = '<tr><td class="empty-row" colspan="' + COLS.length + '">Sin resultados</td></tr>';
+    } else {
+        body = rows.map(function (r) {
+            return '<tr>' + COLS.map(function (c) {
+                var v = r[c.key];
+                var cls = c.right ? ' class="num"' : '';
+                if (c.badge) return '<td>' + badgeFor(v) + '</td>';
+                if (c.restarts) return '<td' + cls + '>' + restartsCell(v) + '</td>';
+                return '<td' + cls + '>' + esc(v) + '</td>';
+            }).join('') + '</tr>';
+        }).join('');
+    }
+
+    document.getElementById('deploymentsTable').innerHTML =
+        '<table class="data-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+    document.getElementById('rowCount').textContent =
+        rows.length + ' de ' + REPORT.rows.length + ' deployments';
+}
+
+function applyFilters() { render(); }
+
+function resetFilters() {
+    document.getElementById('filterProject').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterRestarts').value = '0';
+    document.getElementById('filterSearch').value = '';
+    render();
+}
+
+function kpiMinRestarts(n) {
+    document.getElementById('filterRestarts').value = String(n);
+    render();
+}
+
+function renderErrors() {
+    var wrap = document.getElementById('errorsSection');
+    if (!REPORT.errors.length) { wrap.innerHTML = ''; return; }
+    var rows = REPORT.errors.map(function (e) {
+        return '<tr><td>' + esc(e.project) + '</td><td>' + esc(e.cluster) + '</td><td>' +
+               esc(e.location) + '</td><td>' + esc(e.error) + '</td></tr>';
+    }).join('');
+    wrap.innerHTML =
+        '<h2 class="section-title">🔌 Clusters no accesibles (' + REPORT.errors.length + ')</h2>' +
+        '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+        '<th>Project</th><th>Cluster</th><th>Location</th><th>Error</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+renderErrors();
+render();
+"""
+
+
+def _json_for_html(obj) -> str:
+    """Serializa a JSON seguro para embeber dentro de un tag <script>."""
+    return json.dumps(obj, ensure_ascii=False, default=str).replace('</', '<\\/')
+
+
+def build_html_report(report_data, cluster_errors, generated_at, project_ids) -> str:
+    """HTML autocontenido del reporte, equivalente al dashboard de la opcion 1."""
+    total = len(report_data)
+    running = sum(1 for r in report_data if r.get("status") == "Running")
+    not_running = total - running
+    restarts_high = sum(1 for r in report_data if restart_level(r.get("restarts")) == "high")
+    restarts_warn = sum(1 for r in report_data if restart_level(r.get("restarts")) == "warn")
+    clusters_ok = len({(r.get("project"), r.get("cluster")) for r in report_data})
+    clusters_bad = len(cluster_errors)
+
+    projects_sorted = sorted({r.get("project", "") for r in report_data} | set(project_ids))
+    project_options = "\n".join(
+        f'                        <option value="{p}">{p}</option>' for p in projects_sorted)
+    statuses = sorted({r.get("status", "") for r in report_data} - {""})
+    status_options = "\n".join(
+        f'                        <option value="{s}">{s}</option>' for s in statuses)
+
+    payload = _json_for_html({
+        "generated_at": generated_at,
+        "rows": report_data,
+        "errors": cluster_errors,
+    })
+
+    kpis = [
+        ("📦 Deployments", total, "kpiMinRestarts(0)", ""),
+        ("✅ Running", running, "kpiMinRestarts(0)", ""),
+        ("⚠️ No Running", not_running, "kpiMinRestarts(0)", "warn" if not_running else ""),
+        ("🔁 Restarts &gt; 10", restarts_high, "kpiMinRestarts(11)", "danger" if restarts_high else ""),
+        ("🔁 Restarts &gt; 4", restarts_warn + restarts_high, "kpiMinRestarts(5)", "warn" if (restarts_warn + restarts_high) else ""),
+        ("☸️ Clusters", clusters_ok, "kpiMinRestarts(0)", ""),
+        ("🔌 No accesibles", clusters_bad, "", "danger" if clusters_bad else ""),
+    ]
+    kpi_html = "\n".join(
+        '                <div class="kpi-card" onclick="{action}">\n'
+        '                    <div class="kpi-label">{label}</div>\n'
+        '                    <div class="kpi-value {cls}">{value}</div>\n'
+        '                </div>'.format(action=action, label=label, cls=cls, value=value)
+        for label, value, action, cls in kpis)
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GKE Deployments Report</title>
+    <style>
+{_REPORT_CSS}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>☸️ GKE Deployments Report</h1>
+            <div class="header-meta">
+                <span>Generado (UTC): {generated_at}</span>
+                <span>Proyectos: {len(project_ids)}</span>
+                <span>Clusters consultados: {clusters_ok + clusters_bad}</span>
+            </div>
+        </header>
+
+        <div class="kpi-grid">
+{kpi_html}
+        </div>
+
+        <div class="filters">
+            <h3>🔍 Filtros</h3>
+            <div class="filter-group">
+                <div>
+                    <label class="filter-label" for="filterProject">Proyecto</label>
+                    <select id="filterProject" onchange="applyFilters()">
+                        <option value="">Todos los proyectos</option>
+{project_options}
+                    </select>
+                </div>
+                <div>
+                    <label class="filter-label" for="filterStatus">Status</label>
+                    <select id="filterStatus" onchange="applyFilters()">
+                        <option value="">Todos los status</option>
+{status_options}
+                    </select>
+                </div>
+                <div>
+                    <label class="filter-label" for="filterRestarts">Restarts mínimos</label>
+                    <select id="filterRestarts" onchange="applyFilters()">
+                        <option value="0">Todos</option>
+                        <option value="5">&gt; 4</option>
+                        <option value="11">&gt; 10</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="filter-label" for="filterSearch">Búsqueda</label>
+                    <input type="text" id="filterSearch" placeholder="Buscar en la tabla..." onkeyup="applyFilters()">
+                </div>
+                <div style="display: flex; align-items: flex-end;">
+                    <button class="btn-reset" onclick="resetFilters()">🔄 Restablecer</button>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="section-title">📊 Deployments</h2>
+        <div class="table-wrap" id="deploymentsTable"></div>
+        <div class="row-count" id="rowCount"></div>
+
+        <div id="errorsSection"></div>
+
+        <footer class="footer">
+            <p>GKE Deployments Report | Generado automáticamente por DevSecOps Toolbox</p>
+        </footer>
+    </div>
+    <script>var REPORT = {payload};</script>
+    <script>{_REPORT_JS}</script>
+</body>
+</html>
+"""
+
+
+def write_html(report_data, cluster_errors, filepath, generated_at, project_ids):
+    html = build_html_report(report_data, cluster_errors, generated_at, project_ids)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(html)
+
+
+# ---------------------------------------------------------------------------
 # main()
 # ---------------------------------------------------------------------------
 
@@ -865,9 +1263,7 @@ def main():
 
         if RICH_AVAILABLE and console:
             console.print()
-            detailed_table = tabulate_to_rich_table(detailed, "📊 Reporte Detallado de Deployments")
-            if detailed_table:
-                console.print(detailed_table)
+            console.print(build_detailed_rich_table(report_data))
             
             console.print()
             status_table = tabulate_to_rich_table(summary_status, "📈 Resumen por Status")
@@ -899,6 +1295,7 @@ def main():
         txt_path = str(output_dir / f"gke_deployments_report_{ts_for_filename}.txt")
         csv_path = str(output_dir / f"gke_deployments_report_{ts_for_filename}.csv")
         json_path = str(output_dir / f"gke_deployments_report_{ts_for_filename}.json")
+        html_path = str(output_dir / f"gke_deployments_report_{ts_for_filename}.html")
 
         if RICH_AVAILABLE and console and is_live_terminal():
             with console.status("[bold cyan]💾 Guardando archivos...", spinner="dots"):
@@ -919,6 +1316,7 @@ def main():
 
                 write_csv(report_data, csv_path)
                 write_json(report_data, json_path)
+                write_html(report_data, cluster_errors, html_path, generated_at, project_ids)
             console.print("[green]✓[/green] Archivos guardados exitosamente")
         else:
             with open(txt_path, "w", encoding="utf-8") as f:
@@ -938,6 +1336,7 @@ def main():
 
             write_csv(report_data, csv_path)
             write_json(report_data, json_path)
+            write_html(report_data, cluster_errors, html_path, generated_at, project_ids)
 
         if RICH_AVAILABLE and console:
             files_table = Table(title="📁 Archivos Generados", box=None)
@@ -946,14 +1345,16 @@ def main():
             files_table.add_row("TXT", txt_path)
             files_table.add_row("CSV", csv_path)
             files_table.add_row("JSON", json_path)
+            files_table.add_row("HTML", html_path)
             console.print()
             console.print(Panel(files_table, border_style="blue"))
         else:
             print(f"📁 Reporte TXT guardado en: {txt_path}")
             print(f"📁 Reporte CSV guardado en: {csv_path}")
             print(f"📁 Reporte JSON guardado en: {json_path}")
-        
-        logger.info(f"Archivos generados: TXT, CSV, JSON")
+            print(f"📁 Reporte HTML guardado en: {html_path}")
+
+        logger.info(f"Archivos generados: TXT, CSV, JSON, HTML")
 
         end_time = time.time()
         log_file = logger.handlers[0].baseFilename if logger.handlers else "N/A"

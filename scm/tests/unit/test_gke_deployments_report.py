@@ -106,6 +106,10 @@ class TestPerClusterFailure:
         txts = list(tmp_path.glob("gke_deployments_report_*.txt"))
         assert txts, "debe generarse el TXT aunque un cluster falle"
         assert "CLUSTERS NO ACCESIBLES" in txts[0].read_text(encoding="utf-8")
+        # ... y el HTML tambien se genera
+        htmls = list(tmp_path.glob("gke_deployments_report_*.html"))
+        assert htmls, "debe generarse el HTML del reporte"
+        assert "errorsSection" in htmls[0].read_text(encoding="utf-8")
 
     def test_format_cluster_errors_empty(self):
         assert report_mod.format_cluster_errors([]) == ""
@@ -114,3 +118,47 @@ class TestPerClusterFailure:
         tbl = report_mod.format_cluster_errors([
             {"project": "p", "cluster": "c", "location": "us", "error": "boom"}])
         assert "boom" in tbl and "| p" in tbl
+
+
+class TestRestartHighlight:
+    """Restarts: >10 blanco/rojo, >4 negro/amarillo, resto sin estilo."""
+
+    def test_levels(self):
+        assert report_mod.restart_level(11) == "high"
+        assert report_mod.restart_level(10) == "warn"   # 10 no es >10
+        assert report_mod.restart_level(5) == "warn"
+        assert report_mod.restart_level(4) == "ok"
+        assert report_mod.restart_level("N/A") == "ok"
+
+    def test_markup(self):
+        assert report_mod.restart_markup(15) == "[white on red] 15 [/]"
+        assert report_mod.restart_markup(7) == "[black on yellow] 7 [/]"
+        assert report_mod.restart_markup(2) == "2"
+
+    def test_rich_table_marks_restarts(self):
+        row = _fake_row()
+        row["restarts"] = 20
+        table = report_mod.build_detailed_rich_table([row])
+        cells = list(table.columns[6]._cells)  # columna 'Restarts'
+        assert any("white on red" in str(c) for c in cells)
+
+
+class TestHtmlReport:
+    def test_build_html_contains_payload_and_classes(self):
+        row = _fake_row()
+        row["restarts"] = 15
+        errors = [{"project": "pb", "cluster": "cb",
+                   "location": "us", "error": "timeout"}]
+        html = report_mod.build_html_report(
+            [row], errors, "2026-10-04T00:00:00Z", ["p2", "pb"])
+        assert "<!DOCTYPE html>" in html
+        assert "restarts-high" in html          # clase CSS del resaltado
+        assert "restarts-warn" in html
+        assert "var REPORT =" in html           # datos embebidos
+        assert "errorsSection" in html          # seccion clusters no accesibles
+        assert '"timeout"' in html or "timeout" in html
+
+    def test_write_html_creates_file(self, tmp_path):
+        target = tmp_path / "report.html"
+        report_mod.write_html([_fake_row()], [], str(target), "t", ["p2"])
+        assert target.exists() and target.stat().st_size > 1000
