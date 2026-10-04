@@ -681,6 +681,57 @@ def _build_gke_row(project_id: str, cluster: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def build_node_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Filas de nodos GKE enriquecidos por gcp_monitor (equivalente a opcion 24)."""
+    rows = []
+    for project_id, proj_data in _iter_projects(json_data):
+        environment = infer_environment(project_id)
+        for cluster in proj_data.get('gke_clusters', []) or []:
+            if not isinstance(cluster, dict):
+                continue
+            for node in cluster.get('nodes', []) or []:
+                rows.append({
+                    'project_id': project_id,
+                    'environment': environment,
+                    'resource_type': 'GKE',
+                    'cluster': safe_get(cluster, 'name', 'N/A'),
+                    'node': safe_get(node, 'name', 'N/A'),
+                    'zone': safe_get(node, 'zone', 'N/A'),
+                    'cpu_alloc': safe_get(node, 'cpu_alloc', 'N/A'),
+                    'cpu_used': safe_get(node, 'cpu_used', 'N/A'),
+                    'cpu_pct': safe_get(node, 'cpu_pct', 'N/A'),
+                    'mem_alloc': safe_get(node, 'mem_alloc', 'N/A'),
+                    'mem_used': safe_get(node, 'mem_used', 'N/A'),
+                    'mem_pct': safe_get(node, 'mem_pct', 'N/A'),
+                    'pods_max': safe_get(node, 'pods_max', 'N/A'),
+                    'status': 'RUNNING',
+                })
+    return rows
+
+
+def build_deployment_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Filas de deployments GKE enriquecidos por gcp_monitor (equivalente a opcion 2)."""
+    rows = []
+    for project_id, proj_data in _iter_projects(json_data):
+        environment = infer_environment(project_id)
+        for cluster in proj_data.get('gke_clusters', []) or []:
+            if not isinstance(cluster, dict):
+                continue
+            for dep in cluster.get('deployments', []) or []:
+                rows.append({
+                    'project_id': project_id,
+                    'environment': environment,
+                    'resource_type': 'GKE',
+                    'cluster': safe_get(cluster, 'name', 'N/A'),
+                    'namespace': dep.get('namespace', 'default'),
+                    'deployment': dep.get('deployment', 'N/A'),
+                    'pods': dep.get('pods', '0/0'),
+                    'status': dep.get('status', 'Unknown'),
+                    'restarts': dep.get('restarts', 0),
+                })
+    return rows
+
+
 def build_network_rows(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Construye las filas de la tabla de Capacidad de Red de clusters GKE."""
     rows = []
@@ -977,6 +1028,17 @@ def build_kpis(json_data: Dict[str, Any], resources: List[Dict[str, Any]],
         if value is not None:
             total_pods += value
 
+    total_gke_nodes = 0
+    total_deployments = 0
+    for proj_data in data.values():
+        for cluster in (proj_data or {}).get('gke_clusters', []) or []:
+            nodes = cluster.get('nodes')
+            if isinstance(nodes, list):
+                total_gke_nodes += len(nodes)
+            deployments = cluster.get('deployments')
+            if isinstance(deployments, list):
+                total_deployments += len(deployments)
+
     return {
         'total_projects': _pick('total_projects', len(data)),
         'total_resources': len(resources),
@@ -988,6 +1050,8 @@ def build_kpis(json_data: Dict[str, Any], resources: List[Dict[str, Any]],
         'total_pubsub_topics': int(_pick('total_pubsub_topics', _count('pubsub_topics'))),
         'total_databases': total_databases,
         'total_pods': total_pods,
+        'total_gke_nodes': total_gke_nodes,
+        'total_deployments': total_deployments,
     }
 
 
@@ -1314,6 +1378,22 @@ table.data-table tbody tr:hover td {
     color: var(--gray);
 }
 
+.restarts-high {
+    background-color: #c53030;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.restarts-warn {
+    background-color: #ecc94b;
+    color: #1a202c;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
 .table-footer {
     display: flex;
     justify-content: space-between;
@@ -1446,6 +1526,7 @@ var BADGE_CLASSES = {
     'CRITICO': 'bad', 'CRÍTICO': 'bad',
     'WARNING': 'warn', 'ADVERTENCIA': 'warn', 'UPDATE': 'warn',
     'UPDATE_AVAILABLE': 'warn', 'PARCIAL': 'warn',
+    'PROGRESSING': 'warn', 'DEGRADED': 'bad', 'SCALEDTOZERO': 'muted',
     'NO_CHANNEL': 'info',
     'N/A': 'muted', 'SIN_DATOS': 'muted', 'UNKNOWN': 'muted', 'NO': 'muted'
 };
@@ -1479,6 +1560,36 @@ var TABS = {
             { key: 'not_running', label: 'Not Running', right: true, danger: true },
             { key: 'health', label: 'Estado', badge: true },
             { key: 'status_summary', label: 'Status Summary', badge: true }
+        ]
+    },
+    nodos: {
+        label: 'Nodos GKE',
+        dataKey: 'nodes',
+        columns: [
+            { key: 'project_id', label: 'Proyecto' },
+            { key: 'cluster', label: 'Cluster' },
+            { key: 'node', label: 'Nodo' },
+            { key: 'zone', label: 'Zona' },
+            { key: 'cpu_alloc', label: 'CPU', right: true },
+            { key: 'cpu_used', label: 'CPU Usado', right: true },
+            { key: 'cpu_pct', label: 'CPU %', type: 'pct', right: true },
+            { key: 'mem_alloc', label: 'Memoria', right: true },
+            { key: 'mem_used', label: 'Mem Usado', right: true },
+            { key: 'mem_pct', label: 'Mem %', type: 'pct', right: true },
+            { key: 'pods_max', label: 'Pods Máx', right: true }
+        ]
+    },
+    deployments: {
+        label: 'Deployments GKE',
+        dataKey: 'deployments',
+        columns: [
+            { key: 'project_id', label: 'Proyecto' },
+            { key: 'cluster', label: 'Cluster' },
+            { key: 'namespace', label: 'Namespace' },
+            { key: 'deployment', label: 'Deployment' },
+            { key: 'pods', label: 'Pods' },
+            { key: 'status', label: 'Status', badge: true },
+            { key: 'restarts', label: 'Restarts', type: 'restarts', right: true }
         ]
     },
     red: {
@@ -1617,6 +1728,25 @@ function renderCell(row, col) {
     if (col.type === 'url') {
         if (isMissing(value)) return '<span class="muted">N/A</span>';
         return '<a class="url-link" href="' + esc(value) + '" target="_blank" rel="noopener noreferrer">' + esc(value) + '</a>';
+    }
+    if (col.type === 'pct') {
+        if (isMissing(value)) return '<span class="muted">N/A</span>';
+        var pctVal = parseNumeric(value);
+        if (pctVal === null) return esc(value);
+        if (pctVal > 80) return '<span class="status-badge badge-bad">' + esc(value) + '</span>';
+        if (pctVal > 50) return '<span class="status-badge badge-warn">' + esc(value) + '</span>';
+        return esc(value);
+    }
+    if (col.type === 'restarts') {
+        if (isMissing(value)) return '<span class="muted">N/A</span>';
+        var restarts = Number(value);
+        if (!isNaN(restarts) && restarts > 10) {
+            return '<span class="restarts-high">' + esc(value) + '</span>';
+        }
+        if (!isNaN(restarts) && restarts > 4) {
+            return '<span class="restarts-warn">' + esc(value) + '</span>';
+        }
+        return esc(value);
     }
     if (col.danger) {
         if (isMissing(value)) return '<span class="muted">N/A</span>';
@@ -2029,7 +2159,9 @@ def _render_kpis(kpis: Dict[str, Any]) -> str:
         ('📌 Servicios Habilitados', kpis.get('total_enabled_services', 0), "kpiGo('servicios', 'APIs')"),
         ('🔧 Recursos Totales', kpis.get('total_resources', 0), "kpiGo('inventario', '')"),
         ('☸️ Clusters GKE', kpis.get('total_gke_clusters', 0), "kpiGo('gke', 'GKE')"),
-        ('📦 Pods Running', kpis.get('total_pods', 0), "kpiGo('gke', 'GKE')"),
+        ('�️ Nodos GKE', kpis.get('total_gke_nodes', 0), "kpiGo('nodos', 'GKE')"),
+        ('🚀 Deployments GKE', kpis.get('total_deployments', 0), "kpiGo('deployments', 'GKE')"),
+        ('�📦 Pods Running', kpis.get('total_pods', 0), "kpiGo('gke', 'GKE')"),
         ('💾 Bases de Datos', kpis.get('total_databases', 0), "kpiGo('sql', 'Cloud SQL')"),
         ('🗄️ Cloud SQL', kpis.get('total_sql_instances', 0), "kpiGo('sql', 'Cloud SQL')"),
         ('💻 Compute Engine', kpis.get('total_compute_instances', 0), "kpiGo('compute', 'Compute Engine')"),
@@ -2057,6 +2189,8 @@ def _render_tabs() -> str:
     definitions = [
         ('servicios', '📌 Servicios'),
         ('gke', '☸️ Clusters GKE'),
+        ('nodos', '🖥️ Nodos GKE'),
+        ('deployments', '🚀 Deployments GKE'),
         ('red', '🌐 Capacidad de Red'),
         ('sql', '🗄️ Cloud SQL'),
         ('compute', '💻 Compute Engine'),
@@ -2107,6 +2241,8 @@ def generate_html_dashboard(json_data: Dict[str, Any], output_file: str) -> str:
     # Extraer todas las dimensiones del JSON consolidado
     services_rows = build_services_rows(json_data)
     gke_rows = build_gke_rows(json_data)
+    node_rows = build_node_rows(json_data)
+    deployment_rows = build_deployment_rows(json_data)
     network_rows = build_network_rows(json_data)
     sql_rows = build_sql_rows(json_data)
     compute_rows = build_compute_rows(json_data)
@@ -2119,6 +2255,8 @@ def generate_html_dashboard(json_data: Dict[str, Any], output_file: str) -> str:
         'resources': resources,
         'services': services_rows,
         'gke': gke_rows,
+        'nodes': node_rows,
+        'deployments': deployment_rows,
         'network': network_rows,
         'sql': sql_rows,
         'compute': compute_rows,

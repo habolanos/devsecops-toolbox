@@ -759,6 +759,165 @@ def get_services_count(project_id: str, cluster_name: str, location: str, debug:
         return None
 
 
+def _pct_to_float(value) -> float:
+    """'45%' -> 45.0; cualquier otro valor -> 0.0."""
+    try:
+        return float(str(value).replace("%", "").strip())
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def get_node_resources(project_id: str, cluster_name: str, location: str,
+                       debug: bool = False, logger=None,
+                       skip_credentials: bool = False) -> Optional[list]:
+    """CPU/memoria por nodo del cluster (kubectl, kubeconfig aislado).
+
+    Devuelve lista de dicts (name, zone, cpu/mem alloc/used/pct, pods_max)
+    o None si el cluster no es accesible.
+    """
+    context_name = gke_context_name(project_id, location, cluster_name)
+    env = gke_kube_env(cluster_name, project_id)
+    try:
+        if not skip_credentials and not ensure_gke_cluster_credentials(
+                project_id, cluster_name, location, debug=debug, logger=logger):
+            return None
+
+        nodes_out = run_kubectl_command(
+            f'kubectl --context={context_name} get nodes -o json',
+            debug, logger, timeout=30, env=env)
+        if not nodes_out:
+            return None
+        try:
+            items = json.loads(nodes_out).get('items', [])
+        except json.JSONDecodeError:
+            return None
+
+        top_out = run_kubectl_command(
+            f'kubectl --context={context_name} top nodes --no-headers',
+            debug, logger, timeout=30, env=env) or ''
+        usage = {}
+        for line in top_out.splitlines():
+            parts = line.split()
+            if len(parts) >= 5:
+                usage[parts[0]] = {'cpu_used': parts[1], 'cpu_pct': parts[2],
+                                   'mem_used': parts[3], 'mem_pct': parts[4]}
+
+        rows = []
+        for item in items:
+            meta = item.get('metadata', {}) or {}
+            alloc = item.get('status', {}).get('allocatable', {}) or {}
+            name = meta.get('name', '')
+            labels = meta.get('labels', {}) or {}
+            u = usage.get(name, {})
+            rows.append({
+                'name': name,
+                'zone': labels.get('topology.kubernetes.io/zone', 'N/A'),
+                'cpu_alloc': alloc.get('cpu', 'N/A'),
+                'cpu_used': u.get('cpu_used', 'N/A'),
+                'cpu_pct': u.get('cpu_pct', 'N/A'),
+                'mem_alloc': alloc.get('memory', 'N/A'),
+                'mem_used': u.get('mem_used', 'N/A'),
+                'mem_pct': u.get('mem_pct', 'N/A'),
+                'pods_max': alloc.get('pods', 'N/A'),
+            })
+        return rows
+    except Exception as e:
+        if logger:
+            logger.warning(f"get_node_resources {cluster_name}: {e}")
+        return None
+
+
+def _deployment_status(pod_phases: set, desired: int, ready: int) -> str:
+    """Estado del deployment segun fases de pods (misma logica que opcion 2)."""
+    if desired == 0:
+        return "ScaledToZero"
+    if ready == desired and pod_phases == {"Running"}:
+        return "Running"
+    if "Failed" in pod_phases:
+        return "Degraded"
+    if "Pending" in pod_phases and ready < desired:
+        return "Progressing"
+    if not pod_phases:
+        return "Unknown"
+    if "Unknown" in pod_phases:
+        return "Unknown"
+    return ",".join(sorted(pod_phases))
+
+
+def get_deployments_summary(project_id: str, cluster_name: str, location: str,
+                            debug: bool = False, logger=None,
+                            skip_credentials: bool = False) -> Optional[list]:
+    """Deployments del cluster: pods ready/desired, status y restarts.
+
+    Usa `kubectl get deployments` + `kubectl get pods` con kubeconfig aislado;
+    los restarts se suman de los pods que matchean el selector del deployment.
+    Devuelve None si el cluster no es accesible.
+    """
+    context_name = gke_context_name(project_id, location, cluster_name)
+    env = gke_kube_env(cluster_name, project_id)
+    try:
+        if not skip_credentials and not ensure_gke_cluster_credentials(
+                project_id, cluster_name, location, debug=debug, logger=logger):
+            return None
+
+        deps_out = run_kubectl_command(
+            f'kubectl --context={context_name} get deployments --all-namespaces -o json',
+            debug, logger, timeout=30, env=env)
+        if not deps_out:
+            return None
+        pods_out = run_kubectl_command(
+            f'kubectl --context={context_name} get pods --all-namespaces -o json',
+            debug, logger, timeout=30, env=env)
+
+        try:
+            deps = json.loads(deps_out).get('items', [])
+            pods = json.loads(pods_out).get('items', []) if pods_out else []
+        except json.JSONDecodeError:
+            return None
+
+        rows = []
+        for dep in deps:
+            meta = dep.get('metadata', {}) or {}
+            spec = dep.get('spec', {}) or {}
+            ns = meta.get('namespace', 'default')
+            desired = spec.get('replicas') or 0
+            sel = (spec.get('selector') or {}).get('matchLabels') or {}
+
+            ready = 0
+            restarts = 0
+            phases = set()
+            for pod in pods:
+                pmeta = pod.get('metadata', {}) or {}
+                if pmeta.get('namespace') != ns:
+                    continue
+                labels = pmeta.get('labels', {}) or {}
+                if not sel or not all(labels.get(k) == v for k, v in sel.items()):
+                    continue
+                pstatus = pod.get('status', {}) or {}
+                phases.add(pstatus.get('phase') or 'Unknown')
+                for cond in pstatus.get('conditions') or []:
+                    if cond.get('type') == 'Ready' and cond.get('status') == 'True':
+                        ready += 1
+                        break
+                for cs in pstatus.get('containerStatuses') or []:
+                    restarts += cs.get('restartCount') or 0
+
+            rows.append({
+                'namespace': ns,
+                'deployment': meta.get('name', ''),
+                'pods': f'{ready}/{desired}',
+                'ready': ready,
+                'desired': desired,
+                'restarts': restarts,
+                'status': _deployment_status(phases, desired, ready),
+            })
+        return rows
+    except Exception as e:
+        if logger:
+            logger.warning(f"get_deployments_summary {cluster_name}: {e}")
+        return None
+
+
 def calculate_total_ips(cidr: str) -> int:
     """Calcula el total de IPs disponibles en un rango CIDR."""
     if not cidr or '/' not in cidr:
@@ -855,14 +1014,31 @@ def build_gke_cluster_enrichment(project_id: str, cluster: Dict[str, Any], debug
     # Obtener credenciales una sola vez por cluster (evita gcloud get-credentials duplicado)
     ensure_gke_cluster_credentials(project_id, cluster_name, location, debug=debug, logger=logger)
 
-    # Ejecutar las 3 consultas (pods, red, servicios) en paralelo
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    # Ejecutar las 5 consultas (pods, red, servicios, nodos, deployments) en paralelo
+    with ThreadPoolExecutor(max_workers=5) as executor:
         fut_pods = executor.submit(get_pod_count, project_id, cluster_name, location, debug, logger, True)
         fut_network = executor.submit(get_cluster_network_info, project_id, cluster_name, location, debug, logger)
         fut_services = executor.submit(get_services_count, project_id, cluster_name, location, debug, logger, True)
+        fut_nodes = executor.submit(get_node_resources, project_id, cluster_name, location, debug, logger, True)
+        fut_deploys = executor.submit(get_deployments_summary, project_id, cluster_name, location, debug, logger, True)
         pods_running, pods_not_running = fut_pods.result()
         network_info = fut_network.result()
         services_used = fut_services.result()
+        try:
+            nodes = fut_nodes.result()
+        except Exception:
+            nodes = None
+        try:
+            deployments = fut_deploys.result()
+        except Exception:
+            deployments = None
+
+    nodes = nodes or []
+    deployments = deployments or []
+    nodes_cpu_high = sum(1 for n in nodes if _pct_to_float(n.get('cpu_pct')) > 80)
+    nodes_mem_high = sum(1 for n in nodes if _pct_to_float(n.get('mem_pct')) > 80)
+    deploy_restarts_high = sum(1 for d in deployments if (d.get('restarts') or 0) > 10)
+    deploy_restarts_warn = sum(1 for d in deployments if 4 < (d.get('restarts') or 0) <= 10)
 
     pods_cidr = network_info.get('pods_cidr', 'N/A') if network_info else 'N/A'
     services_cidr = network_info.get('services_cidr', 'N/A') if network_info else 'N/A'
@@ -898,6 +1074,14 @@ def build_gke_cluster_enrichment(project_id: str, cluster: Dict[str, Any], debug
         'subnet': subnet,
         'ip_status': ip_status,
         'ip_status_style': ip_status_style,
+        'nodes': nodes,
+        'nodes_count': len(nodes),
+        'nodes_cpu_high': nodes_cpu_high,
+        'nodes_mem_high': nodes_mem_high,
+        'deployments': deployments,
+        'deploy_total': len(deployments),
+        'deploy_restarts_high': deploy_restarts_high,
+        'deploy_restarts_warn': deploy_restarts_warn,
     }
 
 
@@ -935,6 +1119,9 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     # Tabla consolidada de Clusters GKE con métricas de uso (Fase 2)
     all_clusters = []
     all_network_capacity = []
+    all_nodes = []
+    all_deploy_attention = []
+    total_deployments = 0
     gke_metrics_all = {}
     
     # Obtener métricas de uso para todos los clusters en paralelo (Fase 2)
@@ -1099,6 +1286,67 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 services_ip_fmt,
                 ip_status_fmt
             ))
+
+            # Nodos del cluster (opcion 24)
+            for node in gke_extra.get('nodes', []) or []:
+                cpu_pct = _pct_to_float(node.get('cpu_pct'))
+                mem_pct = _pct_to_float(node.get('mem_pct'))
+                cpu_pct_fmt = node.get('cpu_pct', 'N/A')
+                mem_pct_fmt = node.get('mem_pct', 'N/A')
+                if cpu_pct > 80:
+                    cpu_pct_fmt = f"[red]{cpu_pct_fmt}[/]"
+                elif cpu_pct > 50:
+                    cpu_pct_fmt = f"[yellow]{cpu_pct_fmt}[/]"
+                if mem_pct > 80:
+                    mem_pct_fmt = f"[red]{mem_pct_fmt}[/]"
+                elif mem_pct > 50:
+                    mem_pct_fmt = f"[yellow]{mem_pct_fmt}[/]"
+                all_nodes.append((
+                    project_id,
+                    cluster_name[:25],
+                    node.get('name', '')[:38],
+                    node.get('zone', 'N/A'),
+                    str(node.get('cpu_alloc', 'N/A')),
+                    str(node.get('cpu_used', 'N/A')),
+                    cpu_pct_fmt,
+                    str(node.get('mem_alloc', 'N/A')),
+                    str(node.get('mem_used', 'N/A')),
+                    mem_pct_fmt,
+                    str(node.get('pods_max', 'N/A')),
+                ))
+
+            # Deployments que requieren atencion (opcion 2)
+            deployments = gke_extra.get('deployments', []) or []
+            total_deployments += len(deployments)
+            for dep in deployments:
+                restarts = dep.get('restarts') or 0
+                dep_status = dep.get('status', 'Unknown')
+                if restarts == 0 and dep_status == 'Running':
+                    continue
+                if restarts > 10:
+                    restarts_fmt = f"[white on red]{restarts}[/]"
+                elif restarts > 4:
+                    restarts_fmt = f"[black on yellow]{restarts}[/]"
+                else:
+                    restarts_fmt = str(restarts)
+                dep_status_styles = {
+                    'Running': 'green',
+                    'Degraded': 'red',
+                    'Progressing': 'yellow',
+                    'ScaledToZero': 'cyan',
+                    'Unknown': 'red',
+                }
+                dep_status_style = dep_status_styles.get(dep_status)
+                dep_status_fmt = f"[{dep_status_style}]{dep_status}[/{dep_status_style}]" if dep_status_style else dep_status
+                all_deploy_attention.append((
+                    project_id,
+                    cluster_name[:25],
+                    dep.get('namespace', 'default'),
+                    dep.get('deployment', '')[:40],
+                    dep.get('pods', '0/0'),
+                    restarts_fmt,
+                    dep_status_fmt,
+                ))
     
     if all_clusters:
         table = Table(title="☸️  Clusters GKE", box=box.ROUNDED)
@@ -1121,7 +1369,46 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             table.add_row(*row)
         console.print(table)
         console.print()
-    
+
+    # Tabla de recursos por nodo GKE (opcion 24)
+    if all_nodes:
+        table = Table(title="🖥️  Nodos GKE", box=box.ROUNDED)
+        table.add_column("PROYECTO", style="magenta")
+        table.add_column("CLUSTER", style="cyan")
+        table.add_column("NODO", style="yellow")
+        table.add_column("ZONA", style="magenta")
+        table.add_column("CPU", style="cyan", justify="right")
+        table.add_column("CPU USADO", style="cyan", justify="right")
+        table.add_column("CPU %", style="yellow", justify="right")
+        table.add_column("MEMORIA", style="cyan", justify="right")
+        table.add_column("MEM USADO", style="cyan", justify="right")
+        table.add_column("MEM %", style="yellow", justify="right")
+        table.add_column("PODS MAX", style="blue", justify="right")
+        for row in all_nodes:
+            table.add_row(*row)
+        console.print(table)
+        console.print()
+
+    # Deployments GKE que requieren atencion (opcion 2)
+    if total_deployments:
+        if all_deploy_attention:
+            table = Table(
+                title=f"🚀 Deployments GKE — atención requerida ({len(all_deploy_attention)} de {total_deployments})",
+                box=box.ROUNDED)
+            table.add_column("PROYECTO", style="magenta")
+            table.add_column("CLUSTER", style="cyan")
+            table.add_column("NAMESPACE", style="yellow")
+            table.add_column("DEPLOYMENT", style="cyan")
+            table.add_column("PODS", style="blue", justify="center")
+            table.add_column("RESTARTS", style="red", justify="right")
+            table.add_column("STATUS", justify="center")
+            for row in all_deploy_attention:
+                table.add_row(*row)
+            console.print(table)
+        else:
+            console.print(f"[green]✓ {total_deployments} deployments GKE en ejecución sin restarts ni incidencias[/green]")
+        console.print()
+
     # Tabla de Capacidad de Red de Clusters GKE
     if all_network_capacity:
         table = Table(title="🌐 Capacidad de Red de Clusters GKE", box=box.ROUNDED)
@@ -1924,6 +2211,14 @@ def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) 
                         cluster['ip_status'] = extra.get('ip_status', 'N/A')
                         cluster['version_status'] = extra.get('version_status', 'UNKNOWN')
                         cluster['status_text'] = extra.get('status_text', 'UNKNOWN')
+                        cluster['nodes'] = extra.get('nodes', [])
+                        cluster['nodes_count'] = extra.get('nodes_count', 0)
+                        cluster['nodes_cpu_high'] = extra.get('nodes_cpu_high', 0)
+                        cluster['nodes_mem_high'] = extra.get('nodes_mem_high', 0)
+                        cluster['deployments'] = extra.get('deployments', [])
+                        cluster['deploy_total'] = extra.get('deploy_total', 0)
+                        cluster['deploy_restarts_high'] = extra.get('deploy_restarts_high', 0)
+                        cluster['deploy_restarts_warn'] = extra.get('deploy_restarts_warn', 0)
 
         # Enriquecer Cloud SQL instances con conteo de bases de datos
         if 'sql_instances' in enriched_proj:
