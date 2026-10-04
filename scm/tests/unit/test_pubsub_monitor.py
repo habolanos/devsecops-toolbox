@@ -14,19 +14,33 @@ from scm.gcp.pubsub_monitor import pubsub_monitor as pm
 # ---------- wiring del launcher ----------
 
 class TestLauncherWiring:
-    def test_args_declaran_project_multi_output(self):
-        args = gcp_tools.TOOLS["43"]["args"]
-        assert "--project" in args
-        assert "--multi-project" in args
-        assert "-o" in args
-
-    def test_run_stem_en_multi_project_scripts(self):
-        assert "run" in gcp_tools.MULTI_PROJECT_PARAM_SCRIPTS
-
-    def test_export_choices_coherentes_con_script(self):
+    def test_tool_marcada_interactiva_sin_args_de_proyecto(self):
+        """La opción 43 corre con stdin real: su menú propio resuelve los proyectos."""
         tool = gcp_tools.TOOLS["43"]
-        assert set(tool["export_choices"]) == {"all", "html", "json", "excel", "console"}
-        assert tool["export_default"] == "all"
+        assert tool.get("interactive") is True
+        args = tool.get("args", [])
+        assert "--project" not in args
+        assert "--multi-project" not in args
+
+    def test_run_stem_no_esta_en_multi_project_scripts(self):
+        """Sin --multi-project en args: el launcher no debe tratarla como multi-param."""
+        assert "run" not in gcp_tools.MULTI_PROJECT_PARAM_SCRIPTS
+
+    def test_run_interactive_hereda_stdio(self):
+        """_run_interactive usa subprocess.call (stdio heredado), no Popen/DEVNULL."""
+        with patch.object(gcp_tools.subprocess, "call", return_value=0) as call:
+            gcp_tools._run_interactive(["python", "x.py"])
+        call.assert_called_once()
+        cmd, kwargs = call.call_args.args[0], call.call_args.kwargs
+        assert cmd == ["python", "x.py"]
+        assert "stdin" not in kwargs and "stdout" not in kwargs
+        assert kwargs["env"]["TTY_COMPATIBLE"] in ("0", "1")
+
+    def test_run_interactive_error_lanza_calledprocesserror(self):
+        import subprocess as sp
+        with patch.object(gcp_tools.subprocess, "call", return_value=3):
+            with pytest.raises(sp.CalledProcessError):
+                gcp_tools._run_interactive(["python", "x.py"])
 
 
 # ---------- PubSubMonitor ----------

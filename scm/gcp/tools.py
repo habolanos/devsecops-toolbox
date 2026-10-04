@@ -250,7 +250,6 @@ MULTI_PROJECT_PARAM_SCRIPTS = {
     "gke_deployments_report",
     "gke_monitor_node",
     "event_tracker",
-    "run",
 }
 
 # Definición de las herramientas disponibles (con grupo asignado)
@@ -622,9 +621,8 @@ TOOLS = {
         "name": "Pub/Sub Monitor - Multi-Proyecto",
         "description": "Monitoreo profesional de Google Cloud Pub/Sub con soporte multi-proyecto, alertas preventivas (25+ reglas) y dashboards ejecutivos. Soporta 12 proyectos GCP de CPL (cmanager, cs-csc, cs-wms, oms)",
         "path": "pubsub_monitor/run.py",
-        "args": ["--project", "--multi-project", "-o"],
-        "export_choices": ["all", "html", "json", "excel", "console"],
-        "export_default": "all",
+        "args": [],
+        "interactive": True,
         "requirements": "pubsub_monitor/requirements.txt",
         "group": "monitoring",
         "status": "ready",
@@ -1064,22 +1062,10 @@ def log_command(cmd: List[str], status: str = "EXEC") -> None:
         f.write(f"[{ts}] [{_PLATFORM}] [{status}] {cmd_str}\n")
 
 
-def _run_with_spinner(cmd: List[str]):
-    """Ejecuta un comando retransmitiendo su salida en tiempo real.
-
-    Lee en chunks binarios (no por lineas): los frames ANSI que el hijo
-    redibuja con \\r (Rich Live/Progress) no terminan en \\n, por lo que una
-    lectura por lineas los retendria hasta el EOF y la salida pareceria
-    colgada. Mientras no llega output muestra un spinner animado (TTY)
-    o un mensaje estatico (pipe/CI).
-
-    Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
-    """
-    import codecs
-    import itertools
+def _child_env() -> dict:
+    """Construye el entorno para subprocess de herramientas."""
     import os as _os
     import shutil as _shutil
-    import threading
 
     env = _os.environ.copy()
     env["FORCE_COLOR"] = "1"
@@ -1109,9 +1095,44 @@ def _run_with_spinner(cmd: List[str]):
 
     # Si el launcher corre en un TTY real, avisar al hijo con TTY_COMPATIBLE
     # (Rich lo honra en Console.is_terminal) para que emita secuencias ANSI de
-    # animación; el relay de abajo las pasa intactas al terminal. Sin TTY
+    # animación; el relay las pasa intactas al terminal. Sin TTY
     # (CI / redirect a archivo) se fuerza 0 → salida estática limpia.
     env["TTY_COMPATIBLE"] = "1" if sys.stdout.isatty() else "0"
+    return env
+
+
+def _run_interactive(cmd: List[str]):
+    """Ejecuta una herramienta interactiva con stdio heredado.
+
+    A diferencia de _run_with_spinner (que captura stdout y da
+    stdin=DEVNULL), aquí el hijo hereda la consola real para poder
+    mostrar menús y leer input del usuario (p.ej. Pub/Sub Monitor).
+    Aplica a herramientas con "interactive": true en TOOLS.
+
+    Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
+    """
+    result = subprocess.call(cmd, env=_child_env())
+    if result != 0:
+        raise subprocess.CalledProcessError(result, cmd)
+
+
+def _run_with_spinner(cmd: List[str]):
+    """Ejecuta un comando retransmitiendo su salida en tiempo real.
+
+    Lee en chunks binarios (no por lineas): los frames ANSI que el hijo
+    redibuja con \\r (Rich Live/Progress) no terminan en \\n, por lo que una
+    lectura por lineas los retendria hasta el EOF y la salida pareceria
+    colgada. Mientras no llega output muestra un spinner animado (TTY)
+    o un mensaje estatico (pipe/CI).
+
+    Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
+    """
+    import codecs
+    import itertools
+    import os as _os
+    import threading
+
+    env = _child_env()
 
     proc = subprocess.Popen(
         cmd,
@@ -1742,7 +1763,11 @@ def run_tool(tool_key: str):
 
         log_command(cmd)
         try:
-            _run_with_spinner(cmd)
+            if tool.get("interactive"):
+                # stdin real: la herramienta maneja su propio menú/prompts
+                _run_interactive(cmd)
+            else:
+                _run_with_spinner(cmd)
         except subprocess.CalledProcessError as e:
             log_command(cmd, "ERROR")
             print(f"{Colors.FAIL}Error al ejecutar la herramienta: {e}{Colors.ENDC}")
