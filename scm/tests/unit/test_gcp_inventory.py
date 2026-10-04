@@ -285,14 +285,28 @@ def gcp_tools():
     return _load_module("gcp_tools_launcher_inv", GCP_DIR / "tools.py")
 
 
+class _FakeReader:
+    """Stream binario tipo FileIO: devuelve chunks por read1/read."""
+
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+
+    def read1(self, _n=-1):
+        return self._chunks.pop(0) if self._chunks else b""
+
+    def read(self, n=-1):
+        return self.read1(n)
+
+
 class _FakeProc:
-    """Popen simulado: captura kwargs y expone stdout iterable."""
+    """Popen simulado: captura kwargs y expone stdout binario."""
 
     captured = {}
+    chunks = [b"linea de salida\n"]
 
     def __init__(self, cmd, **kwargs):
         _FakeProc.captured = {"cmd": cmd, **kwargs}
-        self.stdout = iter(["linea de salida\n"])
+        self.stdout = _FakeReader(_FakeProc.chunks)
         self.returncode = 0
 
     def wait(self):
@@ -330,6 +344,49 @@ class TestRunWithSpinner:
         gcp_tools._run_with_spinner(["python", "x.py"])
 
         assert _FakeProc.captured["env"]["DEVSECOPS_OUTPUT_DIR"] == "D:/pre"
+
+    def test_carriage_return_frames_relayed(self, gcp_tools, monkeypatch):
+        """Frames ANSI con \\r sin \\n se retransmiten (regresion 'colgado').
+
+        Antes: 'for line in proc.stdout' esperaba \\n, asi que los frames
+        redibujados con \\r (Rich Live) quedaban retenidos y la pantalla
+        parecia congelada en 'Cargando herramienta...'.
+        """
+        out = _FakeStdout(tty=True)
+        _FakeProc.chunks = [b"\x1b[2K\rframe-sin-newline", b"fin\n"]
+        monkeypatch.setattr(gcp_tools.subprocess, "Popen", _FakeProc)
+        monkeypatch.setattr(sys, "stdout", out)
+        try:
+            gcp_tools._run_with_spinner(["python", "x.py"])
+        finally:
+            _FakeProc.chunks = [b"linea de salida\n"]
+
+        emitted = "".join(out.written)
+        assert "frame-sin-newline" in emitted
+        assert "fin\n" in emitted
+
+    def test_spinner_shown_when_tty(self, gcp_tools, monkeypatch):
+        """Con TTY se muestra el spinner animado 'Cargando herramienta'."""
+        out = _FakeStdout(tty=True)
+        _FakeProc.chunks = []  # sin output: el spinner queda activo hasta EOF
+        monkeypatch.setattr(gcp_tools.subprocess, "Popen", _FakeProc)
+        monkeypatch.setattr(sys, "stdout", out)
+        try:
+            gcp_tools._run_with_spinner(["python", "x.py"])
+        finally:
+            _FakeProc.chunks = [b"linea de salida\n"]
+
+        assert any("Cargando herramienta" in s for s in out.written)
+
+    def test_loading_message_in_pipe(self, gcp_tools, monkeypatch):
+        """Sin TTY se muestra el mensaje estatico de carga."""
+        out = _FakeStdout(tty=False)
+        monkeypatch.setattr(gcp_tools.subprocess, "Popen", _FakeProc)
+        monkeypatch.setattr(sys, "stdout", out)
+
+        gcp_tools._run_with_spinner(["python", "x.py"])
+
+        assert any("Cargando herramienta" in s for s in out.written)
 
 
 class TestToolRegistration:

@@ -1058,15 +1058,21 @@ def log_command(cmd: List[str], status: str = "EXEC") -> None:
 
 
 def _run_with_spinner(cmd: List[str]):
-    """Ejecuta un comando mostrando un mensaje de carga mientras arranca.
+    """Ejecuta un comando retransmitiendo su salida en tiempo real.
 
-    Imprime un mensaje estatico y lo limpia antes de escribir el output
-    del proceso hijo, evitando superposicion con Rich/ANSI del subprocess.
+    Lee en chunks binarios (no por lineas): los frames ANSI que el hijo
+    redibuja con \\r (Rich Live/Progress) no terminan en \\n, por lo que una
+    lectura por lineas los retendria hasta el EOF y la salida pareceria
+    colgada. Mientras no llega output muestra un spinner animado (TTY)
+    o un mensaje estatico (pipe/CI).
 
     Lanza subprocess.CalledProcessError si el proceso termina con codigo != 0.
     """
+    import codecs
+    import itertools
     import os as _os
     import shutil as _shutil
+    import threading
 
     env = _os.environ.copy()
     env["FORCE_COLOR"] = "1"
@@ -1105,35 +1111,56 @@ def _run_with_spinner(cmd: List[str]):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,
-        text=True,
-        bufsize=1,
+        bufsize=0,
         env=env,
     )
 
     loading_msg = f"{Colors.CYAN}⏳ Cargando herramienta...{Colors.ENDC}"
     clear_line = "\r" + " " * 45 + "\r"
+    first_output = threading.Event()
+    io_lock = threading.Lock()
 
-    sys.stdout.write(loading_msg)
-    sys.stdout.flush()
-
-    lines = []
-    first_written = False
-    for line in proc.stdout:
-        if not first_written:
-            sys.stdout.write(clear_line)
+    def _emit(s: str):
+        with io_lock:
+            sys.stdout.write(s)
             sys.stdout.flush()
-            first_written = True
-        sys.stdout.write(line)
-        sys.stdout.flush()
-        lines.append(line)
 
-    if not first_written:
-        sys.stdout.write(clear_line)
-        sys.stdout.flush()
+    def _spin():
+        frames = itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+        while not first_output.is_set():
+            _emit(f"\r{Colors.CYAN}{next(frames)} Cargando herramienta...{Colors.ENDC}")
+            first_output.wait(0.1)
+
+    is_tty = sys.stdout.isatty()
+    if is_tty:
+        spinner = threading.Thread(target=_spin, daemon=True)
+        spinner.start()
+    else:
+        _emit(loading_msg)
+
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    read_chunk = getattr(proc.stdout, "read1", proc.stdout.read)
+    out_parts = []
+    while True:
+        chunk = read_chunk(4096)
+        if not chunk:
+            break
+        text = decoder.decode(chunk) if isinstance(chunk, bytes) else chunk
+        if not first_output.is_set():
+            first_output.set()
+            _emit(clear_line)
+        _emit(text)
+        out_parts.append(text)
+
+    first_output.set()
+    if is_tty:
+        spinner.join(timeout=0.3)
+    if not out_parts:
+        _emit(clear_line)
 
     proc.wait()
     if proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd, "".join(lines))
+        raise subprocess.CalledProcessError(proc.returncode, cmd, "".join(out_parts))
 
 
 def run_tool(tool_key: str):
