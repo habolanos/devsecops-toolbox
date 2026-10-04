@@ -248,6 +248,7 @@ MULTI_PROJECT_SCRIPTS = {
 MULTI_PROJECT_PARAM_SCRIPTS = {
     "gcp_monitor",
     "gke_deployments_report",
+    "gke_monitor_node",
 }
 
 # Definición de las herramientas disponibles (con grupo asignado)
@@ -265,7 +266,7 @@ TOOLS = {
     },
     "2": {
         "name": "Reporte de Despliegues GKE",
-        "description": "Genera un reporte detallado de los despliegues en GKE",
+        "description": "Lista todos los pos y servicios, identifica reinicios y Genera un reporte detallado de los despliegues en GKE",
         "path": "monitoring/gke_deployments_report.py",
         "args": ["--project", "--multi-project"],
         "requirements": "monitoring/requirements.txt",
@@ -276,10 +277,12 @@ TOOLS = {
         "name": "GKE Node Resources Monitor",
         "description": "Uso de CPU y memoria por nodo en clusters GKE (HTML report)",
         "path": "monitoring/gke_monitor_node.py",
-        "args": ["--project", "--output"],
+        "args": ["--project", "--multi-project", "--output"],
         "requirements": "monitoring/requirements.txt",
         "group": "monitoring",
         "status": "ready",
+        "export_choices": ["console", "html", "ninguno"],
+        "export_default": "html",
         "auto_run": {"output_format": "html"}
     },
     "25": {
@@ -1626,17 +1629,27 @@ def run_tool(tool_key: str):
             args.append("--all")
     
     if "--output" in tool_args or "-o" in tool_args:
-        is_gateway = "gateway-services" in tool.get("path", "")
-        is_cloudrun_vpc = "gcp_cloudrun_vpc_ip_diagnostic" in tool.get("path", "")
-        supports_html = is_gateway or is_cloudrun_vpc
-        default_fmt = "html" if supports_html else "json"
-        options_text = "json/csv/html/ninguno" if supports_html else "json/csv/ninguno"
+        # Opciones por tool (export_choices/export_default) o las genericas
+        # json/csv(/html)/ninguno segun el script soporte html.
+        custom_choices = tool.get("export_choices")
+        if custom_choices:
+            options = list(custom_choices)
+            default_fmt = tool.get("export_default", options[0])
+        else:
+            is_gateway = "gateway-services" in tool.get("path", "")
+            is_cloudrun_vpc = "gcp_cloudrun_vpc_ip_diagnostic" in tool.get("path", "")
+            supports_html = is_gateway or is_cloudrun_vpc
+            options = ["json", "csv"] + (["html"] if supports_html else []) + ["ninguno"]
+            default_fmt = "html" if supports_html else "json"
+        options_text = "/".join(options)
+        valid_fmts = [o for o in options if o != "ninguno"]
         print(f"\n{Colors.BOLD}¿Exportar resultado? ({options_text}) [{default_fmt}]:{Colors.ENDC} ", end="")
         output_format = input().strip().lower()
-        if output_format in ["json", "csv", "html"]:
+        if output_format in valid_fmts:
             args.extend(["-o", output_format])
         elif output_format == "" or output_format == default_fmt:
-            args.extend(["-o", default_fmt])
+            if default_fmt != "ninguno":
+                args.extend(["-o", default_fmt])
     
     # Añadir argumentos adicionales si los hay
     if "additional_args" in tool:
