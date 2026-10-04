@@ -53,9 +53,10 @@ except ImportError:
         return p
     _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
     _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
-    def gke_kube_env(cluster_name):
+    def gke_kube_env(cluster_name, project_id=""):
         env = _os.environ.copy()
-        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        key = f"{project_id}-{cluster_name}" if project_id else cluster_name
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{key}.yaml")
         return env
     def gke_context_name(project_id, location, cluster_name):
         return f"gke_{project_id}_{location}_{cluster_name}"
@@ -67,7 +68,7 @@ except ImportError:
                f"--project={project_id} {_gke_location_flag(location)} --quiet")
         try:
             r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                               timeout=timeout, env=gke_kube_env(cluster_name))
+                               timeout=timeout, env=gke_kube_env(cluster_name, project_id))
             return r.returncode == 0
         except Exception:
             return False
@@ -304,7 +305,7 @@ def get_active_pods_count(project_id: str, cluster_name: str, region: str, debug
 
         # Obtener pods con IP asignada (excluyendo Succeeded/Failed)
         cmd = f'kubectl --context={context_name} get pods --all-namespaces -o json'
-        result = run_kubectl_command(cmd, debug, env=gke_kube_env(cluster_name))
+        result = run_kubectl_command(cmd, debug, env=gke_kube_env(cluster_name, project_id))
 
         if not result:
             return None
@@ -355,7 +356,7 @@ def get_services_count(project_id: str, cluster_name: str, region: str, debug: b
 
         # Obtener servicios con ClusterIP
         cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers'
-        result = run_kubectl_command(cmd, debug, env=gke_kube_env(cluster_name))
+        result = run_kubectl_command(cmd, debug, env=gke_kube_env(cluster_name, project_id))
 
         if not result:
             return None

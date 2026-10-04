@@ -76,9 +76,10 @@ except ImportError:
             "1", "true", "yes", "on"}
     _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
     _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
-    def gke_kube_env(cluster_name):
+    def gke_kube_env(cluster_name, project_id=""):
         env = _os.environ.copy()
-        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        key = f"{project_id}-{cluster_name}" if project_id else cluster_name
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{key}.yaml")
         return env
     def gke_context_name(project_id, location, cluster_name):
         return f"gke_{project_id}_{location}_{cluster_name}"
@@ -90,7 +91,7 @@ except ImportError:
                f"--project={project_id} {gke_location_flag(location)} --quiet")
         try:
             r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                               timeout=timeout, env=gke_kube_env(cluster_name))
+                               timeout=timeout, env=gke_kube_env(cluster_name, project_id))
             return r.returncode == 0
         except Exception:
             return False
@@ -330,12 +331,12 @@ def get_deployments_report(project_id: str, cluster_name: str, location: str, lo
       - limit_memory (suma limits containers)
     """
     if not ensure_gke_cluster_credentials(project_id, cluster_name, location, logger=logger):
-        if logger:
-            logger.error(f"Sin credenciales para {cluster_name} ({project_id})")
-        return []
+        raise RuntimeError(
+            f"get-credentials falló para {cluster_name} ({project_id}, {location})")
 
-    # KUBECONFIG aislado por cluster — seguro en paralelo (no toca ~/.kube/config)
-    kubeconfig_path = gke_kube_env(cluster_name)["KUBECONFIG"]
+    # KUBECONFIG aislado por (proyecto, cluster) — seguro en paralelo
+    # (no toca ~/.kube/config ni pisa credenciales de clusters homónimos)
+    kubeconfig_path = gke_kube_env(cluster_name, project_id)["KUBECONFIG"]
     context = gke_context_name(project_id, location, cluster_name)
 
     api_client = config.new_client_from_config(
@@ -349,11 +350,9 @@ def get_deployments_report(project_id: str, cluster_name: str, location: str, lo
         ns_list = core_v1.list_namespace(_request_timeout=10)
         namespaces = [ns.metadata.name for ns in ns_list.items]
     except Exception as e:
-        print(f"[ERROR] No se pudo conectar al cluster de Kubernetes: {e}")
-        print("[INFO] Asegúrate de que:")
-        print("  1. Tienes kubeconfig configurado (~/.kube/config)")
-        print("  2. El cluster está disponible y accesible")
-        print("  3. Tienes credenciales válidas")
+        short = str(e).splitlines()[0][:200]
+        print(f"[ERROR] No se pudo conectar al cluster {cluster_name} "
+              f"({project_id}, {location}): {short}")
         raise
 
     report_rows = []
@@ -602,6 +601,18 @@ def format_detailed_table(report_data):
     return tabulate(rows, headers=headers, tablefmt="github")
 
 
+def format_cluster_errors(cluster_errors):
+    """Tabla de clusters no accesibles (proyecto, cluster, ubicación, error)."""
+    if not cluster_errors:
+        return ""
+    headers = ["Project", "Cluster", "Location", "Error"]
+    rows = [
+        [e["project"], e["cluster"], e["location"], e["error"][:160]]
+        for e in cluster_errors
+    ]
+    return tabulate(rows, headers=headers, tablefmt="github")
+
+
 def format_status_summary(report_data):
     """Resumen por Proyecto + Status."""
     counter = Counter((r.get("project", "N/A"), r["status"]) for r in report_data)
@@ -747,8 +758,9 @@ def main():
     )
     args = parser.parse_args()
 
-    output_dir_path = args.output_dir or "outcome"
-    logger = setup_logger(output_dir_path)
+    # Directorio resuelto: honra DEVSECOPS_OUTPUT_DIR / config global.output_dir
+    output_dir = get_output_dir(args.output_dir or "outcome")
+    logger = setup_logger(str(output_dir))
     logger.info("Iniciando generación de reporte de deployments en GKE")
     
     console = Console() if RICH_AVAILABLE else None
@@ -798,6 +810,19 @@ def main():
             return
 
         report_data = []
+        cluster_errors = []
+
+        def _collect(fut, pid, cname, cloc):
+            try:
+                report_data.extend(fut.result())
+            except Exception as e:
+                err = " ".join(str(e).split())[:300]
+                cluster_errors.append({
+                    "project": pid, "cluster": cname,
+                    "location": cloc, "error": err,
+                })
+                logger.error(f"Cluster {cname} ({pid}, {cloc}) no accesible: {err}")
+
         msg = (f"🔍 Consultando deployments en {len(targets)} cluster(s) "
                f"de {len(project_ids)} proyecto(s)...")
         if RICH_AVAILABLE and console and is_live_terminal():
@@ -805,24 +830,31 @@ def main():
                 logger.info(msg)
                 with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
                     futures = {
-                        executor.submit(get_deployments_report, pid, cname, cloc, logger): (pid, cname)
+                        executor.submit(get_deployments_report, pid, cname, cloc, logger): (pid, cname, cloc)
                         for pid, cname, cloc in targets
                     }
                     for fut in as_completed(futures):
-                        report_data.extend(fut.result())
+                        _collect(fut, *futures[fut])
         else:
             print(f"[INFO] {msg}")
             logger.info(msg)
             with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
                 futures = {
-                    executor.submit(get_deployments_report, pid, cname, cloc, logger): (pid, cname)
+                    executor.submit(get_deployments_report, pid, cname, cloc, logger): (pid, cname, cloc)
                     for pid, cname, cloc in targets
                 }
                 for fut in as_completed(futures):
-                    report_data.extend(fut.result())
+                    _collect(fut, *futures[fut])
 
         print(f"✓ Se encontraron {len(report_data)} deployments")
         logger.info(f"Se encontraron {len(report_data)} deployments")
+
+        errors_txt = format_cluster_errors(cluster_errors)
+        if cluster_errors:
+            warn = (f"⚠️ {len(cluster_errors)} de {len(targets)} cluster(es) "
+                    f"no accesibles — el reporte los detalla aparte")
+            print(warn)
+            logger.warning(warn)
 
         for row in report_data:
             row["generated_at"] = generated_at
@@ -846,24 +878,27 @@ def main():
             limits_table = tabulate_to_rich_table(summary_limits, "💾 Resumen por Status + Limits")
             if limits_table:
                 console.print(limits_table)
+
+            if errors_txt:
+                console.print()
+                errors_table = tabulate_to_rich_table(errors_txt, "🔌 Clusters no accesibles")
+                if errors_table:
+                    console.print(errors_table)
         else:
             print(detailed)
             print()
             print(summary_status)
             print(summary_limits)
+            if errors_txt:
+                print()
+                print("[CLUSTERS NO ACCESIBLES]")
+                print(errors_txt)
 
-        output_dir = get_output_dir(output_dir_path)
         ts_for_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        txt_path = os.path.join(
-            output_dir_path, f"gke_deployments_report_{ts_for_filename}.txt"
-        )
-        csv_path = os.path.join(
-            output_dir_path, f"gke_deployments_report_{ts_for_filename}.csv"
-        )
-        json_path = os.path.join(
-            output_dir_path, f"gke_deployments_report_{ts_for_filename}.json"
-        )
+        txt_path = str(output_dir / f"gke_deployments_report_{ts_for_filename}.txt")
+        csv_path = str(output_dir / f"gke_deployments_report_{ts_for_filename}.csv")
+        json_path = str(output_dir / f"gke_deployments_report_{ts_for_filename}.json")
 
         if RICH_AVAILABLE and console and is_live_terminal():
             with console.status("[bold cyan]💾 Guardando archivos...", spinner="dots"):
@@ -878,6 +913,9 @@ def main():
                     f.write(summary_status)
                     f.write("\n\n")
                     f.write(summary_limits)
+                    if errors_txt:
+                        f.write("\n\n[CLUSTERS NO ACCESIBLES]\n\n")
+                        f.write(errors_txt)
 
                 write_csv(report_data, csv_path)
                 write_json(report_data, json_path)
@@ -894,6 +932,9 @@ def main():
                 f.write(summary_status)
                 f.write("\n\n")
                 f.write(summary_limits)
+                if errors_txt:
+                    f.write("\n\n[CLUSTERS NO ACCESIBLES]\n\n")
+                    f.write(errors_txt)
 
             write_csv(report_data, csv_path)
             write_json(report_data, json_path)

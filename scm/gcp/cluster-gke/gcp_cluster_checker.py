@@ -36,9 +36,10 @@ except ImportError:
         return p
     _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
     _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
-    def gke_kube_env(cluster_name):
+    def gke_kube_env(cluster_name, project_id=""):
         env = _os.environ.copy()
-        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        key = f"{project_id}-{cluster_name}" if project_id else cluster_name
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{key}.yaml")
         return env
     def gke_context_name(project_id, location, cluster_name):
         return f"gke_{project_id}_{location}_{cluster_name}"
@@ -50,7 +51,7 @@ except ImportError:
                f"--project={project_id} {gke_location_flag(location)} --quiet")
         try:
             r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                               timeout=timeout, env=gke_kube_env(cluster_name))
+                               timeout=timeout, env=gke_kube_env(cluster_name, project_id))
             return r.returncode == 0
         except Exception:
             return False
@@ -351,7 +352,7 @@ def get_pod_count(project_id, cluster_name, location, debug=False):
     """Obtiene el conteo de pods running y not running del cluster"""
     # El contexto generado por gcloud tiene formato: gke_PROJECT_LOCATION_CLUSTER
     context_name = gke_context_name(project_id, location, cluster_name)
-    kube_env = gke_kube_env(cluster_name)
+    kube_env = gke_kube_env(cluster_name, project_id)
 
     try:
         # KUBECONFIG aislado por cluster: seguro en paralelo (sin pisar ~/.kube/config)
@@ -409,7 +410,7 @@ def get_not_running_pods_detail(project_id, cluster_name, location, debug=False)
     pods_detail = []
 
     context_name = gke_context_name(project_id, location, cluster_name)
-    kube_env = gke_kube_env(cluster_name)
+    kube_env = gke_kube_env(cluster_name, project_id)
 
     try:
         # KUBECONFIG aislado por cluster: seguro en paralelo

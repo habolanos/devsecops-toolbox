@@ -86,9 +86,10 @@ except ImportError:
             "1", "true", "yes", "on"}
     _KCFG_DIR = _Path(_tf.mkdtemp(prefix="gke-kubeconfig-"))
     _ax.register(lambda: _sh.rmtree(_KCFG_DIR, ignore_errors=True))
-    def gke_kube_env(cluster_name):
+    def gke_kube_env(cluster_name, project_id=""):
         env = _os.environ.copy()
-        env["KUBECONFIG"] = str(_KCFG_DIR / f"{cluster_name}.yaml")
+        key = f"{project_id}-{cluster_name}" if project_id else cluster_name
+        env["KUBECONFIG"] = str(_KCFG_DIR / f"{key}.yaml")
         return env
     def gke_context_name(project_id, location, cluster_name):
         return f"gke_{project_id}_{location}_{cluster_name}"
@@ -100,7 +101,7 @@ except ImportError:
                f"--project={project_id} {gke_location_flag(location)} --quiet")
         try:
             r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                               timeout=timeout, env=gke_kube_env(cluster_name))
+                               timeout=timeout, env=gke_kube_env(cluster_name, project_id))
             return r.returncode == 0
         except Exception:
             return False
@@ -686,7 +687,7 @@ def get_pod_count(project_id: str, cluster_name: str, location: str, debug: bool
             return None, None
         cmd_all_pods = f'kubectl --context={context_name} get pods --all-namespaces -o json'
         result = subprocess.run(cmd_all_pods, shell=True, capture_output=True, text=True,
-                                timeout=30, env=gke_kube_env(cluster_name))
+                                timeout=30, env=gke_kube_env(cluster_name, project_id))
         if debug and logger:
             logger.info(f"kubectl get pods returncode: {result.returncode}, stdout length: {len(result.stdout)}")
         # kubectl falló (auth plugin ausente, RBAC, contexto inexistente, etc.):
@@ -734,7 +735,7 @@ def get_services_count(project_id: str, cluster_name: str, location: str, debug:
         if not creds_ok:
             return None
         cmd = f'kubectl --context={context_name} get svc --all-namespaces --no-headers'
-        result = run_kubectl_command(cmd, debug, logger, timeout=30, env=gke_kube_env(cluster_name))
+        result = run_kubectl_command(cmd, debug, logger, timeout=30, env=gke_kube_env(cluster_name, project_id))
         if not result:
             return None
         lines = result.strip().split('\n')

@@ -173,10 +173,16 @@ _GKE_KUBECONFIG_DIR = Path(tempfile.mkdtemp(prefix="gke-kubeconfig-"))
 atexit.register(lambda: shutil.rmtree(_GKE_KUBECONFIG_DIR, ignore_errors=True))
 
 
-def gke_kube_env(cluster_name: str) -> dict:
-    """Entorno con KUBECONFIG aislado por cluster para gcloud/kubectl."""
+def gke_kube_env(cluster_name: str, project_id: str = "") -> dict:
+    """Entorno con KUBECONFIG aislado por (proyecto, cluster).
+
+    La clave incluye el proyecto porque dos proyectos distintos pueden tener
+    clusters homónimos: sin él compartirían el mismo archivo y los
+    get-credentials en paralelo se pisarían entre sí.
+    """
     env = os.environ.copy()
-    env["KUBECONFIG"] = str(_GKE_KUBECONFIG_DIR / f"{cluster_name}.yaml")
+    key = f"{project_id}-{cluster_name}" if project_id else cluster_name
+    env["KUBECONFIG"] = str(_GKE_KUBECONFIG_DIR / f"{key}.yaml")
     return env
 
 
@@ -209,7 +215,7 @@ def ensure_gke_cluster_credentials(project_id: str, cluster_name: str,
     ok = False
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                                timeout=timeout, env=gke_kube_env(cluster_name))
+                                timeout=timeout, env=gke_kube_env(cluster_name, project_id))
         ok = result.returncode == 0
         if debug and logger:
             logger.info(f"get-credentials returncode: {result.returncode}")
