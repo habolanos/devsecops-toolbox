@@ -11,6 +11,7 @@ Características:
 - Generación de reportes completos
 """
 
+import argparse
 import json
 import logging
 import sys
@@ -31,19 +32,34 @@ from .dashboard_generator import DashboardGenerator
 console = Console()
 logger = logging.getLogger(__name__)
 
+# Directorio de salida compartido (DEVSECOPS_OUTPUT_DIR > config.json > scm/outcome)
+try:
+    from scm.utils import resolve_outcome_dir
+except ImportError:
+    try:
+        from utils import resolve_outcome_dir
+    except ImportError:
+        def resolve_outcome_dir(default: str = "outcome") -> Path:
+            p = Path("scm") / default if Path("scm").exists() else Path(default)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+
 
 class PubSubMonitor:
     """Orquestador principal del sistema de monitoreo."""
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, projects: Optional[List[str]] = None):
         """
         Inicializa el monitor.
 
         Args:
             config_path: Ruta del archivo de configuración
+            projects: Lista de proyectos (si se omite se leen del config)
         """
         self.config = self._load_config(config_path)
-        self.projects = self.config.get("gcp", {}).get("service_accounts_reporter", {}).get("projects", [])
+        if projects is None:
+            projects = self.config.get("gcp", {}).get("service_accounts_reporter", {}).get("projects", [])
+        self.projects = projects
         self.collector = PubSubCollector(self.projects)
         self.analyzer = MetricsAnalyzer()
         self.alert_engine = AlertEngine()
@@ -107,20 +123,15 @@ class PubSubMonitor:
         console.print(menu_table)
         console.print()
 
-    def run_full_analysis(self) -> None:
-        """Ejecuta análisis completo."""
-        console.print(Panel(
-            "[bold cyan]🔍 Iniciando Análisis Completo[/bold cyan]",
-            style="blue"
-        ))
-
-        # Recopilar datos
-        console.print("\n[cyan]1️⃣  Recopilando datos...[/cyan]")
+    def _execute_analysis(self, show_steps: bool = True) -> None:
+        """Ejecuta recopilación + análisis + alertas y guarda self.results."""
+        if show_steps:
+            console.print("\n[cyan]1️⃣  Recopilando datos...[/cyan]")
         collection_results = self.collector.collect_all_data()
         self.collector.display_collection_summary(collection_results)
 
-        # Analizar datos
-        console.print("\n[cyan]2️⃣  Analizando métricas...[/cyan]")
+        if show_steps:
+            console.print("\n[cyan]2️⃣  Analizando métricas...[/cyan]")
         analysis_results = {}
         for project, data in collection_results["projects"].items():
             summary = self.analyzer.calculate_project_summary(data)
@@ -128,8 +139,8 @@ class PubSubMonitor:
 
         self.analyzer.display_analysis_summary(analysis_results)
 
-        # Evaluar alertas
-        console.print("\n[cyan]3️⃣  Evaluando alertas...[/cyan]")
+        if show_steps:
+            console.print("\n[cyan]3️⃣  Evaluando alertas...[/cyan]")
         all_alerts = {}
         for project, data in collection_results["projects"].items():
             alerts = self.alert_engine.evaluate_all_alerts(data)
@@ -149,7 +160,8 @@ class PubSubMonitor:
         # Guardar resultados
         self.results = {
             "timestamp": datetime.now().isoformat(),
-            "projects": {}
+            "projects": {},
+            "errors": collection_results.get("errors", [])
         }
 
         for project, data in collection_results["projects"].items():
@@ -159,8 +171,18 @@ class PubSubMonitor:
                 "alerts": all_alerts.get(project, [])
             }
 
+    def run_full_analysis(self, pause: bool = True) -> None:
+        """Ejecuta análisis completo."""
+        console.print(Panel(
+            "[bold cyan]🔍 Iniciando Análisis Completo[/bold cyan]",
+            style="blue"
+        ))
+
+        self._execute_analysis()
+
         console.print("\n[green]✅ Análisis completado[/green]")
-        Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
+        if pause:
+            Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
 
     def run_project_analysis(self) -> None:
         """Ejecuta análisis de proyecto específico."""
@@ -184,7 +206,7 @@ class PubSubMonitor:
 
         Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
 
-    def run_alerts_only(self) -> None:
+    def run_alerts_only(self, pause: bool = True) -> None:
         """Ejecuta evaluación de alertas solamente."""
         console.print(Panel(
             "[bold cyan]🚨 Evaluando Alertas[/bold cyan]",
@@ -192,6 +214,7 @@ class PubSubMonitor:
         ))
 
         collection_results = self.collector.collect_all_data()
+        self.collector.display_collection_summary(collection_results)
 
         all_alerts = {}
         for project, data in collection_results["projects"].items():
@@ -203,17 +226,22 @@ class PubSubMonitor:
                 console.print(f"\n[cyan]{project}:[/cyan]")
                 self.alert_engine.display_alerts_summary(alerts)
 
-        Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
+        if pause:
+            Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
 
-    def generate_reports(self) -> None:
+    def generate_reports(self, pause: bool = True, output: str = "all",
+                         output_dir: Optional[Path] = None) -> None:
         """Genera reportes."""
         if not self.results:
             console.print("[yellow]⚠️  Ejecuta primero un análisis completo[/yellow]")
-            Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
+            if pause:
+                Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
             return
 
-        output_dir = Path("outcome/pubsub_monitor")
+        if output_dir is None:
+            output_dir = Path(resolve_outcome_dir()) / "pubsub_monitor"
         output_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         console.print(Panel(
             "[bold cyan]📄 Generando Reportes[/bold cyan]",
@@ -221,25 +249,36 @@ class PubSubMonitor:
         ))
 
         dashboard = DashboardGenerator(self.results)
+        generated = []
 
         # HTML
-        console.print("[cyan]Generando dashboard HTML...[/cyan]")
-        html_path = dashboard.generate_html_dashboard(str(output_dir / "dashboard.html"))
+        if output in ("all", "html"):
+            console.print("[cyan]Generando dashboard HTML...[/cyan]")
+            generated.append(dashboard.generate_html_dashboard(
+                str(output_dir / f"pubsub_dashboard_{ts}.html")))
 
         # JSON
-        console.print("[cyan]Generando reporte JSON...[/cyan]")
-        json_path = dashboard.generate_json_report(str(output_dir / "report.json"))
+        if output in ("all", "json"):
+            console.print("[cyan]Generando reporte JSON...[/cyan]")
+            generated.append(dashboard.generate_json_report(
+                str(output_dir / f"pubsub_report_{ts}.json")))
 
         # Excel
-        console.print("[cyan]Generando reporte Excel...[/cyan]")
-        excel_path = dashboard.generate_excel_report(str(output_dir / "report.xlsx"))
+        if output in ("all", "excel"):
+            console.print("[cyan]Generando reporte Excel...[/cyan]")
+            generated.append(dashboard.generate_excel_report(
+                str(output_dir / f"pubsub_report_{ts}.xlsx")))
 
-        console.print(Panel(
-            f"[green]✅ Reportes generados en:[/green]\n{output_dir}",
-            style="green"
-        ))
+        if generated:
+            console.print(Panel(
+                "[green]✅ Reportes generados:[/green]\n" + "\n".join(generated),
+                style="green"
+            ))
+        else:
+            console.print("[yellow]No se generaron archivos (formato console)[/yellow]")
 
-        Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
+        if pause:
+            Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
 
     def display_configuration(self) -> None:
         """Muestra configuración actual."""
@@ -260,12 +299,76 @@ class PubSubMonitor:
 
         Prompt.ask("[cyan]Presiona Enter para continuar[/cyan]")
 
+    def run_cli(self, action: str = "full", output: str = "all") -> int:
+        """
+        Ejecuta el monitor en modo no-interactivo (CLI/launcher).
+
+        Args:
+            action: "full" (análisis + reportes) o "alerts" (solo recolección + alertas)
+            output: "all" | "html" | "json" | "excel" | "console"
+
+        Returns:
+            Código de salida (0 ok, 1 error)
+        """
+        if not self.projects:
+            console.print("[red]❌ No hay proyectos configurados[/red]")
+            return 1
+
+        console.print(Panel(
+            "[bold cyan]📊 Pub/Sub Monitor[/bold cyan]\n"
+            f"[cyan]Proyectos:[/cyan] {', '.join(self.projects)}",
+            style="blue"
+        ))
+
+        if action == "alerts":
+            self.run_alerts_only(pause=False)
+            return 0
+
+        # full: análisis completo + reportes
+        self.run_full_analysis(pause=False)
+        self.generate_reports(pause=False, output=output)
+        return 0
+
 
 def main():
     """Función principal."""
-    config_path = "scm/config.json"
+    parser = argparse.ArgumentParser(
+        description="Pub/Sub Monitor - Monitoreo multi-proyecto de Google Cloud Pub/Sub")
+    parser.add_argument("--config", default="scm/config.json",
+                        help="Ruta del archivo de configuración")
+    proj_group = parser.add_mutually_exclusive_group()
+    proj_group.add_argument("--project", help="Proyecto GCP único")
+    proj_group.add_argument("--multi-project",
+                            help="Proyectos GCP separados por comas (ej. ALL ya resuelto por el launcher)")
+    parser.add_argument("--action", choices=["full", "alerts"], default="full",
+                        help="full: análisis + reportes | alerts: solo evaluación de alertas")
+    parser.add_argument("-o", "--output", choices=["all", "html", "json", "excel", "console"],
+                        default="all", help="Formato(s) de reporte a generar")
+    parser.add_argument("--interactive", action="store_true",
+                        help="Forzar menú interactivo aunque se pasen argumentos")
+    args = parser.parse_args()
 
-    monitor = PubSubMonitor(config_path)
+    cli_mode = not args.interactive and bool(
+        args.project or args.multi_project or args.action != "full" or args.output != "all")
+
+    projects = None
+    if args.project:
+        projects = [args.project]
+    elif args.multi_project:
+        projects = [p.strip() for p in args.multi_project.split(",") if p.strip()]
+
+    monitor = PubSubMonitor(args.config, projects=projects)
+
+    if cli_mode:
+        sys.exit(monitor.run_cli(action=args.action, output=args.output))
+
+    # Sin argumentos de ejecución → menú interactivo (requiere TTY)
+    if not sys.stdin or not sys.stdin.isatty():
+        console.print(
+            "[red]❌ Modo interactivo requiere TTY.[/red] "
+            "Use --project o --multi-project para ejecución no-interactiva.")
+        sys.exit(2)
+
     monitor.run_interactive_menu()
 
 

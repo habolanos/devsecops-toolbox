@@ -250,6 +250,7 @@ MULTI_PROJECT_PARAM_SCRIPTS = {
     "gke_deployments_report",
     "gke_monitor_node",
     "event_tracker",
+    "run",
 }
 
 # Definición de las herramientas disponibles (con grupo asignado)
@@ -621,7 +622,9 @@ TOOLS = {
         "name": "Pub/Sub Monitor - Multi-Proyecto",
         "description": "Monitoreo profesional de Google Cloud Pub/Sub con soporte multi-proyecto, alertas preventivas (25+ reglas) y dashboards ejecutivos. Soporta 12 proyectos GCP de CPL (cmanager, cs-csc, cs-wms, oms)",
         "path": "pubsub_monitor/run.py",
-        "args": [],
+        "args": ["--project", "--multi-project", "-o"],
+        "export_choices": ["all", "html", "json", "excel", "console"],
+        "export_default": "all",
         "requirements": "pubsub_monitor/requirements.txt",
         "group": "monitoring",
         "status": "ready",
