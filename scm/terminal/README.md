@@ -24,6 +24,8 @@ devsecops-toolbox/scm/terminal/
 │   ├── cert_backup_and_renew_tls_certs.sh
 │   ├── cert_check-certificate-report.sh
 │   └── cert_report_ssl_certs_gcp_components.sh
+├── azdo_check_scm_inspection/        # Script 10 — Violaciones del stage SCM Inspection (AzDO)
+│   └── inspection_errors.sh
 ├── config.json.template              # Plantilla de configuración
 └── outcome/                          # Carpeta de reportes exportados (.txt)
 ```
@@ -250,12 +252,43 @@ python operation_update_certs_on_gke_gcp/tools.py
 > (`tls-backups-*/`, `update-certs-*.yaml`, `evidencia-*.html`) se generan en la
 > misma carpeta del módulo.
 
+### Script 10 — `azdo_check_scm_inspection/inspection_errors.sh` ⭐ Nuevo
+
+Extrae las violaciones que reporta el stage **"SCM Inspection"** de los release
+pipelines de Azure DevOps. El stage imprime cada violación como bloques
+`##[warning]`/`##[error]`; el script descarga los logs de las tareas del último
+run del stage y los parsea a CSV (severidad, regla, environment, variable,
+razón, detalle, task).
+
+#### Uso
+
+```bash
+# Desde el launcher: opción 10 en Terminal Tools (prompts guiados)
+# O directamente:
+./azdo_check_scm_inspection/inspection_errors.sh <definitionId|nombre>
+./azdo_check_scm_inspection/inspection_errors.sh --all [--severity critical,high]
+./azdo_check_scm_inspection/inspection_errors.sh 787 --release 60150 --keep-logs
+```
+
+#### Autenticación y salida
+
+- **PAT**: `AZDO_PAT` (env) → si falta, `scm/config.json` `azdo.pat`.
+  `AZDO_ORG`/`AZDO_PROJECT` también caen a `azdo.organization`/`azdo.project`.
+- **Salida**: `inspection_violations_*.csv`, `inspection_project_summary_*.csv`,
+  `inspection_project_violations_*.csv` y `inspection_logs_<releaseId>/` se
+  escriben en el **outcome resuelto**: `DEVSECOPS_OUTPUT_DIR` →
+  `global.output_dir` en config.json → `scm/outcome/`.
+
+> **Requisitos**: `bash` 4.3+, `curl`, `jq` 1.6+. El modo `--all` escanea las
+> pipelines en paralelo (`AZDO_CONCURRENCY`, `AZDO_REQUEST_DELAY_MS`).
+
 ---
 
 ## Historial de cambios
 
 | Fecha | Versión | Cambio | Archivos |
 |-------|---------|--------|---------|
+| 2026-10-04 | 1.0.7 | **Script 10: AzDO SCM Inspection Violations** — `inspection_errors.sh` registrado en el launcher (prompts: pipeline/`--all`, severidad, stage, `--release`, `--keep-logs`). El script ahora resuelve salida al outcome global (`DEVSECOPS_OUTPUT_DIR` → `global.output_dir` → `scm/outcome`) y lee credenciales de `config.json` (`azdo.pat`/`organization`/`project`) como fallback de las env vars. `prepare_env_from_config` también inyecta `AZDO_*` al hijo. Tests en `test_terminal_tools.py`. | `azdo_check_scm_inspection/inspection_errors.sh`, `tools.py`, `README.md` |
 | 2026-09-29 | 1.0.6 | **Cert backup/renew: salida única en outcome global** — `cert_backup_and_renew_tls_certs.sh` ahora agrupa `tls-backups/`, `update-certs-*.yaml` y `evidencia-*.html` en `<OUTCOME>/certs-<cluster>-<ts>/`. Resolución de `<OUTCOME>`: `DEVSECOPS_OUTPUT_DIR` → `scm/config.json` (`global.output_dir`) → `scm/outcome`. El submenú (v1.0.1) inyecta `DEVSECOPS_OUTPUT_DIR` resuelto al ejecutar standalone. | `operation_update_certs_on_gke_gcp/cert_backup_and_renew_tls_certs.sh`, `operation_update_certs_on_gke_gcp/tools.py`, `operation_update_certs_on_gke_gcp/README.md`, `tools.py` |
 | 2026-09-29 | 1.0.5 | **Script 9: Cert Manager Tools (submenú Python)** — Nuevo launcher `operation_update_certs_on_gke_gcp/tools.py` con interfaz Rich: agrupa los 3 scripts de certificados (backup/renovación Secrets TLS, validación TLS de endpoint, inventario ssl-certificates GCP) más una opción de verificación de prerrequisitos (kubectl/gcloud/bash/openssl/jq). Prompts guiados para `--base-cert-file`, host/puerto, PROJECT_ID y `--todos`; exportación del inventario a `outcome/`. `tools.py` (terminal) v1.0.5. | `operation_update_certs_on_gke_gcp/tools.py` (nuevo), `tools.py`, `README.md` |
 | 2026-09-29 | 1.0.4 | **Script 8: Setup Entorno DevOps (Linux/WSL)** — Nueva opción en el menú que ejecuta `operation_setup_initial/install-devops-tools.sh`: instala el toolchain SCM DevOps en Ubuntu/WSL (gcloud, kubectl, gke-gcloud-auth-plugin, kubectx/kubens, k9s, jq, python3, pipx, nodejs, git) vía apt con validación final de versiones. `tools.py` v1.0.4. | `operation_setup_initial/install-devops-tools.sh`, `tools.py`, `README.md` |

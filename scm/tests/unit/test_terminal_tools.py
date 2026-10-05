@@ -84,6 +84,62 @@ class TestSetupEntornoDevOpsOption:
 
 
 @requires_tools
+class TestScmInspectionOption:
+    def test_opcion_10_registrada(self):
+        assert "10" in terminal_tools.SCRIPTS
+
+    def test_opcion_10_apunta_a_inspection_errors(self):
+        script = terminal_tools.SCRIPTS["10"]
+        assert script["path"] == "azdo_check_scm_inspection/inspection_errors.sh"
+        assert script["type"] == "shell"
+        assert script["status"] == "ready"
+        assert script["args"] == ["inspection"]
+
+    def test_script_existe_y_es_bash(self):
+        path = terminal_tools.BASE_DIR / terminal_tools.SCRIPTS["10"]["path"]
+        assert path.exists(), f"No existe: {path}"
+        first_line = path.read_text(encoding="utf-8").splitlines()[0]
+        assert first_line.startswith("#!") and "bash" in first_line
+
+    def test_script_sintaxis_bash_valida(self):
+        import shutil
+        import subprocess
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash no disponible en este entorno")
+        path = terminal_tools.BASE_DIR / terminal_tools.SCRIPTS["10"]["path"]
+        result = subprocess.run([bash, "-n", str(path)], capture_output=True)
+        assert result.returncode == 0, result.stderr.decode()
+
+    def test_script_resuelve_outcome_y_config_azdo(self):
+        """El script debe usar outcome resuelto y leer credenciales de config.json."""
+        path = terminal_tools.BASE_DIR / terminal_tools.SCRIPTS["10"]["path"]
+        content = path.read_text(encoding="utf-8")
+        assert "DEVSECOPS_OUTPUT_DIR" in content
+        assert "global.output_dir" in content
+        assert "OUTCOME_DIR" in content
+        assert ".azdo.pat" in content
+        assert "scm/config.json" in content
+
+    def test_env_prepara_credenciales_azdo(self, monkeypatch):
+        """prepare_env_from_config inyecta AZDO_* desde config.json (sin pisar env)."""
+        monkeypatch.setattr(terminal_tools, "load_config",
+                            lambda: {"azdo": {"pat": "tok", "organization": "MyOrg",
+                                              "project": "MyProj"}})
+        env = terminal_tools.prepare_env_from_config()
+        assert env["AZDO_PAT"] == "tok"
+        assert env["AZDO_ORG"] == "MyOrg"
+        assert env["AZDO_PROJECT"] == "MyProj"
+
+    def test_env_azdo_no_pisa_env_existente(self, monkeypatch):
+        monkeypatch.setenv("AZDO_PAT", "env-pat")
+        monkeypatch.setattr(terminal_tools, "load_config",
+                            lambda: {"azdo": {"pat": "cfg-pat"}})
+        env = terminal_tools.prepare_env_from_config()
+        assert env["AZDO_PAT"] == "env-pat"
+
+
+@requires_tools
 class TestCertManagerMenuEntry:
     def test_opcion_9_registrada(self):
         assert "9" in terminal_tools.SCRIPTS

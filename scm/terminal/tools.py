@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -114,7 +114,16 @@ def prepare_env_from_config() -> Dict[str, str]:
             env["TERMINAL_DB_NAME"] = single["name"]
         if single.get("url"):
             env["TERMINAL_DB_URL"] = single["url"]
-    
+
+    # Credenciales de Azure DevOps (inspection_errors.sh y otros scripts azdo)
+    azdo_config = config.get("azdo", {})
+    if azdo_config.get("pat"):
+        env.setdefault("AZDO_PAT", azdo_config["pat"])
+    if azdo_config.get("organization"):
+        env.setdefault("AZDO_ORG", azdo_config["organization"])
+    if azdo_config.get("project"):
+        env.setdefault("AZDO_PROJECT", azdo_config["project"])
+
     return env
 
 class Colors:
@@ -196,6 +205,14 @@ SCRIPTS = {
         "args": [],
         "status": "ready",
         "type": "python"
+    },
+    "10": {
+        "name": "AzDO SCM Inspection Violations",
+        "description": "Extrae violaciones del stage 'SCM Inspection' de release pipelines Azure DevOps (una pipeline o todas con --all). Requiere curl+jq; PAT desde AZDO_PAT o config.json azdo.pat. CSVs en outcome/.",
+        "path": "azdo_check_scm_inspection/inspection_errors.sh",
+        "args": ["inspection"],
+        "status": "ready",
+        "type": "shell"
     },
     "_system_options": {
         "Q": {
@@ -418,6 +435,35 @@ def run_script(script_key: str):
         no_cmds = input(f"{Colors.BOLD}¿Desactivar exportación de comandos PRD? (s/n) [n]: {Colors.ENDC}").strip().lower()
         if no_cmds == "s":
             cmd.append("--no-commands")
+
+    if "inspection" in args:
+        # azdo_check_scm_inspection/inspection_errors.sh
+        if not os.environ.get("AZDO_PAT"):
+            cfg_pat = load_config().get("azdo", {}).get("pat")
+            pat_src = "config.json (azdo.pat)" if cfg_pat else "NO CONFIGURADO — defina azdo.pat o exporte AZDO_PAT"
+            print(f"{Colors.DIM}PAT: {pat_src}{Colors.ENDC}")
+        scope = input(f"{Colors.BOLD}Pipeline (ID o nombre) o 'ALL' para todas: {Colors.ENDC}").strip()
+        if not scope:
+            print(f"{Colors.FAIL}Se requiere una pipeline o ALL.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
+            return
+        if scope.lower() == "all":
+            cmd.append("--all")
+        else:
+            cmd.append(scope)
+        sev = input(f"{Colors.BOLD}Severidad a mostrar, ej. critical,high [default del script]: {Colors.ENDC}").strip()
+        if sev:
+            cmd.extend(["--severity", sev])
+        stage = input(f"{Colors.BOLD}Stage a inspeccionar [SCM Inspection]: {Colors.ENDC}").strip()
+        if stage:
+            cmd.extend(["--stage", stage])
+        if scope.lower() != "all":
+            rel = input(f"{Colors.BOLD}Release ID (vacío = último run del stage): {Colors.ENDC}").strip()
+            if rel:
+                cmd.extend(["--release", rel])
+            keep = input(f"{Colors.BOLD}¿Guardar logs crudos del stage en outcome/? (s/n) [n]: {Colors.ENDC}").strip().lower()
+            if keep == "s":
+                cmd.append("--keep-logs")
 
     print(f"\n{Colors.CYAN}Ejecutando: {' '.join(cmd)}{Colors.ENDC}\n")
     
