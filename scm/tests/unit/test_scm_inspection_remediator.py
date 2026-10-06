@@ -251,3 +251,197 @@ class TestLauncherWiring:
 
     def test_script_existe(self):
         assert (azdo_tools.BASE_DIR / azdo_tools.TOOLS["44"]["path"]).exists()
+
+
+class _FakeClient:
+    """AzdoClient simulado: sirve definición, deployments, release y logs."""
+
+    def __init__(self, definition, deployments, release, logs):
+        self.base = "https://vsrm.dev.azure.com/o/p/_apis/release"
+        self._definition, self._deployments = definition, deployments
+        self._release, self._logs = release, logs
+        self.calls = []
+
+    def get(self, url, raw=False, params=None):
+        self.calls.append(url)
+        if url.endswith("/definitions/1837"):
+            return self._definition
+        if url.endswith("/deployments"):
+            return self._deployments
+        if "/releases/61141" in url and "/logs" not in url:
+            return self._release
+        if "/logs" in url:
+            return self._logs
+        raise AssertionError(f"URL inesperada: {url}")
+
+
+def _fake_discovery():
+    definition = {"name": "pipe-CD", "environments": [
+        {"id": 1, "name": "SCM Inspection", "variables": {}},
+        {"id": 2, "name": "Production",
+         "variables": {"ksa": {"value": "v"}}}]}
+    deployments = {"value": [{"deploymentStatus": "succeeded",
+                              "release": {"id": 61141}}]}
+    release = {"name": "Release-74", "id": 61141, "environments": [
+        {"id": 10, "name": "SCM Inspection", "status": "rejected",
+         "deploySteps": [{"attempt": 1, "releaseDeployPhases": [
+             {"id": 5, "deploymentJobs": [{"tasks": [
+                 {"name": "inspect", "status": "failed",
+                  "logUrl": "https://x/logs"}]}]}]}]}]}
+    log = ("##[error] [HIGH] RULE_1_SECRET\n##[error]   Environment: "
+           "'Production'\n##[error]   Variable: 'ksa'\n"
+           "##[error]   ksa not marked secret\n\n")
+    return _FakeClient(definition, deployments, release, log)
+
+
+class TestDiscover:
+    def test_ultimo_run_y_parseo(self):
+        d = rem.discover(_fake_discovery(), "1837", "SCM Inspection")
+        assert d["release"]["id"] == 61141
+        assert len(d["violations"]) == 1
+        assert d["violations"][0]["rule"] == "RULE_1_SECRET"
+        assert d["violations"][0]["environment"] == "Production"
+
+    def test_release_explicito_salta_deployments(self):
+        client = _fake_discovery()
+        d = rem.discover(client, "1837", "SCM Inspection",
+                         release_id="61141")
+        assert not any(u.endswith("/deployments") for u in client.calls)
+        assert d["release"]["id"] == 61141
+
+    def test_salta_deployments_notDeployed(self):
+        client = _fake_discovery()
+        client._deployments["value"].insert(
+            0, {"deploymentStatus": "notDeployed",
+                "release": {"id": 99999}})
+        d = rem.discover(client, "1837", "SCM Inspection")
+        assert d["release"]["id"] == 61141
+
+    def test_stage_inexistente_sale(self):
+        client = _fake_discovery()
+        with pytest.raises(SystemExit):
+            rem.discover(client, "1837", "Stage Fantasma")
+
+    def test_stage_nunca_corrio_sale(self):
+        client = _fake_discovery()
+        client._deployments = {"value": [
+            {"deploymentStatus": "notDeployed", "release": {"id": 1}}]}
+        with pytest.raises(SystemExit):
+            rem.discover(client, "1837", "SCM Inspection")
+
+    def test_dedup_violaciones_repetidas(self):
+        client = _fake_discovery()
+        rel = client._release["environments"][0]
+        rel["deploySteps"][0]["releaseDeployPhases"][0][
+            "deploymentJobs"][0]["tasks"].append(
+            {"name": "inspect2", "status": "failed",
+             "logUrl": "https://x/logs"})
+        d = rem.discover(client, "1837", "SCM Inspection")
+        assert len(d["violations"]) == 1  # misma violación en 2 tasks → dedup
+
+
+class TestApplyTemplate:
+    def test_comando_invoca_pipeline_updater(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setattr(rem.subprocess, "run",
+                            lambda cmd, cwd: calls.append((cmd, cwd))
+                            or type("R", (), {"returncode": 0})())
+        tpl = tmp_path / "pipe_cd_fix.yaml"
+        rc = rem.apply_template(tpl, "1837", "org", "proj", "pat",
+                                dry_run=True)
+        assert rc == 0
+        cmd, cwd = calls[0]
+        assert "scm.azdo.pipeline_updater.pipeline_updater" in cmd
+        assert "--dry-run" in cmd and "--template" in cmd
+        assert cmd[cmd.index("--definition-ids") + 1] == "1837"
+
+    def test_apply_sin_dry_run_flag(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setattr(rem.subprocess, "run",
+                            lambda cmd, cwd: calls.append(cmd)
+                            or type("R", (), {"returncode": 0})())
+        rem.apply_template(tmp_path / "t.yaml", "1", "o", "p", "pat",
+                           dry_run=False)
+        assert "--dry-run" not in calls[0]
+
+
+class _Args:
+    definition_id = "1837"
+    stage = rem.DEFAULT_STAGE
+    release_id = ""
+    org = project = pat = "x"
+    set = None
+    tbd = False
+    apply = False
+    dry_run = False
+    interactive = True
+
+
+class TestRunFlow:
+    def _setup(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(rem, "get_azdo_params", lambda a: ("o", "p", "pat"))
+        monkeypatch.setattr(rem, "AzdoClient", lambda *a: _fake_discovery())
+        monkeypatch.setattr(rem, "resolve_outcome_dir", lambda: tmp_path)
+
+    def test_solo_template_sin_aplicar(self, monkeypatch, tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        applied = []
+        monkeypatch.setattr(rem, "apply_template",
+                            lambda *a, **k: applied.append(1) or 0)
+        # Enter en confirmación de resumen + "1" solo template en menú final
+        inputs = iter(["", "1"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        rc = rem.run_flow(args, interactive=True)
+        assert rc == 0 and applied == []
+        assert list(tmp_path.glob("pipe_cd_inspection_fix_1837_*.yaml"))
+
+    def test_apply_invoca_updater(self, monkeypatch, tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        applied = []
+        monkeypatch.setattr(rem, "apply_template",
+                            lambda *a, **k: applied.append(k) or 0)
+        args = _Args()
+        args.apply = True
+        rc = rem.run_flow(args, interactive=False)
+        assert rc == 0 and applied and applied[0]["dry_run"] is False
+
+    def test_flujo_tbd_sin_prompts(self, monkeypatch, tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        monkeypatch.setattr(rem, "apply_template", lambda *a, **k: 0)
+        inputs = iter(["", "1"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        args.tbd = True
+        rc = rem.run_flow(args, interactive=True)
+        assert rc == 0
+        tpl = list(tmp_path.glob("*.yaml"))[0]
+        assert "isSecret" in tpl.read_text(encoding="utf-8")
+
+    def test_sin_violaciones_retorna_0(self, monkeypatch, tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        empty = _fake_discovery()
+        empty._logs = "sin violaciones\n"
+        monkeypatch.setattr(rem, "AzdoClient", lambda *a: empty)
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        assert not list(tmp_path.glob("*.yaml"))
+
+
+class TestCsvActionColumn:
+    SCRIPT = Path(__file__).parent.parent.parent / "terminal" / \
+        "azdo_check_scm_inspection" / "inspection_errors.sh"
+
+    def test_header_csv_incluye_action(self):
+        content = self.SCRIPT.read_text(encoding="utf-8")
+        headers = [l for l in content.split("\n")
+                   if "SEVERITY,RULE,ENVIRONMENT" in l]
+        assert len(headers) >= 2
+        assert all(",ACTION," in h for h in headers)
+
+    def test_funcion_action_for_existe(self):
+        content = self.SCRIPT.read_text(encoding="utf-8")
+        assert "ACTION" in content
+        assert "mark-secret" in content
+        assert "add-missing" in content
+        assert "define-or-remove" in content
