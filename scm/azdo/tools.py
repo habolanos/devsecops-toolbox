@@ -430,7 +430,7 @@ TOOLS: Dict = {
     },
     "44": {
         "name":        "SCM Inspection Remediator",
-        "description": "Descubre violaciones del stage 'SCM Inspection' del pipeline CD y genera un template pipe_cd_inspection_fix_<id>.yaml en outcome/ con las correcciones (secrets, paridad de variables, valores vacíos). Opción de dry-run o aplicación directa via Pipeline Updater (opción 41).",
+        "description": "Descubre violaciones del stage 'SCM Inspection' del pipeline CD y genera un template pipe_cd_inspection_fix_<id>.yaml en outcome/ con las correcciones (secrets, paridad de variables, valores vacíos). Aplica al definition via Pipeline Updater (opción 41) y/o directamente a un Release (último descubierto o específico) vía PUT con backup.",
         "path":        "scm_inspection_remediator.py",
         "args":        ["--interactive"],
         "group":       "updatepipe",

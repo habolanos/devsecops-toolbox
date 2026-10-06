@@ -839,6 +839,37 @@ mismo Definition ID.
 > ya descubiertas del release actual del pipeline CD. Para re-descubrir (otro
 > release o un Definition ID distinto) se debe salir (`[0]`) y ejecutar de nuevo.
 
+#### Destino de la aplicación
+
+Tras generar el template se elige **dónde** aplicar los ajustes:
+
+```
+[1] Solo template (aplicar luego con opción 41)
+[2] Dry-run sobre la definición del pipeline
+[3] Aplicar a la definición del pipeline
+[4] Dry-run sobre un release (default #<último descubierto>)
+[5] Aplicar a un release (default #<último descubierto>)
+[6] Aplicar a definición + release
+[0] Salir
+```
+
+- **Definición** (`1`–`3`): aplica el template `pipe_cd_*.yaml` a la release
+  **definition** del pipeline CD via Pipeline Updater (opción 41), que incluye
+  sus propios snapshots/rollback.
+- **Release** (`4`–`6`): aplica los mismos ajustes directamente sobre una
+  **instancia de release** — `release.variables` y `environments[].variables`
+  via PUT `releases/{id}`. El default es el release descubierto en el análisis
+  (último que corrió el stage); también acepta escribir un **release ID
+  específico**. Soporta `add`/`update`/`remove`/`isSecret` (casos que el motor
+  de la opción 42 no cubre), crea backup del release en
+  `outcome/backups/` antes del PUT y pide confirmación `[s/N]` en aplicación
+  real.
+- Con `[6]` la definición se aplica primero; si falla, el release se omite.
+
+> **Cuándo usar cada destino**: la definición corrige futuros releases; el
+> release actualiza el snapshot de variables de una instancia ya creada
+> (útil para re-correr el stage SCM Inspection sobre el mismo release).
+
 #### Modo CLI
 
 ```bash
@@ -846,10 +877,14 @@ python -m scm.azdo.scm_inspection_remediator \
   --definition-id <id> \
   [--stage "SCM Inspection"] [--release-id <id>] \
   [--set NAME=VALUE ...] [--remove NAME ...] [--tbd] \
+  [--target definition|release|both] \
   [--apply | --dry-run]
 ```
 
 Sin `--apply` ni `--dry-run` el modo no interactivo solo genera el template.
+`--target` (default `definition`) selecciona el destino de `--apply`/`--dry-run`;
+con `release`/`both` el release destino es `--release-id` o, si no se indica,
+el último release descubierto del stage.
 
 ---
 
@@ -963,6 +998,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-06 | 1.8.22 | **SCM Inspection Remediator: aplicar a un Release (instancia)** — Nuevo destino de aplicación además de la definición: PUT directo sobre `release.variables`/`environments[].variables` del último release descubierto o uno específico. Soporta `add`/`update`/`remove`/`isSecret` (incl. desmarcar), backup en `outcome/backups/` y confirmación `[s/N]`. Menú con opciones `4`/`5`/`6` y flag `--target definition|release|both` en CLI. Sección 9 del README actualizada. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.21 | **Docs: sección funcional de la opción 44** — Nueva sección `9 · SCM Inspection Remediator` con flujo interactivo, menú de confirmación completo, opciones del editor y detalle de `[r]` (recarga ajustes desde las violaciones del Definition ID del pipeline CD, sin re-consultar AzDO). | `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.20 | **SCM Inspection Remediator: `[r]` recargar ajustes** — Nueva opción en la confirmación: reconstruye los ajustes candidatos desde las violaciones conservando los valores pendientes capturados y los removes; descarta las ediciones manuales de `e`/`v`. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py` |
 | 2026-10-06 | 1.8.19 | **SCM Inspection Remediator: toggle isSecret (`k`)** — En el editor de ajustes (`e`/`v`), `k` marca una variable como secreta (`isSecret: true`) o la desmarca explícitamente (`isSecret: false` — el updater aplica el desmarque). Indicadores 🔒/🔓 en la tabla; no aplica a `remove`. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py` |

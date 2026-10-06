@@ -11,6 +11,11 @@ El template se aplica con el motor existente:
     python -m scm.azdo.pipeline_updater.pipeline_updater \
         --definition-ids <id> --template <tpl> [--dry-run]
 
+Además de la definición, los ajustes pueden aplicarse directamente sobre un
+Release (instancia): el descubierto por defecto o un release específico,
+modificando release.variables y environments[].variables via PUT
+(--target release|both).
+
 Accionables soportados:
   - RULE_1_SECRET            → isSecret: true en el stage afectado
   - STAGE_VARIABLES pipeline → valor a nivel release (pide valor / TBD / remove)
@@ -22,12 +27,17 @@ Uso:
     python scm_inspection_remediator.py --interactive
     python scm_inspection_remediator.py --definition-id 1837 --dry-run
     python scm_inspection_remediator.py --definition-id 1837 --apply
+    python scm_inspection_remediator.py --definition-id 1837 --apply --target both
+    python scm_inspection_remediator.py --definition-id 1837 --apply \
+        --target release --release-id 61062
     python scm_inspection_remediator.py --definition-id 1837 --tbd
     python scm_inspection_remediator.py --definition-id 1837 --remove tuSecret
     python scm_inspection_remediator.py --definition-id 1837 --set region=us-central1
 """
 
 import argparse
+import copy
+import json
 import re
 import subprocess
 import sys
@@ -142,6 +152,26 @@ class AzdoClient:
                 sys.exit("ERROR: autenticación fallida (verifique azdo.pat, "
                          "scope 'Release (Read)').")
             sys.exit(f"ERROR: HTTP {resp.status_code} — {url}\n{resp.text[:500]}")
+        sys.exit(f"ERROR: agotados los reintentos para {url}")
+
+    def put(self, url: str, payload: dict, params: dict = None):
+        """PUT con la misma política de reintentos que get()."""
+        for attempt in range(4):
+            resp = self.session.put(url, json=payload, params=params,
+                                    timeout=60)
+            if resp.status_code == 200:
+                return resp.json()
+            if resp.status_code == 429 or resp.status_code >= 500:
+                wait = int(resp.headers.get("Retry-After", (attempt + 1) * 2))
+                console.print(f"  [yellow]HTTP {resp.status_code} — "
+                              f"reintentando en {wait}s...[/]")
+                time.sleep(wait)
+                continue
+            if resp.status_code in (203, 401):
+                sys.exit("ERROR: autenticación fallida (verifique azdo.pat, "
+                         "scope 'Release (Read, write & execute)').")
+            sys.exit(f"ERROR: HTTP {resp.status_code} — {url}\n"
+                     f"{resp.text[:500]}")
         sys.exit(f"ERROR: agotados los reintentos para {url}")
 
 
@@ -765,6 +795,141 @@ def apply_template(template_path: Path, definition_id: str,
 
 
 # ---------------------------------------------------------------------------
+# Aplicación sobre un Release (instancia)
+# ---------------------------------------------------------------------------
+
+def _release_vars_map(updated: dict, rule: dict):
+    """Devuelve (vars_map, loc, error) para aplicar `rule` sobre un release.
+
+    scope=environment → environments[nombre].variables (match case-insensitive)
+    scope=release     → release.variables
+    """
+    if rule.get("scope") == "environment":
+        stage = rule.get("stage") or ""
+        env = next((e for e in updated.get("environments", [])
+                    if e.get("name", "").lower() == stage.lower()), None)
+        if env is None:
+            return None, stage, f"stage '{stage}' no existe en el release"
+        return env.setdefault("variables", {}), stage, ""
+    return updated.setdefault("variables", {}), "release", ""
+
+
+def _backup_release(release: dict, out_dir: Path) -> Path:
+    """Snapshot del release antes del PUT. Reutiliza create_backup de la
+    opción 42; si no es importable, guarda el JSON crudo."""
+    bdir = Path(out_dir or resolve_outcome_dir()) / "backups"
+    bdir.mkdir(parents=True, exist_ok=True)
+    try:
+        from scm.azdo.pipeline_cd_update_release.pipeline_cd_update_release \
+            import create_backup
+        path, _label = create_backup(release, str(bdir))
+        return Path(path)
+    except Exception:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = bdir / f"release_backup_{release.get('id', '?')}_{ts}.json"
+        path.write_text(json.dumps(release, indent=2, ensure_ascii=False),
+                        encoding="utf-8")
+        return path
+
+
+def apply_rules_to_release(client: AzdoClient, release_id: str, rules: list,
+                           out_dir: Path = None, dry_run: bool = False,
+                           prompt_fn=None) -> int:
+    """Aplica las reglas candidatas sobre un Release (instancia) via PUT.
+
+    Soporta add/update/remove/isSecret sobre release.variables y
+    environments[].variables — casos que el motor de la opción 42 no cubre.
+    `prompt_fn` (interactivo) pide confirmación antes del PUT real.
+    """
+    release = client.get(f"{client.base}/releases/{release_id}",
+                         params={"api-version": "7.1"})
+    updated = copy.deepcopy(release)
+    rows, errors, mutated = [], 0, 0
+
+    for r in rules:
+        name, action = r["name"], r["action"]
+        vars_map, loc, err = _release_vars_map(updated, r)
+        if err:
+            errors += 1
+            rows.append([action, name, loc, "", "", f"ERROR: {err}"])
+            continue
+        cur = vars_map.get(name)
+        old = mask_value({"name": name,
+                          "isSecret": (cur or {}).get("isSecret")},
+                         (cur or {}).get("value"))
+        if action == "remove":
+            if cur is None:
+                rows.append([action, name, loc, old, "-",
+                             "ya ausente — sin cambio"])
+                continue
+            del vars_map[name]
+            mutated += 1
+            rows.append([action, name, loc, old, "-", "eliminada"])
+            continue
+        entry = dict(cur) if cur else {"allowOverride": True}
+        if r.get("value") is not None or "value" not in entry:
+            entry["value"] = r.get("value")
+        if "isSecret" in r:
+            entry["isSecret"] = bool(r["isSecret"])
+        same = cur is not None and cur.get("value") == entry.get("value") \
+            and bool(cur.get("isSecret")) == bool(entry.get("isSecret"))
+        if not same:
+            vars_map[name] = entry
+            mutated += 1
+        new = mask_value({"name": name, "isSecret": entry.get("isSecret")},
+                         entry.get("value"))
+        if cur is None:
+            res = "creada" if action == "add" else \
+                "no existía — creada como override"
+        elif same:
+            res = "ya estaba correcto — sin cambio"
+        else:
+            res = "actualizada"
+        rows.append([action, name, loc, old, new, res])
+
+    table = Table(title=f"Cambios sobre Release #{release_id} — "
+                        f"{release.get('name', '')}",
+                  box=box.SIMPLE_HEAD, header_style="bold cyan")
+    for col in ("Acción", "Variable", "Scope", "Anterior", "Nuevo",
+                "Resultado"):
+        table.add_column(col)
+    for action, name, loc, old, new, res in rows:
+        style = ACTION_STYLE.get(action, "")
+        table.add_row(f"[{style}]{action}[/]" if style else action,
+                      name, loc, str(old), str(new), res)
+    console.print(table)
+
+    if errors:
+        console.print(f"[yellow]{ICON_WARN} {errors} regla(s) con error "
+                      f"(no aplicables).[/]")
+    if dry_run:
+        console.print(f"[yellow]{ICON_RUN} DRY-RUN sobre release — sin "
+                      f"cambios aplicados ({mutated} pendiente(s)).[/]")
+        return 0
+    if not mutated:
+        console.print("[yellow]Sin cambios para aplicar al release.[/]")
+        return 0
+
+    backup = _backup_release(release, out_dir)
+    console.print(f"[green]{ICON_DOC} Backup del release:[/] "
+                  f"[bold]{backup}[/]")
+
+    if prompt_fn:
+        ans = prompt_fn(
+            f"  [bold]Aplicar {mutated} cambio(s) al release "
+            f"#{release_id}?[/] \\[[cyan]s/N[/]]: ").strip().lower()
+        if ans not in ("s", "si", "y", "yes"):
+            console.print("[yellow]Aplicación al release cancelada.[/]")
+            return 0
+
+    client.put(f"{client.base}/releases/{release_id}", updated,
+               params={"api-version": "7.1"})
+    console.print(f"[bold green]{ICON_OK} Release #{release_id} "
+                  f"actualizado ({mutated} cambio(s)).[/]")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Interfaz
 # ---------------------------------------------------------------------------
 
@@ -937,16 +1102,38 @@ def run_flow(args, interactive: bool) -> int:
     console.print(f"\n[green]{ICON_DOC} Template generado:[/] "
                   f"[bold]{template}[/]")
 
+    release_target = args.release_id or \
+        str(discovery["release"].get("id", ""))
+
     if args.apply or args.dry_run:
-        rc = apply_template(template, definition_id, org, project, pat,
-                            dry_run=args.dry_run and not args.apply)
-        console.print(f"\n[bold green]{ICON_OK} Aplicado.[/]" if rc == 0
-                      else f"\n[bold red]X Falló (exit {rc}).[/]")
+        dry = args.dry_run and not args.apply
+        target = getattr(args, "target", None) or "definition"
+        rc = 0
+        if target in ("definition", "both"):
+            rc = apply_template(template, definition_id, org, project, pat,
+                                dry_run=dry)
+            console.print(f"\n[bold green]{ICON_OK} Definición "
+                          f"actualizada.[/]" if rc == 0 else
+                          f"\n[bold red]X Definición falló (exit {rc}).[/]")
+        if target in ("release", "both"):
+            if rc != 0:
+                console.print(f"[yellow]{ICON_WARN} Release omitido — "
+                              f"falló la definición.[/]")
+            else:
+                rc = apply_rules_to_release(client, release_target,
+                                            actionables["rules"],
+                                            dry_run=dry)
         return rc
 
-    console.print("\n[bold][1][/] Solo template (aplicar luego con opción 41)")
-    console.print("[bold][2][/] Dry-run (simulación)")
-    console.print("[bold][3][/] Aplicar")
+    console.print("\n[bold][1][/] Solo template (aplicar luego con "
+                  "opción 41)")
+    console.print("[bold][2][/] Dry-run sobre la definición del pipeline")
+    console.print("[bold][3][/] Aplicar a la definición del pipeline")
+    console.print(f"[bold][4][/] Dry-run sobre un release "
+                  f"(default #{release_target})")
+    console.print(f"[bold][5][/] Aplicar a un release "
+                  f"(default #{release_target})")
+    console.print("[bold][6][/] Aplicar a definición + release")
     console.print("[bold][0][/] Salir")
     choice = _rich_input("[bold]Seleccione:[/] ").strip()
     if choice == "2":
@@ -958,6 +1145,25 @@ def run_flow(args, interactive: bool) -> int:
         console.print(f"\n[bold green]{ICON_OK} Aplicado.[/]" if rc == 0
                       else f"\n[bold red]X Falló (exit {rc}).[/]")
         return rc
+    if choice in ("4", "5", "6"):
+        rel = _rich_input(
+            f"  [bold]Release ID[/] "
+            f"\\[[cyan]{release_target}[/]]: ").strip() or release_target
+        if choice == "4":
+            return apply_rules_to_release(client, rel, actionables["rules"],
+                                          dry_run=True)
+        if choice == "5":
+            return apply_rules_to_release(client, rel, actionables["rules"],
+                                          dry_run=False,
+                                          prompt_fn=_rich_input)
+        rc = apply_template(template, definition_id, org, project, pat,
+                            dry_run=False)
+        if rc != 0:
+            console.print(f"\n[bold red]X Definición falló (exit {rc}) — "
+                          f"release omitido.[/]")
+            return rc
+        return apply_rules_to_release(client, rel, actionables["rules"],
+                                      dry_run=False, prompt_fn=_rich_input)
     return 0
 
 
@@ -972,7 +1178,14 @@ def main():
     parser.add_argument("--stage", default=DEFAULT_STAGE,
                         help=f"Stage a inspeccionar (default: {DEFAULT_STAGE})")
     parser.add_argument("--release-id", default="",
-                        help="Release específico (default: último run del stage)")
+                        help="Release específico (default: último run del "
+                             "stage; también es el release destino por "
+                             "defecto con --target release|both)")
+    parser.add_argument("--target",
+                        choices=["definition", "release", "both"],
+                        default="definition",
+                        help="Destino de --apply/--dry-run: definición del "
+                             "pipeline, release (instancia) o ambos")
     parser.add_argument("--org", default=None)
     parser.add_argument("--project", default=None)
     parser.add_argument("--pat", default=None)

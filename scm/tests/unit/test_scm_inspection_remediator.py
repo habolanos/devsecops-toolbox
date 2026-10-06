@@ -664,6 +664,133 @@ class TestApplyTemplate:
         assert "--dry-run" not in calls[0]
 
 
+class _FakeRelClient:
+    """Cliente mínimo para apply_rules_to_release (get + put grabados)."""
+    base = "https://vsrm.dev.azure.com/o/p/_apis/release"
+
+    def __init__(self, release):
+        self._release = release
+        self.puts = []
+
+    def get(self, url, raw=False, params=None):
+        return self._release
+
+    def put(self, url, payload, params=None):
+        self.puts.append((url, payload))
+        return payload
+
+
+def _release_sample():
+    return {"id": 61062, "name": "Release-207",
+            "variables": {"tuSecret": {"value": "x"}},
+            "environments": [
+                {"id": 1, "name": "Production", "variables": {
+                    "ksa": {"value": "v1"},
+                    "old": {"value": "z"},
+                    "sec": {"value": None, "isSecret": True}}},
+                {"id": 2, "name": "QA", "variables": {}}]}
+
+
+class TestApplyRelease:
+    def _rule(self, name, action="update", scope="environment",
+              stage="Production", value="v", **kw):
+        r = {"name": name, "action": action, "scope": scope,
+             "value": value}
+        if stage:
+            r["stage"] = stage
+        r.update(kw)
+        return r
+
+    def test_update_env_var_e_is_secret(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rc = rem.apply_rules_to_release(client, "61062", [
+            self._rule("ksa", value="v1", isSecret=True)],
+            out_dir=tmp_path)
+        assert rc == 0 and len(client.puts) == 1
+        env = client.puts[0][1]["environments"][0]
+        assert env["variables"]["ksa"]["value"] == "v1"
+        assert env["variables"]["ksa"]["isSecret"] is True
+
+    def test_desmarcar_secret_explicito(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rem.apply_rules_to_release(client, "61062", [
+            self._rule("sec", value=None, isSecret=False)],
+            out_dir=tmp_path)
+        env = client.puts[0][1]["environments"][0]
+        assert env["variables"]["sec"]["isSecret"] is False
+        # conserva el valor actual cuando la regla no trae otro
+        assert env["variables"]["sec"]["value"] is None
+
+    def test_desmarcar_secret_con_nuevo_valor(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rem.apply_rules_to_release(client, "61062", [
+            self._rule("sec", value="plain", isSecret=False)],
+            out_dir=tmp_path)
+        env = client.puts[0][1]["environments"][0]
+        assert env["variables"]["sec"] == {"value": "plain",
+                                           "isSecret": False}
+
+    def test_add_crea_override_en_env(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rem.apply_rules_to_release(client, "61062", [
+            self._rule("nueva", action="add", stage="QA", value="n")],
+            out_dir=tmp_path)
+        env = client.puts[0][1]["environments"][1]
+        assert env["variables"]["nueva"]["value"] == "n"
+        assert env["variables"]["nueva"]["allowOverride"] is True
+
+    def test_remove_elimina_variable(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rem.apply_rules_to_release(client, "61062", [
+            self._rule("old", action="remove", stage="Production")],
+            out_dir=tmp_path)
+        env = client.puts[0][1]["environments"][0]
+        assert "old" not in env["variables"]
+
+    def test_scope_release_toca_variables_globales(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rem.apply_rules_to_release(client, "61062", [
+            self._rule("tuSecret", scope="release", stage="",
+                       value="nuevo")], out_dir=tmp_path)
+        rel = client.puts[0][1]
+        assert rel["variables"]["tuSecret"]["value"] == "nuevo"
+
+    def test_dry_run_no_hace_put(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rc = rem.apply_rules_to_release(client, "61062", [
+            self._rule("ksa", value="otro")], out_dir=tmp_path,
+            dry_run=True)
+        assert rc == 0 and client.puts == []
+
+    def test_sin_cambios_no_hace_put_ni_backup(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        # mismo valor + mismo flag → "ya estaba correcto"
+        rc = rem.apply_rules_to_release(client, "61062", [
+            self._rule("ksa", value="v1")], out_dir=tmp_path)
+        assert rc == 0 and client.puts == []
+        assert not list(tmp_path.glob("backups/*.json"))
+
+    def test_backup_antes_del_put(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rem.apply_rules_to_release(client, "61062", [
+            self._rule("ksa", value="otro")], out_dir=tmp_path)
+        assert list(tmp_path.glob("backups/*.json"))
+
+    def test_stage_inexistente_reporta_error(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rc = rem.apply_rules_to_release(client, "61062", [
+            self._rule("x", stage="NoExiste", value="1")],
+            out_dir=tmp_path)
+        assert rc == 0 and client.puts == []  # solo error, nada que aplicar
+
+    def test_confirmacion_cancela_put(self, tmp_path):
+        client = _FakeRelClient(_release_sample())
+        rc = rem.apply_rules_to_release(
+            client, "61062", [self._rule("ksa", value="otro")],
+            out_dir=tmp_path, prompt_fn=lambda p="": "n")
+        assert rc == 0 and client.puts == []
+
+
 class _Args:
     definition_id = "1837"
     stage = rem.DEFAULT_STAGE
@@ -675,6 +802,7 @@ class _Args:
     apply = False
     dry_run = False
     interactive = True
+    target = "definition"
 
 
 class TestRunFlow:
@@ -748,6 +876,64 @@ class TestRunFlow:
         tpl = yaml.safe_load(
             list(tmp_path.glob("*.yaml"))[0].read_text(encoding="utf-8"))
         assert len(tpl["update"]["variables"]) == 2  # recargadas
+
+    def test_target_release_usa_release_descubierto(self, monkeypatch,
+                                                    tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        calls = []
+        monkeypatch.setattr(
+            rem, "apply_rules_to_release",
+            lambda *a, **k: calls.append((a, k)) or 0)
+        monkeypatch.setattr(rem, "apply_template", lambda *a, **k: 0)
+        args = _Args()
+        args.apply = True
+        args.target = "release"
+        assert rem.run_flow(args, interactive=False) == 0
+        a, k = calls[0]
+        assert a[1] == "61141"            # release descubierto por defecto
+        assert k["dry_run"] is False
+
+    def test_target_both_aplica_definicion_y_release(self, monkeypatch,
+                                                     tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        rel_calls, def_calls = [], []
+        monkeypatch.setattr(rem, "apply_rules_to_release",
+                            lambda *a, **k: rel_calls.append(1) or 0)
+        monkeypatch.setattr(rem, "apply_template",
+                            lambda *a, **k: def_calls.append(1) or 0)
+        args = _Args()
+        args.apply = True
+        args.target = "both"
+        assert rem.run_flow(args, interactive=False) == 0
+        assert def_calls == [1] and rel_calls == [1]
+
+    def test_menu_opcion_5_aplica_release_default(self, monkeypatch,
+                                                  tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        calls = []
+        monkeypatch.setattr(
+            rem, "apply_rules_to_release",
+            lambda *a, **k: calls.append((a, k)) or 0)
+        # Enter genera template → "5" aplicar a release → Enter acepta
+        # el release descubierto
+        inputs = iter(["", "5", ""])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        a, k = calls[0]
+        assert a[1] == "61141" and k["dry_run"] is False
+
+    def test_menu_opcion_5_release_especifico(self, monkeypatch, tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        calls = []
+        monkeypatch.setattr(
+            rem, "apply_rules_to_release",
+            lambda *a, **k: calls.append((a, k)) or 0)
+        inputs = iter(["", "5", "99999"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        assert calls[0][0][1] == "99999"  # release específico
 
 
 class TestCsvActionColumn:
