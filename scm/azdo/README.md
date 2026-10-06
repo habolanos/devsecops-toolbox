@@ -859,15 +859,19 @@ bucle: tras cada ejecución vuelve a aparecer hasta salir con `0` o `1`):
 - **Definición** (`1`–`3`): aplica el template `pipe_cd_*.yaml` a la release
   **definition** del pipeline CD via Pipeline Updater (opción 41), que incluye
   sus propios snapshots/rollback.
-- **Release** (`4`–`6`): aplica los mismos ajustes directamente sobre una
-  **instancia de release** — `release.variables` y `environments[].variables`
-  via PUT `releases/{id}` (**no usa el template YAML**; el template es formato
-  exclusivo del updater de definiciones). El default es el release descubierto
-  en el análisis; también acepta escribir un **release ID específico**.
-  Soporta `add`/`update`/`remove`/`isSecret` (casos que el motor de la opción
-  42 no cubre), crea backup del release en `outcome/backups/` antes del PUT y
-  pide confirmación `[s/N]` en aplicación real.
+- **Release** (`4`–`6`): genera un template `release_inspection_fix_<relId>_*
+  .yaml` (formato de la opción 42: `update.global_vars` + `update.env_vars`
+  con `stage`) y lo aplica con el **engine existente de Update Release**
+  (`pipeline_cd_update_release` — opción 42): GET → tabla de cambios →
+  backup en `outcome/backups/` → PUT. Soporta `add`/`update`/`remove`/
+  `isSecret` por variable (campos nuevos del engine). El default es el
+  release descubierto en el análisis; también acepta escribir un **release
+  ID específico**.
 - Con `[6]` la definición se aplica primero; si falla, el release se omite.
+
+> **Nota**: son dos engines con dos formatos de template distintos —
+> definición → `pipe_cd_inspection_fix_*.yaml` (opción 41), release →
+> `release_inspection_fix_*.yaml` (opción 42).
 
 #### Redeploy del stage inspeccionado
 
@@ -1009,6 +1013,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-06 | 1.8.25 | **Aplicación a release via engine existente (opción 42)** — La opción 44 ya no hace PUT directo: genera `release_inspection_fix_<relId>_<ts>.yaml` en formato `pipeline_cd_update_release` y lo aplica por subprocess (backup + tabla de cambios + PUT del engine). El engine ganó campos `isSecret`/`action: remove` por variable y preserva `isSecret` al actualizar vars secretas (bugfix). | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/pipeline_cd_update_release/pipeline_cd_update_release.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.24 | **SCM Inspection Remediator: menú en bucle + redeploy del stage** — El menú de aplicación reaparece tras cada acción (hasta `0`/`1`); tras aplicar al release se ofrece re-correr el deploy del stage inspeccionado (`PATCH environments/{id} status=inProgress`; `--redeploy` en CLI). Nota UX: el YAML es solo para la definición; el release usa PUT directo. `AzdoClient._send` unifica GET/PUT/PATCH. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.23 | **SCM Inspection Remediator: prompt de Release ID interactivo** — El modo interactivo ahora pregunta el Release ID tras el Definition ID (Enter = último run del stage; un ID específico inspecciona ese release y queda como destino default de las opciones `4`–`6`). Input no numérico → fallback al último. Hint CLI del submenú con ejemplos `--release-id`/`--target`. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.22 | **SCM Inspection Remediator: aplicar a un Release (instancia)** — Nuevo destino de aplicación además de la definición: PUT directo sobre `release.variables`/`environments[].variables` del último release descubierto o uno específico. Soporta `add`/`update`/`remove`/`isSecret` (incl. desmarcar), backup en `outcome/backups/` y confirmación `[s/N]`. Menú con opciones `4`/`5`/`6` y flag `--target definition|release|both` en CLI. Sección 9 del README actualizada. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |

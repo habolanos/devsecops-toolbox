@@ -11,10 +11,12 @@ El template se aplica con el motor existente:
     python -m scm.azdo.pipeline_updater.pipeline_updater \
         --definition-ids <id> --template <tpl> [--dry-run]
 
-Además de la definición, los ajustes pueden aplicarse directamente sobre un
-Release (instancia): el descubierto por defecto o un release específico,
-modificando release.variables y environments[].variables via PUT
-(--target release|both).
+Además de la definición, los ajustes pueden aplicarse sobre un Release
+(instancia) — el descubierto por defecto o uno específico — generando un
+template release_inspection_fix_<relId>_<ts>.yaml y aplicándolo con el
+engine existente de Update Release (opción 42, templates release_*):
+--target release|both. Tras aplicar puede dispararse el redeploy del
+stage inspeccionado (--redeploy).
 
 Accionables soportados:
   - RULE_1_SECRET            → isSecret: true en el stage afectado
@@ -36,8 +38,6 @@ Uso:
 """
 
 import argparse
-import copy
-import json
 import re
 import subprocess
 import sys
@@ -159,10 +159,6 @@ class AzdoClient:
 
     def get(self, url: str, raw: bool = False, params: dict = None):
         return self._send("GET", url, params=params, raw=raw, timeout=30)
-
-    def put(self, url: str, payload: dict, params: dict = None):
-        """PUT con la misma política de reintentos que get()."""
-        return self._send("PUT", url, params=params, payload=payload)
 
     def patch(self, url: str, payload: dict, params: dict = None):
         """PATCH con la misma política de reintentos que get()."""
@@ -789,138 +785,67 @@ def apply_template(template_path: Path, definition_id: str,
 
 
 # ---------------------------------------------------------------------------
-# Aplicación sobre un Release (instancia)
+# Aplicación sobre un Release (instancia) — engine existente (opción 42)
 # ---------------------------------------------------------------------------
 
-def _release_vars_map(updated: dict, rule: dict):
-    """Devuelve (vars_map, loc, error) para aplicar `rule` sobre un release.
-
-    scope=environment → environments[nombre].variables (match case-insensitive)
-    scope=release     → release.variables
-    """
-    if rule.get("scope") == "environment":
-        stage = rule.get("stage") or ""
-        env = next((e for e in updated.get("environments", [])
-                    if e.get("name", "").lower() == stage.lower()), None)
-        if env is None:
-            return None, stage, f"stage '{stage}' no existe en el release"
-        return env.setdefault("variables", {}), stage, ""
-    return updated.setdefault("variables", {}), "release", ""
-
-
-def _backup_release(release: dict, out_dir: Path) -> Path:
-    """Snapshot del release antes del PUT. Reutiliza create_backup de la
-    opción 42; si no es importable, guarda el JSON crudo."""
-    bdir = Path(out_dir or resolve_outcome_dir()) / "backups"
-    bdir.mkdir(parents=True, exist_ok=True)
-    try:
-        from scm.azdo.pipeline_cd_update_release.pipeline_cd_update_release \
-            import create_backup
-        path, _label = create_backup(release, str(bdir))
-        return Path(path)
-    except Exception:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = bdir / f"release_backup_{release.get('id', '?')}_{ts}.json"
-        path.write_text(json.dumps(release, indent=2, ensure_ascii=False),
-                        encoding="utf-8")
-        return path
-
-
-def apply_rules_to_release(client: AzdoClient, release_id: str, rules: list,
-                           out_dir: Path = None, dry_run: bool = False,
-                           prompt_fn=None) -> int:
-    """Aplica las reglas candidatas sobre un Release (instancia) via PUT.
-
-    Soporta add/update/remove/isSecret sobre release.variables y
-    environments[].variables — casos que el motor de la opción 42 no cubre.
-    `prompt_fn` (interactivo) pide confirmación antes del PUT real.
-    """
-    release = client.get(f"{client.base}/releases/{release_id}",
-                         params={"api-version": "7.1"})
-    updated = copy.deepcopy(release)
-    rows, errors, mutated = [], 0, 0
-
+def generate_release_template(rules: list, release_id: str,
+                              pipeline_name: str = "",
+                              out_dir: Path = None) -> Path:
+    """Genera template formato pipeline_cd_update_release (opción 42):
+    reglas scope=release → update.global_vars; scope=environment →
+    update.env_vars con stage. Soporta action: remove e isSecret."""
+    out_dir = out_dir or resolve_outcome_dir()
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = out_dir / f"release_inspection_fix_{release_id}_{ts}.yaml"
+    gvars, evars = [], []
     for r in rules:
-        name, action = r["name"], r["action"]
-        vars_map, loc, err = _release_vars_map(updated, r)
-        if err:
-            errors += 1
-            rows.append([action, name, loc, "", "", f"ERROR: {err}"])
-            continue
-        cur = vars_map.get(name)
-        old = mask_value({"name": name,
-                          "isSecret": (cur or {}).get("isSecret")},
-                         (cur or {}).get("value"))
-        if action == "remove":
-            if cur is None:
-                rows.append([action, name, loc, old, "-",
-                             "ya ausente — sin cambio"])
-                continue
-            del vars_map[name]
-            mutated += 1
-            rows.append([action, name, loc, old, "-", "eliminada"])
-            continue
-        entry = dict(cur) if cur else {"allowOverride": True}
-        if r.get("value") is not None or "value" not in entry:
-            entry["value"] = r.get("value")
-        if "isSecret" in r:
-            entry["isSecret"] = bool(r["isSecret"])
-        same = cur is not None and cur.get("value") == entry.get("value") \
-            and bool(cur.get("isSecret")) == bool(entry.get("isSecret"))
-        if not same:
-            vars_map[name] = entry
-            mutated += 1
-        new = mask_value({"name": name, "isSecret": entry.get("isSecret")},
-                         entry.get("value"))
-        if cur is None:
-            res = "creada" if action == "add" else \
-                "no existía — creada como override"
-        elif same:
-            res = "ya estaba correcto — sin cambio"
+        if r.get("scope") == "environment":
+            v = {"stage": r.get("stage"), "name": r["name"]}
+            target = evars
         else:
-            res = "actualizada"
-        rows.append([action, name, loc, old, new, res])
+            v = {"name": r["name"]}
+            target = gvars
+        if r["action"] == "remove":
+            v["action"] = "remove"
+        else:
+            v["value"] = r.get("value")
+        if "isSecret" in r:
+            v["isSecret"] = r["isSecret"]
+        target.append(v)
+    template = {
+        "metadata": {
+            "name": f"SCM Inspection Fix — Release #{release_id} "
+                    f"({pipeline_name})",
+            "version": "1.0",
+            "description": "Corrige violaciones del stage SCM Inspection "
+                           "sobre el snapshot de variables del release. "
+                           "Generado por scm_inspection_remediator.",
+            "created_at": ts,
+        },
+        "release": {"ids": [str(release_id)]},
+        "update": {"global_vars": gvars, "env_vars": evars},
+        "options": {"dry_run": False},
+    }
+    path.write_text(yaml.safe_dump(template, allow_unicode=True,
+                                   sort_keys=False), encoding="utf-8")
+    return path
 
-    table = Table(title=f"Cambios sobre Release #{release_id} — "
-                        f"{release.get('name', '')}",
-                  box=box.SIMPLE_HEAD, header_style="bold cyan")
-    for col in ("Acción", "Variable", "Scope", "Anterior", "Nuevo",
-                "Resultado"):
-        table.add_column(col)
-    for action, name, loc, old, new, res in rows:
-        style = ACTION_STYLE.get(action, "")
-        table.add_row(f"[{style}]{action}[/]" if style else action,
-                      name, loc, str(old), str(new), res)
-    console.print(table)
 
-    if errors:
-        console.print(f"[yellow]{ICON_WARN} {errors} regla(s) con error "
-                      f"(no aplicables).[/]")
+def apply_release_template(template_path: Path, release_id: str,
+                           org: str, project: str, pat: str,
+                           dry_run: bool) -> int:
+    """Aplica el template de release con el engine existente
+    (pipeline_cd_update_release — opción 42): GET → cambios → backup → PUT."""
+    cmd = [sys.executable, "-m",
+           "scm.azdo.pipeline_cd_update_release.pipeline_cd_update_release",
+           "--release-id", str(release_id),
+           "--template", str(template_path),
+           "--org", org, "--project", project, "--pat", pat]
     if dry_run:
-        console.print(f"[yellow]{ICON_RUN} DRY-RUN sobre release — sin "
-                      f"cambios aplicados ({mutated} pendiente(s)).[/]")
-        return 0
-    if not mutated:
-        console.print("[yellow]Sin cambios para aplicar al release.[/]")
-        return 0
-
-    backup = _backup_release(release, out_dir)
-    console.print(f"[green]{ICON_DOC} Backup del release:[/] "
-                  f"[bold]{backup}[/]")
-
-    if prompt_fn:
-        ans = prompt_fn(
-            f"  [bold]Aplicar {mutated} cambio(s) al release "
-            f"#{release_id}?[/] \\[[cyan]s/N[/]]: ").strip().lower()
-        if ans not in ("s", "si", "y", "yes"):
-            console.print("[yellow]Aplicación al release cancelada.[/]")
-            return 0
-
-    client.put(f"{client.base}/releases/{release_id}", updated,
-               params={"api-version": "7.1"})
-    console.print(f"[bold green]{ICON_OK} Release #{release_id} "
-                  f"actualizado ({mutated} cambio(s)).[/]")
-    return 0
+        cmd.append("--dry-run")
+    console.print(f"\n[cyan]{ICON_RUN} Ejecutando:[/] "
+                  f"[dim]{' '.join(cmd[:3])} ...[/]")
+    return subprocess.run(cmd, cwd=REPO_ROOT).returncode
 
 
 def redeploy_stage(client: AzdoClient, release_id: str,
@@ -1161,17 +1086,21 @@ def run_flow(args, interactive: bool) -> int:
                 console.print(f"[yellow]{ICON_WARN} Release omitido — "
                               f"falló la definición.[/]")
             else:
-                rc = apply_rules_to_release(client, release_target,
-                                            actionables["rules"],
-                                            dry_run=dry)
+                rel_tpl = generate_release_template(
+                    actionables["rules"], release_target,
+                    discovery["definition"].get("name", ""))
+                console.print(f"[green]{ICON_DOC} Template release:[/] "
+                              f"[bold]{rel_tpl}[/]")
+                rc = apply_release_template(rel_tpl, release_target,
+                                            org, project, pat, dry_run=dry)
                 if rc == 0 and not dry and getattr(args, "redeploy", False):
                     _offer_redeploy(client, release_target, args.stage,
                                     auto=True)
         return rc
 
-    console.print("\n[dim]El template YAML aplica solo a la DEFINICIÓN "
-                  "(opción 41); el release se actualiza con PUT directo "
-                  "de las mismas reglas.[/]")
+    console.print("\n[dim]Definición: template pipe_cd_*.yaml (opción 41); "
+                  "Release: template release_*.yaml aplicado con el engine "
+                  "de Update Release (opción 42).[/]")
     while True:
         console.print("\n[bold][1][/] Solo template (definición — aplicar "
                       "luego con opción 41)")
@@ -1201,15 +1130,18 @@ def run_flow(args, interactive: bool) -> int:
             rel = _rich_input(
                 f"  [bold]Release ID[/] "
                 f"\\[[cyan]{release_target}[/]]: ").strip() or release_target
+            rel_tpl = generate_release_template(
+                actionables["rules"], rel,
+                discovery["definition"].get("name", ""))
+            console.print(f"[green]{ICON_DOC} Template release:[/] "
+                          f"[bold]{rel_tpl}[/]")
             if choice == "4":
-                apply_rules_to_release(client, rel, actionables["rules"],
+                apply_release_template(rel_tpl, rel, org, project, pat,
                                        dry_run=True)
                 continue
             if choice == "5":
-                rc = apply_rules_to_release(client, rel,
-                                            actionables["rules"],
-                                            dry_run=False,
-                                            prompt_fn=_rich_input)
+                rc = apply_release_template(rel_tpl, rel, org, project,
+                                            pat, dry_run=False)
                 if rc == 0:
                     _offer_redeploy(client, rel, args.stage,
                                     prompt_fn=_rich_input)
@@ -1220,9 +1152,8 @@ def run_flow(args, interactive: bool) -> int:
                 console.print(f"\n[bold red]X Definición falló "
                               f"(exit {rc}) — release omitido.[/]")
                 continue
-            rc = apply_rules_to_release(client, rel, actionables["rules"],
-                                        dry_run=False,
-                                        prompt_fn=_rich_input)
+            rc = apply_release_template(rel_tpl, rel, org, project, pat,
+                                        dry_run=False)
             if rc == 0:
                 _offer_redeploy(client, rel, args.stage,
                                 prompt_fn=_rich_input)

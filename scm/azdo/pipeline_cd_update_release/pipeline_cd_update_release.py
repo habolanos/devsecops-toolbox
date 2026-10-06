@@ -140,6 +140,10 @@ def load_template(template_path: str) -> Dict:
               value: "18"
               search_value: "old_value"   # opcional
 
+    Campos opcionales por variable (global_vars y env_vars):
+            - isSecret: true|false   # marca/desmarca el flag secreto
+            - action: remove         # elimina la variable (ignora value)
+
     Returns:
         Dict con keys: release_ids, global_vars, env_vars, env_var_search_values,
                        task_updates, search_stages, abandon, description, dry_run, backup_path
@@ -176,15 +180,19 @@ def load_template(template_path: str) -> Dict:
     global_var_list = update_section.get('global_vars', [])
     global_vars = []
     global_var_search_values = []
+    global_var_extras = []
     for var in global_var_list:
         name = var.get('name', '')
         value = var.get('value', '')
         global_vars.append(f"{name}={value}")
         global_var_search_values.append(None)
+        global_var_extras.append({'isSecret': var.get('isSecret'),
+                                  'action': var.get('action')})
 
     env_var_list = update_section.get('env_vars', [])
     env_vars = []
     env_var_search_values = []
+    env_var_extras = []
     search_stages = ['*']
     search_stage_patterns = []
 
@@ -206,21 +214,27 @@ def load_template(template_path: str) -> Dict:
             value = var.get('value', '')
             sv = search_vars.get(name)
             scope = search_scopes.get(name, 'env')
+            extra = {'isSecret': var.get('isSecret'),
+                     'action': var.get('action')}
             if scope in ('release', 'global'):  # 'global' kept for backward compat
                 # Variable de release (scope Release en Azure DevOps)
                 global_vars.append(f"{name}={value}")
                 global_var_search_values.append(sv)
+                global_var_extras.append(extra)
             elif scope == '*':
                 # Buscar y actualizar en ambos: release.variables y environments[].variables
                 global_vars.append(f"{name}={value}")
                 global_var_search_values.append(sv)
+                global_var_extras.append(extra)
                 for stage in search_stages:
                     env_vars.append(f"{stage},{name}={value}")
                     env_var_search_values.append(sv)
+                    env_var_extras.append(extra)
             else:
                 for stage in search_stages:
                     env_vars.append(f"{stage},{name}={value}")
                     env_var_search_values.append(sv)
+                    env_var_extras.append(extra)
     else:
         for var in env_var_list:
             stage = var.get('stage', '')
@@ -229,6 +243,8 @@ def load_template(template_path: str) -> Dict:
             search_value = var.get('search_value', None)
             env_vars.append(f"{stage},{name}={value}")
             env_var_search_values.append(search_value)
+            env_var_extras.append({'isSecret': var.get('isSecret'),
+                                   'action': var.get('action')})
 
     task_updates = update_section.get('tasks', [])
 
@@ -257,6 +273,8 @@ def load_template(template_path: str) -> Dict:
         'global_var_search_values': global_var_search_values,
         'env_vars': env_vars,
         'env_var_search_values': env_var_search_values,
+        'env_var_extras': env_var_extras,
+        'global_var_extras': global_var_extras,
         'task_updates': task_updates,
         'search_stages': search_stages,
         'search_stage_patterns': search_stage_patterns,
@@ -480,6 +498,8 @@ def build_patch_payload(
     search_stage_patterns: Optional[List[str]] = None,
     global_var_search_values: Optional[List[Optional[str]]] = None,
     comment: str = '',
+    env_var_extras: Optional[List[Dict]] = None,
+    global_var_extras: Optional[List[Dict]] = None,
 ) -> Tuple[Dict, List[Dict]]:
     payload: Dict = {}
     changes: List[Dict] = []
@@ -489,15 +509,32 @@ def build_patch_payload(
         global_changed = False
         for idx, var_str in enumerate(global_vars):
             key, value = parse_var(var_str)
+            ex = global_var_extras[idx] if global_var_extras and idx < len(global_var_extras) else {}
             old_value = current_vars.get(key, {}).get('value')
+            if ex.get('action') == 'remove':
+                if key in current_vars:
+                    del new_vars[key]
+                    global_changed = True
+                    changes.append({"type": "global_var", "key": key,
+                                    "old": old_value, "new": "(eliminada)"})
+                else:
+                    changes.append({"type": "global_var", "key": key,
+                                    "old": old_value,
+                                    "new": "ya ausente — sin cambio"})
+                continue
             search_value = global_var_search_values[idx] if global_var_search_values and idx < len(global_var_search_values) else None
             if search_value is not None:
                 if _clean_value(old_value) != _clean_value(search_value):
                     changes.append({"type": "global_var", "key": key, "old": old_value, "new": value,
                                     "error": f"Variable de release '{key}' no tiene valor '{search_value}' (actual: '{old_value}')"})
                     continue
+            entry = build_var_entry(value)
+            if ex.get('isSecret') is not None:
+                entry['isSecret'] = bool(ex['isSecret'])
+            elif current_vars.get(key, {}).get('isSecret'):
+                entry['isSecret'] = True  # preservar flag secreto existente
             changes.append({"type": "global_var", "key": key, "old": old_value, "new": value})
-            new_vars[key] = build_var_entry(value)
+            new_vars[key] = entry
             global_changed = True
         if global_changed:
             payload['variables'] = new_vars
@@ -506,6 +543,7 @@ def build_patch_payload(
         for idx, env_var_str in enumerate(env_vars):
             stage_name, key, value = parse_env_var(env_var_str)
             search_value = env_var_search_values[idx] if env_var_search_values and idx < len(env_var_search_values) else None
+            extras = env_var_extras[idx] if env_var_extras and idx < len(env_var_extras) else {}
             matched_stages = []
             stage_found = False
             for env in environments:
@@ -514,12 +552,34 @@ def build_patch_payload(
                     stage_found = True
                     env_vars_dict = env.get('variables', {})
                     old_value = env_vars_dict.get(key, {}).get('value')
+                    if extras.get('action') == 'remove':
+                        matched_stages.append(env_name)
+                        if key in env_vars_dict:
+                            del env_vars_dict[key]
+                            changes.append({"type": "env_var", "key": key,
+                                            "old": old_value,
+                                            "new": "(eliminada)",
+                                            "stage": env_name})
+                        else:
+                            changes.append({"type": "env_var", "key": key,
+                                            "old": old_value,
+                                            "new": "ya ausente — sin cambio",
+                                            "stage": env_name})
+                        env['variables'] = env_vars_dict
+                        if stage_name != '*':
+                            break
+                        continue
                     if search_value is not None:
                         if _clean_value(old_value) != _clean_value(search_value):
                             continue
+                    entry = build_var_entry(value)
+                    if extras.get('isSecret') is not None:
+                        entry['isSecret'] = bool(extras['isSecret'])
+                    elif env_vars_dict.get(key, {}).get('isSecret'):
+                        entry['isSecret'] = True  # preservar flag secreto
                     matched_stages.append(env_name)
                     changes.append({"type": "env_var", "key": key, "old": old_value, "new": value, "stage": env_name})
-                    env_vars_dict[key] = build_var_entry(value)
+                    env_vars_dict[key] = entry
                     env['variables'] = env_vars_dict
                     if stage_name != '*':
                         break
@@ -777,7 +837,9 @@ def main():
         if not args.set_env_var and tpl['env_vars']:
             args.set_env_var = tpl['env_vars']
         args.env_var_search_values = tpl.get('env_var_search_values', [])
+        args.env_var_extras = tpl.get('env_var_extras', [])
         args.global_var_search_values = tpl.get('global_var_search_values', [])
+        args.global_var_extras = tpl.get('global_var_extras', [])
         args.task_updates = tpl.get('task_updates', [])
         args.search_stages = tpl.get('search_stages', ['*'])
         args.search_stage_patterns = tpl.get('search_stage_patterns', [])
@@ -883,7 +945,9 @@ def main():
                 getattr(args, 'search_stages', ['*']),
                 getattr(args, 'search_stage_patterns', []),
                 getattr(args, 'global_var_search_values', []),
-                getattr(args, 'comment', '')
+                getattr(args, 'comment', ''),
+                getattr(args, 'env_var_extras', []),
+                getattr(args, 'global_var_extras', []),
             )
             show_changes(changes)
 

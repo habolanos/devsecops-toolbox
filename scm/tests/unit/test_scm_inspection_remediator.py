@@ -664,131 +664,114 @@ class TestApplyTemplate:
         assert "--dry-run" not in calls[0]
 
 
-class _FakeRelClient:
-    """Cliente mínimo para apply_rules_to_release (get + put grabados)."""
-    base = "https://vsrm.dev.azure.com/o/p/_apis/release"
+class TestReleaseTemplate:
+    """generate_release_template + apply_release_template (engine op. 42)."""
 
-    def __init__(self, release):
-        self._release = release
-        self.puts = []
+    def _rules(self):
+        return [
+            {"name": "ksa", "action": "update", "scope": "environment",
+             "stage": "Production", "value": "v1", "isSecret": True},
+            {"name": "nueva", "action": "add", "scope": "environment",
+             "stage": "QA", "value": "n"},
+            {"name": "old", "action": "remove", "scope": "environment",
+             "stage": "Production"},
+            {"name": "tuSecret", "action": "update", "scope": "release",
+             "value": "x", "isSecret": False},
+        ]
 
-    def get(self, url, raw=False, params=None):
-        return self._release
+    def test_template_formato_engine(self, tmp_path):
+        p = rem.generate_release_template(self._rules(), "61062", "pipe",
+                                          out_dir=tmp_path)
+        tpl = yaml.safe_load(p.read_text(encoding="utf-8"))
+        assert p.name.startswith("release_inspection_fix_61062_")
+        assert tpl["release"]["ids"] == ["61062"]
+        ev = tpl["update"]["env_vars"]
+        assert ev[0] == {"stage": "Production", "name": "ksa",
+                         "value": "v1", "isSecret": True}
+        assert ev[1] == {"stage": "QA", "name": "nueva", "value": "n"}
+        assert ev[2] == {"stage": "Production", "name": "old",
+                         "action": "remove"}
+        gv = tpl["update"]["global_vars"]
+        assert gv == [{"name": "tuSecret", "value": "x",
+                       "isSecret": False}]
 
-    def put(self, url, payload, params=None):
-        self.puts.append((url, payload))
-        return payload
+    def test_apply_invoca_engine_opcion_42(self, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setattr(rem.subprocess, "run",
+                            lambda cmd, cwd: calls.append(cmd)
+                            or type("R", (), {"returncode": 0})())
+        rc = rem.apply_release_template(tmp_path / "t.yaml", "61062",
+                                        "org", "proj", "pat", dry_run=True)
+        assert rc == 0
+        cmd = calls[0]
+        assert ("scm.azdo.pipeline_cd_update_release."
+                "pipeline_cd_update_release" in cmd)
+        assert "--dry-run" in cmd and "--template" in cmd
+        assert cmd[cmd.index("--release-id") + 1] == "61062"
 
 
-def _release_sample():
-    return {"id": 61062, "name": "Release-207",
-            "variables": {"tuSecret": {"value": "x"}},
-            "environments": [
-                {"id": 1, "name": "Production", "variables": {
-                    "ksa": {"value": "v1"},
-                    "old": {"value": "z"},
-                    "sec": {"value": None, "isSecret": True}}},
-                {"id": 2, "name": "QA", "variables": {}}]}
+class TestReleaseEngineExtras:
+    """El engine (opción 42) soporta isSecret/remove en sus templates."""
 
+    def _engine(self):
+        from scm.azdo.pipeline_cd_update_release.\
+            pipeline_cd_update_release import build_patch_payload
+        return build_patch_payload
 
-class TestApplyRelease:
-    def _rule(self, name, action="update", scope="environment",
-              stage="Production", value="v", **kw):
-        r = {"name": name, "action": action, "scope": scope,
-             "value": value}
-        if stage:
-            r["stage"] = stage
-        r.update(kw)
-        return r
+    def _release(self):
+        return {"variables": {"g": {"value": "1"},
+                              "gsec": {"value": None, "isSecret": True}},
+                "environments": [
+                    {"name": "QA", "variables": {
+                        "v": {"value": "a"},
+                        "s": {"value": None, "isSecret": True},
+                        "del": {"value": "x"}}}]}
 
-    def test_update_env_var_e_is_secret(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rc = rem.apply_rules_to_release(client, "61062", [
-            self._rule("ksa", value="v1", isSecret=True)],
-            out_dir=tmp_path)
-        assert rc == 0 and len(client.puts) == 1
-        env = client.puts[0][1]["environments"][0]
-        assert env["variables"]["ksa"]["value"] == "v1"
-        assert env["variables"]["ksa"]["isSecret"] is True
+    def test_env_var_is_secret_y_remove(self):
+        payload, changes = self._engine()(
+            self._release(), [], ["QA,s=s3", "QA,del=", "QA,v=b2"],
+            False, "", [None] * 3, [], ["*"], [], [None], "",
+            env_var_extras=[{"isSecret": True}, {"action": "remove"}, {}])
+        qa = payload["environments"][0]["variables"]
+        assert qa["s"]["isSecret"] is True and qa["s"]["value"] == "s3"
+        assert "del" not in qa
+        assert qa["v"]["value"] == "b2"
+        assert not any("error" in c for c in changes)
 
-    def test_desmarcar_secret_explicito(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rem.apply_rules_to_release(client, "61062", [
-            self._rule("sec", value=None, isSecret=False)],
-            out_dir=tmp_path)
-        env = client.puts[0][1]["environments"][0]
-        assert env["variables"]["sec"]["isSecret"] is False
-        # conserva el valor actual cuando la regla no trae otro
-        assert env["variables"]["sec"]["value"] is None
+    def test_desmarcar_secret_explicito(self):
+        payload, _ = self._engine()(
+            self._release(), [], ["QA,s="], False, "",
+            [None], [], ["*"], [], [None], "",
+            env_var_extras=[{"isSecret": False}])
+        assert payload["environments"][0]["variables"]["s"][
+            "isSecret"] is False
 
-    def test_desmarcar_secret_con_nuevo_valor(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rem.apply_rules_to_release(client, "61062", [
-            self._rule("sec", value="plain", isSecret=False)],
-            out_dir=tmp_path)
-        env = client.puts[0][1]["environments"][0]
-        assert env["variables"]["sec"] == {"value": "plain",
-                                           "isSecret": False}
+    def test_update_preserva_isSecret_existente(self):
+        """Bugfix: actualizar una var secreta sin isSecret en el extra
+        conservaba el flag (antes lo perdía)."""
+        payload, _ = self._engine()(
+            self._release(), ["gsec=NEW"], ["QA,s=txt"], False, "",
+            [None], [], ["*"], [], [None], "",
+            env_var_extras=[{}], global_var_extras=[{}])
+        assert payload["variables"]["gsec"]["isSecret"] is True
+        assert payload["environments"][0]["variables"]["s"][
+            "isSecret"] is True
 
-    def test_add_crea_override_en_env(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rem.apply_rules_to_release(client, "61062", [
-            self._rule("nueva", action="add", stage="QA", value="n")],
-            out_dir=tmp_path)
-        env = client.puts[0][1]["environments"][1]
-        assert env["variables"]["nueva"]["value"] == "n"
-        assert env["variables"]["nueva"]["allowOverride"] is True
+    def test_remove_ausente_no_es_error(self):
+        payload, changes = self._engine()(
+            self._release(), [], ["QA,fantasma="], False, "",
+            [None], [], ["*"], [], [None], "",
+            env_var_extras=[{"action": "remove"}])
+        assert not any("error" in c for c in changes)
+        assert "ausente" in changes[0]["new"]
 
-    def test_remove_elimina_variable(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rem.apply_rules_to_release(client, "61062", [
-            self._rule("old", action="remove", stage="Production")],
-            out_dir=tmp_path)
-        env = client.puts[0][1]["environments"][0]
-        assert "old" not in env["variables"]
-
-    def test_scope_release_toca_variables_globales(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rem.apply_rules_to_release(client, "61062", [
-            self._rule("tuSecret", scope="release", stage="",
-                       value="nuevo")], out_dir=tmp_path)
-        rel = client.puts[0][1]
-        assert rel["variables"]["tuSecret"]["value"] == "nuevo"
-
-    def test_dry_run_no_hace_put(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rc = rem.apply_rules_to_release(client, "61062", [
-            self._rule("ksa", value="otro")], out_dir=tmp_path,
-            dry_run=True)
-        assert rc == 0 and client.puts == []
-
-    def test_sin_cambios_no_hace_put_ni_backup(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        # mismo valor + mismo flag → "ya estaba correcto"
-        rc = rem.apply_rules_to_release(client, "61062", [
-            self._rule("ksa", value="v1")], out_dir=tmp_path)
-        assert rc == 0 and client.puts == []
-        assert not list(tmp_path.glob("backups/*.json"))
-
-    def test_backup_antes_del_put(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rem.apply_rules_to_release(client, "61062", [
-            self._rule("ksa", value="otro")], out_dir=tmp_path)
-        assert list(tmp_path.glob("backups/*.json"))
-
-    def test_stage_inexistente_reporta_error(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rc = rem.apply_rules_to_release(client, "61062", [
-            self._rule("x", stage="NoExiste", value="1")],
-            out_dir=tmp_path)
-        assert rc == 0 and client.puts == []  # solo error, nada que aplicar
-
-    def test_confirmacion_cancela_put(self, tmp_path):
-        client = _FakeRelClient(_release_sample())
-        rc = rem.apply_rules_to_release(
-            client, "61062", [self._rule("ksa", value="otro")],
-            out_dir=tmp_path, prompt_fn=lambda p="": "n")
-        assert rc == 0 and client.puts == []
+    def test_remove_global_var(self):
+        payload, changes = self._engine()(
+            self._release(), ["g="], [], False, "",
+            [], [], ["*"], [], [None], "",
+            global_var_extras=[{"action": "remove"}])
+        assert "g" not in payload["variables"]
+        assert changes[0]["new"] == "(eliminada)"
 
 
 class _Args:
@@ -884,7 +867,7 @@ class TestRunFlow:
         self._setup(monkeypatch, tmp_path)
         calls = []
         monkeypatch.setattr(
-            rem, "apply_rules_to_release",
+            rem, "apply_release_template",
             lambda *a, **k: calls.append((a, k)) or 0)
         monkeypatch.setattr(rem, "apply_template", lambda *a, **k: 0)
         args = _Args()
@@ -894,12 +877,13 @@ class TestRunFlow:
         a, k = calls[0]
         assert a[1] == "61141"            # release descubierto por defecto
         assert k["dry_run"] is False
+        assert list(tmp_path.glob("release_inspection_fix_61141_*.yaml"))
 
     def test_target_both_aplica_definicion_y_release(self, monkeypatch,
                                                      tmp_path):
         self._setup(monkeypatch, tmp_path)
         rel_calls, def_calls = [], []
-        monkeypatch.setattr(rem, "apply_rules_to_release",
+        monkeypatch.setattr(rem, "apply_release_template",
                             lambda *a, **k: rel_calls.append(1) or 0)
         monkeypatch.setattr(rem, "apply_template",
                             lambda *a, **k: def_calls.append(1) or 0)
@@ -914,7 +898,7 @@ class TestRunFlow:
         self._setup(monkeypatch, tmp_path)
         calls = []
         monkeypatch.setattr(
-            rem, "apply_rules_to_release",
+            rem, "apply_release_template",
             lambda *a, **k: calls.append((a, k)) or 0)
         monkeypatch.setattr(rem, "redeploy_stage", lambda *a, **k: 0)
         # Enter gen. template → "5" → Enter release default → "n" sin
@@ -930,7 +914,7 @@ class TestRunFlow:
         self._setup(monkeypatch, tmp_path)
         calls = []
         monkeypatch.setattr(
-            rem, "apply_rules_to_release",
+            rem, "apply_release_template",
             lambda *a, **k: calls.append((a, k)) or 0)
         monkeypatch.setattr(rem, "redeploy_stage", lambda *a, **k: 0)
         inputs = iter(["", "", "5", "99999", "n", "0"])
@@ -957,7 +941,7 @@ class TestRunFlow:
         """Tras aplicar al release, 's' dispara el redeploy del stage."""
         self._setup(monkeypatch, tmp_path)
         redeploys = []
-        monkeypatch.setattr(rem, "apply_rules_to_release",
+        monkeypatch.setattr(rem, "apply_release_template",
                             lambda *a, **k: 0)
         monkeypatch.setattr(rem, "redeploy_stage",
                             lambda *a, **k: redeploys.append(a) or 0)
@@ -971,7 +955,7 @@ class TestRunFlow:
     def test_cli_redeploy_flag(self, monkeypatch, tmp_path):
         self._setup(monkeypatch, tmp_path)
         redeploys = []
-        monkeypatch.setattr(rem, "apply_rules_to_release",
+        monkeypatch.setattr(rem, "apply_release_template",
                             lambda *a, **k: 0)
         monkeypatch.setattr(rem, "redeploy_stage",
                             lambda *a, **k: redeploys.append(a) or 0)
