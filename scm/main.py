@@ -771,7 +771,13 @@ def launch_platform(platform_key: str):
     
     # Ejecutar el tools.py de la plataforma con las variables de entorno
     try:
-        subprocess.run([HOST_PYTHON, str(tools_path)], check=False, env=env)
+        result = subprocess.run([HOST_PYTHON, str(tools_path)], check=False, env=env)
+        if result.returncode != 0:
+            # El launcher hijo terminó con error (traceback arriba). Pausar
+            # antes de que el menú limpie la pantalla y borre el error.
+            print(f"\n{Colors.WARNING}⚠️  El launcher de {platform['name']} terminó con código {result.returncode}.{Colors.ENDC}")
+            print(f"{Colors.DIM}Si hay un traceback arriba, cópialo antes de continuar.{Colors.ENDC}")
+            input("\nPresione Enter para continuar...")
     except KeyboardInterrupt:
         if RICH_AVAILABLE and console:
             console.print("\n[yellow]↩️  Regresando al menú principal...[/yellow]")

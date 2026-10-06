@@ -474,9 +474,15 @@ def run_script(script_key: str):
         subprocess.run(cmd, check=True, env=env)
     except subprocess.CalledProcessError as e:
         print(f"\n{Colors.FAIL}Error al ejecutar el script: {e}{Colors.ENDC}")
+    except FileNotFoundError as e:
+        print(f"\n{Colors.FAIL}No se pudo ejecutar '{cmd[0]}': {e}{Colors.ENDC}")
+        if cmd[0] == "bash":
+            print(f"{Colors.WARNING}Este script requiere bash — use WSL o Git Bash.{Colors.ENDC}")
+    except Exception as e:
+        print(f"\n{Colors.FAIL}Error inesperado al ejecutar el script: {e}{Colors.ENDC}")
     except KeyboardInterrupt:
         print(f"\n{Colors.WARNING}Ejecución interrumpida.{Colors.ENDC}")
-    
+
     input("\nPresione Enter para continuar...")
 
 def main():
