@@ -24,7 +24,6 @@ Uso:
 """
 
 import argparse
-import getpass
 import re
 import subprocess
 import sys
@@ -250,8 +249,10 @@ def build_actionables(definition: dict, violations: list,
                       values: dict = None) -> dict:
     """Convierte violaciones en reglas `update.variables` del template.
 
-    Returns {"rules": [...], "manual": [...], "summary": [...]}
+    Returns {"rules": [...], "manual": [...], "pending": {...}, "summary": [...]}
     `values` permite inyectar valores para variables 'needs-value' (no interactivo).
+    `pending` = {var: {"scope": ..., "stages": [...]}} — variables que requieren
+    valor (default "TBD" o capturadas con collect_pending_values/--tbd).
     """
     values = values or {}
     envs = {e["name"]: e for e in definition.get("environments", [])}
@@ -271,7 +272,12 @@ def build_actionables(definition: dict, violations: list,
             return dv["value"], "(pipeline)"
         return None, None
 
-    rules, manual, summary = [], [], []
+    rules, manual, summary, pending = [], [], [], {}
+
+    def need_value(var, stage, scope):
+        p = pending.setdefault(var, {"scope": scope, "stages": []})
+        if stage and stage not in p["stages"]:
+            p["stages"].append(stage)
 
     def add_rule(var, stage, scope, action, value, secret=False, note=""):
         rule = {"name": var, "action": action, "scope": scope, "value": value}
@@ -310,6 +316,7 @@ def build_actionables(definition: dict, violations: list,
                     add_rule(var, "", "release", "update", val,
                              note="valor definido por usuario")
                 else:
+                    need_value(var, "", "release")
                     manual.append(f"{var} @ pipeline: definir valor o eliminarla")
             continue
 
@@ -327,6 +334,7 @@ def build_actionables(definition: dict, violations: list,
                         add_rule(var, env_name, "environment", "add", val,
                                  note="valor definido por usuario")
                     else:
+                        need_value(var, env_name, "environment")
                         manual.append(f"{var} @ {env_name} (de {src}): "
                                       f"sin valor fuente — definir a mano")
             continue
@@ -341,10 +349,47 @@ def build_actionables(definition: dict, violations: list,
                     add_rule(var, env_name, "environment", "update",
                              values[var], note="valor definido por usuario")
                 else:
+                    need_value(var, env_name, "environment")
                     manual.append(f"{var} @ {env_name}: definir valor "
                                   f"(sin fuente en otros stages)")
 
-    return {"rules": rules, "manual": manual, "summary": summary}
+    return {"rules": rules, "manual": manual,
+            "pending": pending, "summary": summary}
+
+
+DEFAULT_PENDING_VALUE = "TBD"
+
+
+def collect_pending_values(actionables: dict, values: dict = None,
+                           prompt_fn=input,
+                           default: str = DEFAULT_PENDING_VALUE) -> dict:
+    """Ciclo sobre todas las variables pendientes: Enter = 'TBD',
+    's'/'skip'/'-' = dejar manual. Retorna dict de valores resueltos."""
+    values = dict(values or {})
+    pending = actionables.get("pending", {})
+    if not pending:
+        return values
+    print("\nVariables sin valor fuente — ingrese el valor "
+          f"(Enter = '{default}', 's' = dejar manual):")
+    for var, info in pending.items():
+        if var in values:
+            continue
+        scopes = ", ".join(info["stages"]) or info["scope"]
+        val = prompt_fn(
+            f"  Valor para '{var}' ({scopes}) [Enter={default}]: ").strip()
+        if val.lower() in ("s", "skip", "-"):
+            continue
+        values[var] = val or default
+    return values
+
+
+def fill_pending_default(actionables: dict, values: dict,
+                         default: str = DEFAULT_PENDING_VALUE) -> dict:
+    """No interactivo: todas las pendientes toman el valor default (--tbd)."""
+    values = dict(values or {})
+    for var in actionables.get("pending", {}):
+        values.setdefault(var, default)
+    return values
 
 
 # ---------------------------------------------------------------------------
@@ -448,15 +493,12 @@ def run_flow(args, interactive: bool) -> int:
     if not actionables["rules"] and not actionables["manual"]:
         return 0
 
-    # Pedir valores para pendientes en modo interactivo
-    if interactive and actionables["manual"]:
-        print("\n¿Definir valores ahora para las pendientes? (los vacíos quedan manuales)")
-        for item in list(actionables["manual"]):
-            var = item.split(" ")[0]
-            val = getpass.getpass(f"  Valor para '{var}' (Enter = omitir): ")
-            if val:
-                values[var] = val
-
+    # Valores pendientes: --tbd (no interactivo) o ciclo con default TBD
+    if actionables["pending"]:
+        if args.tbd:
+            values = fill_pending_default(actionables, values)
+        elif interactive:
+            values = collect_pending_values(actionables, values)
         if values:
             actionables = build_actionables(discovery["definition"],
                                             discovery["violations"], values)
@@ -509,6 +551,9 @@ def main():
     parser.add_argument("--pat", default=None)
     parser.add_argument("--set", action="append",
                         help="Valor para variable pendiente: NAME=VALUE (repetible)")
+    parser.add_argument("--tbd", action="store_true",
+                        help="Rellenar todas las pendientes con 'TBD' "
+                             "(no interactivo)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Generar template y ejecutar en modo simulación")
     parser.add_argument("--apply", action="store_true",

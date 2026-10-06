@@ -127,6 +127,61 @@ class TestBuildActionables:
         assert len(a["manual"]) == 1
 
 
+class TestPendingValues:
+    def test_pending_registra_var_y_scopes(self):
+        a = rem.build_actionables(DEFINITION, [
+            _v("STAGE_VARIABLES", "(nivel pipeline)", "tuSecret",
+               detail="SIN valor"),
+            _v("STAGE_VARIABLES", "Develop", "x_missing",
+               reason="paridad", detail="... x_missing (de Otro)")])
+        assert "tuSecret" in a["pending"]
+        assert a["pending"]["tuSecret"]["scope"] == "release"
+        assert a["pending"]["x_missing"]["scope"] == "environment"
+        assert a["pending"]["x_missing"]["stages"] == ["Develop"]
+
+    def test_collect_enter_usa_tbd(self):
+        a = {"pending": {"cluster_name": {"scope": "environment",
+                                          "stages": ["Develop"]}}}
+        values = rem.collect_pending_values(a, prompt_fn=lambda _p: "")
+        assert values["cluster_name"] == "TBD"
+
+    def test_collect_valor_ingresado(self):
+        a = {"pending": {"cluster_name": {"scope": "environment",
+                                          "stages": ["Develop"]}}}
+        values = rem.collect_pending_values(a, prompt_fn=lambda _p: "gke-prod")
+        assert values["cluster_name"] == "gke-prod"
+
+    def test_collect_skip_deja_manual(self):
+        a = {"pending": {"x": {"scope": "release", "stages": []}}}
+        values = rem.collect_pending_values(a, prompt_fn=lambda _p: "s")
+        assert "x" not in values
+
+    def test_collect_respeta_valores_previos(self):
+        a = {"pending": {"x": {"scope": "release", "stages": []}}}
+        prompts = []
+        values = rem.collect_pending_values(
+            a, values={"x": "ya-definido"},
+            prompt_fn=lambda p: prompts.append(p) or "otro")
+        assert values["x"] == "ya-definido" and prompts == []
+
+    def test_fill_pending_default_cubre_todas(self):
+        a = {"pending": {"a1": {"scope": "release", "stages": []},
+                         "b2": {"scope": "environment", "stages": ["QA"]}}}
+        values = rem.fill_pending_default(a, {"a1": "custom"})
+        assert values == {"a1": "custom", "b2": "TBD"}
+
+    def test_rebuild_con_tbd_genera_reglas(self):
+        a = rem.build_actionables(DEFINITION, [
+            _v("STAGE_VARIABLES", "(nivel pipeline)", "tuSecret",
+               detail="SIN valor")])
+        values = rem.fill_pending_default(a, {})
+        a2 = rem.build_actionables(DEFINITION, [
+            _v("STAGE_VARIABLES", "(nivel pipeline)", "tuSecret",
+               detail="SIN valor")], values=values)
+        assert a2["rules"][0]["value"] == "TBD"
+        assert a2["pending"] == {}
+
+
 class TestGenerateTemplate:
     def test_genera_yaml_valido_en_outcome(self, tmp_path):
         rules = [{"name": "x", "action": "add", "scope": "environment",
