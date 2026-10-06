@@ -13,14 +13,18 @@ El template se aplica con el motor existente:
 
 Accionables soportados:
   - RULE_1_SECRET            → isSecret: true en el stage afectado
-  - STAGE_VARIABLES pipeline → valor faltante a nivel release (pide valor)
+  - STAGE_VARIABLES pipeline → valor a nivel release (pide valor / TBD / remove)
   - STAGE_VARIABLES paridad  → add con el valor copiado del stage origen
   - STAGE_VARIABLES contenido→ update con el valor hallado en otro stage
+  - Pendientes               → valor | 'TBD' | eliminar (e) | ignorar (i)
 
 Uso:
     python scm_inspection_remediator.py --interactive
     python scm_inspection_remediator.py --definition-id 1837 --dry-run
     python scm_inspection_remediator.py --definition-id 1837 --apply
+    python scm_inspection_remediator.py --definition-id 1837 --tbd
+    python scm_inspection_remediator.py --definition-id 1837 --remove tuSecret
+    python scm_inspection_remediator.py --definition-id 1837 --set region=us-central1
 """
 
 import argparse
@@ -33,6 +37,11 @@ from pathlib import Path
 
 import requests
 import yaml
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
@@ -40,6 +49,22 @@ REPO_ROOT = SCM_ROOT.parent                         # repo raíz
 CONFIG_FILE = SCM_ROOT / "config.json"
 
 DEFAULT_STAGE = "SCM Inspection"
+DEFAULT_PENDING_VALUE = "TBD"
+
+console = Console()
+
+# Fallback ASCII en consolas legacy Windows (cp1252 no soporta emoji/≠/→)
+_UTF8 = "utf" in ((getattr(sys.stdout, "encoding", "") or "").lower())
+ICON_SECRET = "🔒" if _UTF8 else "[SECRET]"
+ICON_WARN = "⚠" if _UTF8 else "!"
+ICON_OK = "✅" if _UTF8 else "[OK]"
+ICON_DOC = "📄" if _UTF8 else ">>"
+ICON_RUN = "▶" if _UTF8 else ">"
+
+SEV_STYLE = {"CRITICAL": "bold white on red", "HIGH": "bold red",
+             "MEDIUM": "yellow", "LOW": "cyan", "INFO": "dim"}
+ACTION_STYLE = {"add": "bold green", "update": "bold yellow",
+                "remove": "bold red"}
 
 
 # ---------------------------------------------------------------------------
@@ -84,8 +109,10 @@ def get_azdo_params(args) -> tuple:
     project = args.project or cfg.get("project", "")
     pat = args.pat or cfg.get("pat", "")
     if not org or not project or not pat:
-        sys.exit("ERROR: faltan credenciales — defina azdo.organization/project/pat "
-                 "en scm/config.json o use --org/--project/--pat.")
+        console.print("[bold red]ERROR: faltan credenciales[/] — defina "
+                      "azdo.organization/project/pat en scm/config.json "
+                      "o use --org/--project/--pat.")
+        sys.exit(1)
     return org, project, pat
 
 
@@ -107,7 +134,8 @@ class AzdoClient:
                 return resp.text if raw else resp.json()
             if resp.status_code == 429 or resp.status_code >= 500:
                 wait = int(resp.headers.get("Retry-After", (attempt + 1) * 2))
-                print(f"  HTTP {resp.status_code} — reintentando en {wait}s...")
+                console.print(f"  [yellow]HTTP {resp.status_code} — "
+                              f"reintentando en {wait}s...[/]")
                 time.sleep(wait)
                 continue
             if resp.status_code in (203, 401):
@@ -220,7 +248,8 @@ def discover(client: AzdoClient, definition_id: str, stage_name: str,
         except SystemExit:
             raise
         except Exception as e:
-            print(f"  ⚠ No se pudo leer log de '{name}': {e}")
+            console.print(f"  [yellow]{ICON_WARN} No se pudo leer log de "
+                          f"'{name}': {e}[/]")
 
     # dedup + orden por severidad
     rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
@@ -264,20 +293,23 @@ def _env_mismatch(src_stage: str, dst_stage: str) -> str:
     (ej. dev → Production). Retorna texto de warning o ''."""
     a, b = _env_token(src_stage), _env_token(dst_stage)
     if a and b and a != b:
-        return f"⚠ origen '{src_stage}' es ambiente '{a}' ≠ destino '{b}'"
+        return f"{ICON_WARN} origen '{src_stage}' es ambiente '{a}' " \
+               f"!= destino '{b}'"
     return ""
 
 
 def build_actionables(definition: dict, violations: list,
-                      values: dict = None) -> dict:
+                      values: dict = None, removes: set = None) -> dict:
     """Convierte violaciones en reglas `update.variables` del template.
 
     Returns {"rules": [...], "manual": [...], "pending": {...}, "summary": [...]}
-    `values` permite inyectar valores para variables 'needs-value' (no interactivo).
+    `values` permite inyectar valores para variables pendientes.
+    `removes` = set de variables a eliminar (action: remove) donde existan.
     `pending` = {var: {"scope": ..., "stages": [...]}} — variables que requieren
     valor (default "TBD" o capturadas con collect_pending_values/--tbd).
     """
     values = values or {}
+    removes = set(removes or ())
     envs = {e["name"]: e for e in definition.get("environments", [])}
     # Variables que el reporte marcó como secretas en cualquier stage:
     # si las agregamos por paridad en otro stage, deben ir con isSecret.
@@ -306,12 +338,16 @@ def build_actionables(definition: dict, violations: list,
         if stage and stage not in p["stages"]:
             p["stages"].append(stage)
 
-    def add_rule(var, stage, scope, action, value, secret=False, note=""):
-        rule = {"name": var, "action": action, "scope": scope, "value": value}
+    def add_rule(var, stage, scope, action, value=None, secret=False, note=""):
+        rule = {"name": var, "action": action, "scope": scope}
+        if action != "remove":
+            rule["value"] = value
         if scope == "environment":
             rule["stage"] = stage
         if secret:
             rule["isSecret"] = True
+        if note:
+            rule["note"] = note
         rules.append(rule)
         summary.append(f"  [{action}] {var} @ {scope}:{stage or 'release'}"
                        + (" (isSecret)" if secret else "")
@@ -324,6 +360,10 @@ def build_actionables(definition: dict, violations: list,
 
         if rule_name == "RULE_1_SECRET":
             var = var_field.split(",")[0].strip()
+            if var in removes:
+                add_rule(var, env_name, "environment", "remove",
+                         note="eliminada a petición")
+                continue
             current = env_vars(env_name).get(var, {})
             if current.get("value") not in (None, ""):
                 add_rule(var, env_name, "environment", "update",
@@ -339,7 +379,10 @@ def build_actionables(definition: dict, violations: list,
         if env_name in ("", "(nivel pipeline)"):
             for var in [x.strip() for x in var_field.split(",") if x.strip()]:
                 val = values.get(var)
-                if val is not None:
+                if var in removes:
+                    add_rule(var, "", "release", "remove",
+                             note="eliminada a petición")
+                elif val is not None:
                     add_rule(var, "", "release", "update", val,
                              note="valor definido por usuario")
                 else:
@@ -362,8 +405,13 @@ def build_actionables(definition: dict, violations: list,
                              note=note)
                 else:
                     val = values.get(var)
-                    if val is not None:
+                    if var in removes:
+                        # No existe en este stage — nada que eliminar
+                        manual.append(f"{var} @ {env_name}: ya ausente "
+                                      f"(paridad) — nada que eliminar")
+                    elif val is not None:
                         add_rule(var, env_name, "environment", "add", val,
+                                 secret=var in secret_vars,
                                  note="valor definido por usuario")
                     else:
                         need_value(var, env_name, "environment")
@@ -373,6 +421,10 @@ def build_actionables(definition: dict, violations: list,
 
         if "contenido" in reason:
             for var in [x.strip() for x in var_field.split(",") if x.strip()]:
+                if var in removes:
+                    add_rule(var, env_name, "environment", "remove",
+                             note="eliminada a petición")
+                    continue
                 val, src = find_value(var, exclude=env_name)
                 if val is not None:
                     warn = _env_mismatch(src, env_name)
@@ -384,7 +436,9 @@ def build_actionables(definition: dict, violations: list,
                              note=note)
                 elif var in values:
                     add_rule(var, env_name, "environment", "update",
-                             values[var], note="valor definido por usuario")
+                             values[var],
+                             secret=var in secret_vars,
+                             note="valor definido por usuario")
                 else:
                     need_value(var, env_name, "environment")
                     manual.append(f"{var} @ {env_name}: definir valor "
@@ -394,30 +448,57 @@ def build_actionables(definition: dict, violations: list,
             "pending": pending, "summary": summary}
 
 
-DEFAULT_PENDING_VALUE = "TBD"
+# ---------------------------------------------------------------------------
+# Captura de valores pendientes
+# ---------------------------------------------------------------------------
+
+_REMOVE_CMDS = ("e", "eliminar", "remove", "d", "delete", "r")
+_IGNORE_CMDS = ("i", "ignorar", "s", "skip", "-")
+
+
+def _rich_input(prompt: str) -> str:
+    console.print(prompt, end="", markup=True)
+    return input()
 
 
 def collect_pending_values(actionables: dict, values: dict = None,
-                           prompt_fn=input,
-                           default: str = DEFAULT_PENDING_VALUE) -> dict:
-    """Ciclo sobre todas las variables pendientes: Enter = 'TBD',
-    's'/'skip'/'-' = dejar manual. Retorna dict de valores resueltos."""
+                           removes: set = None,
+                           prompt_fn=None,
+                           default: str = DEFAULT_PENDING_VALUE):
+    """Ciclo sobre las variables pendientes.
+
+    Por cada una: Enter = 'TBD', texto = valor, 'e' = eliminar la variable,
+    'i'/'s' = ignorar (queda manual).
+    Retorna (values, removes)."""
+    prompt_fn = prompt_fn or _rich_input
     values = dict(values or {})
+    removes = set(removes or ())
     pending = actionables.get("pending", {})
     if not pending:
-        return values
-    print("\nVariables sin valor fuente — ingrese el valor "
-          f"(Enter = '{default}', 's' = dejar manual):")
+        return values, removes
+    console.print(Panel(
+        "[bold]Variables sin valor fuente[/]\n\n"
+        f"  [cyan]Enter[/]   = valor '{default}' (placeholder)\n"
+        "  [green]texto[/]  = ese valor en todos los scopes pendientes\n"
+        "  [red]e[/]      = eliminar la variable donde exista\n"
+        "  [dim]i[/]      = ignorar (queda pendiente manual)",
+        title="Captura de valores", border_style="cyan"))
     for var, info in pending.items():
-        if var in values:
+        if var in values or var in removes:
             continue
         scopes = ", ".join(info["stages"]) or info["scope"]
         val = prompt_fn(
-            f"  Valor para '{var}' ({scopes}) [Enter={default}]: ").strip()
-        if val.lower() in ("s", "skip", "-"):
+            f"  Valor para [bold cyan]{var}[/] ([dim]{scopes}[/]) "
+            f"[[cyan]Enter={default}[/] | [red]e[/]=eliminar | "
+            f"[dim]i[/]=ignorar]: ").strip()
+        low = val.lower()
+        if low in _REMOVE_CMDS:
+            removes.add(var)
+        elif low in _IGNORE_CMDS:
             continue
-        values[var] = val or default
-    return values
+        else:
+            values[var] = val or default
+    return values, removes
 
 
 def fill_pending_default(actionables: dict, values: dict,
@@ -447,40 +528,82 @@ def mask_value(rule_or_name, value) -> str:
 
 def show_rules(rules: list):
     """Resumen final de reglas con sus valores (sensibles enmascarados)."""
-    print("\nResumen FINAL de cambios (lo que se escribirá en el pipeline):")
+    table = Table(title="Resumen FINAL de cambios (lo que se escribirá "
+                        "en el pipeline)", box=box.SIMPLE_HEAD,
+                  header_style="bold cyan")
+    table.add_column("Acción", no_wrap=True)
+    table.add_column("Variable", style="bold")
+    table.add_column("Scope")
+    table.add_column("Valor")
+    table.add_column("Nota", style="dim")
     for r in rules:
-        loc = f"{r.get('stage')}" if r.get("scope") == "environment" \
+        action = r.get("action", "")
+        style = ACTION_STYLE.get(action, "")
+        loc = r.get("stage") if r.get("scope") == "environment" \
             else "pipeline (release)"
-        extra = " [isSecret]" if r.get("isSecret") else ""
-        print(f"  [{r.get('action'):6}] {r['name']} @ {loc}{extra}"
-              f" = {mask_value(r, r.get('value'))}")
+        value = "(eliminar)" if action == "remove" \
+            else mask_value(r, r.get("value"))
+        val_style = "dim" if value in ("********", "(eliminar)") \
+            else ("bold cyan" if value == DEFAULT_PENDING_VALUE else "")
+        var_cell = r["name"] + (f"  [magenta]{ICON_SECRET}[/]"
+                              if r.get("isSecret") else "")
+        table.add_row(f"[{style}]{action}[/]" if style else action,
+                      var_cell, loc,
+                      f"[{val_style}]{value}[/]" if val_style else str(value),
+                      r.get("note", ""))
+    console.print(table)
 
 
-def review_values(values: dict, var_names, prompt_fn=input) -> dict:
-    """Permite corregir/eliminar valores capturados: Enter conserva,
-    nuevo texto reemplaza, 's' lo regresa a pendiente manual."""
-    print("\nCorregir valores (Enter = conservar, 's' = dejar manual):")
-    for var in var_names:
-        if var not in values:
-            continue
-        current = mask_value(var, values[var])
-        new = prompt_fn(f"  '{var}' actual='{current}' → nuevo: ").strip()
-        if new.lower() in ("s", "skip", "-"):
-            values.pop(var, None)
-        elif new:
-            values[var] = new
-    return values
+def review_values(values: dict, var_names, removes: set = None,
+                  prompt_fn=None):
+    """Corregir/eliminar valores capturados: Enter conserva, texto reemplaza,
+    'e' marca la variable para eliminación, 'i'/'s' la regresa a manual."""
+    prompt_fn = prompt_fn or _rich_input
+    removes = removes if removes is not None else set()
+    console.print("\n[bold]Corregir valores[/] "
+                  "([dim]Enter = conservar, e = eliminar, i = manual[/])")
+    for var in list(var_names):
+        if var in values:
+            current = mask_value(var, values[var])
+            new = prompt_fn(
+                f"  [bold cyan]{var}[/] actual='{current}' -> nuevo: "
+            ).strip()
+            low = new.lower()
+            if low in _REMOVE_CMDS:
+                values.pop(var, None)
+                removes.add(var)
+            elif low in _IGNORE_CMDS:
+                values.pop(var, None)
+            elif new:
+                values[var] = new
+        elif var in removes:
+            new = prompt_fn(
+                f"  [bold cyan]{var}[/] actual='(eliminar)' -> nuevo: "
+            ).strip()
+            low = new.lower()
+            if low in _IGNORE_CMDS:
+                removes.discard(var)
+            elif new and low not in _REMOVE_CMDS:
+                removes.discard(var)
+                values[var] = new
+    return values, removes
 
 
 # ---------------------------------------------------------------------------
 # Template + aplicación
 # ---------------------------------------------------------------------------
 
+_RULE_KEYS = {"name", "action", "scope", "stage", "value",
+              "allowOverride", "isSecret"}
+
+
 def generate_template(rules: list, definition_id: str, pipeline_name: str,
                       out_dir: Path = None) -> Path:
     out_dir = out_dir or resolve_outcome_dir()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = out_dir / f"pipe_cd_inspection_fix_{definition_id}_{ts}.yaml"
+    clean_rules = [{k: v for k, v in r.items() if k in _RULE_KEYS}
+                   for r in rules]
     template = {
         "metadata": {
             "name": f"SCM Inspection Fix — {pipeline_name} ({definition_id})",
@@ -491,7 +614,7 @@ def generate_template(rules: list, definition_id: str, pipeline_name: str,
             "created_at": ts,
         },
         "search": {"stages": []},
-        "update": {"variables": rules},
+        "update": {"variables": clean_rules},
         "options": {"dry_run": False, "rollback_on_error": True,
                     "parallel_workers": 5},
     }
@@ -511,7 +634,8 @@ def apply_template(template_path: Path, definition_id: str,
            "--org", org, "--project", project, "--pat", pat]
     if dry_run:
         cmd.append("--dry-run")
-    print(f"\n▶ Ejecutando: {' '.join(cmd[:3])} ...")
+    console.print(f"\n[cyan]{ICON_RUN} Ejecutando:[/] "
+                  f"[dim]{' '.join(cmd[:3])} ...[/]")
     return subprocess.run(cmd, cwd=REPO_ROOT).returncode
 
 
@@ -521,30 +645,49 @@ def apply_template(template_path: Path, definition_id: str,
 
 def show_plan(discovery: dict, actionables: dict, definition_id: str):
     definition, release = discovery["definition"], discovery["release"]
-    print("\n" + "=" * 70)
-    print(f"Pipeline : {definition.get('name')} (ID {definition_id})")
-    print(f"Release  : {release.get('name')} (ID {release.get('id')})")
-    print(f"Stage    : {discovery['env'].get('name')} — "
-          f"status: {discovery['env'].get('status', '-')}")
-    print("=" * 70)
+    console.print(Panel(
+        f"[bold]Pipeline :[/] {definition.get('name')} (ID {definition_id})\n"
+        f"[bold]Release  :[/] {release.get('name')} "
+        f"(ID {release.get('id')})\n"
+        f"[bold]Stage    :[/] {discovery['env'].get('name')} — "
+        f"status: {discovery['env'].get('status', '-')}",
+        title="Descubrimiento", border_style="blue"))
 
     violations = discovery["violations"]
     if not violations:
-        print("✅ Sin violaciones en el último run del stage.")
+        console.print(f"[bold green]{ICON_OK} Sin violaciones en el "
+                      f"último run del stage.[/]")
         return
-    print(f"Violaciones: {len(violations)}")
+
+    table = Table(title=f"Violaciones: {len(violations)}",
+                  box=box.SIMPLE_HEAD, header_style="bold")
+    table.add_column("Sev", no_wrap=True)
+    table.add_column("Regla")
+    table.add_column("Stage")
+    table.add_column("Variables", style="dim", max_width=60)
     for v in violations:
-        print(f"  [{v['severity']}] {v['rule']} — {v['environment'] or 'pipeline'}"
-              + (f" ({v['variable'][:60]})" if v.get("variable") else ""))
+        sev = v["severity"]
+        table.add_row(f"[{SEV_STYLE.get(sev, '')}]{sev}[/]",
+                      v["rule"], v["environment"] or "pipeline",
+                      (v.get("variable") or "")[:80])
+    console.print(table)
 
     if actionables["summary"]:
-        print("\nAcciones que aplicará el template:")
+        console.print("\n[bold]Acciones que aplicará el template:[/]")
         for s in actionables["summary"]:
-            print(s)
+            style = "dim"
+            if "[add]" in s:
+                style = "green"
+            elif "[update]" in s:
+                style = "yellow"
+            elif "[remove]" in s:
+                style = "red"
+            console.print(Text(s, style=style))
     if actionables["manual"]:
-        print("\n⚠ Requieren intervención manual (sin valor fuente):")
+        console.print(f"\n[yellow]{ICON_WARN} Requieren intervención "
+                      f"manual (sin valor fuente):[/]")
         for m in actionables["manual"]:
-            print(f"  - {m}")
+            console.print(f"  [yellow]-[/] {m}")
 
 
 def run_flow(args, interactive: bool) -> int:
@@ -553,21 +696,24 @@ def run_flow(args, interactive: bool) -> int:
 
     definition_id = args.definition_id
     if not definition_id:
-        definition_id = input("Definition ID del pipeline CD: ").strip()
+        definition_id = _rich_input(
+            "[bold]Definition ID del pipeline CD:[/] ").strip()
         if not definition_id:
-            print("Se requiere el definition ID.")
+            console.print("[red]Se requiere el definition ID.[/]")
             return 1
 
     values = {}
+    removes = set(args.remove or [])
     for item in args.set or []:
         if "=" in item:
             k, _, val = item.partition("=")
             values[k.strip()] = val
 
-    print(f"\nDescubriendo violaciones del stage '{args.stage}'...")
+    console.print(f"\n[cyan]Descubriendo violaciones del stage "
+                  f"'{args.stage}'...[/]")
     discovery = discover(client, definition_id, args.stage, args.release_id)
     actionables = build_actionables(discovery["definition"],
-                                    discovery["violations"], values)
+                                    discovery["violations"], values, removes)
     show_plan(discovery, actionables, definition_id)
 
     if not actionables["rules"] and not actionables["manual"]:
@@ -579,64 +725,71 @@ def run_flow(args, interactive: bool) -> int:
         if args.tbd:
             values = fill_pending_default(actionables, values)
         elif interactive:
-            values = collect_pending_values(actionables, values)
-        if values:
+            values, removes = collect_pending_values(
+                actionables, values, removes)
+        if values or removes:
             actionables = build_actionables(discovery["definition"],
-                                            discovery["violations"], values)
+                                            discovery["violations"],
+                                            values, removes)
 
     if not actionables["rules"]:
-        print("\nNo hay acciones automáticas — solo pendientes manuales.")
+        console.print("\n[yellow]No hay acciones automáticas — solo "
+                      "pendientes manuales.[/]")
         return 0
 
     # Resumen final con valores; permite corregir antes de generar/aplicar
     while True:
         show_rules(actionables["rules"])
         if actionables["manual"]:
-            print("\n⚠ Quedarán manuales:")
+            console.print(f"\n[yellow]{ICON_WARN} Quedarán manuales:[/]")
             for m in actionables["manual"]:
-                print(f"  - {m}")
+                console.print(f"  [yellow]-[/] {m}")
         if not interactive:
             break
-        opts = "\n[Enter] Generar template"
+        opts = "[bold][Enter][/] Generar template"
         if pending_vars:
-            opts += " | [c] Corregir valores"
-        print(opts + " | [0] Salir")
-        choice = input("Seleccione: ").strip().lower()
+            opts += " [dim]|[/] [bold]\\[c][/] Corregir valores"
+        console.print("\n" + opts + " [dim]|[/] [bold]\\[0][/] Salir")
+        choice = _rich_input("[bold]Seleccione:[/] ").strip().lower()
         if choice == "0":
             return 0
         if choice == "c" and pending_vars:
-            review_values(values, pending_vars)
+            values, removes = review_values(values, pending_vars, removes)
             actionables = build_actionables(discovery["definition"],
-                                            discovery["violations"], values)
+                                            discovery["violations"],
+                                            values, removes)
             if not actionables["rules"]:
-                print("\nSin reglas restantes — solo pendientes manuales.")
+                console.print("\n[yellow]Sin reglas restantes — solo "
+                              "pendientes manuales.[/]")
                 return 0
             continue
         break
 
     template = generate_template(actionables["rules"], definition_id,
                                  discovery["definition"].get("name", ""))
-    print(f"\n📄 Template generado: {template}")
+    console.print(f"\n[green]{ICON_DOC} Template generado:[/] "
+                  f"[bold]{template}[/]")
 
     if args.apply or args.dry_run:
         rc = apply_template(template, definition_id, org, project, pat,
                             dry_run=args.dry_run and not args.apply)
-        print("\n✅ Aplicado." if rc == 0 else f"\n✗ Falló (exit {rc}).")
+        console.print(f"\n[bold green]{ICON_OK} Aplicado.[/]" if rc == 0
+                      else f"\n[bold red]X Falló (exit {rc}).[/]")
         return rc
 
-    print("\n[1] Solo template (aplicar luego con opción 41)")
-    print("[2] Dry-run (simulación)")
-    print("[3] Aplicar")
-    print("[0] Salir")
-    choice = input("Seleccione: ").strip()
+    console.print("\n[bold][1][/] Solo template (aplicar luego con opción 41)")
+    console.print("[bold][2][/] Dry-run (simulación)")
+    console.print("[bold][3][/] Aplicar")
+    console.print("[bold][0][/] Salir")
+    choice = _rich_input("[bold]Seleccione:[/] ").strip()
     if choice == "2":
-        rc = apply_template(template, definition_id, org, project, pat,
-                            dry_run=True)
-        return rc
+        return apply_template(template, definition_id, org, project, pat,
+                              dry_run=True)
     if choice == "3":
         rc = apply_template(template, definition_id, org, project, pat,
                             dry_run=False)
-        print("\n✅ Aplicado." if rc == 0 else f"\n✗ Falló (exit {rc}).")
+        console.print(f"\n[bold green]{ICON_OK} Aplicado.[/]" if rc == 0
+                      else f"\n[bold red]X Falló (exit {rc}).[/]")
         return rc
     return 0
 
@@ -658,6 +811,8 @@ def main():
     parser.add_argument("--pat", default=None)
     parser.add_argument("--set", action="append",
                         help="Valor para variable pendiente: NAME=VALUE (repetible)")
+    parser.add_argument("--remove", action="append",
+                        help="Eliminar variable: NAME (repetible)")
     parser.add_argument("--tbd", action="store_true",
                         help="Rellenar todas las pendientes con 'TBD' "
                              "(no interactivo)")

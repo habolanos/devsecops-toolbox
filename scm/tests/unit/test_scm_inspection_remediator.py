@@ -179,6 +179,50 @@ class TestBuildActionables:
         assert a["rules"] and not any("⚠" in s for s in a["summary"])
 
 
+class TestRemoves:
+    def test_pipeline_level_remove(self):
+        a = rem.build_actionables(DEFINITION, [
+            _v("STAGE_VARIABLES", "(nivel pipeline)", "tuSecret",
+               detail="SIN valor")], removes={"tuSecret"})
+        r = a["rules"][0]
+        assert r["action"] == "remove" and r["scope"] == "release"
+        assert "value" not in r  # remove no lleva value
+        assert not a["pending"]
+
+    def test_contenido_remove_stage(self):
+        a = rem.build_actionables(DEFINITION, [
+            _v("STAGE_VARIABLES", "Develop", "serviceAccount",
+               reason="contenido",
+               detail="1 variable(s) SIN valor")],
+            removes={"serviceAccount"})
+        r = a["rules"][0]
+        assert r["action"] == "remove" and r["stage"] == "Develop"
+
+    def test_paridad_remove_noop(self):
+        """Variable marcada para eliminar que NO existe en el stage
+        (paridad = ausente) → no rule, nota manual de claridad."""
+        a = rem.build_actionables(DEFINITION, [
+            _v("STAGE_VARIABLES", "Develop", "x_missing",
+               reason="paridad", detail="... x_missing (de Otro)")],
+            removes={"x_missing"})
+        assert a["rules"] == []
+        assert any("ya ausente" in m for m in a["manual"])
+
+    def test_rule1_secret_remove(self):
+        a = rem.build_actionables(DEFINITION, [
+            _v("RULE_1_SECRET", "Production", "ksaSecretManager")],
+            removes={"ksaSecretManager"})
+        r = a["rules"][0]
+        assert r["action"] == "remove" and r["stage"] == "Production"
+
+    def test_template_no_incluye_nota(self, tmp_path):
+        rules = [{"name": "x", "action": "add", "scope": "environment",
+                  "stage": "Dev", "value": "v", "note": "copiado de Prod"}]
+        tpl = yaml.safe_load(rem.generate_template(
+            rules, "1", "p", out_dir=tmp_path).read_text(encoding="utf-8"))
+        assert "note" not in tpl["update"]["variables"][0]
+
+
 class TestPendingValues:
     def test_pending_registra_var_y_scopes(self):
         a = rem.build_actionables(DEFINITION, [
@@ -194,24 +238,39 @@ class TestPendingValues:
     def test_collect_enter_usa_tbd(self):
         a = {"pending": {"cluster_name": {"scope": "environment",
                                           "stages": ["Develop"]}}}
-        values = rem.collect_pending_values(a, prompt_fn=lambda _p: "")
-        assert values["cluster_name"] == "TBD"
+        values, removes = rem.collect_pending_values(
+            a, prompt_fn=lambda _p: "")
+        assert values["cluster_name"] == "TBD" and not removes
 
     def test_collect_valor_ingresado(self):
         a = {"pending": {"cluster_name": {"scope": "environment",
                                           "stages": ["Develop"]}}}
-        values = rem.collect_pending_values(a, prompt_fn=lambda _p: "gke-prod")
+        values, _ = rem.collect_pending_values(
+            a, prompt_fn=lambda _p: "gke-prod")
         assert values["cluster_name"] == "gke-prod"
 
     def test_collect_skip_deja_manual(self):
         a = {"pending": {"x": {"scope": "release", "stages": []}}}
-        values = rem.collect_pending_values(a, prompt_fn=lambda _p: "s")
-        assert "x" not in values
+        values, removes = rem.collect_pending_values(
+            a, prompt_fn=lambda _p: "s")
+        assert "x" not in values and "x" not in removes
+
+    def test_collect_ignorar_alias_i(self):
+        a = {"pending": {"x": {"scope": "release", "stages": []}}}
+        values, removes = rem.collect_pending_values(
+            a, prompt_fn=lambda _p: "i")
+        assert "x" not in values and "x" not in removes
+
+    def test_collect_eliminar_marca_remove(self):
+        a = {"pending": {"tuSecret": {"scope": "release", "stages": []}}}
+        values, removes = rem.collect_pending_values(
+            a, prompt_fn=lambda _p: "e")
+        assert "tuSecret" in removes and "tuSecret" not in values
 
     def test_collect_respeta_valores_previos(self):
         a = {"pending": {"x": {"scope": "release", "stages": []}}}
         prompts = []
-        values = rem.collect_pending_values(
+        values, _ = rem.collect_pending_values(
             a, values={"x": "ya-definido"},
             prompt_fn=lambda p: prompts.append(p) or "otro")
         assert values["x"] == "ya-definido" and prompts == []
@@ -242,19 +301,30 @@ class TestReviewAndMask:
         assert rem.mask_value("apiSecret", "TBD") == "TBD"  # placeholder visible
 
     def test_review_enter_conserva(self):
-        values = rem.review_values({"x": "v1"}, ["x"],
-                                   prompt_fn=lambda _p: "")
+        values, _ = rem.review_values({"x": "v1"}, ["x"],
+                                      prompt_fn=lambda _p: "")
         assert values == {"x": "v1"}
 
     def test_review_nuevo_valor_reemplaza(self):
-        values = rem.review_values({"x": "TBD"}, ["x"],
-                                   prompt_fn=lambda _p: "gke-prod")
+        values, _ = rem.review_values({"x": "TBD"}, ["x"],
+                                      prompt_fn=lambda _p: "gke-prod")
         assert values == {"x": "gke-prod"}
 
     def test_review_skip_regresa_a_manual(self):
-        values = rem.review_values({"x": "TBD", "y": "ok"}, ["x", "y"],
-                                   prompt_fn=lambda p: "s" if "'x'" in p else "")
+        values, _ = rem.review_values(
+            {"x": "TBD", "y": "ok"}, ["x", "y"],
+            prompt_fn=lambda p: "s" if "[bold cyan]x[/]" in p else "")
         assert values == {"y": "ok"}
+
+    def test_review_eliminar_mueve_a_removes(self):
+        values, removes = rem.review_values({"x": "TBD"}, ["x"],
+                                            prompt_fn=lambda _p: "e")
+        assert values == {} and removes == {"x"}
+
+    def test_review_valor_sobre_eliminar_lo_revierte(self):
+        values, removes = rem.review_values(
+            {}, ["x"], removes={"x"}, prompt_fn=lambda _p: "nuevo-valor")
+        assert values == {"x": "nuevo-valor"} and not removes
 
     def test_show_rules_no_imprime_secreto(self, capsys):
         rem.show_rules([{"name": "apiSecret", "action": "update",
@@ -265,7 +335,13 @@ class TestReviewAndMask:
                          "value": "us-east1"}])
         out = capsys.readouterr().out
         assert "super-secreto" not in out
-        assert "us-east1" in out and "isSecret" in out
+        assert "us-east1" in out and "🔒" in out
+
+    def test_show_rules_remove_sin_valor(self, capsys):
+        rem.show_rules([{"name": "tuSecret", "action": "remove",
+                         "scope": "release"}])
+        out = capsys.readouterr().out
+        assert "remove" in out and "tuSecret" in out
 
 
 class TestGenerateTemplate:
@@ -423,6 +499,7 @@ class _Args:
     release_id = ""
     org = project = pat = "x"
     set = None
+    remove = None
     tbd = False
     apply = False
     dry_run = False
