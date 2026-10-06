@@ -182,6 +182,40 @@ class TestPendingValues:
         assert a2["pending"] == {}
 
 
+class TestReviewAndMask:
+    def test_mask_oculta_secretos(self):
+        assert rem.mask_value("apiSecret", "valor-real") == "********"
+        assert rem.mask_value({"name": "x", "isSecret": True}, "v") == "********"
+        assert rem.mask_value("cluster_name", "gke-prod") == "gke-prod"
+        assert rem.mask_value("apiSecret", "TBD") == "TBD"  # placeholder visible
+
+    def test_review_enter_conserva(self):
+        values = rem.review_values({"x": "v1"}, ["x"],
+                                   prompt_fn=lambda _p: "")
+        assert values == {"x": "v1"}
+
+    def test_review_nuevo_valor_reemplaza(self):
+        values = rem.review_values({"x": "TBD"}, ["x"],
+                                   prompt_fn=lambda _p: "gke-prod")
+        assert values == {"x": "gke-prod"}
+
+    def test_review_skip_regresa_a_manual(self):
+        values = rem.review_values({"x": "TBD", "y": "ok"}, ["x", "y"],
+                                   prompt_fn=lambda p: "s" if "'x'" in p else "")
+        assert values == {"y": "ok"}
+
+    def test_show_rules_no_imprime_secreto(self, capsys):
+        rem.show_rules([{"name": "apiSecret", "action": "update",
+                         "scope": "environment", "stage": "Prod",
+                         "value": "super-secreto", "isSecret": True},
+                        {"name": "region", "action": "add",
+                         "scope": "environment", "stage": "QA",
+                         "value": "us-east1"}])
+        out = capsys.readouterr().out
+        assert "super-secreto" not in out
+        assert "us-east1" in out and "isSecret" in out
+
+
 class TestGenerateTemplate:
     def test_genera_yaml_valido_en_outcome(self, tmp_path):
         rules = [{"name": "x", "action": "add", "scope": "environment",

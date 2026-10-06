@@ -392,6 +392,49 @@ def fill_pending_default(actionables: dict, values: dict,
     return values
 
 
+_SECRET_NAME = re.compile(r"secret|token|passw|pwd|key|cred", re.I)
+
+
+def mask_value(rule_or_name, value) -> str:
+    """Oculta valores sensibles en el resumen; muestra 'TBD' tal cual."""
+    name = rule_or_name.get("name", "") if isinstance(rule_or_name, dict) \
+        else str(rule_or_name)
+    is_secret = isinstance(rule_or_name, dict) and rule_or_name.get("isSecret")
+    if value == DEFAULT_PENDING_VALUE:
+        return DEFAULT_PENDING_VALUE
+    if is_secret or _SECRET_NAME.search(name):
+        return "********"
+    s = str(value)
+    return s if len(s) <= 60 else s[:57] + "..."
+
+
+def show_rules(rules: list):
+    """Resumen final de reglas con sus valores (sensibles enmascarados)."""
+    print("\nResumen FINAL de cambios (lo que se escribirá en el pipeline):")
+    for r in rules:
+        loc = f"{r.get('stage')}" if r.get("scope") == "environment" \
+            else "pipeline (release)"
+        extra = " [isSecret]" if r.get("isSecret") else ""
+        print(f"  [{r.get('action'):6}] {r['name']} @ {loc}{extra}"
+              f" = {mask_value(r, r.get('value'))}")
+
+
+def review_values(values: dict, var_names, prompt_fn=input) -> dict:
+    """Permite corregir/eliminar valores capturados: Enter conserva,
+    nuevo texto reemplaza, 's' lo regresa a pendiente manual."""
+    print("\nCorregir valores (Enter = conservar, 's' = dejar manual):")
+    for var in var_names:
+        if var not in values:
+            continue
+        current = mask_value(var, values[var])
+        new = prompt_fn(f"  '{var}' actual='{current}' → nuevo: ").strip()
+        if new.lower() in ("s", "skip", "-"):
+            values.pop(var, None)
+        elif new:
+            values[var] = new
+    return values
+
+
 # ---------------------------------------------------------------------------
 # Template + aplicación
 # ---------------------------------------------------------------------------
@@ -494,7 +537,8 @@ def run_flow(args, interactive: bool) -> int:
         return 0
 
     # Valores pendientes: --tbd (no interactivo) o ciclo con default TBD
-    if actionables["pending"]:
+    pending_vars = set(actionables["pending"])
+    if pending_vars:
         if args.tbd:
             values = fill_pending_default(actionables, values)
         elif interactive:
@@ -506,6 +550,32 @@ def run_flow(args, interactive: bool) -> int:
     if not actionables["rules"]:
         print("\nNo hay acciones automáticas — solo pendientes manuales.")
         return 0
+
+    # Resumen final con valores; permite corregir antes de generar/aplicar
+    while True:
+        show_rules(actionables["rules"])
+        if actionables["manual"]:
+            print("\n⚠ Quedarán manuales:")
+            for m in actionables["manual"]:
+                print(f"  - {m}")
+        if not interactive:
+            break
+        opts = "\n[Enter] Generar template"
+        if pending_vars:
+            opts += " | [c] Corregir valores"
+        print(opts + " | [0] Salir")
+        choice = input("Seleccione: ").strip().lower()
+        if choice == "0":
+            return 0
+        if choice == "c" and pending_vars:
+            review_values(values, pending_vars)
+            actionables = build_actionables(discovery["definition"],
+                                            discovery["violations"], values)
+            if not actionables["rules"]:
+                print("\nSin reglas restantes — solo pendientes manuales.")
+                return 0
+            continue
+        break
 
     template = generate_template(actionables["rules"], definition_id,
                                  discovery["definition"].get("name", ""))
