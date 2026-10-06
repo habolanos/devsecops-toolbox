@@ -539,11 +539,22 @@ if (( ALL_MODE == 1 )); then
   } > "$SUMMARY_CSV"
 
   {
-    echo "DEFINITION_ID,DEFINITION_NAME,RELEASE_ID,RELEASE_NAME,STAGE_STATUS,SEVERITY,RULE,ENVIRONMENT,VARIABLE,REASON,DETAIL,TASK"
+    echo "DEFINITION_ID,DEFINITION_NAME,RELEASE_ID,RELEASE_NAME,STAGE_STATUS,SEVERITY,RULE,ENVIRONMENT,VARIABLE,REASON,ACTION,DETAIL,TASK"
     jq -r '
+      def suggest:
+        if .rule == "RULE_1_SECRET" then "mark-secret (lock icon / isSecret)"
+        elif .rule == "STAGE_VARIABLES" then
+          if (.environment == "(nivel pipeline)" or .environment == "")
+          then "define-or-remove @ pipeline scope"
+          elif (.reason | test("paridad")) then "add-missing (copy value from source stage)"
+          elif (.reason | test("contenido")) then "fill-value (defined but empty)"
+          else "review" end
+        elif .rule == "SECURITY_SCAN" then "optional: move inline script to file"
+        else "review" end;
       sort_by(.name)[] | . as $p | .selected[]
       | [$p.id, $p.name, $p.releaseId, $p.releaseName, $p.stageStatus,
-         .severity, .rule, .environment, .variable, .reason, .detail, .task] | @csv' "$SCAN_DIR/report.json"
+         .severity, .rule, .environment, .variable, .reason,
+         (. | suggest), .detail, .task] | @csv' "$SCAN_DIR/report.json"
   } > "$DETAIL_CSV"
 
   echo ""
@@ -754,10 +765,21 @@ shown_count=$(jq 'length' <<<"$filtered")
 
 CSV_FILE="$OUTCOME_DIR/inspection_violations_${DEF_ID}_$(date +%Y%m%d_%H%M%S).csv"
 {
-  echo "DEFINITION_ID,DEFINITION_NAME,RELEASE_ID,RELEASE_NAME,STAGE_STATUS,SEVERITY,RULE,ENVIRONMENT,VARIABLE,REASON,DETAIL,TASK"
+  echo "DEFINITION_ID,DEFINITION_NAME,RELEASE_ID,RELEASE_NAME,STAGE_STATUS,SEVERITY,RULE,ENVIRONMENT,VARIABLE,REASON,ACTION,DETAIL,TASK"
   jq -r --arg did "$DEF_ID" --arg dname "$DEF_NAME" --arg rid "$RELEASE_ID" --arg rname "$RELEASE_NAME" \
         --arg status "$ENV_STATUS" \
-    '.[] | [$did, $dname, $rid, $rname, $status, .severity, .rule, .environment, .variable, .reason, .detail, .task] | @csv' \
+    'def suggest:
+      if .rule == "RULE_1_SECRET" then "mark-secret (lock icon / isSecret)"
+      elif .rule == "STAGE_VARIABLES" then
+        if (.environment == "(nivel pipeline)" or .environment == "")
+        then "define-or-remove @ pipeline scope"
+        elif (.reason | test("paridad")) then "add-missing (copy value from source stage)"
+        elif (.reason | test("contenido")) then "fill-value (defined but empty)"
+        else "review" end
+      elif .rule == "SECURITY_SCAN" then "optional: move inline script to file"
+      else "review" end;
+    .[] | [$did, $dname, $rid, $rname, $status, .severity, .rule, .environment,
+           .variable, .reason, (. | suggest), .detail, .task] | @csv' \
     <<<"$filtered"
 } > "$CSV_FILE"
 

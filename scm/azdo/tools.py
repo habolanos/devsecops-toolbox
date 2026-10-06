@@ -428,6 +428,14 @@ TOOLS: Dict = {
         "group":       "updatepipe",
         "status":      "ready",
     },
+    "44": {
+        "name":        "SCM Inspection Remediator",
+        "description": "Descubre violaciones del stage 'SCM Inspection' del pipeline CD y genera un template pipe_cd_inspection_fix_<id>.yaml en outcome/ con las correcciones (secrets, paridad de variables, valores vacíos). Opción de dry-run o aplicación directa via Pipeline Updater (opción 41).",
+        "path":        "scm_inspection_remediator.py",
+        "args":        ["--interactive"],
+        "group":       "updatepipe",
+        "status":      "ready",
+    },
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos",
@@ -1612,6 +1620,63 @@ def run_tool(tool_key: str):
                         print(f"\n{Colors.RED}🔴 Quality gate: CRITICAL (exit {result.returncode}){Colors.ENDC}")
                 except Exception as e:
                     print(f"\n{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            else:
+                print(f"{Colors.RED}❌ Opción no válida.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+    # ── Caso especial: SCM Inspection Remediator (tool 44) ─────────────────────
+    if tool_key == "44":
+        while True:
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}  🔧 SCM Inspection Remediator - Seleccione una opción{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Modo interactivo (descubrir → plan → template → dry-run/aplicar)")
+            print(f"{Colors.CYAN}[2]{Colors.ENDC} Ejecutar desde CLI (argumentos directos)")
+            print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+            print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
+
+            option = input().strip()
+
+            if option == "0":
+                return
+
+            elif option == "1":
+                cmd = [str(venv_python), str(script_path), "--interactive"]
+                print(f"\n{Colors.CYAN}▶ Ejecutando modo interactivo...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            elif option == "2":
+                print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
+                print(f"{Colors.DIM}Ej: --definition-id 1837 --dry-run  |  --definition-id 1837 --apply  |  --definition-id 1837 --set cluster_name=gke-prod{Colors.ENDC}")
+                print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
+                cli_args = input().strip()
+                if not cli_args:
+                    print(f"{Colors.YELLOW}Sin argumentos. Cancelando...{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                cmd = [str(venv_python), str(script_path)] + cli_args.split()
+                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
                 input("\nPresione Enter para continuar...")
                 continue
 
