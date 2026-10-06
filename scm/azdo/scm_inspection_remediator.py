@@ -55,6 +55,7 @@ console = Console()
 # Fallback ASCII en consolas legacy Windows (cp1252 no soporta emoji/≠/→)
 _UTF8 = "utf" in ((getattr(sys.stdout, "encoding", "") or "").lower())
 ICON_SECRET = "🔒" if _UTF8 else "[SECRET]"
+ICON_UNSECRET = "🔓" if _UTF8 else "[NO-SECRET]"
 ICON_WARN = "⚠" if _UTF8 else "!"
 ICON_OK = "✅" if _UTF8 else "[OK]"
 ICON_DOC = "📄" if _UTF8 else ">>"
@@ -486,6 +487,7 @@ def build_actionables(definition: dict, violations: list,
 
 _REMOVE_CMDS = ("e", "eliminar", "remove", "d", "delete", "r")
 _IGNORE_CMDS = ("i", "ignorar", "s", "skip", "-")
+_SECRET_CMDS = ("k", "secreto", "secret", "lock")
 
 
 def _rich_input(prompt: str) -> str:
@@ -575,8 +577,12 @@ def rules_table(rules: list, title: str) -> Table:
             else mask_value(r, r.get("value"))
         val_style = "dim" if value in ("********", "(eliminar)") \
             else ("bold cyan" if value == DEFAULT_PENDING_VALUE else "")
-        var_cell = r["name"] + (f"  [magenta]{ICON_SECRET}[/]"
-                              if r.get("isSecret") else "")
+        if r.get("isSecret"):
+            var_cell = r["name"] + f"  [magenta]{ICON_SECRET}[/]"
+        elif r.get("isSecret") is False:
+            var_cell = r["name"] + f"  [dim]{ICON_UNSECRET}[/]"
+        else:
+            var_cell = r["name"]
         table.add_row(f"[{style}]{action}[/]" if style else action,
                       var_cell, loc,
                       f"[{val_style}]{value}[/]" if val_style else str(value),
@@ -603,6 +609,8 @@ def edit_rules(rules: list, prompt_fn=None, match=None) -> list:
         "  [cyan bold]Enter[/]   = conservar tal cual\n"
         "  [green bold]texto[/]  = reemplazar el valor "
         "(en remove: revierte a update)\n"
+        "  [magenta bold]k[/]      = marcar/desmarcar como secreta "
+        "(isSecret)\n"
         "  [red bold]e[/]      = eliminar la variable (action: remove)\n"
         "  [yellow]i[/]      = descartar el ajuste (no modificar)",
         title="Editor de ajustes", border_style="magenta"))
@@ -617,32 +625,54 @@ def edit_rules(rules: list, prompt_fn=None, match=None) -> list:
         cur = "(eliminar)" if action == "remove" \
             else mask_value(r, r.get("value"))
         style = ACTION_STYLE.get(action, "")
+        lock = f" [magenta]{ICON_SECRET}[/]" if r.get("isSecret") else ""
         console.print(
             f"  [cyan]{i}/{total}[/] [{style}]{action}[/] "
-            f"[bold white]{r['name']}[/] @ [magenta]{loc}[/] "
+            f"[bold white]{r['name']}[/]{lock} @ [magenta]{loc}[/] "
             f"= [bold]{cur}[/]")
-        val = prompt_fn(
-            "    [cyan bold]Enter[/]=conservar | [green bold]texto[/]=valor "
-            "| [red bold]e[/]=eliminar | [yellow]i[/]=ignorar: ").strip()
-        low = val.lower()
-        if low in _IGNORE_CMDS:
-            dropped += 1
-            continue
-        if low in _REMOVE_CMDS:
-            edited.append({"name": r["name"], "action": "remove",
-                           "scope": r["scope"],
-                           **({"stage": r["stage"]} if r.get("stage") else {}),
-                           "note": "eliminada a petición (edición manual)"})
-            continue
-        if val:
-            nr = dict(r)
-            if action == "remove":
-                nr["action"] = "update"
-                nr["note"] = "valor definido por usuario (edición manual)"
-            nr["value"] = val
-            edited.append(nr)
-            continue
-        edited.append(r)
+        while True:
+            val = prompt_fn(
+                "    [cyan bold]Enter[/]=conservar | [green bold]texto[/]"
+                "=valor | [magenta bold]k[/]=secret on/off | "
+                "[red bold]e[/]=eliminar | [yellow]i[/]=ignorar: ").strip()
+            low = val.lower()
+            if low in _IGNORE_CMDS:
+                dropped += 1
+                r = None
+                break
+            if low in _SECRET_CMDS:
+                if action == "remove":
+                    console.print("    [yellow](no aplica a remove)[/]")
+                    continue
+                nr = dict(r)
+                if nr.get("isSecret"):
+                    nr["isSecret"] = False
+                    nr["note"] = ((nr.get("note") or "") +
+                                  " | desmarcada como secreta").lstrip(" |")
+                else:
+                    nr["isSecret"] = True
+                    nr["note"] = ((nr.get("note") or "") +
+                                  " | marcada como secreta").lstrip(" |")
+                edited.append(nr)
+                break
+            if low in _REMOVE_CMDS:
+                edited.append({"name": r["name"], "action": "remove",
+                               "scope": r["scope"],
+                               **({"stage": r["stage"]}
+                                  if r.get("stage") else {}),
+                               "note": "eliminada a petición "
+                                       "(edición manual)"})
+                break
+            if val:
+                nr = dict(r)
+                if action == "remove":
+                    nr["action"] = "update"
+                    nr["note"] = "valor definido por usuario (edición manual)"
+                nr["value"] = val
+                edited.append(nr)
+                break
+            edited.append(r)
+            break
     if dropped:
         console.print(f"  [yellow]{dropped} ajuste(s) descartados.[/]")
     return edited

@@ -488,6 +488,32 @@ class TestEditRules:
         out = self._run(["i", "i", "i", "i"])
         assert out == []
 
+    def test_k_marca_como_secreta(self):
+        out = self._run(["k", "", "", ""])
+        assert out[0]["isSecret"] is True
+        assert "marcada como secreta" in out[0].get("note", "")
+
+    def test_k_desmarca_secreta(self):
+        rules = [{"name": "ksa", "action": "update", "scope": "environment",
+                  "stage": "Prod", "value": "v", "isSecret": True}]
+        out = rem.edit_rules(rules, prompt_fn=lambda _p: "k")
+        # isSecret: false explícito → el engine desmarca el candado
+        assert out[0]["isSecret"] is False
+        assert "desmarcada" in out[0].get("note", "")
+
+    def test_k_en_remove_no_aplica_y_repregunta(self):
+        rules = [{"name": "d", "action": "remove", "scope": "release"}]
+        ans = iter(["k", ""])
+        out = rem.edit_rules(rules, prompt_fn=lambda _p: next(ans))
+        assert out == rules  # k no aplicó; Enter conservó
+
+    def test_show_rules_muestra_unsecret(self, capsys):
+        rem.show_rules([{"name": "x", "action": "update",
+                         "scope": "release", "value": "v",
+                         "isSecret": False}])
+        out = capsys.readouterr().out
+        assert ("🔓" in out) or ("NO-SECRET" in out)
+
 
 class TestGenerateTemplate:
     def test_genera_yaml_valido_en_outcome(self, tmp_path):
