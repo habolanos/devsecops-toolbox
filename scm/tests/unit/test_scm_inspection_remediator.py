@@ -803,6 +803,7 @@ class _Args:
     dry_run = False
     interactive = True
     target = "definition"
+    redeploy = False
 
 
 class TestRunFlow:
@@ -915,9 +916,10 @@ class TestRunFlow:
         monkeypatch.setattr(
             rem, "apply_rules_to_release",
             lambda *a, **k: calls.append((a, k)) or 0)
-        # Enter genera template → "5" aplicar a release → Enter acepta
-        # el release descubierto
-        inputs = iter(["", "", "5", ""])
+        monkeypatch.setattr(rem, "redeploy_stage", lambda *a, **k: 0)
+        # Enter gen. template → "5" → Enter release default → "n" sin
+        # redeploy → "0" salir del bucle de aplicación
+        inputs = iter(["", "", "5", "", "n", "0"])
         monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
         args = _Args()
         assert rem.run_flow(args, interactive=True) == 0
@@ -930,11 +932,75 @@ class TestRunFlow:
         monkeypatch.setattr(
             rem, "apply_rules_to_release",
             lambda *a, **k: calls.append((a, k)) or 0)
-        inputs = iter(["", "", "5", "99999"])
+        monkeypatch.setattr(rem, "redeploy_stage", lambda *a, **k: 0)
+        inputs = iter(["", "", "5", "99999", "n", "0"])
         monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
         args = _Args()
         assert rem.run_flow(args, interactive=True) == 0
         assert calls[0][0][1] == "99999"  # release específico
+
+    def test_menu_vuelve_tras_aplicar_definicion(self, monkeypatch,
+                                                 tmp_path):
+        """Tras aplicar a la definición el menú de aplicación reaparece."""
+        self._setup(monkeypatch, tmp_path)
+        calls = []
+        monkeypatch.setattr(rem, "apply_template",
+                            lambda *a, **k: calls.append(1) or 0)
+        # "3" aplica definición → menú reaparece → "0" sale
+        inputs = iter(["", "", "3", "0"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        assert calls == [1]
+
+    def test_redeploy_tras_aplicar_release(self, monkeypatch, tmp_path):
+        """Tras aplicar al release, 's' dispara el redeploy del stage."""
+        self._setup(monkeypatch, tmp_path)
+        redeploys = []
+        monkeypatch.setattr(rem, "apply_rules_to_release",
+                            lambda *a, **k: 0)
+        monkeypatch.setattr(rem, "redeploy_stage",
+                            lambda *a, **k: redeploys.append(a) or 0)
+        inputs = iter(["", "", "5", "", "s", "0"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        assert redeploys[0][1] == "61141"
+        assert redeploys[0][2] == rem.DEFAULT_STAGE
+
+    def test_cli_redeploy_flag(self, monkeypatch, tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        redeploys = []
+        monkeypatch.setattr(rem, "apply_rules_to_release",
+                            lambda *a, **k: 0)
+        monkeypatch.setattr(rem, "redeploy_stage",
+                            lambda *a, **k: redeploys.append(a) or 0)
+        args = _Args()
+        args.apply = True
+        args.target = "release"
+        args.redeploy = True
+        assert rem.run_flow(args, interactive=False) == 0
+        assert redeploys[0][1] == "61141"
+
+    def test_redeploy_stage_hace_patch_environment(self):
+        class C:
+            base = "https://vsrm/o/p/_apis/release"
+
+            def __init__(self):
+                self.patched = None
+
+            def get(self, url, raw=False, params=None):
+                return {"environments": [
+                    {"id": 7, "name": "SCM Inspection"}]}
+
+            def patch(self, url, payload, params=None):
+                self.patched = (url, payload)
+                return {}
+        c = C()
+        assert rem.redeploy_stage(c, "61062", "SCM Inspection") == 0
+        url, payload = c.patched
+        assert "releases/61062/environments/7" in url
+        assert payload == {"status": "inProgress"}
 
     def test_prompt_release_id_interactivo(self, monkeypatch, tmp_path):
         """El modo interactivo pregunta Release ID tras el Definition ID y

@@ -843,15 +843,16 @@ mismo Definition ID.
 
 #### Destino de la aplicación
 
-Tras generar el template se elige **dónde** aplicar los ajustes:
+Tras generar el template se elige **dónde** aplicar los ajustes (el menú es un
+bucle: tras cada ejecución vuelve a aparecer hasta salir con `0` o `1`):
 
 ```
-[1] Solo template (aplicar luego con opción 41)
-[2] Dry-run sobre la definición del pipeline
-[3] Aplicar a la definición del pipeline
-[4] Dry-run sobre un release (default #<último descubierto>)
-[5] Aplicar a un release (default #<último descubierto>)
-[6] Aplicar a definición + release
+[1] Solo template (definición — aplicar luego con opción 41)
+[2] Definición: dry-run
+[3] Definición: aplicar
+[4] Release: dry-run (default #<último descubierto>)
+[5] Release: aplicar (default #<último descubierto>)
+[6] Ambos: definición + release
 [0] Salir
 ```
 
@@ -860,13 +861,21 @@ Tras generar el template se elige **dónde** aplicar los ajustes:
   sus propios snapshots/rollback.
 - **Release** (`4`–`6`): aplica los mismos ajustes directamente sobre una
   **instancia de release** — `release.variables` y `environments[].variables`
-  via PUT `releases/{id}`. El default es el release descubierto en el análisis
-  (último que corrió el stage); también acepta escribir un **release ID
-  específico**. Soporta `add`/`update`/`remove`/`isSecret` (casos que el motor
-  de la opción 42 no cubre), crea backup del release en
-  `outcome/backups/` antes del PUT y pide confirmación `[s/N]` en aplicación
-  real.
+  via PUT `releases/{id}` (**no usa el template YAML**; el template es formato
+  exclusivo del updater de definiciones). El default es el release descubierto
+  en el análisis; también acepta escribir un **release ID específico**.
+  Soporta `add`/`update`/`remove`/`isSecret` (casos que el motor de la opción
+  42 no cubre), crea backup del release en `outcome/backups/` antes del PUT y
+  pide confirmación `[s/N]` en aplicación real.
 - Con `[6]` la definición se aplica primero; si falla, el release se omite.
+
+#### Redeploy del stage inspeccionado
+
+Tras una aplicación **real** al release (opciones `5` o `6`), se ofrece
+re-correr el deploy del stage inspeccionado (p. ej. `SCM Inspection`) en ese
+release — `PATCH releases/{id}/environments/{envId}` con
+`status: inProgress` — para que la inspección vuelva a correr con las
+variables ya remediadas. En CLI se activa con `--redeploy`.
 
 > **Cuándo usar cada destino**: la definición corrige futuros releases; el
 > release actualiza el snapshot de variables de una instancia ya creada
@@ -879,7 +888,7 @@ python -m scm.azdo.scm_inspection_remediator \
   --definition-id <id> \
   [--stage "SCM Inspection"] [--release-id <id>] \
   [--set NAME=VALUE ...] [--remove NAME ...] [--tbd] \
-  [--target definition|release|both] \
+  [--target definition|release|both] [--redeploy] \
   [--apply | --dry-run]
 ```
 
@@ -1000,6 +1009,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-06 | 1.8.24 | **SCM Inspection Remediator: menú en bucle + redeploy del stage** — El menú de aplicación reaparece tras cada acción (hasta `0`/`1`); tras aplicar al release se ofrece re-correr el deploy del stage inspeccionado (`PATCH environments/{id} status=inProgress`; `--redeploy` en CLI). Nota UX: el YAML es solo para la definición; el release usa PUT directo. `AzdoClient._send` unifica GET/PUT/PATCH. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.23 | **SCM Inspection Remediator: prompt de Release ID interactivo** — El modo interactivo ahora pregunta el Release ID tras el Definition ID (Enter = último run del stage; un ID específico inspecciona ese release y queda como destino default de las opciones `4`–`6`). Input no numérico → fallback al último. Hint CLI del submenú con ejemplos `--release-id`/`--target`. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.22 | **SCM Inspection Remediator: aplicar a un Release (instancia)** — Nuevo destino de aplicación además de la definición: PUT directo sobre `release.variables`/`environments[].variables` del último release descubierto o uno específico. Soporta `add`/`update`/`remove`/`isSecret` (incl. desmarcar), backup en `outcome/backups/` y confirmación `[s/N]`. Menú con opciones `4`/`5`/`6` y flag `--target definition|release|both` en CLI. Sección 9 del README actualizada. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.21 | **Docs: sección funcional de la opción 44** — Nueva sección `9 · SCM Inspection Remediator` con flujo interactivo, menú de confirmación completo, opciones del editor y detalle de `[r]` (recarga ajustes desde las violaciones del Definition ID del pipeline CD, sin re-consultar AzDO). | `scm/azdo/README.md` |

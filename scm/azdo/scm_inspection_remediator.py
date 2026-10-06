@@ -137,30 +137,13 @@ class AzdoClient:
         self.session.auth = ("", pat)
         self.session.headers["Accept"] = "application/json"
 
-    def get(self, url: str, raw: bool = False, params: dict = None):
+    def _send(self, method: str, url: str, params: dict = None,
+              payload: dict = None, raw: bool = False, timeout: int = 60):
         for attempt in range(4):
-            resp = self.session.get(url, params=params, timeout=30)
+            resp = self.session.request(method, url, params=params,
+                                        json=payload, timeout=timeout)
             if resp.status_code == 200:
                 return resp.text if raw else resp.json()
-            if resp.status_code == 429 or resp.status_code >= 500:
-                wait = int(resp.headers.get("Retry-After", (attempt + 1) * 2))
-                console.print(f"  [yellow]HTTP {resp.status_code} — "
-                              f"reintentando en {wait}s...[/]")
-                time.sleep(wait)
-                continue
-            if resp.status_code in (203, 401):
-                sys.exit("ERROR: autenticación fallida (verifique azdo.pat, "
-                         "scope 'Release (Read)').")
-            sys.exit(f"ERROR: HTTP {resp.status_code} — {url}\n{resp.text[:500]}")
-        sys.exit(f"ERROR: agotados los reintentos para {url}")
-
-    def put(self, url: str, payload: dict, params: dict = None):
-        """PUT con la misma política de reintentos que get()."""
-        for attempt in range(4):
-            resp = self.session.put(url, json=payload, params=params,
-                                    timeout=60)
-            if resp.status_code == 200:
-                return resp.json()
             if resp.status_code == 429 or resp.status_code >= 500:
                 wait = int(resp.headers.get("Retry-After", (attempt + 1) * 2))
                 console.print(f"  [yellow]HTTP {resp.status_code} — "
@@ -173,6 +156,17 @@ class AzdoClient:
             sys.exit(f"ERROR: HTTP {resp.status_code} — {url}\n"
                      f"{resp.text[:500]}")
         sys.exit(f"ERROR: agotados los reintentos para {url}")
+
+    def get(self, url: str, raw: bool = False, params: dict = None):
+        return self._send("GET", url, params=params, raw=raw, timeout=30)
+
+    def put(self, url: str, payload: dict, params: dict = None):
+        """PUT con la misma política de reintentos que get()."""
+        return self._send("PUT", url, params=params, payload=payload)
+
+    def patch(self, url: str, payload: dict, params: dict = None):
+        """PATCH con la misma política de reintentos que get()."""
+        return self._send("PATCH", url, params=params, payload=payload)
 
 
 # ---------------------------------------------------------------------------
@@ -929,6 +923,43 @@ def apply_rules_to_release(client: AzdoClient, release_id: str, rules: list,
     return 0
 
 
+def redeploy_stage(client: AzdoClient, release_id: str,
+                   stage_name: str) -> int:
+    """Dispara el deploy de un environment del release: PATCH
+    releases/{id}/environments/{envId} con status inProgress. Usado para
+    re-correr el stage 'SCM Inspection' tras remediar el release."""
+    release = client.get(f"{client.base}/releases/{release_id}",
+                         params={"api-version": "7.1"})
+    env = next((e for e in release.get("environments", [])
+                if e.get("name", "").lower() == stage_name.lower()), None)
+    if not env:
+        console.print(f"[red]El release #{release_id} no tiene stage "
+                      f"'{stage_name}'.[/]")
+        return 1
+    client.patch(
+        f"{client.base}/releases/{release_id}/environments/{env['id']}",
+        {"status": "inProgress"}, params={"api-version": "7.1"})
+    console.print(f"[bold green]{ICON_OK} Deploy de '{stage_name}' "
+                  f"disparado en release #{release_id}.[/]")
+    return 0
+
+
+def _offer_redeploy(client: AzdoClient, release_id: str, stage_name: str,
+                    prompt_fn=None, auto: bool = False) -> int:
+    """Tras aplicar al release, ofrece/ejecuta el redeploy del stage
+    inspeccionado (default Sí en interactivo; `auto` para CLI)."""
+    if auto:
+        return redeploy_stage(client, release_id, stage_name)
+    if not prompt_fn:
+        return 0
+    ans = prompt_fn(
+        f"  [bold]Re-correr deploy de '{stage_name}' en release "
+        f"#{release_id}?[/] \\[[cyan]S/n[/]]: ").strip().lower()
+    if ans in ("n", "no"):
+        return 0
+    return redeploy_stage(client, release_id, stage_name)
+
+
 # ---------------------------------------------------------------------------
 # Interfaz
 # ---------------------------------------------------------------------------
@@ -1133,48 +1164,70 @@ def run_flow(args, interactive: bool) -> int:
                 rc = apply_rules_to_release(client, release_target,
                                             actionables["rules"],
                                             dry_run=dry)
+                if rc == 0 and not dry and getattr(args, "redeploy", False):
+                    _offer_redeploy(client, release_target, args.stage,
+                                    auto=True)
         return rc
 
-    console.print("\n[bold][1][/] Solo template (aplicar luego con "
-                  "opción 41)")
-    console.print("[bold][2][/] Dry-run sobre la definición del pipeline")
-    console.print("[bold][3][/] Aplicar a la definición del pipeline")
-    console.print(f"[bold][4][/] Dry-run sobre un release "
-                  f"(default #{release_target})")
-    console.print(f"[bold][5][/] Aplicar a un release "
-                  f"(default #{release_target})")
-    console.print("[bold][6][/] Aplicar a definición + release")
-    console.print("[bold][0][/] Salir")
-    choice = _rich_input("[bold]Seleccione:[/] ").strip()
-    if choice == "2":
-        return apply_template(template, definition_id, org, project, pat,
-                              dry_run=True)
-    if choice == "3":
-        rc = apply_template(template, definition_id, org, project, pat,
-                            dry_run=False)
-        console.print(f"\n[bold green]{ICON_OK} Aplicado.[/]" if rc == 0
-                      else f"\n[bold red]X Falló (exit {rc}).[/]")
-        return rc
-    if choice in ("4", "5", "6"):
-        rel = _rich_input(
-            f"  [bold]Release ID[/] "
-            f"\\[[cyan]{release_target}[/]]: ").strip() or release_target
-        if choice == "4":
-            return apply_rules_to_release(client, rel, actionables["rules"],
-                                          dry_run=True)
-        if choice == "5":
-            return apply_rules_to_release(client, rel, actionables["rules"],
-                                          dry_run=False,
-                                          prompt_fn=_rich_input)
-        rc = apply_template(template, definition_id, org, project, pat,
-                            dry_run=False)
-        if rc != 0:
-            console.print(f"\n[bold red]X Definición falló (exit {rc}) — "
-                          f"release omitido.[/]")
-            return rc
-        return apply_rules_to_release(client, rel, actionables["rules"],
-                                      dry_run=False, prompt_fn=_rich_input)
-    return 0
+    console.print("\n[dim]El template YAML aplica solo a la DEFINICIÓN "
+                  "(opción 41); el release se actualiza con PUT directo "
+                  "de las mismas reglas.[/]")
+    while True:
+        console.print("\n[bold][1][/] Solo template (definición — aplicar "
+                      "luego con opción 41)")
+        console.print("[bold][2][/] Definición: dry-run")
+        console.print("[bold][3][/] Definición: aplicar")
+        console.print(f"[bold][4][/] Release: dry-run "
+                      f"(default #{release_target})")
+        console.print(f"[bold][5][/] Release: aplicar "
+                      f"(default #{release_target})")
+        console.print("[bold][6][/] Ambos: definición + release")
+        console.print("[bold][0][/] Salir")
+        choice = _rich_input("[bold]Seleccione:[/] ").strip()
+        if choice in ("0", "1"):
+            return 0
+        if choice == "2":
+            apply_template(template, definition_id, org, project, pat,
+                           dry_run=True)
+            continue
+        if choice == "3":
+            rc = apply_template(template, definition_id, org, project, pat,
+                                dry_run=False)
+            console.print(f"\n[bold green]{ICON_OK} Aplicado.[/]"
+                          if rc == 0
+                          else f"\n[bold red]X Falló (exit {rc}).[/]")
+            continue
+        if choice in ("4", "5", "6"):
+            rel = _rich_input(
+                f"  [bold]Release ID[/] "
+                f"\\[[cyan]{release_target}[/]]: ").strip() or release_target
+            if choice == "4":
+                apply_rules_to_release(client, rel, actionables["rules"],
+                                       dry_run=True)
+                continue
+            if choice == "5":
+                rc = apply_rules_to_release(client, rel,
+                                            actionables["rules"],
+                                            dry_run=False,
+                                            prompt_fn=_rich_input)
+                if rc == 0:
+                    _offer_redeploy(client, rel, args.stage,
+                                    prompt_fn=_rich_input)
+                continue
+            rc = apply_template(template, definition_id, org, project, pat,
+                                dry_run=False)
+            if rc != 0:
+                console.print(f"\n[bold red]X Definición falló "
+                              f"(exit {rc}) — release omitido.[/]")
+                continue
+            rc = apply_rules_to_release(client, rel, actionables["rules"],
+                                        dry_run=False,
+                                        prompt_fn=_rich_input)
+            if rc == 0:
+                _offer_redeploy(client, rel, args.stage,
+                                prompt_fn=_rich_input)
+            continue
+        console.print("[red]Opción no válida.[/]")
 
 
 def main():
@@ -1196,6 +1249,10 @@ def main():
                         default="definition",
                         help="Destino de --apply/--dry-run: definición del "
                              "pipeline, release (instancia) o ambos")
+    parser.add_argument("--redeploy", action="store_true",
+                        help="Tras aplicar al release (--target release|both "
+                             "--apply), dispara el deploy del stage "
+                             "inspeccionado en ese release")
     parser.add_argument("--org", default=None)
     parser.add_argument("--project", default=None)
     parser.add_argument("--pat", default=None)
