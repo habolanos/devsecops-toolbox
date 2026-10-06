@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.20`** — 2026-10-06
+**`1.8.21`** — 2026-10-06
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-06 | **1.8.21** | **docs(azdo): sección funcional de la opción 44 (SCM Inspection Remediator)** — Nueva sección `9 · SCM Inspection Remediator` en `scm/azdo/README.md`: flujo interactivo, tabla del menú de confirmación (`Enter`/`c`/`e`/`v`/`r`/`0`), opciones del editor (`k` incluida), detalle de `[r]` (reconstruye ajustes desde las violaciones del release del Definition ID del pipeline CD; conserva valores pendientes y removes; no re-consulta AzDO) y modo CLI con flags reales. | `scm/azdo/README.md`, `VERSION`, `README.version.md` |
 | 2026-10-06 | **1.8.20** | **feat(azdo): opción `[r]` recargar ajustes candidatos en opción 44**: si el usuario se equivoca editando (`e`/`v`), `[r]` reconstruye los ajustes desde las violaciones conservando los valores pendientes capturados y los `removes`; descarta las ediciones manuales y resetea el flag `rules_edited`. Test: `test_reload_restaura_ajustes` (descarta 1 de 2, recarga, template final con 2 reglas). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `VERSION`, `README.version.md` |
 | 2026-10-06 | **1.8.19** | **feat(azdo): toggle isSecret (`k`) en el editor de ajustes de opción 44**: en la edición uno-a-uno y puntual, `k` marca una variable como secreta (`isSecret: true`) o la desmarca explícitamente (`isSecret: false` — el updater aplica el desmarque, no solo omite el flag). No aplica a reglas `remove` (re-pregunta). La tabla muestra 🔒 (secret) o 🔓 (desmarcada explícita); la nota registra "marcada/desmarcada como secreta". Tests: +4. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `VERSION`, `README.version.md` |
 | 2026-10-06 | **1.8.18** | **feat(azdo): notas con la acción REAL + edición puntual + contraste en opción 44**: (1) `add_rule` ahora verifica la definición real y ajusta la acción a lo que el updater hará: `add` sobre variable existente → `update` + "ya existe — se actualiza"; mismo valor → "ya tiene el valor correcto — sin cambio" (va a notas manuales, sin regla innecesaria); `update`/`remove` sin existir → "omitida"/"ya ausente"; `update` con valor distinto → "sobrescribe valor actual" vs "existía vacía — se rellena". Corrige el falso "add ... copiado de Production" sobre sí mismo visto en pipeline 1886 (la fuente se busca excluyendo el stage destino). (2) Nueva opción `[v]` en el menú de confirmación: edición puntual por `nombre` o `nombre@stage` (mismo editor de ajustes, solo las reglas que coinciden). (3) Contraste mejorado: prompts del editor y de captura pasan de `dim` a cyan/green/rojo/amarillo bold; el ajuste se muestra `[i/N] action nombre @ scope = valor` con mejor jerarquía. Tests: +8 (`TestAccionReal`, `TestEditRulesMatch`). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `VERSION`, `README.version.md` |

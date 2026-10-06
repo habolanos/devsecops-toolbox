@@ -778,6 +778,81 @@ Tabla con columnas: `organization`, `project`, `repository`, `branch`, `package_
 
 ---
 
+### 9 · SCM Inspection Remediator — opción 44
+
+Descubre las violaciones del stage **SCM Inspection** de un pipeline CD y genera
+un template `pipe_cd_inspection_fix_<definitionId>_<ts>.yaml` en `outcome/` con las
+correcciones (secrets sin marcar, paridad de variables entre stages, valores vacíos,
+variables a nivel pipeline). El template se aplica con el Pipeline Updater (opción 41),
+en modo solo-template, dry-run o aplicación real.
+
+#### Flujo interactivo
+
+1. Se solicita el **Definition ID del pipeline CD** (la definición de release que
+   contiene el stage `SCM Inspection`).
+2. Se descubre el último release con ese stage, se descargan los logs de sus tareas
+   y se parsean las violaciones (`##[warning]` / `##[error]`).
+3. Las violaciones se convierten en **ajustes candidatos** (`add` / `update` /
+   `remove` sobre variables de la definición del release).
+4. Las variables sin valor fuente pasan por el ciclo de valores pendientes
+   (Enter = `TBD`, texto = valor, `e` = eliminar, `i` = ignorar).
+5. Se muestra el **Resumen FINAL de cambios** y el menú de confirmación.
+
+#### Menú de confirmación
+
+```
+[Enter] Generar template | [c] Corregir valores pendientes
+| [e] Editar ajustes uno a uno | [v] Editar variable puntual
+| [r] Recargar ajustes | [0] Salir
+```
+
+| Opción | Alcance |
+|---|---|
+| `Enter` | Genera el template en `outcome/` y pasa a la selección de aplicación (solo-template / dry-run / aplicar) |
+| `[c]` | Recorre solo las variables **pendientes** (sin valor fuente): Enter conserva, texto reemplaza, `s` regresa a manual |
+| `[e]` | Recorre **todos** los ajustes candidatos uno por uno |
+| `[v]` | Edición puntual: `nombre` o `nombre@stage` (ej. `cluster_name@Production`) |
+| `[r]` | **Recargar ajustes** — ver detalle abajo |
+| `[0]` | Sale sin generar template |
+
+Dentro del editor (`e`/`v`), cada ajuste acepta: `Enter` = conservar, texto =
+reemplazar valor (en un `remove` revierte a `update`), `e` = eliminar la variable,
+`i` = descartar el ajuste, `k` = toggle `isSecret` (marcar 🔒 / desmarcar 🔓;
+no aplica a `remove`).
+
+#### Opción `[r]` — Recargar ajustes candidatos
+
+Reconstruye los ajustes candidatos **desde las violaciones descubiertas en el
+release del Definition ID del pipeline CD** que se está remediando. Es decir,
+vuelve al estado "recién generado" como si la sesión acabara de iniciar con ese
+mismo Definition ID.
+
+- **Descarta**: las ediciones manuales hechas con `[e]` o `[v]` (ajustes
+  descartados, valores cambiados a mano, removes convertidos, toggles `k`).
+- **Conserva**: los valores capturados en el ciclo de pendientes (`TBD` o
+  valores escritos por el usuario) y las variables marcadas para eliminar — esas
+  decisiones se re-aplican al reconstruir.
+- Uso típico: recuperar un ajuste descartado por error o deshacer una edición
+  incorrecta sin salir de la herramienta.
+
+> **Nota**: `[r]` no vuelve a consultar Azure DevOps; reutiliza las violaciones
+> ya descubiertas del release actual del pipeline CD. Para re-descubrir (otro
+> release o un Definition ID distinto) se debe salir (`[0]`) y ejecutar de nuevo.
+
+#### Modo CLI
+
+```bash
+python -m scm.azdo.scm_inspection_remediator \
+  --definition-id <id> \
+  [--stage "SCM Inspection"] [--release-id <id>] \
+  [--set NAME=VALUE ...] [--remove NAME ...] [--tbd] \
+  [--apply | --dry-run]
+```
+
+Sin `--apply` ni `--dry-run` el modo no interactivo solo genera el template.
+
+---
+
 ## Exportación de resultados
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
@@ -888,6 +963,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-06 | 1.8.21 | **Docs: sección funcional de la opción 44** — Nueva sección `9 · SCM Inspection Remediator` con flujo interactivo, menú de confirmación completo, opciones del editor y detalle de `[r]` (recarga ajustes desde las violaciones del Definition ID del pipeline CD, sin re-consultar AzDO). | `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.20 | **SCM Inspection Remediator: `[r]` recargar ajustes** — Nueva opción en la confirmación: reconstruye los ajustes candidatos desde las violaciones conservando los valores pendientes capturados y los removes; descarta las ediciones manuales de `e`/`v`. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py` |
 | 2026-10-06 | 1.8.19 | **SCM Inspection Remediator: toggle isSecret (`k`)** — En el editor de ajustes (`e`/`v`), `k` marca una variable como secreta (`isSecret: true`) o la desmarca explícitamente (`isSecret: false` — el updater aplica el desmarque). Indicadores 🔒/🔓 en la tabla; no aplica a `remove`. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py` |
 | 2026-10-06 | 1.8.18 | **SCM Inspection Remediator: acción real en notas + edición puntual** — (1) Las reglas reflejan lo que el updater hará: add sobre existente → update ("ya existe — se actualiza"), mismo valor → "sin cambio" (sin regla), update/remove inexistente → omitida/ya ausente, update con otro valor → "sobrescribe valor actual" vs "existía vacía — se rellena"; la fuente de paridad excluye el stage destino (adiós "copiado de Production" sobre Production). (2) `[v]` en la confirmación: edición puntual por `nombre` o `nombre@stage`. (3) Contraste: prompts del editor/captura en bold con colores (cyan Enter / green texto / red e / yellow i). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py` |
