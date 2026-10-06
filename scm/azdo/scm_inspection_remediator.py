@@ -338,6 +338,33 @@ def build_actionables(definition: dict, violations: list,
             p["stages"].append(stage)
 
     def add_rule(var, stage, scope, action, value=None, secret=False, note=""):
+        # Ajustar la acción a lo que el updater realmente hará
+        vars_map = env_vars(stage) if scope == "environment" \
+            else (definition.get("variables") or {})
+        exists = var in vars_map
+        cur = vars_map.get(var) or {}
+        loc = stage or "release"
+
+        if action == "remove" and not exists:
+            manual.append(f"{var} @ {loc}: ya ausente — nada que eliminar")
+            return
+        if action == "add" and exists:
+            action = "update"
+            note = (note + " | " if note else "") + "ya existe — se actualiza"
+        elif action == "update" and not exists:
+            manual.append(f"{var} @ {loc}: la violación indica variable "
+                          f"existente pero no está en la definición — omitida")
+            return
+        if action == "update" and exists and cur.get("value") == value \
+                and not (secret and not cur.get("isSecret")):
+            manual.append(f"{var} @ {loc}: ya tiene el valor correcto — "
+                          f"sin cambio")
+            return
+        if action == "update" and exists and cur.get("value") != value:
+            note = (note + " | " if note else "") + (
+                "sobrescribe valor actual" if cur.get("value") not in (None, "")
+                else "existía vacía — se rellena")
+
         rule = {"name": var, "action": action, "scope": scope}
         if action != "remove":
             rule["value"] = value
@@ -348,7 +375,7 @@ def build_actionables(definition: dict, violations: list,
         if note:
             rule["note"] = note
         rules.append(rule)
-        summary.append(f"  [{action}] {var} @ {scope}:{stage or 'release'}"
+        summary.append(f"  [{action}] {var} @ {scope}:{loc}"
                        + (" (isSecret)" if secret else "")
                        + (f" — {note}" if note else ""))
 
@@ -393,7 +420,14 @@ def build_actionables(definition: dict, violations: list,
             # detail: "...: name (de SrcStage), name2 (de SrcStage)"
             pairs = _DETAIL_SRC.findall(detail)
             for var, src in pairs:
-                val, src_found = find_value(var)
+                if var in removes:
+                    add_rule(var, env_name, "environment", "remove",
+                             note="eliminada a petición")
+                    continue
+                # Buscar fuente EXTERNA al stage destino (evita "copiado de sí
+                # mismo"); si la var ya existe en el destino, add_rule la
+                # convierte en update o la marca sin cambio.
+                val, src_found = find_value(var, exclude=env_name)
                 if val is not None:
                     warn = _env_mismatch(src_found, env_name)
                     note = f"copiado de {src_found}"
@@ -402,16 +436,15 @@ def build_actionables(definition: dict, violations: list,
                     add_rule(var, env_name, "environment", "add", val,
                              secret=var in secret_vars,
                              note=note)
+                elif var in values:
+                    add_rule(var, env_name, "environment", "add",
+                             values[var], secret=var in secret_vars,
+                             note="valor definido por usuario")
                 else:
-                    val = values.get(var)
-                    if var in removes:
-                        # No existe en este stage — nada que eliminar
-                        manual.append(f"{var} @ {env_name}: ya ausente "
-                                      f"(paridad) — nada que eliminar")
-                    elif val is not None:
-                        add_rule(var, env_name, "environment", "add", val,
-                                 secret=var in secret_vars,
-                                 note="valor definido por usuario")
+                    cur = env_vars(env_name).get(var) or {}
+                    if cur.get("value") not in (None, ""):
+                        manual.append(f"{var} @ {env_name}: ya existe con "
+                                      f"valor — sin cambio necesario")
                     else:
                         need_value(var, env_name, "environment")
                         manual.append(f"{var} @ {env_name} (de {src}): "
@@ -477,19 +510,19 @@ def collect_pending_values(actionables: dict, values: dict = None,
         return values, removes
     console.print(Panel(
         "[bold]Variables sin valor fuente[/]\n\n"
-        f"  [cyan]Enter[/]   = valor '{default}' (placeholder)\n"
-        "  [green]texto[/]  = ese valor en todos los scopes pendientes\n"
-        "  [red]e[/]      = eliminar la variable donde exista\n"
-        "  [dim]i[/]      = ignorar (queda pendiente manual)",
+        f"  [cyan bold]Enter[/]   = valor '{default}' (placeholder)\n"
+        "  [green bold]texto[/]  = ese valor en todos los scopes pendientes\n"
+        "  [red bold]e[/]      = eliminar la variable donde exista\n"
+        "  [yellow]i[/]      = ignorar (queda pendiente manual)",
         title="Captura de valores", border_style="cyan"))
     for var, info in pending.items():
         if var in values or var in removes:
             continue
         scopes = ", ".join(info["stages"]) or info["scope"]
         val = prompt_fn(
-            f"  Valor para [bold cyan]{var}[/] ([dim]{scopes}[/]) "
-            f"[[cyan]Enter={default}[/] | [red]e[/]=eliminar | "
-            f"[dim]i[/]=ignorar]: ").strip()
+            f"  Valor para [bold white]{var}[/] ([magenta]{scopes}[/]) "
+            f"\\[[cyan bold]Enter={default}[/] | [red bold]e[/]=eliminar | "
+            f"[yellow]i[/]=ignorar]: ").strip()
         low = val.lower()
         if low in _REMOVE_CMDS:
             removes.add(var)
@@ -558,8 +591,8 @@ def show_rules(rules: list,
     console.print(rules_table(rules, title))
 
 
-def edit_rules(rules: list, prompt_fn=None) -> list:
-    """Recorre cada ajuste candidato uno a uno.
+def edit_rules(rules: list, prompt_fn=None, match=None) -> list:
+    """Recorre los ajustes candidatos (todos o solo los que cumplan `match`).
 
     Por regla: Enter = conservar, texto = nuevo valor (en remove revierte
     a update), 'e' = convertir a remove (eliminar la variable),
@@ -567,26 +600,30 @@ def edit_rules(rules: list, prompt_fn=None) -> list:
     prompt_fn = prompt_fn or _rich_input
     console.print(Panel(
         "[bold]Edición de ajustes candidatos[/]\n\n"
-        "  [cyan]Enter[/]   = conservar tal cual\n"
-        "  [green]texto[/]  = reemplazar el valor (en remove: revierte a update)\n"
-        "  [red]e[/]      = eliminar la variable (action: remove)\n"
-        "  [dim]i[/]      = descartar el ajuste (no modificar)",
+        "  [cyan bold]Enter[/]   = conservar tal cual\n"
+        "  [green bold]texto[/]  = reemplazar el valor "
+        "(en remove: revierte a update)\n"
+        "  [red bold]e[/]      = eliminar la variable (action: remove)\n"
+        "  [yellow]i[/]      = descartar el ajuste (no modificar)",
         title="Editor de ajustes", border_style="magenta"))
     edited, dropped = [], 0
     total = len(rules)
     for i, r in enumerate(rules, 1):
+        if match and not match(r):
+            edited.append(r)
+            continue
         action = r["action"]
         loc = r.get("stage") if r.get("scope") == "environment" else "release"
         cur = "(eliminar)" if action == "remove" \
             else mask_value(r, r.get("value"))
         style = ACTION_STYLE.get(action, "")
         console.print(
-            f"  [dim]{i}/{total}[/] [{style}]{action}[/] "
-            f"[bold cyan]{r['name']}[/] @ [dim]{loc}[/] "
-            f"= {cur}")
+            f"  [cyan]{i}/{total}[/] [{style}]{action}[/] "
+            f"[bold white]{r['name']}[/] @ [magenta]{loc}[/] "
+            f"= [bold]{cur}[/]")
         val = prompt_fn(
-            "    [dim]Enter=conservar | texto=valor | e=eliminar | "
-            "i=ignorar:[/] ").strip()
+            "    [cyan bold]Enter[/]=conservar | [green bold]texto[/]=valor "
+            "| [red bold]e[/]=eliminar | [yellow]i[/]=ignorar: ").strip()
         low = val.lower()
         if low in _IGNORE_CMDS:
             dropped += 1
@@ -607,7 +644,7 @@ def edit_rules(rules: list, prompt_fn=None) -> list:
             continue
         edited.append(r)
     if dropped:
-        console.print(f"  [dim]{dropped} ajuste(s) descartados.[/]")
+        console.print(f"  [yellow]{dropped} ajuste(s) descartados.[/]")
     return edited
 
 
@@ -618,7 +655,8 @@ def review_values(values: dict, var_names, removes: set = None,
     prompt_fn = prompt_fn or _rich_input
     removes = removes if removes is not None else set()
     console.print("\n[bold]Corregir valores[/] "
-                  "([dim]Enter = conservar, e = eliminar, i = manual[/])")
+                  "([cyan]Enter[/] = conservar, [red]e[/] = eliminar, "
+                  "[yellow]i[/] = manual)")
     for var in list(var_names):
         if var in values:
             current = mask_value(var, values[var])
@@ -800,14 +838,35 @@ def run_flow(args, interactive: bool) -> int:
                 console.print(f"  [yellow]-[/] {m}")
         if not interactive:
             break
-        opts = "[bold][Enter][/] Generar template"
+        opts = "[bold cyan][Enter][/] Generar template"
         if pending_vars:
-            opts += " [dim]|[/] [bold]\\[c][/] Corregir valores pendientes"
-        opts += " [dim]|[/] [bold]\\[e][/] Editar ajustes uno a uno"
-        console.print("\n" + opts + " [dim]|[/] [bold]\\[0][/] Salir")
-        choice = _rich_input("[bold]Seleccione:[/] ").strip().lower()
+            opts += " [dim]|[/] [bold cyan]\\[c][/] Corregir valores pendientes"
+        opts += (" [dim]|[/] [bold cyan]\\[e][/] Editar ajustes uno a uno"
+                 " [dim]|[/] [bold cyan]\\[v][/] Editar variable puntual"
+                 " [dim]|[/] [bold cyan]\\[0][/] Salir")
+        console.print("\n" + opts)
+        choice = _rich_input("[bold cyan]Seleccione:[/] ").strip().lower()
         if choice == "0":
             return 0
+        if choice == "v":
+            target = _rich_input(
+                "[bold]Variable a editar[/] ([white]nombre[/] o "
+                "[white]nombre@stage[/]): ").strip()
+            if not target:
+                continue
+            name, _, stg = target.partition("@")
+            name, stg = name.strip(), stg.strip()
+
+            def _mt(r, _n=name, _s=stg):
+                return r["name"] == _n and (not _s or r.get("stage") == _s)
+            if not any(_mt(r) for r in actionables["rules"]):
+                console.print(f"[yellow]Sin ajustes para '{target}' — "
+                              f"verifique nombre/stage.[/]")
+                continue
+            actionables["rules"] = edit_rules(
+                actionables["rules"], match=_mt)
+            rules_edited = True
+            continue
         if choice == "e":
             actionables["rules"] = edit_rules(actionables["rules"])
             rules_edited = True

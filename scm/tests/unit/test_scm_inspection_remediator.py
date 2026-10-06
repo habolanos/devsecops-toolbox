@@ -223,6 +223,107 @@ class TestRemoves:
         assert "note" not in tpl["update"]["variables"][0]
 
 
+class TestAccionReal:
+    """Las reglas reflejan lo que el updater realmente hará."""
+
+    def test_paridad_ausente_real_genera_add(self):
+        """Variable realmente ausente en el destino → add con fuente externa."""
+        definition = {"environments": [
+            {"name": "Production", "variables": {"y": {"value": "src"}}},
+            {"name": "QA", "variables": {}}]}
+        a = rem.build_actionables(definition, [
+            _v("STAGE_VARIABLES", "QA", "y", reason="paridad",
+               detail="... y (de Production)")])
+        r = a["rules"][0]
+        assert r["action"] == "add" and r["value"] == "src"
+
+    def test_add_flaggeada_pero_ya_existe(self):
+        """'artifact.replacePrefixMatch' flaggeada faltante en Prod pero
+        existe → update (no add)."""
+        definition = {"environments": [
+            {"name": "Production", "variables": {
+                "artifact.replacePrefixMatch": {"value": "/api"}}},
+            {"name": "Staging", "variables": {}}]}
+        a = rem.build_actionables(definition, [
+            _v("STAGE_VARIABLES", "Production", "artifact.replacePrefixMatch",
+               reason="paridad",
+               detail="... artifact.replacePrefixMatch (de Staging)")])
+        # existe en Production → update + nota; pero sin fuente externa
+        # (Staging no la tiene) → 'ya existe con valor — sin cambio'
+        assert a["rules"] == []
+        assert any("sin cambio" in m for m in a["manual"])
+
+    def test_add_existente_mismo_valor_sin_cambio(self):
+        definition = {"environments": [
+            {"name": "Develop", "variables": {"x": {"value": "v"}}},
+            {"name": "QA", "variables": {"x": {"value": "v"}}}]}
+        a = rem.build_actionables(definition, [
+            _v("STAGE_VARIABLES", "QA", "x", reason="paridad",
+               detail="... x (de Develop)")])
+        assert a["rules"] == []
+        assert any("sin cambio" in m for m in a["manual"])
+
+    def test_add_existente_distinto_valor_update_sobrescribe(self):
+        definition = {"environments": [
+            {"name": "Develop", "variables": {"x": {"value": "dev"}}},
+            {"name": "QA", "variables": {"x": {"value": "viejo"}}}]}
+        a = rem.build_actionables(definition, [
+            _v("STAGE_VARIABLES", "QA", "x", reason="paridad",
+               detail="... x (de Develop)")])
+        r = a["rules"][0]
+        assert r["action"] == "update" and r["value"] == "dev"
+        assert "sobrescribe" in r.get("note", "")
+
+    def test_update_sin_existir_se_omite(self):
+        definition = {"environments": [
+            {"name": "Develop", "variables": {"x": {"value": "v"}}},
+            {"name": "QA", "variables": {}}]}
+        a = rem.build_actionables(definition, [
+            _v("STAGE_VARIABLES", "QA", "inexistente",
+               reason="contenido", detail="SIN valor")],
+            values={"inexistente": "manual"})
+        # update de var inexistente → omitida, va a manual
+        assert a["rules"] == []
+        assert any("no está en la definición" in m for m in a["manual"])
+
+    def test_remove_sin_existir_nota_ya_ausente(self):
+        definition = {"environments": [
+            {"name": "QA", "variables": {}}]}
+        a = rem.build_actionables(DEFINITION, [
+            _v("STAGE_VARIABLES", "QA", "fantasma", reason="contenido",
+               detail="SIN valor")], removes={"fantasma"})
+        assert a["rules"] == []
+        assert any("ya ausente" in m for m in a["manual"])
+
+    def test_secret_ya_secreto_sin_cambio(self):
+        definition = {"environments": [
+            {"name": "Prod", "variables": {
+                "ksa": {"value": "v", "isSecret": True}}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_1_SECRET", "Prod", "ksa")])
+        assert a["rules"] == []
+        assert any("sin cambio" in m for m in a["manual"])
+
+
+class TestEditRulesMatch:
+    def test_match_filtra_edicion_puntual(self):
+        rules = [
+            {"name": "a", "action": "add", "scope": "environment",
+             "stage": "QA", "value": "v1"},
+            {"name": "a", "action": "add", "scope": "environment",
+             "stage": "Staging", "value": "v1"},
+            {"name": "b", "action": "add", "scope": "environment",
+             "stage": "QA", "value": "v2"},
+        ]
+        ans = iter(["solo-qa"])
+        out = rem.edit_rules(
+            rules, prompt_fn=lambda _p: next(ans),
+            match=lambda r: r["name"] == "a" and r.get("stage") == "QA")
+        assert out[0]["value"] == "solo-qa"      # a@QA editada
+        assert out[1]["value"] == "v1"           # a@Staging intacta
+        assert out[2]["value"] == "v2"           # b intacta
+
+
 class TestPendingValues:
     def test_pending_registra_var_y_scopes(self):
         a = rem.build_actionables(DEFINITION, [
