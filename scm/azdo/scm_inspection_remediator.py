@@ -245,6 +245,29 @@ def discover(client: AzdoClient, definition_id: str, stage_name: str,
 _DETAIL_SRC = re.compile(r"([\w.\-]+) \(de ([^)]+)\)")
 
 
+def _env_token(name: str) -> str:
+    """Normaliza el ambiente implícito en el nombre del stage."""
+    n = name.lower()
+    if "prod" in n:
+        return "prod"
+    if "stg" in n or "stag" in n:
+        return "stg"
+    if "qa" in n:
+        return "qa"
+    if "dev" in n or "develop" in n:
+        return "dev"
+    return ""
+
+
+def _env_mismatch(src_stage: str, dst_stage: str) -> str:
+    """Advierte si el valor se copia entre ambientes distintos
+    (ej. dev → Production). Retorna texto de warning o ''."""
+    a, b = _env_token(src_stage), _env_token(dst_stage)
+    if a and b and a != b:
+        return f"⚠ origen '{src_stage}' es ambiente '{a}' ≠ destino '{b}'"
+    return ""
+
+
 def build_actionables(definition: dict, violations: list,
                       values: dict = None) -> dict:
     """Convierte violaciones en reglas `update.variables` del template.
@@ -256,6 +279,10 @@ def build_actionables(definition: dict, violations: list,
     """
     values = values or {}
     envs = {e["name"]: e for e in definition.get("environments", [])}
+    # Variables que el reporte marcó como secretas en cualquier stage:
+    # si las agregamos por paridad en otro stage, deben ir con isSecret.
+    secret_vars = {v.get("variable", "").split(",")[0].strip()
+                   for v in violations if v.get("rule") == "RULE_1_SECRET"}
 
     def env_vars(stage):
         return envs.get(stage, {}).get("variables") or {}
@@ -326,8 +353,13 @@ def build_actionables(definition: dict, violations: list,
             for var, src in pairs:
                 val, src_found = find_value(var)
                 if val is not None:
+                    warn = _env_mismatch(src_found, env_name)
+                    note = f"copiado de {src_found}"
+                    if warn:
+                        note += f" | {warn}"
                     add_rule(var, env_name, "environment", "add", val,
-                             note=f"copiado de {src_found}")
+                             secret=var in secret_vars,
+                             note=note)
                 else:
                     val = values.get(var)
                     if val is not None:
@@ -343,8 +375,13 @@ def build_actionables(definition: dict, violations: list,
             for var in [x.strip() for x in var_field.split(",") if x.strip()]:
                 val, src = find_value(var, exclude=env_name)
                 if val is not None:
+                    warn = _env_mismatch(src, env_name)
+                    note = f"copiado de {src}"
+                    if warn:
+                        note += f" | {warn}"
                     add_rule(var, env_name, "environment", "update", val,
-                             note=f"copiado de {src}")
+                             secret=var in secret_vars,
+                             note=note)
                 elif var in values:
                     add_rule(var, env_name, "environment", "update",
                              values[var], note="valor definido por usuario")

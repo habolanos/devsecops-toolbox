@@ -126,6 +126,58 @@ class TestBuildActionables:
         assert a["rules"] == []
         assert len(a["manual"]) == 1
 
+    def test_paridad_propaga_isSecret_para_var_secreta(self):
+        """ksaSecretManager flaggeada por RULE_1_SECRET en un stage debe
+        agregarse con isSecret en otro stage por paridad."""
+        definition = {"environments": [
+            {"name": "Production",
+             "variables": {"ksaSecretManager": {"value": "v1"}}},
+            {"name": "Develop", "variables": {}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_1_SECRET", "Production", "ksaSecretManager"),
+            _v("STAGE_VARIABLES", "Develop", "ksaSecretManager",
+               reason="paridad",
+               detail="... ksaSecretManager (de Production)")])
+        add = next(r for r in a["rules"]
+                   if r["action"] == "add" and r["stage"] == "Develop")
+        assert add["isSecret"] is True
+
+    def test_env_mismatch_warning_en_nota(self):
+        """Copiar de Develop → Production agrega advertencia en la nota."""
+        definition = {"environments": [
+            {"name": "Develop",
+             "variables": {"cluster_name": {"value": "gke-dev-01"}}},
+            {"name": "Production", "variables": {}}]}
+        a = rem.build_actionables(definition, [
+            _v("STAGE_VARIABLES", "Production", "cluster_name",
+               reason="paridad",
+               detail="... cluster_name (de Develop)")])
+        assert any("⚠" in s and "'dev'" in s for s in a["summary"])
+
+    def test_env_mismatch_rollback_a_prod_sin_warning_de_token(self):
+        """Production-Rollback → Production: mismo token 'prod', sin warning
+        (el warning es por nombre de stage, no por valor)."""
+        assert rem._env_mismatch("Production-Rollback", "Production") == ""
+        assert rem._env_mismatch("Production", "Develop") != ""
+        assert rem._env_mismatch("QA", "Staging") != ""
+
+    def test_env_token(self):
+        assert rem._env_token("Production") == "prod"
+        assert rem._env_token("Develop") == "dev"
+        assert rem._env_token("QA") == "qa"
+        assert rem._env_token("Staging") == "stg"
+        assert rem._env_token("Validator") == ""
+
+    def test_env_mismo_ambiente_sin_warning(self):
+        """Production → Production-Rollback: mismo token 'prod', sin warning."""
+        definition = {"environments": [
+            {"name": "Production", "variables": {"x": {"value": "v"}}},
+            {"name": "Production-Rollback", "variables": {}}]}
+        a = rem.build_actionables(definition, [
+            _v("STAGE_VARIABLES", "Production-Rollback", "x",
+               reason="paridad", detail="... x (de Production)")])
+        assert a["rules"] and not any("⚠" in s for s in a["summary"])
+
 
 class TestPendingValues:
     def test_pending_registra_var_y_scopes(self):
