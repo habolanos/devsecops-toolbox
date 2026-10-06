@@ -789,7 +789,9 @@ en modo solo-template, dry-run o aplicación real.
 #### Flujo interactivo
 
 1. Se solicita el **Definition ID del pipeline CD** (la definición de release que
-   contiene el stage `SCM Inspection`).
+   contiene el stage `SCM Inspection`) y opcionalmente un **Release ID**
+   (Enter = último run del stage; un ID específico inspecciona ese release y lo
+   deja como destino por defecto en las opciones `4`–`6`).
 2. Se descubre el último release con ese stage, se descargan los logs de sus tareas
    y se parsean las violaciones (`##[warning]` / `##[error]`).
 3. Las violaciones se convierten en **ajustes candidatos** (`add` / `update` /
@@ -998,6 +1000,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-06 | 1.8.23 | **SCM Inspection Remediator: prompt de Release ID interactivo** — El modo interactivo ahora pregunta el Release ID tras el Definition ID (Enter = último run del stage; un ID específico inspecciona ese release y queda como destino default de las opciones `4`–`6`). Input no numérico → fallback al último. Hint CLI del submenú con ejemplos `--release-id`/`--target`. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.22 | **SCM Inspection Remediator: aplicar a un Release (instancia)** — Nuevo destino de aplicación además de la definición: PUT directo sobre `release.variables`/`environments[].variables` del último release descubierto o uno específico. Soporta `add`/`update`/`remove`/`isSecret` (incl. desmarcar), backup en `outcome/backups/` y confirmación `[s/N]`. Menú con opciones `4`/`5`/`6` y flag `--target definition|release|both` en CLI. Sección 9 del README actualizada. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.21 | **Docs: sección funcional de la opción 44** — Nueva sección `9 · SCM Inspection Remediator` con flujo interactivo, menú de confirmación completo, opciones del editor y detalle de `[r]` (recarga ajustes desde las violaciones del Definition ID del pipeline CD, sin re-consultar AzDO). | `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.20 | **SCM Inspection Remediator: `[r]` recargar ajustes** — Nueva opción en la confirmación: reconstruye los ajustes candidatos desde las violaciones conservando los valores pendientes capturados y los removes; descarta las ediciones manuales de `e`/`v`. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py` |

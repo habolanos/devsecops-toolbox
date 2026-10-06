@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.22`** — 2026-10-06
+**`1.8.23`** — 2026-10-06
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-06 | **1.8.23** | **feat(azdo): prompt de Release ID en modo interactivo de opción 44** — Tras el Definition ID, el modo interactivo ahora pregunta `Release ID a inspeccionar [Enter = último run del stage]`; un ID específico inspecciona ese release y queda como destino default en las opciones `4`/`5`/`6`. Validación: input no numérico → warning y fallback al último run. Submenú en `tools.py` actualizado (descripción opción 1 + ejemplo CLI con `--release-id`/`--target`). Tests: prompt numérico/inválido + actualización de secuencias interactivas existentes. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md`, `VERSION`, `README.version.md` |
 | 2026-10-06 | **1.8.22** | **feat(azdo): aplicar ajustes también a un Release (instancia) en opción 44** — Además del template sobre la definición, los ajustes candidatos pueden aplicarse directamente a un release via PUT `releases/{id}` sobre `release.variables` y `environments[].variables`: default = último release descubierto, o release ID específico. Soporta `add`/`update`/`remove`/`isSecret` explícito (la opción 42 no cubre secret/remove); backup del release en `outcome/backups/` (reusa `create_backup` de la opción 42, con fallback) + confirmación `[s/N]` interactiva. Menú de aplicación ampliado (`4`/`5`/`6`) y `--target definition|release|both` para CLI; con `both`, si la definición falla el release se omite. `AzdoClient.put()` con reintentos. 15 tests nuevos (`TestApplyRelease` + targets/menú en `TestRunFlow`). | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md`, `VERSION`, `README.version.md` |
 | 2026-10-06 | **1.8.21** | **docs(azdo): sección funcional de la opción 44 (SCM Inspection Remediator)** — Nueva sección `9 · SCM Inspection Remediator` en `scm/azdo/README.md`: flujo interactivo, tabla del menú de confirmación (`Enter`/`c`/`e`/`v`/`r`/`0`), opciones del editor (`k` incluida), detalle de `[r]` (reconstruye ajustes desde las violaciones del release del Definition ID del pipeline CD; conserva valores pendientes y removes; no re-consulta AzDO) y modo CLI con flags reales. | `scm/azdo/README.md`, `VERSION`, `README.version.md` |
 | 2026-10-06 | **1.8.20** | **feat(azdo): opción `[r]` recargar ajustes candidatos en opción 44**: si el usuario se equivoca editando (`e`/`v`), `[r]` reconstruye los ajustes desde las violaciones conservando los valores pendientes capturados y los `removes`; descarta las ediciones manuales y resetea el flag `rules_edited`. Test: `test_reload_restaura_ajustes` (descarta 1 de 2, recarga, template final con 2 reglas). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `VERSION`, `README.version.md` |

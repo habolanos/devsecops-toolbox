@@ -988,6 +988,16 @@ def run_flow(args, interactive: bool) -> int:
             console.print("[red]Se requiere el definition ID.[/]")
             return 1
 
+    if interactive and not args.release_id:
+        rel = _rich_input(
+            "[bold]Release ID a inspeccionar[/] "
+            "[dim]\\[Enter = último run del stage][/]: ").strip()
+        if rel and not rel.isdigit():
+            console.print(f"[yellow]{ICON_WARN} '{rel}' no es numérico — "
+                          f"se usa el último run.[/]")
+            rel = ""
+        args.release_id = rel
+
     values = {}
     removes = set(args.remove or [])
     for item in args.set or []:

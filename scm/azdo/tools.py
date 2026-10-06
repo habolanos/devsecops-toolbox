@@ -1634,7 +1634,7 @@ def run_tool(tool_key: str):
             print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
             print(f"{Colors.BOLD}  🔧 SCM Inspection Remediator - Seleccione una opción{Colors.ENDC}")
             print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
-            print(f"{Colors.CYAN}[1]{Colors.ENDC} Modo interactivo (descubrir → plan → template → dry-run/aplicar)")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Modo interactivo (descubrir → plan → template → dry-run/aplicar a definición y/o release)")
             print(f"{Colors.CYAN}[2]{Colors.ENDC} Ejecutar desde CLI (argumentos directos)")
             print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
             print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
@@ -1646,7 +1646,7 @@ def run_tool(tool_key: str):
 
             elif option == "1":
                 cmd = [str(venv_python), str(script_path), "--interactive"]
-                print(f"\n{Colors.CYAN}▶ Ejecutando modo interactivo...{Colors.ENDC}\n")
+                print(f"\n{Colors.CYAN}▶ Ejecutando modo interactivo (pide Definition ID y Release ID opcional)...{Colors.ENDC}\n")
                 try:
                     result = subprocess.run(cmd, cwd=BASE_DIR)
                     if result.returncode == 0:
@@ -1660,7 +1660,7 @@ def run_tool(tool_key: str):
 
             elif option == "2":
                 print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
-                print(f"{Colors.DIM}Ej: --definition-id 1837 --dry-run  |  --definition-id 1837 --apply  |  --definition-id 1837 --set cluster_name=gke-prod{Colors.ENDC}")
+                print(f"{Colors.DIM}Ej: --definition-id 1837 --dry-run  |  --definition-id 1837 --apply --target release --release-id 61062  |  --definition-id 1837 --apply --target both  |  --definition-id 1837 --set cluster_name=gke-prod{Colors.ENDC}")
                 print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
                 cli_args = input().strip()
                 if not cli_args:

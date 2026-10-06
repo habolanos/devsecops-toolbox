@@ -817,7 +817,7 @@ class TestRunFlow:
         monkeypatch.setattr(rem, "apply_template",
                             lambda *a, **k: applied.append(1) or 0)
         # Enter en confirmación de resumen + "1" solo template en menú final
-        inputs = iter(["", "1"])
+        inputs = iter(["", "", "1"])
         monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
         args = _Args()
         rc = rem.run_flow(args, interactive=True)
@@ -837,7 +837,7 @@ class TestRunFlow:
     def test_flujo_tbd_sin_prompts(self, monkeypatch, tmp_path):
         self._setup(monkeypatch, tmp_path)
         monkeypatch.setattr(rem, "apply_template", lambda *a, **k: 0)
-        inputs = iter(["", "1"])
+        inputs = iter(["", "", "1"])
         monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
         args = _Args()
         args.tbd = True
@@ -851,6 +851,7 @@ class TestRunFlow:
         empty = _fake_discovery()
         empty._logs = "sin violaciones\n"
         monkeypatch.setattr(rem, "AzdoClient", lambda *a: empty)
+        monkeypatch.setattr("builtins.input", lambda p="": "")
         args = _Args()
         assert rem.run_flow(args, interactive=True) == 0
         assert not list(tmp_path.glob("*.yaml"))
@@ -869,7 +870,7 @@ class TestRunFlow:
         monkeypatch.setattr(rem, "AzdoClient", lambda *a: client)
         monkeypatch.setattr(rem, "apply_template", lambda *a, **k: 0)
         # e → descarta la 1ra (i), conserva la 2da → r recarga → Enter → 1
-        inputs = iter(["e", "i", "", "r", "", "1"])
+        inputs = iter(["", "e", "i", "", "r", "", "1"])
         monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
         args = _Args()
         assert rem.run_flow(args, interactive=True) == 0
@@ -916,7 +917,7 @@ class TestRunFlow:
             lambda *a, **k: calls.append((a, k)) or 0)
         # Enter genera template → "5" aplicar a release → Enter acepta
         # el release descubierto
-        inputs = iter(["", "5", ""])
+        inputs = iter(["", "", "5", ""])
         monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
         args = _Args()
         assert rem.run_flow(args, interactive=True) == 0
@@ -929,11 +930,46 @@ class TestRunFlow:
         monkeypatch.setattr(
             rem, "apply_rules_to_release",
             lambda *a, **k: calls.append((a, k)) or 0)
-        inputs = iter(["", "5", "99999"])
+        inputs = iter(["", "", "5", "99999"])
         monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
         args = _Args()
         assert rem.run_flow(args, interactive=True) == 0
         assert calls[0][0][1] == "99999"  # release específico
+
+    def test_prompt_release_id_interactivo(self, monkeypatch, tmp_path):
+        """El modo interactivo pregunta Release ID tras el Definition ID y
+        lo pasa a discover(); Enter = último run."""
+        self._setup(monkeypatch, tmp_path)
+        seen = {}
+
+        def fake_discover(client, did, stage, rid):
+            seen["rid"] = rid
+            return {"definition": {"name": "p", "environments": []},
+                    "release": {"id": 1, "name": "R"},
+                    "env": {"name": "SCM Inspection"}, "violations": []}
+        monkeypatch.setattr(rem, "discover", fake_discover)
+        inputs = iter(["61077"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        assert seen["rid"] == "61077"
+
+    def test_prompt_release_id_invalido_usa_ultimo(self, monkeypatch,
+                                                   tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        seen = {}
+
+        def fake_discover(client, did, stage, rid):
+            seen["rid"] = rid
+            return {"definition": {"name": "p", "environments": []},
+                    "release": {"id": 1, "name": "R"},
+                    "env": {"name": "SCM Inspection"}, "violations": []}
+        monkeypatch.setattr(rem, "discover", fake_discover)
+        inputs = iter(["abc"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        assert seen["rid"] == ""  # no numérico → último run
 
 
 class TestCsvActionColumn:
