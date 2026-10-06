@@ -41,7 +41,6 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
@@ -526,11 +525,9 @@ def mask_value(rule_or_name, value) -> str:
     return s if len(s) <= 60 else s[:57] + "..."
 
 
-def show_rules(rules: list):
-    """Resumen final de reglas con sus valores (sensibles enmascarados)."""
-    table = Table(title="Resumen FINAL de cambios (lo que se escribirá "
-                        "en el pipeline)", box=box.SIMPLE_HEAD,
-                  header_style="bold cyan")
+def rules_table(rules: list, title: str) -> Table:
+    """Tabla de ajustes con acción coloreada y valores enmascarados."""
+    table = Table(title=title, box=box.SIMPLE_HEAD, header_style="bold cyan")
     table.add_column("Acción", no_wrap=True)
     table.add_column("Variable", style="bold")
     table.add_column("Scope")
@@ -551,7 +548,67 @@ def show_rules(rules: list):
                       var_cell, loc,
                       f"[{val_style}]{value}[/]" if val_style else str(value),
                       r.get("note", ""))
-    console.print(table)
+    return table
+
+
+def show_rules(rules: list,
+               title: str = "Resumen FINAL de cambios (lo que se "
+                            "escribirá en el pipeline)"):
+    """Resumen de reglas con sus valores (sensibles enmascarados)."""
+    console.print(rules_table(rules, title))
+
+
+def edit_rules(rules: list, prompt_fn=None) -> list:
+    """Recorre cada ajuste candidato uno a uno.
+
+    Por regla: Enter = conservar, texto = nuevo valor (en remove revierte
+    a update), 'e' = convertir a remove (eliminar la variable),
+    'i' = descartar el ajuste (no se toca la variable)."""
+    prompt_fn = prompt_fn or _rich_input
+    console.print(Panel(
+        "[bold]Edición de ajustes candidatos[/]\n\n"
+        "  [cyan]Enter[/]   = conservar tal cual\n"
+        "  [green]texto[/]  = reemplazar el valor (en remove: revierte a update)\n"
+        "  [red]e[/]      = eliminar la variable (action: remove)\n"
+        "  [dim]i[/]      = descartar el ajuste (no modificar)",
+        title="Editor de ajustes", border_style="magenta"))
+    edited, dropped = [], 0
+    total = len(rules)
+    for i, r in enumerate(rules, 1):
+        action = r["action"]
+        loc = r.get("stage") if r.get("scope") == "environment" else "release"
+        cur = "(eliminar)" if action == "remove" \
+            else mask_value(r, r.get("value"))
+        style = ACTION_STYLE.get(action, "")
+        console.print(
+            f"  [dim]{i}/{total}[/] [{style}]{action}[/] "
+            f"[bold cyan]{r['name']}[/] @ [dim]{loc}[/] "
+            f"= {cur}")
+        val = prompt_fn(
+            "    [dim]Enter=conservar | texto=valor | e=eliminar | "
+            "i=ignorar:[/] ").strip()
+        low = val.lower()
+        if low in _IGNORE_CMDS:
+            dropped += 1
+            continue
+        if low in _REMOVE_CMDS:
+            edited.append({"name": r["name"], "action": "remove",
+                           "scope": r["scope"],
+                           **({"stage": r["stage"]} if r.get("stage") else {}),
+                           "note": "eliminada a petición (edición manual)"})
+            continue
+        if val:
+            nr = dict(r)
+            if action == "remove":
+                nr["action"] = "update"
+                nr["note"] = "valor definido por usuario (edición manual)"
+            nr["value"] = val
+            edited.append(nr)
+            continue
+        edited.append(r)
+    if dropped:
+        console.print(f"  [dim]{dropped} ajuste(s) descartados.[/]")
+    return edited
 
 
 def review_values(values: dict, var_names, removes: set = None,
@@ -672,17 +729,13 @@ def show_plan(discovery: dict, actionables: dict, definition_id: str):
                       (v.get("variable") or "")[:80])
     console.print(table)
 
-    if actionables["summary"]:
-        console.print("\n[bold]Acciones que aplicará el template:[/]")
-        for s in actionables["summary"]:
-            style = "dim"
-            if "[add]" in s:
-                style = "green"
-            elif "[update]" in s:
-                style = "yellow"
-            elif "[remove]" in s:
-                style = "red"
-            console.print(Text(s, style=style))
+    if actionables["rules"]:
+        console.print("\n[bold]Ajustes candidatos[/] [dim](se escribirán en "
+                      "un template pipe_cd_*.yaml y se aplicarán al pipeline "
+                      "CD via Pipeline Updater — opción 41; aún puedes "
+                      "editarlos)[/]")
+        console.print(rules_table(actionables["rules"],
+                                  "Ajustes candidatos"))
     if actionables["manual"]:
         console.print(f"\n[yellow]{ICON_WARN} Requieren intervención "
                       f"manual (sin valor fuente):[/]")
@@ -738,6 +791,7 @@ def run_flow(args, interactive: bool) -> int:
         return 0
 
     # Resumen final con valores; permite corregir antes de generar/aplicar
+    rules_edited = False
     while True:
         show_rules(actionables["rules"])
         if actionables["manual"]:
@@ -748,16 +802,29 @@ def run_flow(args, interactive: bool) -> int:
             break
         opts = "[bold][Enter][/] Generar template"
         if pending_vars:
-            opts += " [dim]|[/] [bold]\\[c][/] Corregir valores"
+            opts += " [dim]|[/] [bold]\\[c][/] Corregir valores pendientes"
+        opts += " [dim]|[/] [bold]\\[e][/] Editar ajustes uno a uno"
         console.print("\n" + opts + " [dim]|[/] [bold]\\[0][/] Salir")
         choice = _rich_input("[bold]Seleccione:[/] ").strip().lower()
         if choice == "0":
             return 0
+        if choice == "e":
+            actionables["rules"] = edit_rules(actionables["rules"])
+            rules_edited = True
+            if not actionables["rules"]:
+                console.print("\n[yellow]Todos los ajustes fueron "
+                              "descartados.[/]")
+                return 0
+            continue
         if choice == "c" and pending_vars:
+            if rules_edited:
+                console.print("[yellow]⚠ Los ajustes editados a mano se "
+                              "recalcularán desde las violaciones.[/]")
             values, removes = review_values(values, pending_vars, removes)
             actionables = build_actionables(discovery["definition"],
                                             discovery["violations"],
                                             values, removes)
+            rules_edited = False
             if not actionables["rules"]:
                 console.print("\n[yellow]Sin reglas restantes — solo "
                               "pendientes manuales.[/]")

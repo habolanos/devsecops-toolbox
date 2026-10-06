@@ -344,6 +344,50 @@ class TestReviewAndMask:
         assert "remove" in out and "tuSecret" in out
 
 
+class TestEditRules:
+    RULES = [
+        {"name": "a", "action": "add", "scope": "environment",
+         "stage": "QA", "value": "v1", "note": "n"},
+        {"name": "b", "action": "update", "scope": "environment",
+         "stage": "Prod", "value": "v2"},
+        {"name": "c", "action": "add", "scope": "environment",
+         "stage": "Dev", "value": "v3"},
+        {"name": "d", "action": "remove", "scope": "release"},
+    ]
+
+    def _run(self, answers):
+        it = iter(answers)
+        return rem.edit_rules(list(self.RULES),
+                              prompt_fn=lambda _p: next(it))
+
+    def test_enter_conserva_todo(self):
+        out = self._run(["", "", "", ""])
+        assert out == self.RULES
+
+    def test_texto_reemplaza_valor(self):
+        out = self._run(["", "nuevo-v2", "", ""])
+        assert out[1]["value"] == "nuevo-v2"
+
+    def test_e_convierte_a_remove_sin_valor(self):
+        out = self._run(["", "", "e", ""])
+        r = out[2]
+        assert r["action"] == "remove" and "value" not in r
+        assert r["stage"] == "Dev"  # conserva scope/stage
+
+    def test_i_descarta_ajuste(self):
+        out = self._run(["i", "", "", ""])
+        assert len(out) == 3
+        assert all(r["name"] != "a" for r in out)
+
+    def test_valor_sobre_remove_revierte_a_update(self):
+        out = self._run(["", "", "", "v9"])
+        assert out[3]["action"] == "update" and out[3]["value"] == "v9"
+
+    def test_todos_descartados_lista_vacia(self):
+        out = self._run(["i", "i", "i", "i"])
+        assert out == []
+
+
 class TestGenerateTemplate:
     def test_genera_yaml_valido_en_outcome(self, tmp_path):
         rules = [{"name": "x", "action": "add", "scope": "environment",
