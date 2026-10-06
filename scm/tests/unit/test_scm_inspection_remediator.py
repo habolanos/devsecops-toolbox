@@ -727,6 +727,28 @@ class TestRunFlow:
         assert rem.run_flow(args, interactive=True) == 0
         assert not list(tmp_path.glob("*.yaml"))
 
+    def test_reload_restaura_ajustes(self, monkeypatch, tmp_path):
+        """[r] recarga los ajustes candidatos tras una edición errónea."""
+        self._setup(monkeypatch, tmp_path)
+        # 2 violaciones RULE_1_SECRET → 2 reglas update
+        client = _fake_discovery()
+        client._definition["environments"].append(
+            {"id": 3, "name": "QA",
+             "variables": {"ksa": {"value": "v2"}}})
+        client._logs += ("##[error] [HIGH] RULE_1_SECRET\n##[error]   "
+                         "Environment: 'QA'\n##[error]   Variable: 'ksa'\n"
+                         "##[error]   ksa not marked secret\n\n")
+        monkeypatch.setattr(rem, "AzdoClient", lambda *a: client)
+        monkeypatch.setattr(rem, "apply_template", lambda *a, **k: 0)
+        # e → descarta la 1ra (i), conserva la 2da → r recarga → Enter → 1
+        inputs = iter(["e", "i", "", "r", "", "1"])
+        monkeypatch.setattr("builtins.input", lambda p="": next(inputs))
+        args = _Args()
+        assert rem.run_flow(args, interactive=True) == 0
+        tpl = yaml.safe_load(
+            list(tmp_path.glob("*.yaml"))[0].read_text(encoding="utf-8"))
+        assert len(tpl["update"]["variables"]) == 2  # recargadas
+
 
 class TestCsvActionColumn:
     SCRIPT = Path(__file__).parent.parent.parent / "terminal" / \

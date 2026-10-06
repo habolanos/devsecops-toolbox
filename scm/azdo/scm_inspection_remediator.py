@@ -873,11 +873,22 @@ def run_flow(args, interactive: bool) -> int:
             opts += " [dim]|[/] [bold cyan]\\[c][/] Corregir valores pendientes"
         opts += (" [dim]|[/] [bold cyan]\\[e][/] Editar ajustes uno a uno"
                  " [dim]|[/] [bold cyan]\\[v][/] Editar variable puntual"
+                 " [dim]|[/] [bold cyan]\\[r][/] Recargar ajustes"
                  " [dim]|[/] [bold cyan]\\[0][/] Salir")
         console.print("\n" + opts)
         choice = _rich_input("[bold cyan]Seleccione:[/] ").strip().lower()
         if choice == "0":
             return 0
+        if choice == "r":
+            actionables = build_actionables(discovery["definition"],
+                                            discovery["violations"],
+                                            values, removes)
+            rules_edited = False
+            console.print("[cyan]Ajustes recargados desde las "
+                          "violaciones (ediciones manuales descartadas; "
+                          "los valores pendientes capturados se "
+                          "conservan).[/]")
+            continue
         if choice == "v":
             target = _rich_input(
                 "[bold]Variable a editar[/] ([white]nombre[/] o "
@@ -907,7 +918,7 @@ def run_flow(args, interactive: bool) -> int:
             continue
         if choice == "c" and pending_vars:
             if rules_edited:
-                console.print("[yellow]⚠ Los ajustes editados a mano se "
+                console.print("[yellow]Los ajustes editados a mano se "
                               "recalcularán desde las violaciones.[/]")
             values, removes = review_values(values, pending_vars, removes)
             actionables = build_actionables(discovery["definition"],
