@@ -786,6 +786,16 @@ correcciones (secrets sin marcar, paridad de variables entre stages, valores vac
 variables a nivel pipeline). El template se aplica con el Pipeline Updater (opción 41),
 en modo solo-template, dry-run o aplicación real.
 
+Ambos templates (`pipe_cd_*` y `release_*`) llevan al inicio un **comentario `#`
+simplificado** con todos los cambios y el mismo resumen en `metadata.description`:
+
+```yaml
+# 3 cambio(s): +requests.cpu@Develop=200m, ~ksa@Production=******** 🔒, -tuSecret@release
+```
+
+Convención: `+` add, `~` update, `-` remove; `@<stage>` scope environment o
+`@release` scope release; valores sensibles enmascarados (`mask_value`).
+
 #### Flujo interactivo
 
 1. Se solicita el **Definition ID del pipeline CD** (la definición de release que
@@ -1020,6 +1030,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-07 | 1.8.27 | **SCM Inspection Remediator: comentario simplificado en templates** — `rules_summary()` genera un resumen compacto de todos los cambios (`+var@Stage=val`, `~var@Stage`, `-var@release`, 🔒/🔓; secretos enmascarados, notas internas excluidas) que se escribe como comentario `#` en la primera línea del YAML **y** dentro de `metadata.description` — visible tanto al inspeccionar el archivo como al cargarlo con las opciones 41/42. Aplica a `pipe_cd_inspection_fix_*` (definición) y `release_inspection_fix_*` (release). Tests: +1 (`test_comentario_simplificado_en_yaml`). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.26 | **SCM Inspection Remediator: existencia verificada contra el release** — `build_actionables` ahora acepta `release` y comprueba también las variables de la instancia inspeccionada. Fix real: una variable solo en el snapshot del release (ausente en la definición, p. ej. `tuSecret`) iba a "manual / ya ausente" y no podía eliminarse — ahora genera `remove`/`update` con nota "existe solo en el release" (el engine opción 42 la aplica; en la definición es no-op). `RULE_1_SECRET` ya no manda a manual cuando el valor no es legible: toma el valor del release si existe y aplica `isSecret: true` preservando el valor; solo queda manual si la variable no existe en definición ni en release. Tests: +6 (`TestReleaseFallback`). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.25 | **Aplicación a release via engine existente (opción 42)** — La opción 44 ya no hace PUT directo: genera `release_inspection_fix_<relId>_<ts>.yaml` en formato `pipeline_cd_update_release` y lo aplica por subprocess (backup + tabla de cambios + PUT del engine). El engine ganó campos `isSecret`/`action: remove` por variable y preserva `isSecret` al actualizar vars secretas (bugfix). | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/pipeline_cd_update_release/pipeline_cd_update_release.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.24 | **SCM Inspection Remediator: menú en bucle + redeploy del stage** — El menú de aplicación reaparece tras cada acción (hasta `0`/`1`); tras aplicar al release se ofrece re-correr el deploy del stage inspeccionado (`PATCH environments/{id} status=inProgress`; `--redeploy` en CLI). Nota UX: el YAML es solo para la definición; el release usa PUT directo. `AzdoClient._send` unifica GET/PUT/PATCH. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |

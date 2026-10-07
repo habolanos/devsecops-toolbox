@@ -780,6 +780,35 @@ def review_values(values: dict, var_names, removes: set = None,
 
 _RULE_KEYS = {"name", "action", "scope", "stage", "value",
               "allowOverride", "isSecret"}
+_ACTION_GLYPH = {"add": "+", "update": "~", "remove": "-"}
+
+
+def rules_summary(rules: list) -> str:
+    """Comentario simplificado de todos los cambios de una regla:
+    '3 cambio(s): +cpu@Develop=200m, ~ksa@Prod=******** 🔒, -tuSecret@release'.
+    Va en metadata.description y como comentario '#' al inicio del YAML."""
+    parts = []
+    for r in rules:
+        glyph = _ACTION_GLYPH.get(r.get("action"), "?")
+        loc = r.get("stage") if r.get("scope") == "environment" else "release"
+        s = f"{glyph}{r.get('name')}@{loc}"
+        if r.get("action") != "remove":
+            s += f"={mask_value(r, r.get('value'))}"
+        if r.get("isSecret") is True:
+            s += f" {ICON_SECRET}"
+        elif r.get("isSecret") is False:
+            s += f" {ICON_UNSECRET}"
+        parts.append(s)
+    if not parts:
+        return "sin cambios"
+    return f"{len(parts)} cambio(s): " + ", ".join(parts)
+
+
+def _write_template(path: Path, template: dict, comment: str) -> Path:
+    """Escribe el YAML precedido por '# <comentario simplificado>'."""
+    text = yaml.safe_dump(template, allow_unicode=True, sort_keys=False)
+    path.write_text(f"# {comment}\n{text}", encoding="utf-8")
+    return path
 
 
 def generate_template(rules: list, definition_id: str, pipeline_name: str,
@@ -789,12 +818,13 @@ def generate_template(rules: list, definition_id: str, pipeline_name: str,
     path = out_dir / f"pipe_cd_inspection_fix_{definition_id}_{ts}.yaml"
     clean_rules = [{k: v for k, v in r.items() if k in _RULE_KEYS}
                    for r in rules]
+    comment = rules_summary(clean_rules)
     template = {
         "metadata": {
             "name": f"SCM Inspection Fix — {pipeline_name} ({definition_id})",
             "version": "1.0",
-            "description": "Corrige violaciones del stage SCM Inspection: "
-                           "secrets, paridad de variables y valores vacíos. "
+            "description": "Corrige violaciones del stage SCM Inspection "
+                           f"— {comment}. "
                            "Generado por scm_inspection_remediator.",
             "created_at": ts,
         },
@@ -803,9 +833,7 @@ def generate_template(rules: list, definition_id: str, pipeline_name: str,
         "options": {"dry_run": False, "rollback_on_error": True,
                     "parallel_workers": 5},
     }
-    path.write_text(yaml.safe_dump(template, allow_unicode=True,
-                                   sort_keys=False), encoding="utf-8")
-    return path
+    return _write_template(path, template, comment)
 
 
 def apply_template(template_path: Path, definition_id: str,
@@ -852,13 +880,15 @@ def generate_release_template(rules: list, release_id: str,
         if "isSecret" in r:
             v["isSecret"] = r["isSecret"]
         target.append(v)
+    comment = rules_summary(rules)
     template = {
         "metadata": {
             "name": f"SCM Inspection Fix — Release #{release_id} "
                     f"({pipeline_name})",
             "version": "1.0",
             "description": "Corrige violaciones del stage SCM Inspection "
-                           "sobre el snapshot de variables del release. "
+                           "sobre el snapshot de variables del release "
+                           f"— {comment}. "
                            "Generado por scm_inspection_remediator.",
             "created_at": ts,
         },
@@ -866,9 +896,7 @@ def generate_release_template(rules: list, release_id: str,
         "update": {"global_vars": gvars, "env_vars": evars},
         "options": {"dry_run": False},
     }
-    path.write_text(yaml.safe_dump(template, allow_unicode=True,
-                                   sort_keys=False), encoding="utf-8")
-    return path
+    return _write_template(path, template, comment)
 
 
 def apply_release_template(template_path: Path, release_id: str,
@@ -892,7 +920,7 @@ def redeploy_stage(client: AzdoClient, release_id: str,
                    stage_name: str) -> int:
     """Dispara el deploy de un environment del release: PATCH
     releases/{id}/environments/{envId} con status inProgress. Usado para
-    re-correr el stage 'SCM Inspection' tras remediar el release."""
+    Ejecutar el stage 'SCM Inspection' tras remediar el release."""
     release = client.get(f"{client.base}/releases/{release_id}",
                          params={"api-version": "7.1"})
     env = next((e for e in release.get("environments", [])
@@ -918,7 +946,7 @@ def _offer_redeploy(client: AzdoClient, release_id: str, stage_name: str,
     if not prompt_fn:
         return 0
     ans = prompt_fn(
-        f"  [bold]Re-correr deploy de '{stage_name}' en release "
+        f"  [bold]Ejecutar deploy de '{stage_name}' en release "
         f"#{release_id}?[/] \\[[cyan]S/n[/]]: ").strip().lower()
     if ans in ("n", "no"):
         return 0

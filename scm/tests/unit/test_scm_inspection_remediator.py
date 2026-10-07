@@ -526,6 +526,30 @@ class TestGenerateTemplate:
         assert tpl["metadata"]["name"].startswith("SCM Inspection Fix")
         assert tpl["options"]["rollback_on_error"] is True
 
+    def test_comentario_simplificado_en_yaml(self, tmp_path):
+        rules = [
+            {"name": "requests.cpu", "action": "add", "scope": "environment",
+             "stage": "Develop", "value": "200m"},
+            {"name": "ksa", "action": "update", "scope": "environment",
+             "stage": "Production", "value": "s1", "isSecret": True},
+            {"name": "tuSecret", "action": "remove", "scope": "release"},
+            {"name": "note", "action": "update", "scope": "release",
+             "value": "x", "note": "interna"},
+        ]
+        path = rem.generate_template(rules, "9", "p", out_dir=tmp_path)
+        first = path.read_text(encoding="utf-8").splitlines()[0]
+        assert first.startswith("# 4 cambio(s):")
+        assert "+requests.cpu@Develop=200m" in first
+        assert "~ksa@Production=" in first and "********" in first
+        assert "-tuSecret@release" in first
+        assert "~note@release=x" in first
+        assert "interna" not in first  # la nota no se filtra al comentario
+        # el comentario también viaja en la description
+        tpl = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert "4 cambio(s)" in tpl["metadata"]["description"]
+        # sin reglas → "sin cambios"
+        assert rem.rules_summary([]) == "sin cambios"
+
 
 class TestOutcomeResolution:
     def test_env_tiene_prioridad(self, tmp_path, monkeypatch):
