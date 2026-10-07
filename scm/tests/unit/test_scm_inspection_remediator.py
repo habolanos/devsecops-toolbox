@@ -544,9 +544,14 @@ class TestGenerateTemplate:
         assert "-tuSecret@release" in first
         assert "~note@release=x" in first
         assert "interna" not in first  # la nota no se filtra al comentario
-        # el comentario también viaja en la description
+        # el resumen va en metadata.comment (→ historial AzDO al hacer PUT)
+        # y description solo describe el objetivo del template
         tpl = yaml.safe_load(path.read_text(encoding="utf-8"))
-        assert "4 cambio(s)" in tpl["metadata"]["description"]
+        meta = tpl["metadata"]
+        assert meta["comment"].startswith("4 cambio(s):")
+        assert "tuSecret@release" in meta["comment"]
+        assert "4 cambio(s)" not in meta["description"]
+        assert "SCM Inspection" in meta["description"]
         # sin reglas → "sin cambios"
         assert rem.rules_summary([]) == "sin cambios"
 

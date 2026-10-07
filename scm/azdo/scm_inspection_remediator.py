@@ -786,7 +786,8 @@ _ACTION_GLYPH = {"add": "+", "update": "~", "remove": "-"}
 def rules_summary(rules: list) -> str:
     """Comentario simplificado de todos los cambios de una regla:
     '3 cambio(s): +cpu@Develop=200m, ~ksa@Prod=******** 🔒, -tuSecret@release'.
-    Va en metadata.description y como comentario '#' al inicio del YAML."""
+    Va en metadata.comment (→ historial de revisiones de AzDO) y como
+    comentario '#' al inicio del YAML."""
     parts = []
     for r in rules:
         glyph = _ACTION_GLYPH.get(r.get("action"), "?")
@@ -824,8 +825,11 @@ def generate_template(rules: list, definition_id: str, pipeline_name: str,
             "name": f"SCM Inspection Fix — {pipeline_name} ({definition_id})",
             "version": "1.0",
             "description": "Corrige violaciones del stage SCM Inspection "
-                           f"— {comment}. "
-                           "Generado por scm_inspection_remediator.",
+                           "del pipeline CD: secrets, paridad de variables "
+                           "y valores vacíos. Generado por "
+                           "scm_inspection_remediator.",
+            # 'comment' viaja en el PUT de la definición → historial AzDO
+            "comment": comment,
             "created_at": ts,
         },
         "search": {"stages": []},
@@ -887,9 +891,10 @@ def generate_release_template(rules: list, release_id: str,
                     f"({pipeline_name})",
             "version": "1.0",
             "description": "Corrige violaciones del stage SCM Inspection "
-                           "sobre el snapshot de variables del release "
-                           f"— {comment}. "
+                           "sobre el snapshot de variables del release. "
                            "Generado por scm_inspection_remediator.",
+            # 'comment' viaja en el PUT del release → historial AzDO
+            "comment": comment,
             "created_at": ts,
         },
         "release": {"ids": [str(release_id)]},
