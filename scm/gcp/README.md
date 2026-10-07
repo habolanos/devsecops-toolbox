@@ -122,6 +122,7 @@ gcp/
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-10-07 | **1.8.31** | `tools.py`: `resolve_cloud_run_projects` ahora expande **tokens de ambiente** (`dev`, `qa`, `stg`/`stag`, `prod`/`prd`) — seleccionan los proyectos configurados de ese ambiente en todos los equipos (mezclables con IDs, sin duplicados). El alias de equipo gana si un equipo se llama como un ambiente. `env_key_of_project()` nuevo; `cloud_run_env_names` usa etiquetas `<equipo>-<env>` cuando la selección no es un equipo completo. |
 | 2026-06-04 | **1.6.8** | `aws/tools.py` homologado visualmente con `gcp/tools.py` — estructura, colores y nombres de grupos alineados | Referencia cruzada AWS↔GCP |
 | 2026-05-18 | 1.9.2 | `tools.py`: (1) Tool **16** `pod_connectivity_checker` — agrega `-o` a args (soporta exportar JSON/CSV); (2) Tool **17** `deploy_dependency_checker` — agrega `--db-probe` a args + nuevo handler interactivo en `run_tool`; (3) Tool **19** `deployment_validator` — agrega `--db-probe` a args + handler; (4) nuevo handler `--validate` en `run_tool` para elegir `all/configmaps/secrets/connectivity` (existía en args pero nunca se pasaba al script); (5) descripciones de herramientas 16/17/19 actualizadas |
 | 2026-04-16 | 1.9.0 | Nueva herramienta: Inventario GKE + Cloud SQL - Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar) |

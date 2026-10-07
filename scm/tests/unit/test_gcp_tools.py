@@ -118,6 +118,70 @@ class TestGCPTools:
         # case-insensitive
         assert gcp_tools.resolve_cloud_run_projects("all") == all_projects
 
+    def test_cloud_run_env_token_expands_to_env_projects(self, tmp_path,
+                                                         monkeypatch):
+        """dev/qa/stag seleccionan los proyectos de ese ambiente en todos
+        los equipos (normalización stag→stg, case-insensitive, sin dup)."""
+        monkeypatch.setattr(gcp_tools, "_scm_config_path",
+                            lambda: tmp_path / "missing.json")
+        gcp_tools._CONFIG_PROJECT_GROUPS = None
+        try:
+            qa = gcp_tools.resolve_cloud_run_projects("qa")
+            assert qa == ["cpl-cmanager-qa-13072023",
+                          "cpl-cs-csc-qa-16112023",
+                          "cpl-cs-wms-qa-30112023",
+                          "cpl-oms-qa-08062023"]
+            # 'stg' y 'stag' normalizan al mismo ambiente
+            stg = gcp_tools.resolve_cloud_run_projects("stag")
+            assert stg == gcp_tools.resolve_cloud_run_projects("stg")
+            assert stg == ["cpl-cmanager-stag-01052025",
+                           "cpl-cs-csc-stag-11042025",
+                           "cpl-cs-wms-stag-09042025",
+                           "cpl-oms-stag-09042025"]
+            # case-insensitive
+            assert gcp_tools.resolve_cloud_run_projects("QA") == qa
+            # ambiente sin proyectos configurados → lista vacía
+            assert gcp_tools.resolve_cloud_run_projects("prod") == []
+            # combinación con ID literal, sin duplicados
+            assert gcp_tools.resolve_cloud_run_projects(
+                "qa,cpl-oms-qa-08062023,custom-x") == qa + ["custom-x"]
+        finally:
+            gcp_tools._CONFIG_PROJECT_GROUPS = None
+
+    def test_cloud_run_env_token_vs_team_alias_priority(self, tmp_path,
+                                                      monkeypatch):
+        """Un equipo llamado como un ambiente gana sobre el token env."""
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "gcp": {"service_accounts_reporter": {
+                "projects": ["acme-dev-01", "acme-dev-02"]}}}),
+            encoding="utf-8")
+        monkeypatch.setattr(gcp_tools, "_scm_config_path", lambda: cfg)
+        gcp_tools._CONFIG_PROJECT_GROUPS = None
+        try:
+            # el alias 'dev' resuelve el equipo 'dev' completo, no el ambiente
+            assert gcp_tools.resolve_cloud_run_projects("dev") == [
+                "acme-dev-01", "acme-dev-02"]
+        finally:
+            gcp_tools._CONFIG_PROJECT_GROUPS = None
+
+    def test_cloud_run_env_names_env_selection_derives_labels(self, tmp_path,
+                                                              monkeypatch):
+        """Una selección por ambiente (no es un equipo completo) usa
+        etiquetas derivadas '<equipo>-<env>'."""
+        monkeypatch.setattr(gcp_tools, "_scm_config_path",
+                            lambda: tmp_path / "missing.json")
+        gcp_tools._CONFIG_PROJECT_GROUPS = None
+        try:
+            qa = gcp_tools.resolve_cloud_run_projects("qa")
+            assert gcp_tools.cloud_run_env_names(qa) == [
+                "cmanager-qa", "cs-csc-qa", "cs-wms-qa", "oms-qa"]
+            # selección de equipo completa sigue posicional
+            wms = gcp_tools.resolve_cloud_run_projects("WMS")
+            assert gcp_tools.cloud_run_env_names(wms) == ["dev", "qa", "stg"]
+        finally:
+            gcp_tools._CONFIG_PROJECT_GROUPS = None
+
     def test_load_projects_from_config(self, tmp_path):
         """Lee gcp.service_accounts_reporter.projects desde config.json."""
         cfg = tmp_path / "config.json"

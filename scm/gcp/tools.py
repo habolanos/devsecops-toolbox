@@ -128,6 +128,8 @@ CLOUD_RUN_PROJECTS_BY_TEAM = {
 }
 
 _ENV_TOKENS = {"dev", "qa", "stg", "stag", "prod", "prd"}
+_ENV_NORM = {"dev": "dev", "qa": "qa", "stg": "stg", "stag": "stg",
+             "prod": "prod", "prd": "prod"}
 _CONFIG_PROJECT_GROUPS = None
 
 
@@ -149,6 +151,16 @@ def load_projects_from_config(path: Optional[Path] = None) -> List[str]:
         return [p.strip() for p in projects if isinstance(p, str) and p.strip()]
     except (OSError, json.JSONDecodeError, AttributeError):
         return []
+
+
+def env_key_of_project(project: str) -> Optional[str]:
+    """Ambiente normalizado del project ID ('stag'->'stg', 'prd'->'prod');
+    None si el ID no trae token de ambiente."""
+    for token in project.split("-"):
+        env = _ENV_NORM.get(token.lower())
+        if env:
+            return env
+    return None
 
 
 def team_key_for_project(project: str) -> str:
@@ -201,7 +213,8 @@ def _match_team_key(name: str, groups: Dict[str, List[str]]) -> Optional[str]:
 
 
 def resolve_cloud_run_projects(project_input: str):
-    """Expande ALL, un alias de equipo, o devuelve los IDs ingresados."""
+    """Expande ALL, un alias de equipo, token(s) de ambiente
+    (dev/qa/stg/stag/prod/prd) o devuelve los IDs ingresados."""
     tokens = [item.strip() for item in project_input.split(",") if item.strip()]
     if len(tokens) == 1:
         groups = get_cloud_run_projects_by_team()
@@ -211,28 +224,46 @@ def resolve_cloud_run_projects(project_input: str):
         team_key = _match_team_key(tokens[0], groups)
         if team_key:
             return list(groups[team_key])
+    # Tokens de ambiente: cada uno expande a los proyectos configurados de
+    # ese ambiente en todos los equipos (mezclables con IDs, sin duplicados).
+    if any(t.lower() in _ENV_NORM for t in tokens):
+        groups = get_cloud_run_projects_by_team()
+        expanded, seen = [], set()
+        for tok in tokens:
+            env = _ENV_NORM.get(tok.lower())
+            candidates = ([p for projs in groups.values() for p in projs
+                           if env_key_of_project(p) == env]
+                          if env else [tok])
+            for p in candidates:
+                if p not in seen:
+                    seen.add(p)
+                    expanded.append(p)
+        return expanded
     return tokens
 
 
 def cloud_run_env_names(projects_list):
     """Nombres de ambiente para mostrar junto a cada proyecto.
 
-    <=4 proyectos: posicional dev/qa/stg/prod. >4 (modo ALL): etiqueta
-    '<equipo>-<env>' derivada del project ID (ej. 'cs-wms-dev', 'oms-stg').
+    <=4 proyectos que correspondan exactamente a un equipo (o IDs sin token
+    de ambiente): posicional dev/qa/stg/prod. En otro caso (modo ALL o
+    selección por ambiente/subconjunto): etiqueta '<equipo>-<env>' derivada
+    del project ID (ej. 'cs-wms-dev', 'oms-stg').
     """
     if len(projects_list) <= 4:
-        return ["dev", "qa", "stg", "prod"][:len(projects_list)]
-    env_alias = {"dev": "dev", "qa": "qa", "stg": "stg", "stag": "stg",
-                 "prod": "prod", "prd": "prod"}
+        groups = get_cloud_run_projects_by_team()
+        is_team_pick = any(list(projs) == list(projects_list)
+                           for projs in groups.values())
+        has_env = any(env_key_of_project(p) for p in projects_list)
+        if is_team_pick or not has_env:
+            return ["dev", "qa", "stg", "prod"][:len(projects_list)]
     names = []
     for proj in projects_list:
-        tokens = proj.split("-")
-        idx = next((i for i, t in enumerate(tokens) if t.lower() in env_alias), None)
-        if idx is None:
+        env = env_key_of_project(proj)
+        if env is None:
             names.append(proj)
             continue
         team = team_key_for_project(proj)
-        env = env_alias[tokens[idx].lower()]
         names.append(f"{team}-{env}" if team != "otros" else env)
     return names
 
@@ -1268,7 +1299,7 @@ def run_tool(tool_key: str):
             print(f"\n{Colors.DIM}Equipos disponibles:{Colors.ENDC}")
             for team, projs in teams.items():
                 print(f"{Colors.DIM}  {team.upper()}: {', '.join(projs)}{Colors.ENDC}")
-            print(f"{Colors.DIM}  También puede ingresar un equipo (ej. CSC, WMS) o ALL (todos){Colors.ENDC}")
+            print(f"{Colors.DIM}  También puede ingresar un equipo (ej. CSC, WMS), un ambiente (dev, qa, stag) o ALL (todos){Colors.ENDC}")
             print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
         project_input = input().strip()
         if not project_input:
@@ -1279,7 +1310,12 @@ def run_tool(tool_key: str):
             project_list = resolve_cloud_run_projects(project_input) if multi_capable else project_tokens
             if len(project_list) > 1 and len(project_tokens) == 1:
                 alias = project_tokens[0].upper()
-                label = "todos los equipos" if alias == "ALL" else f"equipo {alias}"
+                if alias == "ALL":
+                    label = "todos los equipos"
+                elif project_tokens[0].lower() in _ENV_NORM:
+                    label = f"ambiente {_ENV_NORM[project_tokens[0].lower()]}"
+                else:
+                    label = f"equipo {alias}"
                 print(f"{Colors.GREEN}✅ Seleccionado {label}: {len(project_list)} proyecto(s){Colors.ENDC}")
             if len(project_list) == 1:
                 print(f"{Colors.GREEN}Usando proyecto: {project_list[0]}{Colors.ENDC}")
@@ -1384,7 +1420,7 @@ def run_tool(tool_key: str):
         print(f"{Colors.DIM}Ejemplos combinados:{Colors.ENDC}")
         print(f"{Colors.DIM}  1 ambiente: cpl-cs-wms-prod (o solo prod){Colors.ENDC}")
         print(f"{Colors.DIM}  3 ambientes (CSC): cpl-cs-csc-dev-16112023,cpl-cs-csc-qa-16112023,cpl-cs-csc-stag-11042025{Colors.ENDC}")
-        print(f"{Colors.DIM}  También puede ingresar un equipo (ej. CSC, WMS) o ALL (todos){Colors.ENDC}")
+        print(f"{Colors.DIM}  También puede ingresar un equipo (ej. CSC, WMS), un ambiente (dev, qa, stag) o ALL (todos){Colors.ENDC}")
         print(f"{Colors.BOLD}→ {Colors.ENDC}", end="")
         projects_input = input().strip()
         if not projects_input:
@@ -1397,7 +1433,12 @@ def run_tool(tool_key: str):
         projects_list = resolve_cloud_run_projects(projects_input)
         if projects_list != project_tokens:
             alias = project_tokens[0].upper()
-            label = "todos los equipos" if alias == "ALL" else f"equipo {alias}"
+            if alias == "ALL":
+                label = "todos los equipos"
+            elif project_tokens[0].lower() in _ENV_NORM:
+                label = f"ambiente {_ENV_NORM[project_tokens[0].lower()]}"
+            else:
+                label = f"equipo {alias}"
             print(f"{Colors.GREEN}✅ Seleccionado {label}: {len(projects_list)} proyecto(s){Colors.ENDC}")
 
         max_projects = sum(len(projs) for projs in teams.values())
