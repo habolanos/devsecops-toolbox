@@ -175,14 +175,6 @@ echo -e "${CYN}╚$(printf '═%.0s' $(seq 1 $BOX_W))╝${RST}"
 # =============================================================================
 # Funciones de progreso y dashboard
 # =============================================================================
-filter_ns() {
-  if [ -n "$EXCLUDE_PATTERN" ]; then
-    grep -vE "^[[:space:]]*(${EXCLUDE_PATTERN})[[:space:]]" || true
-  else
-    cat
-  fi
-}
-
 # Barra de progreso ASCII: progress_bar CURRENT TOTAL WIDTH
 progress_bar() {
   local cur=$1 tot=$2 w=${3:-20}
@@ -289,7 +281,7 @@ process_project() {
     DELIM="$DELIM" python3 -c "
 import json,sys,csv,os
 w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
-w.writerow(['NAME','LOCATION','VERSION','CURRENT_VERSION','STATUS','MACHINE_TYPE'])
+w.writerow(['NAME','LOCATION','VERSION','CURRENT_VERSION','STATUS','MACHINE_TYPE','CREATED','UPDATED'])
 try:
  data=sys.stdin.read().strip()
  if data:
@@ -297,7 +289,7 @@ try:
   for c in d:
    ps=c.get('nodePools') or []
    mt='|'.join(p.get('config',{}).get('machineType','') for p in ps)
-   w.writerow([c.get('name',''),c.get('location',''),c.get('currentMasterVersion',''),c.get('currentMasterVersion',''),c.get('status',''),mt])
+   w.writerow([c.get('name',''),c.get('location',''),c.get('currentMasterVersion',''),c.get('currentMasterVersion',''),c.get('status',''),mt,(c.get('createTime','') or '').replace('T',' ')[:16],(c.get('updateTime','') or '').replace('T',' ')[:16]])
 except: pass
 " > "$PROJECT_OUT_DIR/clusters.csv"
   echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] clusters: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
@@ -306,7 +298,7 @@ except: pass
   SECTION_START=$(date +%s)
   update_progress "$PROJECT_ID" 2 "deployments" "running"
   echo -e "  ${CYN}❷${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}deployments.csv${RST}"
-  echo "NAMESPACE${DELIM}CLUSTER${DELIM}DEPLOYMENT${DELIM}READY${DELIM}CONTAINERS${DELIM}IMAGES" > "$PROJECT_OUT_DIR/deployments.csv"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}DEPLOYMENT${DELIM}READY${DELIM}CONTAINERS${DELIM}IMAGES${DELIM}CREATED${DELIM}UPDATED" > "$PROJECT_OUT_DIR/deployments.csv"
 
   local CLUSTERS=$(gcloud container clusters list --project="$PROJECT_ID" --format="value(name,location)" --quiet 2>/dev/null || true)
 
@@ -323,6 +315,12 @@ import json,sys,csv,os,re
 w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
 excl=os.environ.get('EXCLUDE_PATTERN','')
 pat=re.compile(r'^('+excl+r')$') if excl else None
+def _iso(ts): return (ts or '').replace('T',' ')[:16]
+def _dates(it):
+ m=it.get('metadata',{});c=_iso(m.get('creationTimestamp',''))
+ ts=[f.get('time') for f in m.get('managedFields',[]) if isinstance(f,dict) and f.get('time')]
+ if not ts: ts=[x.get('lastTransitionTime') for x in it.get('status',{}).get('conditions',[]) if isinstance(x,dict) and x.get('lastTransitionTime')]
+ return c,(_iso(max(ts)) if ts else '')
 try:
  data=sys.stdin.read().strip()
  if data:
@@ -338,7 +336,8 @@ try:
    pairs=[f\"{c.get('name','?')}={c.get('image','')}\" for c in ts.get('containers',[])]
    pairs+=[f\"init:{c.get('name','?')}={c.get('image','')}\" for c in ts.get('initContainers',[])]
    imgs=[c.get('image','') for c in ts.get('containers',[])+ts.get('initContainers',[])]
-   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),f'{ready}/{reps}',';'.join(pairs),';'.join(imgs)])
+   created,updated=_dates(it)
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),f'{ready}/{reps}',';'.join(pairs),';'.join(imgs),created,updated])
 except: pass
 " >> "$PROJECT_OUT_DIR/deployments.csv"
       rm -f "$KCFG"
@@ -350,23 +349,40 @@ except: pass
   SECTION_START=$(date +%s)
   update_progress "$PROJECT_ID" 3 "services" "running"
   echo -e "  ${CYN}❸${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}services.csv${RST}"
-  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}TYPE${DELIM}CLUSTER-IP${DELIM}EXTERNAL-IP${DELIM}PORTS" > "$PROJECT_OUT_DIR/services.csv"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}TYPE${DELIM}CLUSTER-IP${DELIM}EXTERNAL-IP${DELIM}PORTS${DELIM}CREATED${DELIM}UPDATED" > "$PROJECT_OUT_DIR/services.csv"
 
   if [ -n "$CLUSTERS" ]; then
     echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
       KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
       KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
 
-      KUBECONFIG="$KCFG" kubectl get services --all-namespaces \
-        -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP,EXTERNAL-IP:.status.loadBalancer.ingress[*].ip,PORTS:.spec.ports[*].port" \
-        --no-headers 2>/dev/null | filter_ns | \
-        while read -r ns name type cip eip ports; do
-          eip_clean=$(echo "$eip" | sed 's/,/;/g' | sed 's/"//g')
-          ports_clean=$(echo "$ports" | sed 's/,/;/g' | sed 's/"//g')
-          printf '"%s"%s"%s"%s"%s"%s"%s"%s"%s"%s"%s"%s"%s"\n' \
-            "$ns" "$DELIM" "$CLUSTER" "$DELIM" "$name" "$DELIM" "$type" "$DELIM" "$cip" "$DELIM" "$eip_clean" "$DELIM" "$ports_clean" \
-            >> "$PROJECT_OUT_DIR/services.csv"
-        done || true
+      KUBECONFIG="$KCFG" kubectl get services --all-namespaces -o json 2>/dev/null | \
+        DELIM="$DELIM" CLUSTER="$CLUSTER" EXCLUDE_PATTERN="${EXCLUDE_PATTERN:-}" python3 -c "
+import json,sys,csv,os,re
+w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
+excl=os.environ.get('EXCLUDE_PATTERN','')
+pat=re.compile(r'^('+excl+r')$') if excl else None
+def _iso(ts): return (ts or '').replace('T',' ')[:16]
+def _dates(it):
+ m=it.get('metadata',{});c=_iso(m.get('creationTimestamp',''))
+ ts=[f.get('time') for f in m.get('managedFields',[]) if isinstance(f,dict) and f.get('time')]
+ if not ts: ts=[x.get('lastTransitionTime') for x in it.get('status',{}).get('conditions',[]) if isinstance(x,dict) and x.get('lastTransitionTime')]
+ return c,(_iso(max(ts)) if ts else '')
+try:
+ data=sys.stdin.read().strip()
+ if data:
+  d=json.loads(data)
+  for it in d.get('items',[]):
+   m=it.get('metadata',{})
+   ns=m.get('namespace','')
+   if pat and pat.match(ns): continue
+   spec=it.get('spec',{})
+   eip=';'.join((i.get('ip') or i.get('hostname','')) for i in it.get('status',{}).get('loadBalancer',{}).get('ingress',[]))
+   ports=';'.join(str(p.get('port','')) for p in spec.get('ports',[]))
+   created,updated=_dates(it)
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),spec.get('type',''),spec.get('clusterIP',''),eip,ports,created,updated])
+except: pass
+" >> "$PROJECT_OUT_DIR/services.csv"
       rm -f "$KCFG"
     done
   fi
@@ -380,21 +396,28 @@ except: pass
 
   if [ "$INSTANCE_COUNT" -eq 0 ]; then
     echo -e "  ${DIM}  (Sin instancias Cloud SQL)${RST}"
-    echo "NAME${DELIM}DATABASE_VERSION${DELIM}REGION${DELIM}TIER${DELIM}STATE${DELIM}PUBLIC_IP${DELIM}PRIVATE_IP${DELIM}AUTO_RESIZE${DELIM}BACKUP_ENABLED" > "$PROJECT_OUT_DIR/cloudsql.csv"
-    echo "Sin instancias${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-" >> "$PROJECT_OUT_DIR/cloudsql.csv"
+    echo "NAME${DELIM}DATABASE_VERSION${DELIM}REGION${DELIM}TIER${DELIM}STATE${DELIM}PUBLIC_IP${DELIM}PRIVATE_IP${DELIM}AUTO_RESIZE${DELIM}BACKUP_ENABLED${DELIM}CREATED${DELIM}UPDATED" > "$PROJECT_OUT_DIR/cloudsql.csv"
+    echo "Sin instancias${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-${DELIM}-" >> "$PROJECT_OUT_DIR/cloudsql.csv"
   else
     echo -e "  ${GRN}  ✓${RST} ${INSTANCE_COUNT} instancia(s) Cloud SQL encontradas${RST}"
-    gcloud sql instances list \
-      --project="$PROJECT_ID" \
-      --format="csv[no-heading,separator=$DELIM](name,databaseVersion,region,settings.tier,state,settings.ipConfiguration.ipv4Enabled,ipAddresses[0].ipAddress,settings.storageAutoResize,settings.backupConfiguration.enabled)" \
-      > "$PROJECT_OUT_DIR/cloudsql.csv" 2>/dev/null || true
-
-    {
-      echo "NAME${DELIM}DATABASE_VERSION${DELIM}REGION${DELIM}TIER${DELIM}STATE${DELIM}PUBLIC_IP${DELIM}PRIVATE_IP${DELIM}AUTO_RESIZE${DELIM}BACKUP_ENABLED"
-      cat "$PROJECT_OUT_DIR/cloudsql.csv"
-    } > "$PROJECT_OUT_DIR/cloudsql.tmp" 2>/dev/null && mv "$PROJECT_OUT_DIR/cloudsql.tmp" "$PROJECT_OUT_DIR/cloudsql.csv"
-
-    sed -i '/^$/d' "$PROJECT_OUT_DIR/cloudsql.csv"
+    echo "NAME${DELIM}DATABASE_VERSION${DELIM}REGION${DELIM}TIER${DELIM}STATE${DELIM}PUBLIC_IP${DELIM}PRIVATE_IP${DELIM}AUTO_RESIZE${DELIM}BACKUP_ENABLED${DELIM}CREATED${DELIM}UPDATED" > "$PROJECT_OUT_DIR/cloudsql.csv"
+    gcloud sql instances list --project="$PROJECT_ID" --format=json --quiet 2>/dev/null | \
+      DELIM="$DELIM" python3 -c "
+import json,sys,csv,os
+w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
+def _iso(ts): return (ts or '').replace('T',' ')[:16]
+try:
+ data=sys.stdin.read().strip()
+ if data:
+  for inst in json.loads(data):
+   st=inst.get('settings',{})
+   addrs=inst.get('ipAddresses',[])
+   priv=next((a.get('ipAddress','') for a in addrs if a.get('type')=='PRIVATE'),addrs[0].get('ipAddress','') if addrs else '')
+   ipv4=(st.get('ipConfiguration') or {}).get('ipv4Enabled','')
+   bkp=(st.get('backupConfiguration') or {}).get('enabled','')
+   w.writerow([inst.get('name',''),inst.get('databaseVersion',''),inst.get('region',''),st.get('tier',''),inst.get('state',''),ipv4,priv,st.get('storageAutoResize',''),bkp,_iso(inst.get('createTime','')),_iso(inst.get('updateTime',''))])
+except: pass
+" >> "$PROJECT_OUT_DIR/cloudsql.csv"
   fi
   echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] cloudsql: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
@@ -428,24 +451,44 @@ except: pass
   SECTION_START=$(date +%s)
   update_progress "$PROJECT_ID" 6 "ingress" "running"
   echo -e "  ${BLU}❻${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}ingress.csv${RST}"
-  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}HOSTS${DELIM}ADDRESS${DELIM}PORTS" > "$PROJECT_OUT_DIR/ingress.csv"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}HOSTS${DELIM}ADDRESS${DELIM}PORTS${DELIM}CREATED${DELIM}UPDATED" > "$PROJECT_OUT_DIR/ingress.csv"
 
   if [ -n "$CLUSTERS" ]; then
     echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
       KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
       KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
 
-      KUBECONFIG="$KCFG" kubectl get ingress --all-namespaces \
-        -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.rules[*].host,ADDRESS:.status.loadBalancer.ingress[*].ip,PORTS:.spec.tls[*].secretName" \
-        --no-headers 2>/dev/null | filter_ns | \
-        while read -r ns name hosts addr ports; do
-          hosts_clean=$(echo "$hosts" | sed 's/,/;/g' | sed 's/"//g')
-          addr_clean=$(echo "$addr" | sed 's/,/;/g' | sed 's/"//g')
-          ports_clean=$(echo "$ports" | sed 's/,/;/g' | sed 's/"//g')
-          printf '"%s"%s"%s"%s"%s"%s"%s"%s"%s"%s"%s"\n' \
-            "$ns" "$DELIM" "$CLUSTER" "$DELIM" "$name" "$DELIM" "$hosts_clean" "$DELIM" "$addr_clean" "$DELIM" "$ports_clean" \
-            >> "$PROJECT_OUT_DIR/ingress.csv"
-        done || true
+      KUBECONFIG="$KCFG" kubectl get ingress --all-namespaces -o json 2>/dev/null | \
+        DELIM="$DELIM" CLUSTER="$CLUSTER" EXCLUDE_PATTERN="${EXCLUDE_PATTERN:-}" python3 -c "
+import json,sys,csv,os,re
+w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
+excl=os.environ.get('EXCLUDE_PATTERN','')
+pat=re.compile(r'^('+excl+r')$') if excl else None
+def _iso(ts): return (ts or '').replace('T',' ')[:16]
+def _dates(it):
+ m=it.get('metadata',{});c=_iso(m.get('creationTimestamp',''))
+ ts=[f.get('time') for f in m.get('managedFields',[]) if isinstance(f,dict) and f.get('time')]
+ if not ts: ts=[x.get('lastTransitionTime') for x in it.get('status',{}).get('conditions',[]) if isinstance(x,dict) and x.get('lastTransitionTime')]
+ return c,(_iso(max(ts)) if ts else '')
+try:
+ data=sys.stdin.read().strip()
+ if data:
+  d=json.loads(data)
+  for it in d.get('items',[]):
+   m=it.get('metadata',{})
+   ns=m.get('namespace','')
+   if pat and pat.match(ns): continue
+   spec=it.get('spec',{})
+   hosts=[]
+   for r in spec.get('rules',[]):
+    h=r.get('host','')
+    if h and h not in hosts: hosts.append(h)
+   addr=';'.join((i.get('ip') or i.get('hostname','')) for i in it.get('status',{}).get('loadBalancer',{}).get('ingress',[]))
+   tls=';'.join(t.get('secretName','') for t in spec.get('tls',[]))
+   created,updated=_dates(it)
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),';'.join(hosts),addr,tls,created,updated])
+except: pass
+" >> "$PROJECT_OUT_DIR/ingress.csv"
       rm -f "$KCFG"
     done
   fi
@@ -460,7 +503,13 @@ except: pass
     DELIM="$DELIM" python3 -c "
 import json,sys,csv,os,re
 w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
-w.writerow(['NAME','REGION','URL','LAST_DEPLOYED','IMAGE'])
+w.writerow(['NAME','REGION','URL','LAST_DEPLOYED','IMAGE','CREATED','UPDATED'])
+def _iso(ts): return (ts or '').replace('T',' ')[:16]
+def _dates(it):
+ m=it.get('metadata',{});c=_iso(m.get('creationTimestamp',''))
+ ts=[f.get('time') for f in m.get('managedFields',[]) if isinstance(f,dict) and f.get('time')]
+ if not ts: ts=[x.get('lastTransitionTime') for x in it.get('status',{}).get('conditions',[]) if isinstance(x,dict) and x.get('lastTransitionTime')]
+ return c,(_iso(max(ts)) if ts else '')
 try:
  data=sys.stdin.read().strip()
  if data:
@@ -471,10 +520,10 @@ try:
    region=''
    m=re.search(r'\.([a-z]+[0-9]-[a-z]+[0-9]*)\.run\.app',url)
    if m: region=m.group(1)
-   ts=s.get('metadata',{}).get('creationTimestamp','')
+   created,updated=_dates(s)
    ctnrs=s.get('spec',{}).get('template',{}).get('spec',{}).get('containers',[])
    image=ctnrs[0].get('image','') if ctnrs else ''
-   w.writerow([name,region,url,ts,image])
+   w.writerow([name,region,url,created,image,created,updated])
 except: pass
 " > "$PROJECT_OUT_DIR/cloudrun.csv"
   echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] cloudrun: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
@@ -508,7 +557,7 @@ except: pass
   SECTION_START=$(date +%s)
   update_progress "$PROJECT_ID" 9 "gateways" "running"
   echo -e "  ${BLU}❾${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}gateways.csv${RST}"
-  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}CLASS${DELIM}LISTENERS${DELIM}ADDRESSES${DELIM}STATUS" > "$PROJECT_OUT_DIR/gateways.csv"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}CLASS${DELIM}LISTENERS${DELIM}ADDRESSES${DELIM}STATUS${DELIM}CREATED${DELIM}UPDATED" > "$PROJECT_OUT_DIR/gateways.csv"
 
   if [ -n "$CLUSTERS" ]; then
     echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
@@ -528,6 +577,12 @@ def gw_status(g):
   for c in conds:
     if c.get('type')=='Accepted' and c.get('status')=='True': return 'Accepted'
   return (conds[-1].get('reason') or conds[-1].get('type')) if conds else 'Unknown'
+def _iso(ts): return (ts or '').replace('T',' ')[:16]
+def _dates(it):
+ m=it.get('metadata',{});c=_iso(m.get('creationTimestamp',''))
+ ts=[f.get('time') for f in m.get('managedFields',[]) if isinstance(f,dict) and f.get('time')]
+ if not ts: ts=[x.get('lastTransitionTime') for x in it.get('status',{}).get('conditions',[]) if isinstance(x,dict) and x.get('lastTransitionTime')]
+ return c,(_iso(max(ts)) if ts else '')
 try:
  data=sys.stdin.read().strip()
  if data:
@@ -539,7 +594,8 @@ try:
    spec=it.get('spec',{})
    listeners=';'.join(f\"{l.get('port','')}/{l.get('protocol','')}\" for l in spec.get('listeners',[]))
    addrs=';'.join(a.get('value','') for a in it.get('status',{}).get('addresses',[]))
-   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),spec.get('gatewayClassName',''),listeners,addrs,gw_status(it)])
+   created,updated=_dates(it)
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),spec.get('gatewayClassName',''),listeners,addrs,gw_status(it),created,updated])
 except: pass
 " >> "$PROJECT_OUT_DIR/gateways.csv"
       rm -f "$KCFG"
@@ -551,7 +607,7 @@ except: pass
   SECTION_START=$(date +%s)
   update_progress "$PROJECT_ID" 10 "httproutes" "running"
   echo -e "  ${BLU}❿${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}httproutes.csv${RST}"
-  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}HOSTNAMES${DELIM}GATEWAYS${DELIM}RULES${DELIM}PATHS${DELIM}BACKENDS" > "$PROJECT_OUT_DIR/httproutes.csv"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}HOSTNAMES${DELIM}GATEWAYS${DELIM}RULES${DELIM}PATHS${DELIM}BACKENDS${DELIM}CREATED${DELIM}UPDATED" > "$PROJECT_OUT_DIR/httproutes.csv"
 
   if [ -n "$CLUSTERS" ]; then
     echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
@@ -564,6 +620,12 @@ import json,sys,csv,os,re
 w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
 excl=os.environ.get('EXCLUDE_PATTERN','')
 pat=re.compile(r'^('+excl+r')$') if excl else None
+def _iso(ts): return (ts or '').replace('T',' ')[:16]
+def _dates(it):
+ m=it.get('metadata',{});c=_iso(m.get('creationTimestamp',''))
+ ts=[f.get('time') for f in m.get('managedFields',[]) if isinstance(f,dict) and f.get('time')]
+ if not ts: ts=[x.get('lastTransitionTime') for x in it.get('status',{}).get('conditions',[]) if isinstance(x,dict) and x.get('lastTransitionTime')]
+ return c,(_iso(max(ts)) if ts else '')
 try:
  data=sys.stdin.read().strip()
  if data:
@@ -583,7 +645,8 @@ try:
     for b in r.get('backendRefs',[]):
      bn=b.get('name','')
      if bn and bn not in backends: backends.append(bn)
-   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),';'.join(spec.get('hostnames',[])),parents,str(len(rules)),';'.join(paths),';'.join(backends)])
+   created,updated=_dates(it)
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),';'.join(spec.get('hostnames',[])),parents,str(len(rules)),';'.join(paths),';'.join(backends),created,updated])
 except: pass
 " >> "$PROJECT_OUT_DIR/httproutes.csv"
       rm -f "$KCFG"

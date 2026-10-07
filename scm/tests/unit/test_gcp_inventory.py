@@ -272,7 +272,11 @@ class TestInventoryK8sSteps:
 
     def test_deployments_ready_containers_and_images(self, csv_mod, monkeypatch, tmp_path):
         payload = json.dumps({"items": [
-            {"metadata": {"namespace": "app", "name": "web"},
+            {"metadata": {"namespace": "app", "name": "web",
+                          "creationTimestamp": "2026-01-10T08:00:00Z",
+                          "managedFields": [
+                              {"time": "2026-02-01T10:00:00Z"},
+                              {"time": "2026-03-05T12:30:00Z"}]},
              "spec": {"replicas": 3,
                       "template": {"spec": {
                           "containers": [
@@ -285,11 +289,13 @@ class TestInventoryK8sSteps:
         self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"deployments": payload})
         csv_mod.step_deployments("p1", tmp_path, ";", [("c1", "us")], [])
         lines = (tmp_path / "deployments.csv").read_text(encoding="utf-8").splitlines()
-        assert lines[0] == "NAMESPACE;CLUSTER;DEPLOYMENT;READY;CONTAINERS;IMAGES"
+        assert lines[0] == "NAMESPACE;CLUSTER;DEPLOYMENT;READY;CONTAINERS;IMAGES;CREATED;UPDATED"
         row = lines[1]
         assert '"web"' in row and '"2/3"' in row
         assert "app=img/app:v1;side=img/side:v2;init:mig=img/mig:v0" in row
         assert "img/app:v1;img/side:v2;img/mig:v0" in row
+        assert '"2026-01-10 08:00"' in row      # CREATED (RFC3339 → corto)
+        assert '"2026-03-05 12:30"' in row      # UPDATED = max(managedFields)
 
     def test_deployments_excludes_namespaces(self, csv_mod, monkeypatch, tmp_path):
         payload = json.dumps({"items": [
@@ -326,7 +332,7 @@ class TestInventoryK8sSteps:
         self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"gateways": payload})
         csv_mod.step_gateways("p1", tmp_path, ";", [("c1", "us")], [])
         lines = (tmp_path / "gateways.csv").read_text(encoding="utf-8").splitlines()
-        assert lines[0] == "NAMESPACE;CLUSTER;NAME;CLASS;LISTENERS;ADDRESSES;STATUS"
+        assert lines[0] == "NAMESPACE;CLUSTER;NAME;CLASS;LISTENERS;ADDRESSES;STATUS;CREATED;UPDATED"
         row = lines[1]
         assert "gke-l7-global-external-managed" in row
         assert "80/HTTP;443/HTTPS" in row
@@ -362,7 +368,7 @@ class TestInventoryK8sSteps:
         self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"httproutes": payload})
         csv_mod.step_httproutes("p1", tmp_path, ";", [("c1", "us")], [])
         lines = (tmp_path / "httproutes.csv").read_text(encoding="utf-8").splitlines()
-        assert lines[0] == "NAMESPACE;CLUSTER;NAME;HOSTNAMES;GATEWAYS;RULES;PATHS;BACKENDS"
+        assert lines[0] == "NAMESPACE;CLUSTER;NAME;HOSTNAMES;GATEWAYS;RULES;PATHS;BACKENDS;CREATED;UPDATED"
         row = lines[1]
         assert "api.example.com" in row
         assert "gw-ns/gw-main" in row
@@ -387,6 +393,49 @@ class TestInventoryK8sSteps:
                             lambda p, c, l: ({}, str(kcfg)))
         monkeypatch.setattr(csv_mod, "run_cmd", lambda *a, **k: "not-json{")
         assert csv_mod._kubectl_json("p", "c", "l", "gateways") == []
+
+    def test_services_json_fields_and_dates(self, csv_mod, monkeypatch, tmp_path):
+        payload = json.dumps({"items": [
+            {"metadata": {"namespace": "app", "name": "svc",
+                          "creationTimestamp": "2026-01-01T00:00:00Z",
+                          "managedFields": [{"time": "2026-02-02T03:04:00Z"}]},
+             "spec": {"type": "LoadBalancer", "clusterIP": "10.0.0.5",
+                      "ports": [{"port": 443}, {"port": 80}]},
+             "status": {"loadBalancer": {"ingress": [{"ip": "34.9.9.9"}]}}},
+        ]})
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"services": payload})
+        csv_mod.step_services("p1", tmp_path, ";", [("c1", "us")], [])
+        lines = (tmp_path / "services.csv").read_text(encoding="utf-8").splitlines()
+        assert lines[0] == ("NAMESPACE;CLUSTER;NAME;TYPE;CLUSTER-IP;EXTERNAL-IP;"
+                            "PORTS;CREATED;UPDATED")
+        row = lines[1]
+        assert '"LoadBalancer"' in row and '"34.9.9.9"' in row
+        assert '"443;80"' in row
+        assert '"2026-01-01 00:00"' in row and '"2026-02-02 03:04"' in row
+
+    def test_obj_dates_managed_fields_max(self, csv_mod):
+        created, updated = csv_mod._obj_dates({"metadata": {
+            "creationTimestamp": "2026-01-01T00:00:00Z",
+            "managedFields": [{"time": "2026-01-05T01:00:00Z"},
+                              {"time": "2026-03-01T01:00:00Z"},
+                              {"notime": True}]}})
+        assert created == "2026-01-01 00:00"
+        assert updated == "2026-03-01 01:00"
+
+    def test_obj_dates_conditions_fallback(self, csv_mod):
+        """Sin managedFields → usa max(conditions[].lastTransitionTime)."""
+        created, updated = csv_mod._obj_dates({
+            "metadata": {"creationTimestamp": "2026-01-01T00:00:00Z"},
+            "status": {"conditions": [
+                {"lastTransitionTime": "2026-02-01T00:00:00Z"},
+                {"lastTransitionTime": "2026-02-10T00:00:00Z"}]}})
+        assert created == "2026-01-01 00:00"
+        assert updated == "2026-02-10 00:00"
+
+    def test_obj_dates_empty(self, csv_mod):
+        assert csv_mod._obj_dates({}) == ("", "")
+        assert csv_mod._iso_short("") == ""
+        assert csv_mod._iso_short("2026-10-07T13:06:40Z") == "2026-10-07 13:06"
 
 
 class TestInventoryExcelTipos:

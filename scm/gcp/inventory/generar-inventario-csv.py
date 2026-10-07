@@ -324,6 +324,30 @@ def _kubectl_json(project_id: str, cluster_name: str, location: str,
         return []
 
 
+def _iso_short(ts: str) -> str:
+    """RFC3339 → 'YYYY-MM-DD HH:MM' (legible en Excel). Vacío si no hay valor."""
+    return ts.replace("T", " ")[:16] if ts else ""
+
+
+def _obj_dates(item: dict) -> tuple:
+    """(created, updated) de un objeto K8s / recurso GCP con metadata.
+
+    updated = max(metadata.managedFields[].time) — la última escritura
+    registrada del objeto (spec o status). Fallback: el mayor
+    status.conditions[].lastTransitionTime (Cloud Run y recursos sin
+    managedFields).
+    """
+    meta = item.get("metadata", {})
+    created = _iso_short(meta.get("creationTimestamp", ""))
+    times = [f.get("time") for f in meta.get("managedFields", [])
+             if isinstance(f, dict) and f.get("time")]
+    if not times:
+        times = [c.get("lastTransitionTime")
+                 for c in item.get("status", {}).get("conditions", [])
+                 if isinstance(c, dict) and c.get("lastTransitionTime")]
+    return created, _iso_short(max(times)) if times else ""
+
+
 def step_clusters(project_id: str, out_dir: Path, delim: str) -> None:
     """1. Clusters GKE → clusters.csv"""
     output = run_cmd([
@@ -332,7 +356,8 @@ def step_clusters(project_id: str, out_dir: Path, delim: str) -> None:
     ])
     with open(out_dir / "clusters.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, delimiter=delim, quoting=csv.QUOTE_ALL)
-        w.writerow(["NAME", "LOCATION", "VERSION", "CURRENT_VERSION", "STATUS", "MACHINE_TYPE"])
+        w.writerow(["NAME", "LOCATION", "VERSION", "CURRENT_VERSION", "STATUS",
+                    "MACHINE_TYPE", "CREATED", "UPDATED"])
         data = output.strip()
         if data:
             try:
@@ -342,7 +367,9 @@ def step_clusters(project_id: str, out_dir: Path, delim: str) -> None:
                     w.writerow([
                         c.get("name", ""), c.get("location", ""),
                         c.get("currentMasterVersion", ""), c.get("currentMasterVersion", ""),
-                        c.get("status", ""), mt
+                        c.get("status", ""), mt,
+                        _iso_short(c.get("createTime", "")),
+                        _iso_short(c.get("updateTime", ""))
                     ])
             except (json.JSONDecodeError, Exception):
                 pass
@@ -368,7 +395,7 @@ def _deploy_containers(spec: dict) -> tuple:
 def step_deployments(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
     """2. Deployments → deployments.csv (con READY y CONTAINERS name=image)."""
     with open(out_dir / "deployments.csv", "w", newline="", encoding="utf-8") as f:
-        f.write(f"NAMESPACE{delim}CLUSTER{delim}DEPLOYMENT{delim}READY{delim}CONTAINERS{delim}IMAGES\n")
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}DEPLOYMENT{delim}READY{delim}CONTAINERS{delim}IMAGES{delim}CREATED{delim}UPDATED\n")
 
     for cluster_name, location in clusters:
         items = _kubectl_json(project_id, cluster_name, location, "deployments")
@@ -383,69 +410,85 @@ def step_deployments(project_id: str, out_dir: Path, delim: str, clusters: list,
                 replicas = spec.get("replicas", 1) or 0
                 ready = status.get("readyReplicas", 0) or 0
                 pairs, images = _deploy_containers(spec)
+                created, updated = _obj_dates(d)
                 f.write(
                     f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
-                    f'"{ready}/{replicas}"{delim}"{";".join(pairs)}"{delim}"{";".join(images)}"\n'
+                    f'"{ready}/{replicas}"{delim}"{";".join(pairs)}"{delim}"{";".join(images)}"{delim}'
+                    f'"{created}"{delim}"{updated}"\n'
                 )
 
 
 def step_services(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
     """3. Services → services.csv"""
     with open(out_dir / "services.csv", "w", newline="", encoding="utf-8") as f:
-        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}TYPE{delim}CLUSTER-IP{delim}EXTERNAL-IP{delim}PORTS\n")
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}TYPE{delim}CLUSTER-IP{delim}EXTERNAL-IP{delim}PORTS{delim}CREATED{delim}UPDATED\n")
 
     for cluster_name, location in clusters:
-        env, kubeconfig = _kubectl_env_for_cluster(project_id, cluster_name, location)
-
-        output = run_cmd([
-            "kubectl", "get", "services", "--all-namespaces",
-            "-o", "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP,EXTERNAL-IP:.status.loadBalancer.ingress[*].ip,PORTS:.spec.ports[*].port",
-            "--no-headers"
-        ], env=env)
-
-        lines = filter_namespaces(output.strip().splitlines(), exclude_ns)
+        items = _kubectl_json(project_id, cluster_name, location, "services")
         with open(out_dir / "services.csv", "a", newline="", encoding="utf-8") as f:
-            for line in lines:
-                parts = line.strip().split(None, 5)
-                if len(parts) >= 6:
-                    ns, name, stype, cip, eip, ports = parts
-                    eip_clean = eip.replace(",", ";").replace('"', "")
-                    ports_clean = ports.replace(",", ";").replace('"', "")
-                    f.write(f'"{ns}"{delim}"{cluster_name}"{delim}"{name}"{delim}"{stype}"{delim}"{cip}"{delim}"{eip_clean}"{delim}"{ports_clean}"\n')
-
-        _rm_quiet(kubeconfig)
+            for s in items:
+                meta = s.get("metadata", {})
+                ns = meta.get("namespace", "")
+                if ns in exclude_ns:
+                    continue
+                spec = s.get("spec", {})
+                eip = ";".join(
+                    i.get("ip") or i.get("hostname", "")
+                    for i in s.get("status", {}).get("loadBalancer", {}).get("ingress", [])
+                )
+                ports = ";".join(str(p.get("port", "")) for p in spec.get("ports", []))
+                created, updated = _obj_dates(s)
+                f.write(
+                    f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
+                    f'"{spec.get("type", "")}"{delim}"{spec.get("clusterIP", "")}"{delim}'
+                    f'"{eip}"{delim}"{ports}"{delim}"{created}"{delim}"{updated}"\n'
+                )
 
 
 def step_cloudsql(project_id: str, out_dir: Path, delim: str) -> int:
     """4. Cloud SQL → cloudsql.csv. Retorna cantidad de instancias."""
-    instances_output = run_cmd([
+    output = run_cmd([
         "gcloud", "sql", "instances", "list",
-        "--project", project_id, "--quiet", "--format=value(name)"
-    ])
-    instance_count = len([l for l in instances_output.strip().splitlines() if l.strip()])
-
-    header = f"NAME{delim}DATABASE_VERSION{delim}REGION{delim}TIER{delim}STATE{delim}PUBLIC_IP{delim}PRIVATE_IP{delim}AUTO_RESIZE{delim}BACKUP_ENABLED"
-
-    if instance_count == 0:
-        with open(out_dir / "cloudsql.csv", "w", encoding="utf-8") as f:
-            f.write(header + "\n")
-            f.write(f"Sin instancias{delim}-{delim}-{delim}-{delim}-{delim}-{delim}-{delim}-{delim}-\n")
-        return 0
-
-    csv_output = run_cmd([
-        "gcloud", "sql", "instances", "list",
-        "--project", project_id,
-        f"--format=csv[no-heading,separator={delim}](name,databaseVersion,region,settings.tier,state,settings.ipConfiguration.ipv4Enabled,ipAddresses[0].ipAddress,settings.storageAutoResize,settings.backupConfiguration.enabled)",
-        "--quiet"
+        "--project", project_id, "--format=json", "--quiet"
     ])
 
-    with open(out_dir / "cloudsql.csv", "w", encoding="utf-8") as f:
+    header = (f"NAME{delim}DATABASE_VERSION{delim}REGION{delim}TIER{delim}STATE"
+              f"{delim}PUBLIC_IP{delim}PRIVATE_IP{delim}AUTO_RESIZE{delim}BACKUP_ENABLED"
+              f"{delim}CREATED{delim}UPDATED")
+
+    instances = []
+    data = output.strip()
+    if data:
+        try:
+            instances = json.loads(data)
+        except (json.JSONDecodeError, TypeError):
+            instances = []
+
+    with open(out_dir / "cloudsql.csv", "w", newline="", encoding="utf-8") as f:
         f.write(header + "\n")
-        for line in csv_output.strip().splitlines():
-            if line.strip():
-                f.write(line + "\n")
-
-    return instance_count
+        if not instances:
+            f.write(f"Sin instancias{delim}-{delim}-{delim}-{delim}-{delim}"
+                    f"{delim}-{delim}-{delim}-{delim}-{delim}-{delim}-\n")
+            return 0
+        for inst in instances:
+            settings = inst.get("settings", {})
+            addrs = inst.get("ipAddresses", [])
+            private_ip = next(
+                (a.get("ipAddress", "") for a in addrs if a.get("type") == "PRIVATE"),
+                addrs[0].get("ipAddress", "") if addrs else ""
+            )
+            ipv4 = (settings.get("ipConfiguration") or {}).get("ipv4Enabled", "")
+            backup = (settings.get("backupConfiguration") or {}).get("enabled", "")
+            autores = settings.get("storageAutoResize", "")
+            f.write(
+                f'"{inst.get("name", "")}"{delim}"{inst.get("databaseVersion", "")}"{delim}'
+                f'"{inst.get("region", "")}"{delim}"{settings.get("tier", "")}"{delim}'
+                f'"{inst.get("state", "")}"{delim}"{ipv4}"{delim}"{private_ip}"{delim}'
+                f'"{autores}"{delim}"{backup}"{delim}'
+                f'"{_iso_short(inst.get("createTime", ""))}"{delim}'
+                f'"{_iso_short(inst.get("updateTime", ""))}"\n'
+            )
+    return len(instances)
 
 
 def step_clouddatabases(project_id: str, out_dir: Path, delim: str, instance_count: int) -> None:
@@ -482,36 +525,33 @@ def step_clouddatabases(project_id: str, out_dir: Path, delim: str, instance_cou
 def step_ingress(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
     """6. Ingress → ingress.csv"""
     with open(out_dir / "ingress.csv", "w", encoding="utf-8") as f:
-        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}HOSTS{delim}ADDRESS{delim}PORTS\n")
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}HOSTS{delim}ADDRESS{delim}PORTS{delim}CREATED{delim}UPDATED\n")
 
     for cluster_name, location in clusters:
-        env, kubeconfig = _kubectl_env_for_cluster(project_id, cluster_name, location)
-
-        output = run_cmd([
-            "kubectl", "get", "ingress", "--all-namespaces",
-            "-o", "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTS:.spec.rules[*].host,ADDRESS:.status.loadBalancer.ingress[*].ip,PORTS:.spec.tls[*].secretName",
-            "--no-headers"
-        ], env=env)
-
-        lines = filter_namespaces(output.strip().splitlines(), exclude_ns)
-        with open(out_dir / "ingress.csv", "a", encoding="utf-8") as f:
-            for line in lines:
-                parts = line.strip().split(None, 4)
-                if len(parts) >= 5:
-                    ns, name, hosts, addr, ports = parts
-                    hosts_clean = hosts.replace(",", ";").replace('"', "")
-                    addr_clean = addr.replace(",", ";").replace('"', "")
-                    ports_clean = ports.replace(",", ";").replace('"', "")
-                    f.write(f'"{ns}"{delim}"{cluster_name}"{delim}"{name}"{delim}"{hosts_clean}"{delim}"{addr_clean}"{delim}"{ports_clean}"\n')
-
-        _rm_quiet(kubeconfig)
-
-    # Limpiar líneas vacías
-    csv_path = out_dir / "ingress.csv"
-    with open(csv_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    with open(csv_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(l for l in content.splitlines() if l.strip()))
+        items = _kubectl_json(project_id, cluster_name, location, "ingress")
+        with open(out_dir / "ingress.csv", "a", newline="", encoding="utf-8") as f:
+            for ing in items:
+                meta = ing.get("metadata", {})
+                ns = meta.get("namespace", "")
+                if ns in exclude_ns:
+                    continue
+                spec = ing.get("spec", {})
+                hosts = []
+                for rule in spec.get("rules", []):
+                    host = rule.get("host", "")
+                    if host and host not in hosts:
+                        hosts.append(host)
+                addr = ";".join(
+                    i.get("ip") or i.get("hostname", "")
+                    for i in ing.get("status", {}).get("loadBalancer", {}).get("ingress", [])
+                )
+                tls = ";".join(t.get("secretName", "") for t in spec.get("tls", []))
+                created, updated = _obj_dates(ing)
+                f.write(
+                    f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
+                    f'"{";".join(hosts)}"{delim}"{addr}"{delim}"{tls}"{delim}'
+                    f'"{created}"{delim}"{updated}"\n'
+                )
 
 
 def step_cloudrun(project_id: str, out_dir: Path, delim: str) -> None:
@@ -522,7 +562,8 @@ def step_cloudrun(project_id: str, out_dir: Path, delim: str) -> None:
     ])
     with open(out_dir / "cloudrun.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, delimiter=delim, quoting=csv.QUOTE_ALL)
-        w.writerow(["NAME", "REGION", "URL", "LAST_DEPLOYED", "IMAGE"])
+        w.writerow(["NAME", "REGION", "URL", "LAST_DEPLOYED", "IMAGE",
+                    "CREATED", "UPDATED"])
         data = output.strip()
         if data:
             try:
@@ -533,10 +574,11 @@ def step_cloudrun(project_id: str, out_dir: Path, delim: str) -> None:
                     m = re.search(r"\.([a-z]+[0-9]-[a-z]+[0-9]*)\.run\.app", url)
                     if m:
                         region = m.group(1)
-                    ts = s.get("metadata", {}).get("creationTimestamp", "")
+                    created, updated = _obj_dates(s)
                     ctnrs = s.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
                     image = ctnrs[0].get("image", "") if ctnrs else ""
-                    w.writerow([name, region, url, ts, image])
+                    w.writerow([name, region, url, created, image,
+                                created, updated])
             except (json.JSONDecodeError, Exception):
                 pass
 
@@ -585,7 +627,7 @@ def step_gateways(project_id: str, out_dir: Path, delim: str, clusters: list, ex
     Cluster sin los CRDs de Gateway API → kubectl falla → CSV solo header.
     """
     with open(out_dir / "gateways.csv", "w", newline="", encoding="utf-8") as f:
-        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}CLASS{delim}LISTENERS{delim}ADDRESSES{delim}STATUS\n")
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}CLASS{delim}LISTENERS{delim}ADDRESSES{delim}STATUS{delim}CREATED{delim}UPDATED\n")
 
     for cluster_name, location in clusters:
         items = _kubectl_json(project_id, cluster_name, location, "gateways")
@@ -603,17 +645,19 @@ def step_gateways(project_id: str, out_dir: Path, delim: str, clusters: list, ex
                 addresses = ";".join(
                     a.get("value", "") for a in gw.get("status", {}).get("addresses", [])
                 )
+                created, updated = _obj_dates(gw)
                 f.write(
                     f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
                     f'"{spec.get("gatewayClassName", "")}"{delim}"{listeners}"{delim}'
-                    f'"{addresses}"{delim}"{_gateway_status(gw)}"\n'
+                    f'"{addresses}"{delim}"{_gateway_status(gw)}"{delim}'
+                    f'"{created}"{delim}"{updated}"\n'
                 )
 
 
 def step_httproutes(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
     """10. HTTPRoutes (Gateway API) → httproutes.csv"""
     with open(out_dir / "httproutes.csv", "w", newline="", encoding="utf-8") as f:
-        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}HOSTNAMES{delim}GATEWAYS{delim}RULES{delim}PATHS{delim}BACKENDS\n")
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}HOSTNAMES{delim}GATEWAYS{delim}RULES{delim}PATHS{delim}BACKENDS{delim}CREATED{delim}UPDATED\n")
 
     for cluster_name, location in clusters:
         items = _kubectl_json(project_id, cluster_name, location, "httproutes")
@@ -640,10 +684,12 @@ def step_httproutes(project_id: str, out_dir: Path, delim: str, clusters: list, 
                         bname = b.get("name", "")
                         if bname and bname not in backends:
                             backends.append(bname)
+                created, updated = _obj_dates(r)
                 f.write(
                     f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
                     f'"{";".join(spec.get("hostnames", []))}"{delim}"{parents}"{delim}'
-                    f'"{len(rules)}"{delim}"{";".join(paths)}"{delim}"{";".join(backends)}"\n'
+                    f'"{len(rules)}"{delim}"{";".join(paths)}"{delim}"{";".join(backends)}"{delim}'
+                    f'"{created}"{delim}"{updated}"\n'
                 )
 
 

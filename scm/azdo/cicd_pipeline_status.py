@@ -82,7 +82,7 @@ except ImportError:
     requests = _types.SimpleNamespace(get=None, HTTPError=Exception)  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
-__version__     = "1.8.32"
+__version__ = "1.8.32"
 __author__      = "Harold Adrian"
 SCRIPT_NAME     = "cicd_pipeline_status"
 CACHE_TTL_HOURS = 24

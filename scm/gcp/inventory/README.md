@@ -37,6 +37,22 @@ pip install pandas openpyxl
 - **GATEWAYS**: Gateways de Gateway API (`kubectl get gateways -A -o json`) — clase, listeners (`puerto/protocolo`), IPs y estado (`Programmed`/`Accepted`/`Unknown`). Si el cluster no tiene los CRDs instalados, la hoja sale solo con encabezado
 - **HTTPROUTES**: HTTPRoutes de Gateway API — hostnames, gateways asociados (`parentRefs`, formato `ns/name`), nº de reglas, paths y backends
 
+#### Columnas de fechas (`CREATED` / `UPDATED`)
+
+Todas las hojas cuyo recurso expone fechas incluyen `CREATED` y `UPDATED` (formato `YYYY-MM-DD HH:MM`):
+
+| Hoja | CREATED | UPDATED |
+|------|---------|---------|
+| CLUSTERS | `createTime` (API GKE) | `updateTime` (API GKE) |
+| DEPLOYMENTS / SERVICES / INGRESS / GATEWAYS / HTTPROUTES | `metadata.creationTimestamp` | `max(metadata.managedFields[].time)` — última escritura registrada del objeto |
+| CLOUDSQL | `createTime` | `updateTime` si la API lo expone; vacío en caso contrario |
+| CLOUDRUN | `metadata.creationTimestamp` | `managedFields`, con fallback a `status.conditions[].lastTransitionTime` |
+| CLOUDSQL_DATABASES / PUBSUB | — | — (la API no expone fechas para estos recursos) |
+
+Notas:
+- `UPDATED` en recursos K8s refleja la última escritura en etcd (spec o status) según `managedFields`; si el objeto no tiene managed fields ni condiciones con fecha, queda vacío.
+- Los valores no expuestos por la API quedan en blanco — no se infieren de campos ajenos (p.ej. timestamps de backups).
+
 #### Hojas de análisis
 
 ##### 1. RESUMEN
@@ -123,16 +139,16 @@ Los namespaces bajo `[exclude-namespaces]` se filtran automáticamente de las se
 `generar-inventario-csv-combinar-a-excel.py`:
 ```python
 TIPOS = {
-    "clusters": "PROYECTO;NAME;LOCATION;VERSION;CURRENT_VERSION;STATUS;MACHINE_TYPE;BASE;ENTORNO",
-    "deployments": "PROYECTO;NAMESPACE;CLUSTER;DEPLOYMENT;READY;CONTAINERS;IMAGES;BASE;ENTORNO",
-    "services": "PROYECTO;NAMESPACE;CLUSTER;NAME;TYPE;CLUSTER-IP;EXTERNAL-IP;PORTS;BASE;ENTORNO",
-    "cloudsql": "PROYECTO;NAME;DATABASE_VERSION;REGION;TIER;STATE;PUBLIC_IP;PRIVATE_IP;AUTO_RESIZE;BACKUP_ENABLED;BASE;ENTORNO",
+    "clusters": "PROYECTO;NAME;LOCATION;VERSION;CURRENT_VERSION;STATUS;MACHINE_TYPE;CREATED;UPDATED;BASE;ENTORNO",
+    "deployments": "PROYECTO;NAMESPACE;CLUSTER;DEPLOYMENT;READY;CONTAINERS;IMAGES;CREATED;UPDATED;BASE;ENTORNO",
+    "services": "PROYECTO;NAMESPACE;CLUSTER;NAME;TYPE;CLUSTER-IP;EXTERNAL-IP;PORTS;CREATED;UPDATED;BASE;ENTORNO",
+    "cloudsql": "PROYECTO;NAME;DATABASE_VERSION;REGION;TIER;STATE;PUBLIC_IP;PRIVATE_IP;AUTO_RESIZE;BACKUP_ENABLED;CREATED;UPDATED;BASE;ENTORNO",
     "clouddatabases": "PROYECTO;INSTANCE;DATABASE;CHARSET;COLLATION;BASE;ENTORNO",
-    "ingress": "PROYECTO;NAMESPACE;CLUSTER;NAME;HOSTS;ADDRESS;PORTS;BASE;ENTORNO",
-    "cloudrun": "PROYECTO;NAME;REGION;URL;LAST_DEPLOYED;IMAGE;BASE;ENTORNO",
+    "ingress": "PROYECTO;NAMESPACE;CLUSTER;NAME;HOSTS;ADDRESS;PORTS;CREATED;UPDATED;BASE;ENTORNO",
+    "cloudrun": "PROYECTO;NAME;REGION;URL;LAST_DEPLOYED;IMAGE;CREATED;UPDATED;BASE;ENTORNO",
     "pubsub": "PROYECTO;NAME;LABELS;BASE;ENTORNO",
-    "gateways": "PROYECTO;NAMESPACE;CLUSTER;NAME;CLASS;LISTENERS;ADDRESSES;STATUS;BASE;ENTORNO",
-    "httproutes": "PROYECTO;NAMESPACE;CLUSTER;NAME;HOSTNAMES;GATEWAYS;RULES;PATHS;BACKENDS;BASE;ENTORNO"
+    "gateways": "PROYECTO;NAMESPACE;CLUSTER;NAME;CLASS;LISTENERS;ADDRESSES;STATUS;CREATED;UPDATED;BASE;ENTORNO",
+    "httproutes": "PROYECTO;NAMESPACE;CLUSTER;NAME;HOSTNAMES;GATEWAYS;RULES;PATHS;BACKENDS;CREATED;UPDATED;BASE;ENTORNO"
 }
 ```
 
@@ -156,6 +172,7 @@ El directorio `outcome/` está incluido en `.gitignore`.
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.8.34 | 2026-10-08 | Columnas `CREATED`/`UPDATED` en todos los recursos que las exponen: K8s (deployments, services, ingress, gateways, httproutes) vía `metadata.creationTimestamp` + `max(managedFields[].time)`; clusters GKE y Cloud SQL vía `createTime`/`updateTime`; Cloud Run con fallback a `conditions[].lastTransitionTime`. `services`, `ingress` y `cloudsql` migrados a JSON (antes custom-columns/CSV de gcloud). `clouddatabases` y `pubsub` quedan sin fechas (la API no las expone). Helper `_obj_dates`/`_iso_short`. TIPOS del consolidador actualizado; paridad `.sh` (incluye eliminación de `filter_ns` ya sin uso). Tests: `TestObjDates` + headers con fechas |
 | 1.8.33 | 2026-10-07 | Nuevos pasos 9-10: `gateways.csv` y `httproutes.csv` (Gateway API, graceful sin CRDs). Deployments con `READY` y `CONTAINERS` (`name=image`, init `init:`), parseo JSON. Helpers `_kubectl_env_for_cluster`/`_kubectl_json`/`_rm_quiet` compartidos por los pasos K8s. TIPOS del consolidador ampliado (hojas GATEWAYS/HTTPROUTES + análisis). Hojas de datos con estilo de encabezado (bold azul + freeze). Fix: stdio UTF-8 para consolas cp1252 (el `UnicodeEncodeError` dejaba el Excel vacío). Paridad .sh/.py (TOTAL_STEPS=10) |
 | 1.9.0 | 2026-04-16 | Integración con launcher tools.py (opción 22), wrapper run_inventory.py, requirements.txt |
 | 1.8.0 | 2026-04-15 | Excluir namespaces via config [exclude-namespaces] (datadog, kube-system, gmp-system) |

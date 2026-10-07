@@ -80,16 +80,16 @@ print("=" * 90)
 
 # Definición exacta de columnas por hoja
 TIPOS = {
-    "clusters":    ["PROYECTO", "NAME", "LOCATION", "VERSION", "CURRENT_VERSION", "STATUS", "MACHINE_TYPE"],
-    "deployments": ["PROYECTO", "NAMESPACE", "CLUSTER", "DEPLOYMENT", "READY", "CONTAINERS", "IMAGES"],
-    "services":    ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORTS"],
-    "cloudsql":        ["PROYECTO", "NAME", "DATABASE_VERSION", "REGION", "TIER", "STATE", "PUBLIC_IP", "PRIVATE_IP", "AUTO_RESIZE", "BACKUP_ENABLED"],
+    "clusters":    ["PROYECTO", "NAME", "LOCATION", "VERSION", "CURRENT_VERSION", "STATUS", "MACHINE_TYPE", "CREATED", "UPDATED"],
+    "deployments": ["PROYECTO", "NAMESPACE", "CLUSTER", "DEPLOYMENT", "READY", "CONTAINERS", "IMAGES", "CREATED", "UPDATED"],
+    "services":    ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORTS", "CREATED", "UPDATED"],
+    "cloudsql":        ["PROYECTO", "NAME", "DATABASE_VERSION", "REGION", "TIER", "STATE", "PUBLIC_IP", "PRIVATE_IP", "AUTO_RESIZE", "BACKUP_ENABLED", "CREATED", "UPDATED"],
     "clouddatabases":  ["PROYECTO", "INSTANCE", "DATABASE", "CHARSET", "COLLATION"],
-    "ingress":         ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "HOSTS", "ADDRESS", "PORTS"],
-    "cloudrun":        ["PROYECTO", "NAME", "REGION", "URL", "LAST_DEPLOYED", "IMAGE"],
+    "ingress":         ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "HOSTS", "ADDRESS", "PORTS", "CREATED", "UPDATED"],
+    "cloudrun":        ["PROYECTO", "NAME", "REGION", "URL", "LAST_DEPLOYED", "IMAGE", "CREATED", "UPDATED"],
     "pubsub":          ["PROYECTO", "NAME", "LABELS"],
-    "gateways":        ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "CLASS", "LISTENERS", "ADDRESSES", "STATUS"],
-    "httproutes":      ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "HOSTNAMES", "GATEWAYS", "RULES", "PATHS", "BACKENDS"]
+    "gateways":        ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "CLASS", "LISTENERS", "ADDRESSES", "STATUS", "CREATED", "UPDATED"],
+    "httproutes":      ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "HOSTNAMES", "GATEWAYS", "RULES", "PATHS", "BACKENDS", "CREATED", "UPDATED"]
 }
 
 # --- Helpers para extraer entorno y nombre base del proyecto ---
@@ -132,7 +132,8 @@ with pd.ExcelWriter(OUTPUT_EXCEL, engine='openpyxl') as writer:
                 project_name = folder_name.replace("inventario-", "").split("-20")[0]
 
                 if tipo in ("deployments", "clusters", "cloudrun", "pubsub",
-                            "gateways", "httproutes"):
+                            "gateways", "httproutes", "services", "ingress",
+                            "cloudsql"):
                     df = pd.read_csv(csv_file, sep=';', dtype=str, on_bad_lines='skip')
                 else:
                     df = pd.read_csv(csv_file, sep=None, engine='python', dtype=str, on_bad_lines='skip')
