@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.29`** — 2026-10-07
+**`1.8.30`** — 2026-10-07
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-07 | **1.8.30** | **fix(azdo): default `allowOverride` → `false` en Pipeline Updater (opción 41)** — Variables nuevas creadas por regla `add` sin `allowOverride` quedaban "Settable at release time" (`update_engine` default `True`). Default cambiado a `False`; `update` sigue preservando el flag existente y reglas con `allowOverride: true` explícito funcionan igual. Complementa v1.8.29 (el remediator ya emite `false` explícito). Test `test_add_variable_default_allow_override` actualizado al nuevo default. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_triggers.py`, `scm/azdo/README.md`, `VERSION`, `README.version.md` |
 | 2026-10-07 | **1.8.29** | **fix(azdo): `allowOverride` ("Settable at release time") desmarcado en opción 44** — Las variables agregadas/actualizadas quedaban marcadas como setteables: (a) el updater de definiciones (opción 41) creaba vars nuevas con `allowOverride: true` por default; (b) el engine de release (opción 42) forzaba `allowOverride: True` en `build_var_entry`. Fix: el remediator emite `allowOverride: false` en cada regla `add`/`update` (incl. revert remove→update del editor) y el engine de release ahora acepta `allowOverride` en extras de `global_vars`/`env_vars` — explícito se aplica, ausente preserva el flag actual, var nueva → `true` (back-compat). Tests: +5 (`TestAllowOverride`: reglas/template/release-template, engine explícito + preservación). | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/pipeline_cd_update_release/pipeline_cd_update_release.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md`, `VERSION`, `README.version.md` |
 | 2026-10-07 | **1.8.28** | **fix(azdo): resumen de cambios movido a `metadata.comment` en templates de opción 44** — `rules_summary` ahora va en `metadata.comment` (los engines 41/42 lo envían en el PUT → historial de revisiones de AzDO de la definición o del release) en vez de `metadata.description`, que vuelve a contener solo el objetivo del template. El comentario `#` inicial del YAML se conserva. Test actualizado: comment lleva el resumen, description no. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md`, `VERSION`, `README.version.md` |
 | 2026-10-07 | **1.8.27** | **feat(azdo): comentario simplificado de cambios en los templates de opción 44** — Nuevo `rules_summary()`: resumen compacto de todas las reglas (`+`/`-`/`~` + `var@stage|release` + `=valor` enmascarado + 🔒/🔓). Se escribe como comentario `#` en la primera línea del YAML y en `metadata.description` (visible al inspeccionar el archivo y al cargarlo con los updaters de las opciones 41/42). Aplica a `pipe_cd_inspection_fix_*` y `release_inspection_fix_*`. Tests: +1 (`test_comentario_simplificado_en_yaml` — glifos, scope, máscara de secreto, exclusión de notas internas). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md`, `VERSION`, `README.version.md` |

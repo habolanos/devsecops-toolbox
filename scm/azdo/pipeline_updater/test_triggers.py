@@ -575,7 +575,7 @@ class TestVariableActions(unittest.TestCase):
         self.assertTrue(self.definition['variables']['SecretVar']['isSecret'])
 
     def test_add_variable_default_allow_override(self):
-        """Agregar variable sin allowOverride usa default True"""
+        """Agregar variable sin allowOverride usa default False (no settable)"""
         update_rules = {
             'variables': [
                 {
@@ -588,7 +588,7 @@ class TestVariableActions(unittest.TestCase):
         engine = UpdateEngine(self.definition, [], update_rules)
         engine.apply_updates()
 
-        self.assertTrue(
+        self.assertFalse(
             self.definition['variables']['DefaultVar']['allowOverride']
         )
 

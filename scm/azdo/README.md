@@ -804,9 +804,11 @@ Convención: `+` add, `~` update, `-` remove; `@<stage>` scope environment o
 
 > **`allowOverride` ("Settable at release time")**: todas las reglas
 > `add`/`update` generadas llevan `allowOverride: false` — las variables del
-> pipeline CD no deben quedar setteables al crear un release. En la definición
-> el updater desmarca el flag; en el release el engine (opción 42) lo aplica al
-> snapshot. Reglas `remove` no lo llevan.
+> pipeline CD no deben quedar setteables al crear un release. Además, desde
+> v1.8.29 el **default del Pipeline Updater** para variables nuevas es
+> `allowOverride: false` (antes `true`); un `update` preserva el flag salvo
+> que la regla lo especifique. En el release el engine (opción 42) lo aplica
+> al snapshot. Reglas `remove` no lo llevan.
 
 #### Flujo interactivo
 
@@ -1042,6 +1044,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-07 | 1.8.30 | **Pipeline Updater: default `allowOverride` → `false`** — El engine de definiciones (opción 41) creaba variables nuevas con `allowOverride: true` cuando la regla no lo especificaba ("Settable at release time" marcado). Default cambiado a `false`; `update` preserva el flag y reglas explícitas (`allowOverride: true`) siguen funcionando. Complementa v1.8.29 (que ya fijaba `false` en las reglas del remediator). Test `test_add_variable_default_allow_override` actualizado. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_triggers.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.29 | **Fix `allowOverride` ("Settable at release time") en opción 44** — Las reglas `add`/`update` ahora llevan `allowOverride: false`: antes el updater de definiciones creaba variables nuevas con `allowOverride: true` por default (bug: todas quedaban setteables) y el engine de release forzaba `allowOverride: True` en `build_var_entry`. El engine ganó el campo `allowOverride` en extras de `global_vars`/`env_vars` (explícito → se aplica; ausente → preserva el flag actual; variable nueva → `true` por back-compat). El editor conserva el flag al revertir remove→update. Tests: +5 (`TestAllowOverride`). | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/pipeline_cd_update_release/pipeline_cd_update_release.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.28 | **SCM Inspection Remediator: resumen de cambios → `metadata.comment`** — El comentario simplificado (`rules_summary`) ahora viaja en `metadata.comment` en vez de `description`: ambos engines lo envían en el PUT (opción 41 → `definition.comment` = historial de revisiones de la definición; opción 42 → `release.comment`). `metadata.description` vuelve a ser solo el objetivo del template. El comentario `#` al inicio del archivo se conserva. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.27 | **SCM Inspection Remediator: comentario simplificado en templates** — `rules_summary()` genera un resumen compacto de todos los cambios (`+var@Stage=val`, `~var@Stage`, `-var@release`, 🔒/🔓; secretos enmascarados, notas internas excluidas) que se escribe como comentario `#` en la primera línea del YAML **y** dentro de `metadata.description` — visible tanto al inspeccionar el archivo como al cargarlo con las opciones 41/42. Aplica a `pipe_cd_inspection_fix_*` (definición) y `release_inspection_fix_*` (release). Tests: +1 (`test_comentario_simplificado_en_yaml`). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |

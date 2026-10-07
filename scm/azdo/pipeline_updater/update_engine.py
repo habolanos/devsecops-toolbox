@@ -589,7 +589,7 @@ class UpdateEngine:
           - value: valor de la variable
           - scope: "release" (default) | "environment"
           - stage: nombre del stage (obligatorio si scope=environment)
-          - allowOverride: bool (default: true)
+          - allowOverride: bool (default: false — no settable at release time)
           - isSecret: bool (default: false)
 
         Args:
@@ -638,7 +638,7 @@ class UpdateEngine:
                 else:
                     new_var = {
                         'value': rule.get('value', ''),
-                        'allowOverride': rule.get('allowOverride', True)
+                        'allowOverride': rule.get('allowOverride', False)
                     }
                     if rule.get('isSecret'):
                         new_var['isSecret'] = True
@@ -648,7 +648,7 @@ class UpdateEngine:
                         'name': var_name,
                         'scope': scope_label,
                         'value': rule.get('value', ''),
-                        'allowOverride': rule.get('allowOverride', True)
+                        'allowOverride': rule.get('allowOverride', False)
                     })
 
             elif action == 'update':
