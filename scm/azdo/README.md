@@ -795,7 +795,14 @@ en modo solo-template, dry-run o aplicación real.
 2. Se descubre el último release con ese stage, se descargan los logs de sus tareas
    y se parsean las violaciones (`##[warning]` / `##[error]`).
 3. Las violaciones se convierten en **ajustes candidatos** (`add` / `update` /
-   `remove` sobre variables de la definición del release).
+   `remove` sobre variables de la definición del release). La comprobación de
+   existencia de cada variable consulta **la definición y la instancia del
+   release** — el inspector evalúa el snapshot del release, por lo que una
+   variable puede existir solo ahí (p. ej. agregada tras crear el release o
+   ya eliminada de la definición). En ese caso el ajuste se genera igual con
+   la nota *"existe solo en el release — se elimina/actualiza ahí"*: el engine
+   de release (opción 42) la aplica al snapshot y en la definición es no-op.
+   Solo queda "manual" si la variable no existe en ninguna de las dos.
 4. Las variables sin valor fuente pasan por el ciclo de valores pendientes
    (Enter = `TBD`, texto = valor, `e` = eliminar, `i` = ignorar).
 5. Se muestra el **Resumen FINAL de cambios** y el menú de confirmación.
@@ -1013,6 +1020,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-07 | 1.8.26 | **SCM Inspection Remediator: existencia verificada contra el release** — `build_actionables` ahora acepta `release` y comprueba también las variables de la instancia inspeccionada. Fix real: una variable solo en el snapshot del release (ausente en la definición, p. ej. `tuSecret`) iba a "manual / ya ausente" y no podía eliminarse — ahora genera `remove`/`update` con nota "existe solo en el release" (el engine opción 42 la aplica; en la definición es no-op). `RULE_1_SECRET` ya no manda a manual cuando el valor no es legible: toma el valor del release si existe y aplica `isSecret: true` preservando el valor; solo queda manual si la variable no existe en definición ni en release. Tests: +6 (`TestReleaseFallback`). | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.25 | **Aplicación a release via engine existente (opción 42)** — La opción 44 ya no hace PUT directo: genera `release_inspection_fix_<relId>_<ts>.yaml` en formato `pipeline_cd_update_release` y lo aplica por subprocess (backup + tabla de cambios + PUT del engine). El engine ganó campos `isSecret`/`action: remove` por variable y preserva `isSecret` al actualizar vars secretas (bugfix). | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/pipeline_cd_update_release/pipeline_cd_update_release.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.24 | **SCM Inspection Remediator: menú en bucle + redeploy del stage** — El menú de aplicación reaparece tras cada acción (hasta `0`/`1`); tras aplicar al release se ofrece re-correr el deploy del stage inspeccionado (`PATCH environments/{id} status=inProgress`; `--redeploy` en CLI). Nota UX: el YAML es solo para la definición; el release usa PUT directo. `AzdoClient._send` unifica GET/PUT/PATCH. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-06 | 1.8.23 | **SCM Inspection Remediator: prompt de Release ID interactivo** — El modo interactivo ahora pregunta el Release ID tras el Definition ID (Enter = último run del stage; un ID específico inspecciona ese release y queda como destino default de las opciones `4`–`6`). Input no numérico → fallback al último. Hint CLI del submenú con ejemplos `--release-id`/`--target`. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |

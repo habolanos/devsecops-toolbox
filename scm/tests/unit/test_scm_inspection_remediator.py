@@ -789,6 +789,69 @@ class _Args:
     redeploy = False
 
 
+class TestReleaseFallback:
+    """Variables que existen solo en la instancia del release (snapshot):
+    remove/update se generan igual — el engine de release las aplica; en
+    la definición son no-op."""
+
+    def _def_vacia(self):
+        return {"variables": {}, "environments": [
+            {"name": "Production", "variables": {}}]}
+
+    def test_remove_existe_solo_en_release_genera_regla(self):
+        release = {"variables": {"tuSecret": {"value": "x"}},
+                   "environments": []}
+        a = rem.build_actionables(self._def_vacia(), [
+            _v("STAGE_VARIABLES", "(nivel pipeline)", "tuSecret")],
+            removes={"tuSecret"}, release=release)
+        r = a["rules"][0]
+        assert r["action"] == "remove" and r["scope"] == "release"
+        assert "solo en el release" in r["note"]
+        assert not a["manual"]
+
+    def test_update_valor_inyectado_solo_en_release(self):
+        release = {"variables": {"tuSecret": {"value": "x"}},
+                   "environments": []}
+        a = rem.build_actionables(self._def_vacia(), [
+            _v("STAGE_VARIABLES", "(nivel pipeline)", "tuSecret")],
+            values={"tuSecret": "nuevo"}, release=release)
+        r = a["rules"][0]
+        assert r["action"] == "update" and r["scope"] == "release"
+        assert "solo en el release" in r["note"]
+
+    def test_update_inexistente_en_ambos_va_a_manual(self):
+        a = rem.build_actionables(self._def_vacia(), [
+            _v("STAGE_VARIABLES", "(nivel pipeline)", "ghost")],
+            values={"ghost": "x"}, release={"variables": {}})
+        assert a["rules"] == [] and len(a["manual"]) == 1
+
+    def test_secret_existe_solo_en_release_env(self):
+        release = {"environments": [{"name": "Production", "variables": {
+            "ksa": {"value": "v1"}}}]}
+        a = rem.build_actionables(self._def_vacia(), [
+            _v("RULE_1_SECRET", "Production", "ksa")], release=release)
+        r = a["rules"][0]
+        assert r["action"] == "update" and r["isSecret"] is True
+        assert r["value"] == "v1"
+        assert "solo en el release" in r["note"]
+
+    def test_secret_valor_vacio_toma_el_del_release(self):
+        definition = {"environments": [{"name": "Prod", "variables": {
+            "ksa": {"value": ""}}}]}
+        release = {"environments": [{"name": "Prod", "variables": {
+            "ksa": {"value": "real"}}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_1_SECRET", "Prod", "ksa")], release=release)
+        r = a["rules"][0]
+        assert r["value"] == "real" and r["isSecret"] is True
+
+    def test_secret_inexistente_en_ambos_va_a_manual(self):
+        a = rem.build_actionables(self._def_vacia(), [
+            _v("RULE_1_SECRET", "Production", "ghost")],
+            release={"environments": []})
+        assert a["rules"] == [] and len(a["manual"]) == 1
+
+
 class TestRunFlow:
     def _setup(self, monkeypatch, tmp_path):
         monkeypatch.setattr(rem, "get_azdo_params", lambda a: ("o", "p", "pat"))

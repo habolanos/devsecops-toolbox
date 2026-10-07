@@ -319,18 +319,26 @@ def _env_mismatch(src_stage: str, dst_stage: str) -> str:
 
 
 def build_actionables(definition: dict, violations: list,
-                      values: dict = None, removes: set = None) -> dict:
+                      values: dict = None, removes: set = None,
+                      release: dict = None) -> dict:
     """Convierte violaciones en reglas `update.variables` del template.
 
     Returns {"rules": [...], "manual": [...], "pending": {...}, "summary": [...]}
     `values` permite inyectar valores para variables pendientes.
     `removes` = set de variables a eliminar (action: remove) donde existan.
+    `release` = instancia inspeccionada — sus variables son la fuente real del
+    inspector: una variable puede existir solo en el release (snapshot) aunque
+    falte en la definición; remove/update sobre ella aplica al release
+    (engine opción 42) y es no-op en la definición.
     `pending` = {var: {"scope": ..., "stages": [...]}} — variables que requieren
     valor (default "TBD" o capturadas con collect_pending_values/--tbd).
     """
     values = values or {}
     removes = set(removes or ())
     envs = {e["name"]: e for e in definition.get("environments", [])}
+    rel_envs = {e.get("name", ""): e
+                for e in (release or {}).get("environments", [])}
+    rel_vars = (release or {}).get("variables") or {}
     # Variables que el reporte marcó como secretas en cualquier stage:
     # si las agregamos por paridad en otro stage, deben ir con isSecret.
     secret_vars = {v.get("variable", "").split(",")[0].strip()
@@ -358,26 +366,54 @@ def build_actionables(definition: dict, violations: list,
         if stage and stage not in p["stages"]:
             p["stages"].append(stage)
 
+    def rel_var(stage, scope, var):
+        """Entry de la variable en la instancia del release (o None)."""
+        if scope == "environment":
+            return (rel_envs.get(stage, {}).get("variables") or {}).get(var)
+        return rel_vars.get(var)
+
     def add_rule(var, stage, scope, action, value=None, secret=False, note=""):
         # Ajustar la acción a lo que el updater realmente hará
         vars_map = env_vars(stage) if scope == "environment" \
             else (definition.get("variables") or {})
         exists = var in vars_map
         cur = vars_map.get(var) or {}
+        rel_cur = rel_var(stage, scope, var)
+        in_release = rel_cur is not None
         loc = stage or "release"
 
         if action == "remove" and not exists:
+            if in_release:
+                # Existe solo en la instancia: el engine de release la
+                # elimina; en la definición es no-op.
+                note = ((note + " | ") if note else "") + \
+                    "existe solo en el release — se elimina ahí"
+                rule = {"name": var, "action": "remove", "scope": scope}
+                if scope == "environment":
+                    rule["stage"] = stage
+                rule["note"] = note
+                rules.append(rule)
+                summary.append(f"  [remove] {var} @ {scope}:{loc} — {note}")
+                return
             manual.append(f"{var} @ {loc}: ya ausente — nada que eliminar")
             return
         if action == "add" and exists:
             action = "update"
             note = (note + " | " if note else "") + "ya existe — se actualiza"
         elif action == "update" and not exists:
-            manual.append(f"{var} @ {loc}: la violación indica variable "
-                          f"existente pero no está en la definición — omitida")
-            return
+            if in_release:
+                note = (note + " | " if note else "") + \
+                    "no está en la definición — se actualiza solo " \
+                    "en el release"
+            else:
+                manual.append(f"{var} @ {loc}: la violación indica variable "
+                              f"existente pero no está en la definición "
+                              f"— omitida")
+                return
         if action == "update" and exists and cur.get("value") == value \
-                and not (secret and not cur.get("isSecret")):
+                and not (secret and not cur.get("isSecret")) \
+                and not (secret and in_release
+                         and not (rel_cur or {}).get("isSecret")):
             manual.append(f"{var} @ {loc}: ya tiene el valor correcto — "
                           f"sin cambio")
             return
@@ -411,13 +447,17 @@ def build_actionables(definition: dict, violations: list,
                 add_rule(var, env_name, "environment", "remove",
                          note="eliminada a petición")
                 continue
-            current = env_vars(env_name).get(var, {})
-            if current.get("value") not in (None, ""):
-                add_rule(var, env_name, "environment", "update",
-                         current["value"], secret=True, note="marcar secreta")
-            else:
-                manual.append(f"{var} @ {env_name}: marcar como secreta en la UI "
-                              f"(valor actual no legible/ya secreto)")
+            current = env_vars(env_name).get(var) or {}
+            rel_current = rel_var(env_name, "environment", var) or {}
+            if not current and not rel_current:
+                manual.append(f"{var} @ {env_name}: no está en la definición "
+                              f"ni en el release — omitida")
+                continue
+            val = current.get("value")
+            if val in (None, ""):
+                val = rel_current.get("value")
+            add_rule(var, env_name, "environment", "update", val,
+                     secret=True, note="marcar secreta")
             continue
 
         if rule_name != "STAGE_VARIABLES":
@@ -965,7 +1005,8 @@ def run_flow(args, interactive: bool) -> int:
                   f"'{args.stage}'...[/]")
     discovery = discover(client, definition_id, args.stage, args.release_id)
     actionables = build_actionables(discovery["definition"],
-                                    discovery["violations"], values, removes)
+                                    discovery["violations"], values, removes,
+                                    release=discovery["release"])
     show_plan(discovery, actionables, definition_id)
 
     if not actionables["rules"] and not actionables["manual"]:
@@ -982,7 +1023,9 @@ def run_flow(args, interactive: bool) -> int:
         if values or removes:
             actionables = build_actionables(discovery["definition"],
                                             discovery["violations"],
-                                            values, removes)
+                                            values, removes,
+                                            release=discovery[
+                                                "release"])
 
     if not actionables["rules"]:
         console.print("\n[yellow]No hay acciones automáticas — solo "
@@ -1013,7 +1056,9 @@ def run_flow(args, interactive: bool) -> int:
         if choice == "r":
             actionables = build_actionables(discovery["definition"],
                                             discovery["violations"],
-                                            values, removes)
+                                            values, removes,
+                                            release=discovery[
+                                                "release"])
             rules_edited = False
             console.print("[cyan]Ajustes recargados desde las "
                           "violaciones (ediciones manuales descartadas; "
@@ -1054,7 +1099,9 @@ def run_flow(args, interactive: bool) -> int:
             values, removes = review_values(values, pending_vars, removes)
             actionables = build_actionables(discovery["definition"],
                                             discovery["violations"],
-                                            values, removes)
+                                            values, removes,
+                                            release=discovery[
+                                                "release"])
             rules_edited = False
             if not actionables["rules"]:
                 console.print("\n[yellow]Sin reglas restantes — solo "
