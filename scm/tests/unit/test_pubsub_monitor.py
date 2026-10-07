@@ -7,8 +7,28 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+import importlib.util
+
 import scm.gcp.tools as gcp_tools
-from scm.gcp.pubsub_monitor import pubsub_monitor as pm
+
+
+def _has_module(mod: str) -> bool:
+    try:
+        return importlib.util.find_spec(mod) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+# google-cloud-pubsub/monitoring son dependencias opcionales del monitor:
+# sin ellas solo corren los tests de wiring del launcher.
+_PUBSUB_DEPS_OK = (_has_module("google.cloud.pubsub_v1")
+                   and _has_module("google.cloud.monitoring_v3"))
+_needs_pubsub = pytest.mark.skipif(
+    not _PUBSUB_DEPS_OK,
+    reason="google-cloud-pubsub/monitoring no instalados")
+pm = None
+if _PUBSUB_DEPS_OK:
+    from scm.gcp.pubsub_monitor import pubsub_monitor as pm
 
 
 # ---------- wiring del launcher ----------
@@ -57,6 +77,7 @@ def _bare_monitor(projects):
     return m
 
 
+@_needs_pubsub
 class TestProjectsOverride:
     def test_projects_override_reemplaza_config(self, tmp_path):
         cfg = tmp_path / "config.json"
@@ -79,6 +100,7 @@ class TestProjectsOverride:
         assert m.projects == ["p-config"]
 
 
+@_needs_pubsub
 class TestExecuteAnalysis:
     def test_errores_por_proyecto_no_abortan_y_se_conservan(self):
         m = _bare_monitor(["p1", "p2"])
@@ -104,6 +126,7 @@ class TestExecuteAnalysis:
         ask.assert_not_called()
 
 
+@_needs_pubsub
 class TestGenerateReports:
     def _monitor_con_resultados(self):
         m = _bare_monitor(["p1"])
@@ -150,6 +173,7 @@ class TestGenerateReports:
         assert "pubsub_monitor" in str(captured["path"])
 
 
+@_needs_pubsub
 class TestRunCli:
     def test_sin_proyectos_retorna_1(self):
         m = _bare_monitor([])
@@ -172,6 +196,7 @@ class TestRunCli:
         gen.assert_called_once_with(pause=False, output="html")
 
 
+@_needs_pubsub
 class TestMain:
     def test_sin_tty_y_sin_args_sale_2(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["run.py"])
