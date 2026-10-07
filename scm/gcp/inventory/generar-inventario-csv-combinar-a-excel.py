@@ -5,6 +5,7 @@
 # =============================================================================
 
 import re
+import sys
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
@@ -56,6 +57,14 @@ except ImportError:
         return p.resolve()
 # -------------------------------------------------------------------
 
+# stdout/stderr a UTF-8: consolas cp1252 (Windows) no pueden imprimir →/✓/⚠
+# y el UnicodeEncodeError abortaba el ExcelWriter con el libro vacío.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # Detecta automáticamente la carpeta donde está el script
 SCRIPT_DIR = Path(__file__).parent.resolve()
 OUTCOME_DIR = resolve_outcome_dir()
@@ -72,13 +81,15 @@ print("=" * 90)
 # Definición exacta de columnas por hoja
 TIPOS = {
     "clusters":    ["PROYECTO", "NAME", "LOCATION", "VERSION", "CURRENT_VERSION", "STATUS", "MACHINE_TYPE"],
-    "deployments": ["PROYECTO", "NAMESPACE", "CLUSTER", "DEPLOYMENT", "IMAGES"],
+    "deployments": ["PROYECTO", "NAMESPACE", "CLUSTER", "DEPLOYMENT", "READY", "CONTAINERS", "IMAGES"],
     "services":    ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORTS"],
     "cloudsql":        ["PROYECTO", "NAME", "DATABASE_VERSION", "REGION", "TIER", "STATE", "PUBLIC_IP", "PRIVATE_IP", "AUTO_RESIZE", "BACKUP_ENABLED"],
     "clouddatabases":  ["PROYECTO", "INSTANCE", "DATABASE", "CHARSET", "COLLATION"],
     "ingress":         ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "HOSTS", "ADDRESS", "PORTS"],
     "cloudrun":        ["PROYECTO", "NAME", "REGION", "URL", "LAST_DEPLOYED", "IMAGE"],
-    "pubsub":          ["PROYECTO", "NAME", "LABELS"]
+    "pubsub":          ["PROYECTO", "NAME", "LABELS"],
+    "gateways":        ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "CLASS", "LISTENERS", "ADDRESSES", "STATUS"],
+    "httproutes":      ["PROYECTO", "NAMESPACE", "CLUSTER", "NAME", "HOSTNAMES", "GATEWAYS", "RULES", "PATHS", "BACKENDS"]
 }
 
 # --- Helpers para extraer entorno y nombre base del proyecto ---
@@ -120,7 +131,8 @@ with pd.ExcelWriter(OUTPUT_EXCEL, engine='openpyxl') as writer:
                 folder_name = csv_file.parent.name
                 project_name = folder_name.replace("inventario-", "").split("-20")[0]
 
-                if tipo in ("deployments", "clusters", "cloudrun", "pubsub"):
+                if tipo in ("deployments", "clusters", "cloudrun", "pubsub",
+                            "gateways", "httproutes"):
                     df = pd.read_csv(csv_file, sep=';', dtype=str, on_bad_lines='skip')
                 else:
                     df = pd.read_csv(csv_file, sep=None, engine='python', dtype=str, on_bad_lines='skip')
@@ -174,6 +186,14 @@ with pd.ExcelWriter(OUTPUT_EXCEL, engine='openpyxl') as writer:
                 cell = ws.cell(row=row, column=c)
                 cell.fill = TOTAL_FILL
                 cell.font = TOTAL_FONT
+
+        # =====================================================================
+        # Estilo de encabezado en las hojas de datos (una por CSV cargado)
+        # =====================================================================
+        for tipo in data_frames:
+            ws_data = wb[tipo.upper()[:31]]
+            style_header(ws_data, 1, len(TIPOS[tipo]) + 2)  # + ENTORNO y BASE
+            ws_data.freeze_panes = "A2"
 
         # =====================================================================
         # 2a. RESUMEN — Totales por categoría y entorno
@@ -681,7 +701,7 @@ else:
     print("¡ÉXITO! Archivo Excel generado correctamente")
     print(f"   → {OUTPUT_EXCEL.name}")
     print(f"   → Ruta completa: {OUTPUT_EXCEL.resolve()}")
-    print("\nHojas de datos  : CLUSTERS | DEPLOYMENTS | SERVICES | CLOUDSQL | CLOUDSQL_DATABASES | INGRESS | CLOUDRUN | PUBSUB")
+    print("\nHojas de datos  : CLUSTERS | DEPLOYMENTS | SERVICES | CLOUDSQL | CLOUDSQL_DATABASES | INGRESS | CLOUDRUN | PUBSUB | GATEWAYS | HTTPROUTES")
     print("Hojas gráficos : RESUMEN | POR ENTORNO | POR PROYECTO | MACHINE TYPE | SERVICE TYPE | RADAR PROYECTO")
 
 print("=" * 90)

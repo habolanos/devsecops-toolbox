@@ -1,6 +1,6 @@
-# SCM - Inventario GKE y Cloud SQL
+# SCM - Inventario GCP (GKE · Cloud SQL · Cloud Run · Pub/Sub)
 
-Scripts para generar inventarios consolidados de recursos GCP (GKE clusters, deployments, services, Cloud SQL) y exportarlos a Excel con análisis visual.
+Scripts para generar inventarios consolidados de recursos GCP por proyecto (GKE: clusters, deployments, services, ingress, gateways, httproutes; más Cloud SQL, Cloud Run y Pub/Sub) y exportarlos a Excel con análisis visual.
 
 ## Scripts
 
@@ -27,13 +27,15 @@ pip install pandas openpyxl
 
 #### Hojas de datos
 - **CLUSTERS**: Inventario de clusters GKE
-- **DEPLOYMENTS**: Inventario de deployments K8s
+- **DEPLOYMENTS**: Inventario de deployments K8s — `READY` (`readyReplicas/replicas`), `CONTAINERS` (`name=image` por contenedor; initContainers con prefijo `init:`) e `IMAGES` (solo imágenes)
 - **SERVICES**: Inventario de services K8s
 - **CLOUDSQL**: Inventario de instancias Cloud SQL
 - **CLOUDSQL_DATABASES**: Bases de datos dentro de cada instancia Cloud SQL
 - **INGRESS**: Controladores Ingress K8s (rutas HTTP/S, dominios, TLS)
 - **CLOUDRUN**: Servicios Cloud Run serverless
 - **PUBSUB**: Topics Pub/Sub para mensajería
+- **GATEWAYS**: Gateways de Gateway API (`kubectl get gateways -A -o json`) — clase, listeners (`puerto/protocolo`), IPs y estado (`Programmed`/`Accepted`/`Unknown`). Si el cluster no tiene los CRDs instalados, la hoja sale solo con encabezado
+- **HTTPROUTES**: HTTPRoutes de Gateway API — hostnames, gateways asociados (`parentRefs`, formato `ns/name`), nº de reglas, paths y backends
 
 #### Hojas de análisis
 
@@ -73,7 +75,7 @@ Un radar por cada proyecto base, consolidando totales de cada entorno. Las líne
 
 ### Desde el launcher (recomendado)
 
-Seleccionar la opción **22 – Inventario GKE + Cloud SQL** en el menú de `tools.py`:
+Seleccionar la opción **22 – Inventario GCP (K8s + Cloud SQL)** en el menú de `tools.py`:
 
 ```bash
 cd scm/gcp
@@ -115,20 +117,22 @@ kube-system
 gmp-system
 ```
 
-Los namespaces bajo `[exclude-namespaces]` se filtran automáticamente de las secciones de deployments, services e ingress.
+Los namespaces bajo `[exclude-namespaces]` se filtran automáticamente de las secciones K8s (deployments, services, ingress, gateways, httproutes).
 
 ### Tipos de recursos
 `generar-inventario-csv-combinar-a-excel.py`:
 ```python
 TIPOS = {
     "clusters": "PROYECTO;NAME;LOCATION;VERSION;CURRENT_VERSION;STATUS;MACHINE_TYPE;BASE;ENTORNO",
-    "deployments": "PROYECTO;NAMESPACE;NAME;READY;AVAILABLE;BASE;ENTORNO",
-    "services": "PROYECTO;NAMESPACE;NAME;TYPE;CLUSTER_IP;EXTERNAL_IP;PORT_S;BASE;ENTORNO",
-    "cloudsql": "PROYECTO;NAME;REGION;TIER;VERSION;STATUS;BASE;ENTORNO",
+    "deployments": "PROYECTO;NAMESPACE;CLUSTER;DEPLOYMENT;READY;CONTAINERS;IMAGES;BASE;ENTORNO",
+    "services": "PROYECTO;NAMESPACE;CLUSTER;NAME;TYPE;CLUSTER-IP;EXTERNAL-IP;PORTS;BASE;ENTORNO",
+    "cloudsql": "PROYECTO;NAME;DATABASE_VERSION;REGION;TIER;STATE;PUBLIC_IP;PRIVATE_IP;AUTO_RESIZE;BACKUP_ENABLED;BASE;ENTORNO",
     "clouddatabases": "PROYECTO;INSTANCE;DATABASE;CHARSET;COLLATION;BASE;ENTORNO",
     "ingress": "PROYECTO;NAMESPACE;CLUSTER;NAME;HOSTS;ADDRESS;PORTS;BASE;ENTORNO",
     "cloudrun": "PROYECTO;NAME;REGION;URL;LAST_DEPLOYED;IMAGE;BASE;ENTORNO",
-    "pubsub": "PROYECTO;NAME;LABELS;BASE;ENTORNO"
+    "pubsub": "PROYECTO;NAME;LABELS;BASE;ENTORNO",
+    "gateways": "PROYECTO;NAMESPACE;CLUSTER;NAME;CLASS;LISTENERS;ADDRESSES;STATUS;BASE;ENTORNO",
+    "httproutes": "PROYECTO;NAMESPACE;CLUSTER;NAME;HOSTNAMES;GATEWAYS;RULES;PATHS;BACKENDS;BASE;ENTORNO"
 }
 ```
 
@@ -152,6 +156,7 @@ El directorio `outcome/` está incluido en `.gitignore`.
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.8.33 | 2026-10-07 | Nuevos pasos 9-10: `gateways.csv` y `httproutes.csv` (Gateway API, graceful sin CRDs). Deployments con `READY` y `CONTAINERS` (`name=image`, init `init:`), parseo JSON. Helpers `_kubectl_env_for_cluster`/`_kubectl_json`/`_rm_quiet` compartidos por los pasos K8s. TIPOS del consolidador ampliado (hojas GATEWAYS/HTTPROUTES + análisis). Hojas de datos con estilo de encabezado (bold azul + freeze). Fix: stdio UTF-8 para consolas cp1252 (el `UnicodeEncodeError` dejaba el Excel vacío). Paridad .sh/.py (TOTAL_STEPS=10) |
 | 1.9.0 | 2026-04-16 | Integración con launcher tools.py (opción 22), wrapper run_inventory.py, requirements.txt |
 | 1.8.0 | 2026-04-15 | Excluir namespaces via config [exclude-namespaces] (datadog, kube-system, gmp-system) |
 | 1.7.0 | 2026-04-15 | Agregar inventarios: Ingress (K8s), Cloud Run Services, Pub/Sub Topics (hojas + radar) |

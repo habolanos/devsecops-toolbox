@@ -497,8 +497,8 @@ TOOLS = {
     },
     # ══════════ INVENTORY (22) ══════════
     "22": {
-        "name": "Inventario GKE + Cloud SQL",
-        "description": "Genera inventario consolidado de recursos GCP (CSV + Excel con gráficos radar)",
+        "name": "Inventario GCP (K8s + Cloud SQL)",
+        "description": "Inventario consolidado por proyecto: clusters, deployments (READY + imagen por contenedor), services, ingress, gateways, httproutes, Cloud SQL/databases, Cloud Run y Pub/Sub → CSVs + Excel con gráficos",
         "path": "inventory/run_inventory.py",
         "args": [],
         "requirements": "inventory/requirements.txt",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 """
-Inventario GKE + Cloud SQL - Launcher
+Inventario GCP (GKE · Cloud SQL · Cloud Run · Pub/Sub) - Launcher
 
 Ejecuta el pipeline completo de inventario:
   1. generar-inventario-csv.py  → genera CSVs por proyecto (Rich UI)
@@ -94,6 +94,13 @@ def ensure_output_env() -> Path:
 
 
 def main():
+    # UTF-8 stdio: consolas cp1252 (Windows) no imprimen emojis/Unicode.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     skip_csv = "--skip-csv" in sys.argv
 
     out_dir = ensure_output_env()
@@ -102,7 +109,7 @@ def main():
         console = Console()
         console.print(Panel(
             Text.assemble(
-                ("📋 Inventario GKE + Cloud SQL\n\n", "bold white"),
+                ("📋 Inventario GCP — GKE · Cloud SQL · Cloud Run · Pub/Sub\n\n", "bold white"),
                 ("Pipeline completo de inventario:\n", "dim"),
                 ("  1. CSVs por proyecto (Rich UI)\n", "cyan"),
                 ("  2. Consolidación en Excel\n", "cyan"),
@@ -112,7 +119,7 @@ def main():
             border_style="cyan", box=HEAVY, padding=(1, 2), expand=False,
         ))
     else:
-        print("📋 Inventario GKE + Cloud SQL - Launcher")
+        print("📋 Inventario GCP (GKE · Cloud SQL · Cloud Run · Pub/Sub) - Launcher")
         print(f"  Output: {out_dir}")
 
     # ── Paso 1: Generar CSVs ──────────────────────────────────────────────

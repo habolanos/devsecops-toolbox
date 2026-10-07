@@ -247,6 +247,203 @@ class TestInventoryCsvScript:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Pasos K8s del inventario: deployments (READY/CONTAINERS), gateways, httproutes
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestInventoryK8sSteps:
+    """Los pasos K8s usan `kubectl get <recurso> -A -o json` con kubeconfig aislado."""
+
+    @staticmethod
+    def _mock_kubectl(csv_mod, monkeypatch, tmp_path, payloads):
+        """Mockea _kubectl_env_for_cluster y run_cmd.
+
+        payloads: dict recurso → JSON (str) que devuelve kubectl.
+        """
+        kcfg = tmp_path / "kcfg-fake"  # no existe; _rm_quiet lo tolera
+        monkeypatch.setattr(csv_mod, "_kubectl_env_for_cluster",
+                            lambda p, c, l: ({"KUBECONFIG": str(kcfg)}, str(kcfg)))
+
+        def _run(cmd, env=None, capture=True):
+            if "kubectl" in cmd and "get" in cmd:
+                return payloads.get(cmd[cmd.index("get") + 1], "")
+            return ""
+        monkeypatch.setattr(csv_mod, "run_cmd", _run)
+        return kcfg
+
+    def test_deployments_ready_containers_and_images(self, csv_mod, monkeypatch, tmp_path):
+        payload = json.dumps({"items": [
+            {"metadata": {"namespace": "app", "name": "web"},
+             "spec": {"replicas": 3,
+                      "template": {"spec": {
+                          "containers": [
+                              {"name": "app", "image": "img/app:v1"},
+                              {"name": "side", "image": "img/side:v2"}],
+                          "initContainers": [
+                              {"name": "mig", "image": "img/mig:v0"}]}}},
+             "status": {"readyReplicas": 2}},
+        ]})
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"deployments": payload})
+        csv_mod.step_deployments("p1", tmp_path, ";", [("c1", "us")], [])
+        lines = (tmp_path / "deployments.csv").read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "NAMESPACE;CLUSTER;DEPLOYMENT;READY;CONTAINERS;IMAGES"
+        row = lines[1]
+        assert '"web"' in row and '"2/3"' in row
+        assert "app=img/app:v1;side=img/side:v2;init:mig=img/mig:v0" in row
+        assert "img/app:v1;img/side:v2;img/mig:v0" in row
+
+    def test_deployments_excludes_namespaces(self, csv_mod, monkeypatch, tmp_path):
+        payload = json.dumps({"items": [
+            {"metadata": {"namespace": "kube-system", "name": "sys"},
+             "spec": {"template": {"spec": {"containers": []}}}, "status": {}},
+            {"metadata": {"namespace": "app", "name": "keep"},
+             "spec": {"template": {"spec": {"containers": []}}}, "status": {}},
+        ]})
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"deployments": payload})
+        csv_mod.step_deployments("p1", tmp_path, ";", [("c1", "us")], ["kube-system"])
+        content = (tmp_path / "deployments.csv").read_text(encoding="utf-8")
+        assert "keep" in content and "sys" not in content
+
+    def test_deployments_scaled_to_zero(self, csv_mod, monkeypatch, tmp_path):
+        payload = json.dumps({"items": [
+            {"metadata": {"namespace": "app", "name": "idle"},
+             "spec": {"replicas": 0, "template": {"spec": {"containers": []}}},
+             "status": {}},
+        ]})
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"deployments": payload})
+        csv_mod.step_deployments("p1", tmp_path, ";", [("c1", "us")], [])
+        content = (tmp_path / "deployments.csv").read_text(encoding="utf-8")
+        assert '"0/0"' in content
+
+    def test_gateways_fields_and_status(self, csv_mod, monkeypatch, tmp_path):
+        payload = json.dumps({"items": [
+            {"metadata": {"namespace": "gw-ns", "name": "gw-main"},
+             "spec": {"gatewayClassName": "gke-l7-global-external-managed",
+                      "listeners": [{"port": 80, "protocol": "HTTP"},
+                                    {"port": 443, "protocol": "HTTPS"}]},
+             "status": {"addresses": [{"value": "34.1.2.3"}],
+                        "conditions": [{"type": "Programmed", "status": "True"}]}},
+        ]})
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"gateways": payload})
+        csv_mod.step_gateways("p1", tmp_path, ";", [("c1", "us")], [])
+        lines = (tmp_path / "gateways.csv").read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "NAMESPACE;CLUSTER;NAME;CLASS;LISTENERS;ADDRESSES;STATUS"
+        row = lines[1]
+        assert "gke-l7-global-external-managed" in row
+        assert "80/HTTP;443/HTTPS" in row
+        assert "34.1.2.3" in row and "Programmed" in row
+
+    def test_gateways_status_accepted_and_unknown(self, csv_mod):
+        assert csv_mod._gateway_status({"status": {"conditions": [
+            {"type": "Accepted", "status": "True"}]}}) == "Accepted"
+        assert csv_mod._gateway_status({"status": {}}) == "Unknown"
+        assert csv_mod._gateway_status({"status": {"conditions": [
+            {"type": "Ready", "status": "False", "reason": "Pending"}]}}) == "Pending"
+
+    def test_gateways_no_crd_header_only(self, csv_mod, monkeypatch, tmp_path):
+        """Cluster sin Gateway API → kubectl falla → CSV solo header."""
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"gateways": ""})
+        csv_mod.step_gateways("p1", tmp_path, ";", [("c1", "us")], [])
+        lines = (tmp_path / "gateways.csv").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+
+    def test_httproutes_fields(self, csv_mod, monkeypatch, tmp_path):
+        payload = json.dumps({"items": [
+            {"metadata": {"namespace": "app", "name": "route-1"},
+             "spec": {"hostnames": ["api.example.com"],
+                      "parentRefs": [{"name": "gw-main", "namespace": "gw-ns"}],
+                      "rules": [
+                          {"matches": [{"path": {"value": "/api"}},
+                                       {"path": {"value": "/api"}}],
+                           "backendRefs": [{"name": "svc-a"}, {"name": "svc-a"}]},
+                          {"matches": [{"path": {"value": "/v2"}}],
+                           "backendRefs": [{"name": "svc-b"}]},
+                      ]}},
+        ]})
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"httproutes": payload})
+        csv_mod.step_httproutes("p1", tmp_path, ";", [("c1", "us")], [])
+        lines = (tmp_path / "httproutes.csv").read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "NAMESPACE;CLUSTER;NAME;HOSTNAMES;GATEWAYS;RULES;PATHS;BACKENDS"
+        row = lines[1]
+        assert "api.example.com" in row
+        assert "gw-ns/gw-main" in row
+        assert '"2"' in row                  # RULES
+        assert "/api;/v2" in row             # paths deduplicados
+        assert "svc-a;svc-b" in row          # backends deduplicados
+
+    def test_httproutes_excludes_namespaces(self, csv_mod, monkeypatch, tmp_path):
+        payload = json.dumps({"items": [
+            {"metadata": {"namespace": "datadog", "name": "dd"}, "spec": {}},
+            {"metadata": {"namespace": "app", "name": "ok"}, "spec": {}},
+        ]})
+        self._mock_kubectl(csv_mod, monkeypatch, tmp_path, {"httproutes": payload})
+        csv_mod.step_httproutes("p1", tmp_path, ";", [("c1", "us")], ["datadog"])
+        content = (tmp_path / "httproutes.csv").read_text(encoding="utf-8")
+        assert '"ok"' in content and "dd" not in content
+
+    def test_kubectl_json_invalid_json(self, csv_mod, monkeypatch, tmp_path):
+        """JSON inválido → lista vacía (no rompe el paso)."""
+        kcfg = tmp_path / "kcfg"
+        monkeypatch.setattr(csv_mod, "_kubectl_env_for_cluster",
+                            lambda p, c, l: ({}, str(kcfg)))
+        monkeypatch.setattr(csv_mod, "run_cmd", lambda *a, **k: "not-json{")
+        assert csv_mod._kubectl_json("p", "c", "l", "gateways") == []
+
+
+class TestInventoryExcelTipos:
+    def test_tipos_incluye_gateways_y_httproutes(self):
+        content = (INVENTORY_DIR /
+                   "generar-inventario-csv-combinar-a-excel.py").read_text(
+                       encoding="utf-8")
+        assert '"gateways"' in content and '"httproutes"' in content
+
+    def test_tipos_deployments_con_ready_y_containers(self):
+        content = (INVENTORY_DIR /
+                   "generar-inventario-csv-combinar-a-excel.py").read_text(
+                       encoding="utf-8")
+        deps = next(l for l in content.splitlines() if '"deployments"' in l)
+        assert '"READY"' in deps and '"CONTAINERS"' in deps and '"IMAGES"' in deps
+
+
+class TestInventoryExcelHeaderStyle:
+    """Las hojas de datos llevan el mismo estilo de encabezado que las de análisis."""
+
+    def test_data_sheets_header_styled(self, tmp_path):
+        pd = pytest.importorskip("pandas")
+        openpyxl = pytest.importorskip("openpyxl")
+        import subprocess
+
+        # CSVs falsos: carpeta inventario-<proyecto>-<ts> con 2 tipos
+        proj_dir = tmp_path / "inventario-proj-dev-20261007_120000"
+        proj_dir.mkdir()
+        (proj_dir / "clusters.csv").write_text(
+            '"NAME";"LOCATION";"VERSION";"CURRENT_VERSION";"STATUS";"MACHINE_TYPE"\n'
+            '"c1";"us-east1";"1.30";"1.30";"RUNNING";"e2-medium"\n',
+            encoding="utf-8")
+        (proj_dir / "deployments.csv").write_text(
+            '"NAMESPACE";"CLUSTER";"DEPLOYMENT";"READY";"CONTAINERS";"IMAGES"\n'
+            '"app";"c1";"web";"2/3";"app=img:v1";"img:v1"\n',
+            encoding="utf-8")
+
+        env = os.environ.copy()
+        env["DEVSECOPS_OUTPUT_DIR"] = str(tmp_path)
+        result = subprocess.run(
+            [sys.executable,
+             str(INVENTORY_DIR / "generar-inventario-csv-combinar-a-excel.py")],
+            env=env, capture_output=True, text=True, timeout=300)
+        assert result.returncode == 0, result.stderr[-500:]
+
+        xlsx = next(tmp_path.glob("Inventario_Completo_*.xlsx"))
+        wb = openpyxl.load_workbook(xlsx)
+        for sheet in ("CLUSTERS", "DEPLOYMENTS"):
+            ws = wb[sheet]
+            a1 = ws["A1"]
+            assert a1.font.bold is True, f"{sheet}: encabezado sin bold"
+            assert a1.fill.fgColor.rgb.endswith("4472C4"), \
+                f"{sheet}: fill {a1.fill.fgColor.rgb} ≠ azul del resto del libro"
+            assert ws.freeze_panes == "A2", f"{sheet}: encabezado sin congelar"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # run_inventory.py + combinar-a-excel.py
 # ═══════════════════════════════════════════════════════════════════════════
 

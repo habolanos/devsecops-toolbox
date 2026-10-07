@@ -44,7 +44,7 @@ fi
 DELIMITER=";"
 MAX_PARALLEL=4
 PROGRESS_DIR="/tmp/inventario-progress-$$"
-TOTAL_STEPS=8
+TOTAL_STEPS=10
 
 # Función para mostrar tiempo
 format_time() {
@@ -160,7 +160,7 @@ case "$OUTCOME_DIR" in
 esac
 
 echo -e "${CYN}╔$(printf '═%.0s' $(seq 1 $BOX_W))╗${RST}"
-pad_line "  ${BOLD}${WHT}📋 INVENTARIO GKE + CLOUD SQL${RST}"
+pad_line "  ${BOLD}${WHT}📋 INVENTARIO GCP — GKE · SQL · RUN · PUBSUB${RST}"
 echo -e "${CYN}╠$(printf '═%.0s' $(seq 1 $BOX_W))╣${RST}"
 pad_line "  ${GRB}Separador${RST}    : ${YLW}'${DELIMITER}'${RST}"
 pad_line "  ${GRB}Proyectos${RST}    : ${WHT}${#PROJECTS[@]}${RST}"
@@ -306,7 +306,7 @@ except: pass
   SECTION_START=$(date +%s)
   update_progress "$PROJECT_ID" 2 "deployments" "running"
   echo -e "  ${CYN}❷${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}deployments.csv${RST}"
-  echo "NAMESPACE${DELIM}CLUSTER${DELIM}DEPLOYMENT${DELIM}IMAGES" > "$PROJECT_OUT_DIR/deployments.csv"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}DEPLOYMENT${DELIM}READY${DELIM}CONTAINERS${DELIM}IMAGES" > "$PROJECT_OUT_DIR/deployments.csv"
 
   local CLUSTERS=$(gcloud container clusters list --project="$PROJECT_ID" --format="value(name,location)" --quiet 2>/dev/null || true)
 
@@ -317,14 +317,30 @@ except: pass
       KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
       KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
 
-      KUBECONFIG="$KCFG" kubectl get deployments --all-namespaces \
-        -o custom-columns="NAMESPACE:.metadata.namespace,DEPLOYMENT:.metadata.name,IMAGES:.spec.template.spec.containers[*].image" \
-        --no-headers 2>/dev/null | filter_ns | \
-        while read -r ns deploy images; do
-          images_clean=$(echo "$images" | sed 's/,/;/g' | sed 's/"//g')
-          printf '"%s"%s"%s"%s"%s"%s"%s"\n' "$ns" "$DELIM" "$CLUSTER" "$DELIM" "$deploy" "$DELIM" "$images_clean" \
-            >> "$PROJECT_OUT_DIR/deployments.csv"
-        done || true
+      KUBECONFIG="$KCFG" kubectl get deployments --all-namespaces -o json 2>/dev/null | \
+        DELIM="$DELIM" CLUSTER="$CLUSTER" EXCLUDE_PATTERN="${EXCLUDE_PATTERN:-}" python3 -c "
+import json,sys,csv,os,re
+w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
+excl=os.environ.get('EXCLUDE_PATTERN','')
+pat=re.compile(r'^('+excl+r')$') if excl else None
+try:
+ data=sys.stdin.read().strip()
+ if data:
+  d=json.loads(data)
+  for it in d.get('items',[]):
+   m=it.get('metadata',{})
+   ns=m.get('namespace','')
+   if pat and pat.match(ns): continue
+   spec=it.get('spec',{}); st=it.get('status',{})
+   reps=spec.get('replicas',1) or 0
+   ready=st.get('readyReplicas',0) or 0
+   ts=spec.get('template',{}).get('spec',{})
+   pairs=[f\"{c.get('name','?')}={c.get('image','')}\" for c in ts.get('containers',[])]
+   pairs+=[f\"init:{c.get('name','?')}={c.get('image','')}\" for c in ts.get('initContainers',[])]
+   imgs=[c.get('image','') for c in ts.get('containers',[])+ts.get('initContainers',[])]
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),f'{ready}/{reps}',';'.join(pairs),';'.join(imgs)])
+except: pass
+" >> "$PROJECT_OUT_DIR/deployments.csv"
       rm -f "$KCFG"
     done
   fi
@@ -487,10 +503,98 @@ except: pass
 " > "$PROJECT_OUT_DIR/pubsub.csv"
   echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] pubsub: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
 
+  # 9. Gateways (Gateway API) - JSON → Python csv.writer
+  #    Cluster sin CRDs de Gateway API → CSV solo con header.
+  SECTION_START=$(date +%s)
+  update_progress "$PROJECT_ID" 9 "gateways" "running"
+  echo -e "  ${BLU}❾${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}gateways.csv${RST}"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}CLASS${DELIM}LISTENERS${DELIM}ADDRESSES${DELIM}STATUS" > "$PROJECT_OUT_DIR/gateways.csv"
+
+  if [ -n "$CLUSTERS" ]; then
+    echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
+      KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
+      KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
+
+      KUBECONFIG="$KCFG" kubectl get gateways --all-namespaces -o json 2>/dev/null | \
+        DELIM="$DELIM" CLUSTER="$CLUSTER" EXCLUDE_PATTERN="${EXCLUDE_PATTERN:-}" python3 -c "
+import json,sys,csv,os,re
+w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
+excl=os.environ.get('EXCLUDE_PATTERN','')
+pat=re.compile(r'^('+excl+r')$') if excl else None
+def gw_status(g):
+  conds=g.get('status',{}).get('conditions',[])
+  for c in conds:
+    if c.get('type')=='Programmed' and c.get('status')=='True': return 'Programmed'
+  for c in conds:
+    if c.get('type')=='Accepted' and c.get('status')=='True': return 'Accepted'
+  return (conds[-1].get('reason') or conds[-1].get('type')) if conds else 'Unknown'
+try:
+ data=sys.stdin.read().strip()
+ if data:
+  d=json.loads(data)
+  for it in d.get('items',[]):
+   m=it.get('metadata',{})
+   ns=m.get('namespace','')
+   if pat and pat.match(ns): continue
+   spec=it.get('spec',{})
+   listeners=';'.join(f\"{l.get('port','')}/{l.get('protocol','')}\" for l in spec.get('listeners',[]))
+   addrs=';'.join(a.get('value','') for a in it.get('status',{}).get('addresses',[]))
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),spec.get('gatewayClassName',''),listeners,addrs,gw_status(it)])
+except: pass
+" >> "$PROJECT_OUT_DIR/gateways.csv"
+      rm -f "$KCFG"
+    done
+  fi
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] gateways: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
+
+  # 10. HTTPRoutes (Gateway API) - JSON → Python csv.writer
+  SECTION_START=$(date +%s)
+  update_progress "$PROJECT_ID" 10 "httproutes" "running"
+  echo -e "  ${BLU}❿${RST} ${WHT}[${PROJECT_ID}]${RST} ${DIM}httproutes.csv${RST}"
+  echo "NAMESPACE${DELIM}CLUSTER${DELIM}NAME${DELIM}HOSTNAMES${DELIM}GATEWAYS${DELIM}RULES${DELIM}PATHS${DELIM}BACKENDS" > "$PROJECT_OUT_DIR/httproutes.csv"
+
+  if [ -n "$CLUSTERS" ]; then
+    echo "$CLUSTERS" | while read -r CLUSTER LOCATION; do
+      KCFG="$PROGRESS_DIR/kube-$PROJECT_ID-$CLUSTER.yaml"
+      KUBECONFIG="$KCFG" gcloud container clusters get-credentials "$CLUSTER" --location="$LOCATION" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
+
+      KUBECONFIG="$KCFG" kubectl get httproutes --all-namespaces -o json 2>/dev/null | \
+        DELIM="$DELIM" CLUSTER="$CLUSTER" EXCLUDE_PATTERN="${EXCLUDE_PATTERN:-}" python3 -c "
+import json,sys,csv,os,re
+w=csv.writer(sys.stdout,delimiter=os.environ['DELIM'],quoting=csv.QUOTE_ALL)
+excl=os.environ.get('EXCLUDE_PATTERN','')
+pat=re.compile(r'^('+excl+r')$') if excl else None
+try:
+ data=sys.stdin.read().strip()
+ if data:
+  d=json.loads(data)
+  for it in d.get('items',[]):
+   m=it.get('metadata',{})
+   ns=m.get('namespace','')
+   if pat and pat.match(ns): continue
+   spec=it.get('spec',{})
+   parents=';'.join((p.get('namespace','')+'/'+p.get('name','')) if p.get('namespace') else p.get('name','') for p in spec.get('parentRefs',[]))
+   rules=spec.get('rules',[])
+   paths=[];backends=[]
+   for r in rules:
+    for mt in r.get('matches',[]):
+     pth=mt.get('path',{}).get('value','/')
+     if pth not in paths: paths.append(pth)
+    for b in r.get('backendRefs',[]):
+     bn=b.get('name','')
+     if bn and bn not in backends: backends.append(bn)
+   w.writerow([ns,os.environ['CLUSTER'],m.get('name',''),';'.join(spec.get('hostnames',[])),parents,str(len(rules)),';'.join(paths),';'.join(backends)])
+except: pass
+" >> "$PROJECT_OUT_DIR/httproutes.csv"
+      rm -f "$KCFG"
+    done
+  fi
+  echo -e "   ${GRN}└─${RST} [${PROJECT_ID}] httproutes: ${YLW}$(format_time $(( $(date +%s) - SECTION_START )))${RST}"
+
   # Cleanup kubeconfig aislado
   rm -f "$KUBECONFIG"
 
-  update_progress "$PROJECT_ID" 8 "completado" "done"
+  update_progress "$PROJECT_ID" 10 "completado" "done"
   # Incrementar contador compartido
   local count=$(cat "$COMPLETED_FILE" 2>/dev/null || echo 0)
   echo $((count + 1)) > "$COMPLETED_FILE"

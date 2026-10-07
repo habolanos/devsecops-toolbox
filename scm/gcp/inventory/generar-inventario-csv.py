@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 """
-Inventario GKE + Cloud SQL - Generador CSV
+Inventario GCP (GKE · Cloud SQL · Cloud Run · Pub/Sub) - Generador CSV
 
 Versión Python con interfaz Rich: spinners, progreso por hilo,
 barra de avance global y salida colorida.
@@ -112,7 +112,7 @@ except ImportError:
 SCRIPT_DIR = Path(__file__).parent.resolve()
 CONFIG_FILE = SCRIPT_DIR / "generar-inventario-csv.config"
 OUTCOME_DIR = resolve_outcome_dir()
-TOTAL_STEPS = 8
+TOTAL_STEPS = 10
 
 # Flags de configuración global (se setean en main() desde args/env/config)
 _DEBUG = False
@@ -129,6 +129,8 @@ STEP_NAMES = {
     6: "ingress",
     7: "cloudrun",
     8: "pubsub",
+    9: "gateways",
+    10: "httproutes",
 }
 
 STEP_ICONS = {
@@ -140,6 +142,8 @@ STEP_ICONS = {
     6: "🌐",
     7: "🏃",
     8: "📨",
+    9: "🚪",
+    10: "🛤️",
 }
 
 STEP_COLORS = {
@@ -151,6 +155,8 @@ STEP_COLORS = {
     6: "blue",
     7: "yellow",
     8: "yellow",
+    9: "blue",
+    10: "blue",
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -267,6 +273,57 @@ def get_clusters(project_id: str) -> list:
     return clusters
 
 
+def _kubectl_env_for_cluster(project_id: str, cluster_name: str, location: str) -> tuple:
+    """Crea kubeconfig aislado por cluster y obtiene credenciales.
+
+    Retorna (env, kubeconfig_path). El kubeconfig aislado evita el
+    read-modify-write no atómico de ~/.kube/config cuando los proyectos
+    corren en paralelo.
+    """
+    _fd, kubeconfig = tempfile.mkstemp(prefix=f"kubeconfig-inv-{project_id}-")
+    os.close(_fd)
+    os.unlink(kubeconfig)
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig
+    run_cmd([
+        "gcloud", "container", "clusters", "get-credentials", cluster_name,
+        "--location", location, "--project", project_id, "--quiet"
+    ], env=env, capture=False)
+    return env, kubeconfig
+
+
+def _rm_quiet(path) -> None:
+    """Elimina un archivo ignorando errores (kubeconfig temporal)."""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def _kubectl_json(project_id: str, cluster_name: str, location: str,
+                  resource: str) -> list:
+    """Ejecuta `kubectl get <resource> -A -o json` con kubeconfig aislado.
+
+    Retorna la lista de items ([] si el cluster no tiene el CRD, kubectl
+    falla, o el JSON no parsea).
+    """
+    env, kubeconfig = _kubectl_env_for_cluster(project_id, cluster_name, location)
+    try:
+        output = run_cmd(
+            ["kubectl", "get", resource, "--all-namespaces", "-o", "json"],
+            env=env,
+        )
+    finally:
+        _rm_quiet(kubeconfig)
+    data = output.strip()
+    if not data:
+        return []
+    try:
+        return json.loads(data).get("items", [])
+    except (json.JSONDecodeError, AttributeError):
+        return []
+
+
 def step_clusters(project_id: str, out_dir: Path, delim: str) -> None:
     """1. Clusters GKE → clusters.csv"""
     output = run_cmd([
@@ -291,42 +348,45 @@ def step_clusters(project_id: str, out_dir: Path, delim: str) -> None:
                 pass
 
 
+def _deploy_containers(spec: dict) -> tuple:
+    """Extrae (pares name=image, solo images) de un pod template.
+
+    Incluye initContainers con prefijo 'init:' en los pares.
+    """
+    tmpl_spec = spec.get("template", {}).get("spec", {})
+    pairs = []
+    images = []
+    for c in tmpl_spec.get("containers", []):
+        pairs.append(f"{c.get('name', '?')}={c.get('image', '')}")
+        images.append(c.get("image", ""))
+    for c in tmpl_spec.get("initContainers", []):
+        pairs.append(f"init:{c.get('name', '?')}={c.get('image', '')}")
+        images.append(c.get("image", ""))
+    return pairs, images
+
+
 def step_deployments(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
-    """2. Deployments → deployments.csv"""
+    """2. Deployments → deployments.csv (con READY y CONTAINERS name=image)."""
     with open(out_dir / "deployments.csv", "w", newline="", encoding="utf-8") as f:
-        f.write(f"NAMESPACE{delim}CLUSTER{delim}DEPLOYMENT{delim}IMAGES\n")
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}DEPLOYMENT{delim}READY{delim}CONTAINERS{delim}IMAGES\n")
 
     for cluster_name, location in clusters:
-        _fd, kubeconfig = tempfile.mkstemp(prefix=f"kubeconfig-inv-{project_id}-")
-        os.close(_fd)
-        os.unlink(kubeconfig)
-        env = os.environ.copy()
-        env["KUBECONFIG"] = kubeconfig
-
-        run_cmd([
-            "gcloud", "container", "clusters", "get-credentials", cluster_name,
-            "--location", location, "--project", project_id, "--quiet"
-        ], env=env, capture=False)
-
-        output = run_cmd([
-            "kubectl", "get", "deployments", "--all-namespaces",
-            "-o", "custom-columns=NAMESPACE:.metadata.namespace,DEPLOYMENT:.metadata.name,IMAGES:.spec.template.spec.containers[*].image",
-            "--no-headers"
-        ], env=env)
-
-        lines = filter_namespaces(output.strip().splitlines(), exclude_ns)
+        items = _kubectl_json(project_id, cluster_name, location, "deployments")
         with open(out_dir / "deployments.csv", "a", newline="", encoding="utf-8") as f:
-            for line in lines:
-                parts = line.strip().split(None, 2)
-                if len(parts) >= 3:
-                    ns, deploy, images = parts[0], parts[1], parts[2]
-                    images_clean = images.replace(",", ";").replace('"', "")
-                    f.write(f'"{ns}"{delim}"{cluster_name}"{delim}"{deploy}"{delim}"{images_clean}"\n')
-
-        try:
-            os.unlink(kubeconfig)
-        except OSError:
-            pass
+            for d in items:
+                meta = d.get("metadata", {})
+                ns = meta.get("namespace", "")
+                if ns in exclude_ns:
+                    continue
+                spec = d.get("spec", {})
+                status = d.get("status", {})
+                replicas = spec.get("replicas", 1) or 0
+                ready = status.get("readyReplicas", 0) or 0
+                pairs, images = _deploy_containers(spec)
+                f.write(
+                    f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
+                    f'"{ready}/{replicas}"{delim}"{";".join(pairs)}"{delim}"{";".join(images)}"\n'
+                )
 
 
 def step_services(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
@@ -335,16 +395,7 @@ def step_services(project_id: str, out_dir: Path, delim: str, clusters: list, ex
         f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}TYPE{delim}CLUSTER-IP{delim}EXTERNAL-IP{delim}PORTS\n")
 
     for cluster_name, location in clusters:
-        _fd, kubeconfig = tempfile.mkstemp(prefix=f"kubeconfig-inv-{project_id}-")
-        os.close(_fd)
-        os.unlink(kubeconfig)
-        env = os.environ.copy()
-        env["KUBECONFIG"] = kubeconfig
-
-        run_cmd([
-            "gcloud", "container", "clusters", "get-credentials", cluster_name,
-            "--location", location, "--project", project_id, "--quiet"
-        ], env=env, capture=False)
+        env, kubeconfig = _kubectl_env_for_cluster(project_id, cluster_name, location)
 
         output = run_cmd([
             "kubectl", "get", "services", "--all-namespaces",
@@ -362,10 +413,7 @@ def step_services(project_id: str, out_dir: Path, delim: str, clusters: list, ex
                     ports_clean = ports.replace(",", ";").replace('"', "")
                     f.write(f'"{ns}"{delim}"{cluster_name}"{delim}"{name}"{delim}"{stype}"{delim}"{cip}"{delim}"{eip_clean}"{delim}"{ports_clean}"\n')
 
-        try:
-            os.unlink(kubeconfig)
-        except OSError:
-            pass
+        _rm_quiet(kubeconfig)
 
 
 def step_cloudsql(project_id: str, out_dir: Path, delim: str) -> int:
@@ -437,16 +485,7 @@ def step_ingress(project_id: str, out_dir: Path, delim: str, clusters: list, exc
         f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}HOSTS{delim}ADDRESS{delim}PORTS\n")
 
     for cluster_name, location in clusters:
-        _fd, kubeconfig = tempfile.mkstemp(prefix=f"kubeconfig-inv-{project_id}-")
-        os.close(_fd)
-        os.unlink(kubeconfig)
-        env = os.environ.copy()
-        env["KUBECONFIG"] = kubeconfig
-
-        run_cmd([
-            "gcloud", "container", "clusters", "get-credentials", cluster_name,
-            "--location", location, "--project", project_id, "--quiet"
-        ], env=env, capture=False)
+        env, kubeconfig = _kubectl_env_for_cluster(project_id, cluster_name, location)
 
         output = run_cmd([
             "kubectl", "get", "ingress", "--all-namespaces",
@@ -465,10 +504,7 @@ def step_ingress(project_id: str, out_dir: Path, delim: str, clusters: list, exc
                     ports_clean = ports.replace(",", ";").replace('"', "")
                     f.write(f'"{ns}"{delim}"{cluster_name}"{delim}"{name}"{delim}"{hosts_clean}"{delim}"{addr_clean}"{delim}"{ports_clean}"\n')
 
-        try:
-            os.unlink(kubeconfig)
-        except OSError:
-            pass
+        _rm_quiet(kubeconfig)
 
     # Limpiar líneas vacías
     csv_path = out_dir / "ingress.csv"
@@ -528,6 +564,89 @@ def step_pubsub(project_id: str, out_dir: Path, delim: str) -> None:
                 pass
 
 
+def _gateway_status(gw: dict) -> str:
+    """Estado del Gateway según condiciones (Programmed > Accepted > Unknown)."""
+    conditions = gw.get("status", {}).get("conditions", [])
+    for cond in conditions:
+        if cond.get("type") == "Programmed" and cond.get("status") == "True":
+            return "Programmed"
+    for cond in conditions:
+        if cond.get("type") == "Accepted" and cond.get("status") == "True":
+            return "Accepted"
+    if conditions:
+        last = conditions[-1]
+        return last.get("reason") or last.get("type") or "Unknown"
+    return "Unknown"
+
+
+def step_gateways(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
+    """9. Gateways (Gateway API) → gateways.csv
+
+    Cluster sin los CRDs de Gateway API → kubectl falla → CSV solo header.
+    """
+    with open(out_dir / "gateways.csv", "w", newline="", encoding="utf-8") as f:
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}CLASS{delim}LISTENERS{delim}ADDRESSES{delim}STATUS\n")
+
+    for cluster_name, location in clusters:
+        items = _kubectl_json(project_id, cluster_name, location, "gateways")
+        with open(out_dir / "gateways.csv", "a", newline="", encoding="utf-8") as f:
+            for gw in items:
+                meta = gw.get("metadata", {})
+                ns = meta.get("namespace", "")
+                if ns in exclude_ns:
+                    continue
+                spec = gw.get("spec", {})
+                listeners = ";".join(
+                    f"{l.get('port', '')}/{l.get('protocol', '')}"
+                    for l in spec.get("listeners", [])
+                )
+                addresses = ";".join(
+                    a.get("value", "") for a in gw.get("status", {}).get("addresses", [])
+                )
+                f.write(
+                    f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
+                    f'"{spec.get("gatewayClassName", "")}"{delim}"{listeners}"{delim}'
+                    f'"{addresses}"{delim}"{_gateway_status(gw)}"\n'
+                )
+
+
+def step_httproutes(project_id: str, out_dir: Path, delim: str, clusters: list, exclude_ns: list) -> None:
+    """10. HTTPRoutes (Gateway API) → httproutes.csv"""
+    with open(out_dir / "httproutes.csv", "w", newline="", encoding="utf-8") as f:
+        f.write(f"NAMESPACE{delim}CLUSTER{delim}NAME{delim}HOSTNAMES{delim}GATEWAYS{delim}RULES{delim}PATHS{delim}BACKENDS\n")
+
+    for cluster_name, location in clusters:
+        items = _kubectl_json(project_id, cluster_name, location, "httproutes")
+        with open(out_dir / "httproutes.csv", "a", newline="", encoding="utf-8") as f:
+            for r in items:
+                meta = r.get("metadata", {})
+                ns = meta.get("namespace", "")
+                if ns in exclude_ns:
+                    continue
+                spec = r.get("spec", {})
+                parents = ";".join(
+                    f"{p['namespace']}/{p['name']}" if p.get("namespace") else p.get("name", "")
+                    for p in spec.get("parentRefs", [])
+                )
+                rules = spec.get("rules", [])
+                paths = []
+                backends = []
+                for rule in rules:
+                    for match in rule.get("matches", []):
+                        path = match.get("path", {}).get("value", "/")
+                        if path not in paths:
+                            paths.append(path)
+                    for b in rule.get("backendRefs", []):
+                        bname = b.get("name", "")
+                        if bname and bname not in backends:
+                            backends.append(bname)
+                f.write(
+                    f'"{ns}"{delim}"{cluster_name}"{delim}"{meta.get("name", "")}"{delim}'
+                    f'"{";".join(spec.get("hostnames", []))}"{delim}"{parents}"{delim}'
+                    f'"{len(rules)}"{delim}"{";".join(paths)}"{delim}"{";".join(backends)}"\n'
+                )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PROCESAMIENTO DE PROYECTO
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -535,7 +654,7 @@ def step_pubsub(project_id: str, out_dir: Path, delim: str) -> None:
 def process_project(project_id: str, delim: str, exclude_ns: list,
                     progress: Progress, task_id: int, console: Console,
                     print_lock: Lock) -> dict:
-    """Procesa un proyecto completo (8 pasos). Retorna resumen."""
+    """Procesa un proyecto completo (10 pasos). Retorna resumen."""
     project_start = time.time()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = OUTCOME_DIR / f"inventario-{project_id}-{timestamp}"
@@ -543,7 +662,7 @@ def process_project(project_id: str, delim: str, exclude_ns: list,
 
     results = {"project": project_id, "steps": {}, "time": 0, "out_dir": str(out_dir)}
 
-    # Obtener clusters (necesario para pasos 2,3,6)
+    # Obtener clusters (necesario para pasos 2,3,6,9,10)
     clusters = get_clusters(project_id)
 
     # Definir pasos
@@ -556,6 +675,8 @@ def process_project(project_id: str, delim: str, exclude_ns: list,
         (6, lambda: step_ingress(project_id, out_dir, delim, clusters, exclude_ns)),
         (7, lambda: step_cloudrun(project_id, out_dir, delim)),
         (8, lambda: step_pubsub(project_id, out_dir, delim)),
+        (9, lambda: step_gateways(project_id, out_dir, delim, clusters, exclude_ns)),
+        (10, lambda: step_httproutes(project_id, out_dir, delim, clusters, exclude_ns)),
     ]
 
     instance_count = 0
@@ -613,7 +734,7 @@ def print_header_rich(console: Console, projects: list, exclude_ns: list,
                       out_dir: Path):
     """Muestra header con Rich Panel."""
     content = Text()
-    content.append("📋 INVENTARIO GKE + CLOUD SQL\n\n", style="bold white")
+    content.append("📋 INVENTARIO GCP — GKE · CLOUD SQL · CLOUD RUN · PUB/SUB\n\n", style="bold white")
     content.append("Separador    : ", style="dim")
     content.append(f"'{delimiter}'\n", style="yellow")
     content.append("Proyectos    : ", style="dim")
@@ -663,7 +784,7 @@ def print_summary_rich(console: Console, results: list, total_time: float,
 
 def print_header_fallback(projects, exclude_ns, delimiter, max_parallel, sequential, out_dir):
     print("=" * 60)
-    print("  INVENTARIO GKE + CLOUD SQL - CSV")
+    print("  INVENTARIO GCP (GKE · CLOUD SQL · CLOUD RUN · PUB/SUB) - CSV")
     print(f"  Separador    : '{delimiter}'")
     print(f"  Proyectos    : {len(projects)}")
     for p in projects:
@@ -690,8 +811,15 @@ def print_summary_fallback(results, total_time, max_parallel, out_dir):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
+    # UTF-8 stdio: consolas cp1252 (Windows) no imprimen emojis/Unicode.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
-        description="Inventario GKE + Cloud SQL - Generador CSV",
+        description="Inventario GCP (GKE · Cloud SQL · Cloud Run · Pub/Sub) - Generador CSV",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("projects", nargs="*", help="IDs de proyectos GCP")
@@ -804,6 +932,8 @@ def main():
                 lambda: step_ingress(p, out_dir, args.delimiter, clusters, exclude_ns),
                 lambda: step_cloudrun(p, out_dir, args.delimiter),
                 lambda: step_pubsub(p, out_dir, args.delimiter),
+                lambda: step_gateways(p, out_dir, args.delimiter, clusters, exclude_ns),
+                lambda: step_httproutes(p, out_dir, args.delimiter, clusters, exclude_ns),
             ]
 
             for i, fn in enumerate(step_fns, 1):
