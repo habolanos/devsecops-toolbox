@@ -425,6 +425,9 @@ def build_actionables(definition: dict, violations: list,
         rule = {"name": var, "action": action, "scope": scope}
         if action != "remove":
             rule["value"] = value
+            # Las variables del pipeline CD no deben quedar "settable at
+            # release time": ambos engines defaultan allowOverride=true
+            rule["allowOverride"] = False
         if scope == "environment":
             rule["stage"] = stage
         if secret:
@@ -728,6 +731,7 @@ def edit_rules(rules: list, prompt_fn=None, match=None) -> list:
                 if action == "remove":
                     nr["action"] = "update"
                     nr["note"] = "valor definido por usuario (edición manual)"
+                    nr.setdefault("allowOverride", False)
                 nr["value"] = val
                 edited.append(nr)
                 break
@@ -881,6 +885,7 @@ def generate_release_template(rules: list, release_id: str,
             v["action"] = "remove"
         else:
             v["value"] = r.get("value")
+            v["allowOverride"] = r.get("allowOverride", False)
         if "isSecret" in r:
             v["isSecret"] = r["isSecret"]
         target.append(v)

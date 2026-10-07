@@ -716,13 +716,15 @@ class TestReleaseTemplate:
         assert tpl["release"]["ids"] == ["61062"]
         ev = tpl["update"]["env_vars"]
         assert ev[0] == {"stage": "Production", "name": "ksa",
-                         "value": "v1", "isSecret": True}
-        assert ev[1] == {"stage": "QA", "name": "nueva", "value": "n"}
+                         "value": "v1", "allowOverride": False,
+                         "isSecret": True}
+        assert ev[1] == {"stage": "QA", "name": "nueva", "value": "n",
+                         "allowOverride": False}
         assert ev[2] == {"stage": "Production", "name": "old",
                          "action": "remove"}
         gv = tpl["update"]["global_vars"]
         assert gv == [{"name": "tuSecret", "value": "x",
-                       "isSecret": False}]
+                       "allowOverride": False, "isSecret": False}]
 
     def test_apply_invoca_engine_opcion_42(self, monkeypatch, tmp_path):
         calls = []
@@ -816,6 +818,64 @@ class _Args:
     interactive = True
     target = "definition"
     redeploy = False
+
+
+class TestAllowOverride:
+    """Las reglas generadas fijan allowOverride=False — las variables del
+    pipeline CD no deben quedar 'settable at release time'."""
+
+    def _def(self):
+        return {"variables": {}, "environments": [
+            {"name": "Develop", "variables": {}},
+            {"name": "Production", "variables": {
+                "ksaSecretManager": {"value": "s1"}}}]}
+
+    def test_reglas_llevan_allowOverride_false(self):
+        a = rem.build_actionables(self._def(), [
+            _v("RULE_1_SECRET", "Production", "ksaSecretManager")])
+        assert a["rules"]
+        assert all(r.get("allowOverride") is False for r in a["rules"]
+                   if r["action"] != "remove")
+
+    def test_template_incluye_allowOverride(self, tmp_path):
+        rules = [{"name": "x", "action": "add", "scope": "environment",
+                  "stage": "Develop", "value": "v", "allowOverride": False}]
+        p = rem.generate_template(rules, "1", "p", out_dir=tmp_path)
+        tpl = yaml.safe_load(p.read_text(encoding="utf-8"))
+        assert tpl["update"]["variables"][0]["allowOverride"] is False
+
+    def test_release_template_incluye_allowOverride(self, tmp_path):
+        rules = [{"name": "x", "action": "add", "scope": "environment",
+                  "stage": "QA", "value": "v", "allowOverride": False}]
+        p = rem.generate_release_template(rules, "9", "p", out_dir=tmp_path)
+        tpl = yaml.safe_load(p.read_text(encoding="utf-8"))
+        assert tpl["update"]["env_vars"][0]["allowOverride"] is False
+
+    def test_remove_no_lleva_allowOverride(self):
+        a = rem.build_actionables(self._def(), [
+            _v("RULE_1_SECRET", "Production", "ksaSecretManager")],
+            removes={"ksaSecretManager"})
+        assert a["rules"]
+        assert all("allowOverride" not in r for r in a["rules"])
+
+    def test_engine_honora_allowOverride_extra(self):
+        from scm.azdo.pipeline_cd_update_release.\
+            pipeline_cd_update_release import build_patch_payload
+        rel = {"variables": {"g": {"value": "1", "allowOverride": False}},
+               "environments": [{"name": "QA", "variables": {
+                   "v": {"value": "a", "allowOverride": False},
+                   "w": {"value": "b", "allowOverride": False}}}]}
+        payload, _ = build_patch_payload(
+            rel, ["g=2"], ["QA,v=x", "QA,w=y", "QA,new=n"],
+            False, "", [None] * 3, [], ["*"], [], [None], "",
+            env_var_extras=[{"allowOverride": True}, {},
+                            {"allowOverride": False}],
+            global_var_extras=[{}])
+        qa = payload["environments"][0]["variables"]
+        assert payload["variables"]["g"]["allowOverride"] is False
+        assert qa["v"]["allowOverride"] is True    # explícito en extras
+        assert qa["w"]["allowOverride"] is False   # preservado del existente
+        assert qa["new"]["allowOverride"] is False  # explícito (nueva var)
 
 
 class TestReleaseFallback:

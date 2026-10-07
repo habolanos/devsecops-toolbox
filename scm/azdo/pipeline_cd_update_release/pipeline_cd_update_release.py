@@ -143,6 +143,9 @@ def load_template(template_path: str) -> Dict:
     Campos opcionales por variable (global_vars y env_vars):
             - isSecret: true|false   # marca/desmarca el flag secreto
             - action: remove         # elimina la variable (ignora value)
+            - allowOverride: true|false  # 'settable at release time'
+                                         # (default: preserva el actual; si la
+                                         # variable es nueva -> true)
 
     Returns:
         Dict con keys: release_ids, global_vars, env_vars, env_var_search_values,
@@ -187,7 +190,8 @@ def load_template(template_path: str) -> Dict:
         global_vars.append(f"{name}={value}")
         global_var_search_values.append(None)
         global_var_extras.append({'isSecret': var.get('isSecret'),
-                                  'action': var.get('action')})
+                                  'action': var.get('action'),
+                                  'allowOverride': var.get('allowOverride')})
 
     env_var_list = update_section.get('env_vars', [])
     env_vars = []
@@ -215,7 +219,8 @@ def load_template(template_path: str) -> Dict:
             sv = search_vars.get(name)
             scope = search_scopes.get(name, 'env')
             extra = {'isSecret': var.get('isSecret'),
-                     'action': var.get('action')}
+                     'action': var.get('action'),
+                     'allowOverride': var.get('allowOverride')}
             if scope in ('release', 'global'):  # 'global' kept for backward compat
                 # Variable de release (scope Release en Azure DevOps)
                 global_vars.append(f"{name}={value}")
@@ -244,7 +249,8 @@ def load_template(template_path: str) -> Dict:
             env_vars.append(f"{stage},{name}={value}")
             env_var_search_values.append(search_value)
             env_var_extras.append({'isSecret': var.get('isSecret'),
-                                   'action': var.get('action')})
+                                   'action': var.get('action'),
+                                   'allowOverride': var.get('allowOverride')})
 
     task_updates = update_section.get('tasks', [])
 
@@ -528,11 +534,16 @@ def build_patch_payload(
                     changes.append({"type": "global_var", "key": key, "old": old_value, "new": value,
                                     "error": f"Variable de release '{key}' no tiene valor '{search_value}' (actual: '{old_value}')"})
                     continue
+            cur_entry = current_vars.get(key, {})
             entry = build_var_entry(value)
             if ex.get('isSecret') is not None:
                 entry['isSecret'] = bool(ex['isSecret'])
-            elif current_vars.get(key, {}).get('isSecret'):
+            elif cur_entry.get('isSecret'):
                 entry['isSecret'] = True  # preservar flag secreto existente
+            if ex.get('allowOverride') is not None:
+                entry['allowOverride'] = bool(ex['allowOverride'])
+            elif cur_entry.get('allowOverride') is False:
+                entry['allowOverride'] = False  # preservar flag existente
             changes.append({"type": "global_var", "key": key, "old": old_value, "new": value})
             new_vars[key] = entry
             global_changed = True
@@ -572,11 +583,16 @@ def build_patch_payload(
                     if search_value is not None:
                         if _clean_value(old_value) != _clean_value(search_value):
                             continue
+                    cur_entry = env_vars_dict.get(key, {})
                     entry = build_var_entry(value)
                     if extras.get('isSecret') is not None:
                         entry['isSecret'] = bool(extras['isSecret'])
-                    elif env_vars_dict.get(key, {}).get('isSecret'):
+                    elif cur_entry.get('isSecret'):
                         entry['isSecret'] = True  # preservar flag secreto
+                    if extras.get('allowOverride') is not None:
+                        entry['allowOverride'] = bool(extras['allowOverride'])
+                    elif cur_entry.get('allowOverride') is False:
+                        entry['allowOverride'] = False  # preservar flag
                     matched_stages.append(env_name)
                     changes.append({"type": "env_var", "key": key, "old": old_value, "new": value, "stage": env_name})
                     env_vars_dict[key] = entry
