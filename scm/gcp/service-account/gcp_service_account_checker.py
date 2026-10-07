@@ -62,7 +62,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 
 
 

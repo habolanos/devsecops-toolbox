@@ -70,7 +70,7 @@ except ImportError:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 OUTCOME_DIR = get_output_dir("outcome")

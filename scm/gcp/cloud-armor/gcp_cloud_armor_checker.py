@@ -55,7 +55,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 
 # Constantes
 DEFAULT_PROJECT_ID = "cpl-xxxx-yyyy-zzzz-99999999"

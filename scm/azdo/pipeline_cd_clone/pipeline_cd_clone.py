@@ -34,7 +34,7 @@ from rich.table import Table
 
 console = Console()
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.0"

@@ -72,7 +72,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.1"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 __description__ = "Cert Manager Tools - Operación de certificados TLS en GKE y GCP"
 

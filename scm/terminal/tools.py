@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.7"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 

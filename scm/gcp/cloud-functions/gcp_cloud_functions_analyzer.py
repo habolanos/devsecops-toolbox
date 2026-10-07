@@ -42,7 +42,7 @@ except ImportError:
 from cf_base import CloudFunctionsBase, run_gcloud_command, get_output_dir
 from cf_metrics import CloudFunctionsMetrics
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 

@@ -45,7 +45,7 @@ from consolidation_base import (
     RelationshipMapper, run_gcloud_command
 )
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 

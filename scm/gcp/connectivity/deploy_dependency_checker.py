@@ -67,7 +67,7 @@ DEFAULT_REGION = "us-central1"
 DEFAULT_DEPLOYMENT = "ds-ppm-pricing-discount"
 DEFAULT_TIMEZONE = "America/Mazatlan"
 DEFAULT_PROBE_IMAGE = "jrecord/nettools:latest"
-__version__ = "1.0.5"
+__version__ = "1.8.32"
 
 URL_PATTERN = re.compile(r"(jdbc:)?((?P<engine>postgres(?:ql)?|mysql|mssql|sqlserver|oracle|mongodb|redis|cockroachdb)://[^\s'\"` ]+)", re.IGNORECASE)
 HOST_PORT_PATTERN = re.compile(r"([a-zA-Z0-9.-]+):(\d{2,5})")

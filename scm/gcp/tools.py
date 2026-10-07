@@ -60,7 +60,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.9.4"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas GCP"
 

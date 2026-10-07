@@ -3,7 +3,7 @@ GCP Service Accounts Multi-Project Reporter
 Herramienta para extraer, analizar y reportar service accounts de múltiples proyectos GCP
 """
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "DevSecOps Team"
 
 from .sa_config_loader import ConfigLoader

@@ -37,7 +37,7 @@ from kpi_analyzer.dashboard_generator import DashboardGenerator
 from kpi_analyzer.maturity_model import assess_maturity, get_level_name, get_level_color
 from kpi_analyzer.benchmarks import get_benchmark_level, get_benchmark_emoji, get_benchmark_color
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 
 
 def get_args():

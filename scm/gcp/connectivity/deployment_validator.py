@@ -62,7 +62,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN Y CONSTANTES
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.4"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 DEFAULT_PROJECT_ID = "cpl-corp-cial-prod-17042024"

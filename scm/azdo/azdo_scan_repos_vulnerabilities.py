@@ -56,7 +56,7 @@ try:
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
 
-__version__ = "1.2.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1-preview.1"

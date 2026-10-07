@@ -68,7 +68,7 @@ except ImportError:
     BASE_LAUNCHER_AVAILABLE = False
 
 # Metadata
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 # Grupos de herramientas

@@ -47,7 +47,7 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cloudrun_base import CloudRunBase
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 
 # Configuración de ambientes estándar
 ENVIRONMENT_CONFIG = {

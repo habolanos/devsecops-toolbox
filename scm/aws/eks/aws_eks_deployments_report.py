@@ -32,7 +32,7 @@ except ImportError:
 
 console = Console() if RICH_AVAILABLE else None
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "DevSecOps Team"
 __description__ = "Genera reporte detallado de deployments en EKS"
 

@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 
 
 class OutputManager:

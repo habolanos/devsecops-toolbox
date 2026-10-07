@@ -58,7 +58,7 @@ except ImportError:
 # -------------------------------------------------------------------
 
 # Version
-__version__ = "2.3.0"
+__version__ = "1.8.32"
 
 # Lock para escritura thread-safe
 _print_lock = Lock()

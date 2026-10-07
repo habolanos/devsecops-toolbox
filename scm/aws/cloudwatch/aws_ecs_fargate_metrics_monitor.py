@@ -42,7 +42,7 @@ except ImportError:
 
 console = Console() if RICH_AVAILABLE else None
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __description__ = "Monitorea métricas de ECS Fargate (homologo a GCP Cloud Run)"
 
 

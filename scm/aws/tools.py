@@ -61,7 +61,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.0.1"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas AWS DevSecOps"
 

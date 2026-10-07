@@ -62,7 +62,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.1.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 # Puertos por defecto según tipo de base de datos

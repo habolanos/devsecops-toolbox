@@ -31,7 +31,7 @@ except ImportError:
         return p
 # -------------------------------------------------------------------
 
-__version__ = "2.3.1"
+__version__ = "1.8.32"
 
 _token_cache = None
 

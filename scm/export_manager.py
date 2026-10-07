@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 from zoneinfo import ZoneInfo
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---

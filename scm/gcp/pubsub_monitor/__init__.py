@@ -9,7 +9,7 @@ Autor: DevSecOps Team
 Fecha: 16 de Julio de 2026
 """
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "DevSecOps Team"
 
 from .pubsub_collector import PubSubCollector

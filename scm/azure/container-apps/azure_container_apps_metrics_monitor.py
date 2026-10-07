@@ -48,7 +48,7 @@ except ImportError:
 
 console = Console() if RICH_AVAILABLE and _is_tty() else (Console(force_terminal=False, no_color=True) if RICH_AVAILABLE else None)
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __description__ = "Monitorea métricas de Azure Container Apps"
 
 

@@ -35,7 +35,7 @@ except ImportError:
         return p
 # -------------------------------------------------------------------
 
-__version__ = "3.2.0"
+__version__ = "1.8.32"
 
 # Intentar importar rich (opcional)
 try:

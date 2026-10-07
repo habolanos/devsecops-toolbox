@@ -75,7 +75,7 @@ except ImportError:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"

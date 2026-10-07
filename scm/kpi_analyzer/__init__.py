@@ -8,7 +8,7 @@ Version: 1.0.0
 Author: Harold Adrian
 """
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "Harold Adrian"
 
 from .analyzer import KPIAnalyzer

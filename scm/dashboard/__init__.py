@@ -3,7 +3,7 @@ Dashboard Matutino DevSecOps
 Módulo para orquestación, generación y scheduling del dashboard
 """
 
-__version__ = '1.0.0'
+__version__ = "1.8.32"
 __author__ = 'Harold Adrian'
 
 from .dashboard_consolidator import DashboardConsolidator, HistoryManager

@@ -23,7 +23,7 @@ Uso:
     report = tracker.generate_report(events, format="html")
 """
 
-__version__ = "1.0.0"
+__version__ = "1.8.32"
 __author__ = "DevSecOps Team"
 __description__ = "GCP Event Tracker - Rastreo de eventos y caídas de servicio"
 

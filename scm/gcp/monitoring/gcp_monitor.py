@@ -149,7 +149,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "3.0.0"
+__version__ = "1.8.32"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAPEO DE TIPOS DE MÁQUINA A ESPECIFICACIONES

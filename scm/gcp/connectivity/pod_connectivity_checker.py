@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
-__version__ = "1.2.2"
+__version__ = "1.8.32"
 
 
 class CheckStatus(Enum):
