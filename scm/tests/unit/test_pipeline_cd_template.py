@@ -216,3 +216,100 @@ class TestSafeName:
     def test_sanitizes(self):
         assert _safe_name("CD OMS/Prod: v2") == "CD_OMS_Prod__v2"
         assert _safe_name("") == "pipeline"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Placeholders [[target.*]] — valores tomados de la definición destino
+# ═══════════════════════════════════════════════════════════════════════════
+
+from scm.azdo.pipeline_cd_template import (
+    _target_lookup, resolve_target_placeholders,
+)
+
+
+def _target():
+    d = _defn(id=910, name="CD-Destino", path=r"\OMS\Sub",
+              artifacts=[
+                  {"alias": "_MiBuild",
+                   "definitionReference": {"definition": {"name": "CI-Main"}}},
+                  {"alias": "_Repo",
+                   "definitionReference": {"definition": {"name": "repo-x"}}},
+              ])
+    d["variables"]["TargetVar"] = {"value": "valor-destino"}
+    d["environments"][0]["variables"]["EnvVar"] = {"value": "env-valor"}
+    return d
+
+
+class TestTargetLookup:
+    T = _target()
+
+    def test_scalars(self):
+        assert _target_lookup(self.T, "name") == "CD-Destino"
+        assert _target_lookup(self.T, "id") == 910
+        assert _target_lookup(self.T, "path") == r"\OMS\Sub"
+
+    def test_artifact_alias_and_name(self):
+        assert _target_lookup(self.T, "artifact.alias") == "_MiBuild"
+        assert _target_lookup(self.T, "artifact.name") == "CI-Main"
+        assert _target_lookup(self.T, "artifact.1.alias") == "_Repo"
+
+    def test_artifact_out_of_range(self):
+        assert _target_lookup(self.T, "artifact.9.alias") is None
+
+    def test_vars(self):
+        assert _target_lookup(self.T, "var.TargetVar") == "valor-destino"
+        assert _target_lookup(self.T, "var.NoExiste") is None
+
+    def test_env_var_case_insensitive_stage(self):
+        assert _target_lookup(self.T, "env.Develop.var.EnvVar") \
+            == "env-valor"
+        assert _target_lookup(self.T, "env.develop.var.EnvVar") \
+            == "env-valor"
+        assert _target_lookup(self.T, "env.QA.var.EnvVar") is None
+
+    def test_unknown_path(self):
+        assert _target_lookup(self.T, "otro.campo") is None
+
+
+class TestResolveTargetPlaceholders:
+    def test_substitutes_nested(self):
+        node = {"variables": {"Art": {"value": "[[target.artifact.alias]]"}},
+                "environments": [
+                    {"name": "Develop",
+                     "deployPhases": [{"workflowTasks": [
+                         {"inputs": {"script": "deploy [[target.name]] "
+                                               "[[target.env.Develop.var.EnvVar]]"}}]}]}]}
+        out = resolve_target_placeholders(node, _target())
+        assert out["variables"]["Art"]["value"] == "_MiBuild"
+        script = out["environments"][0]["deployPhases"][0] \
+            ["workflowTasks"][0]["inputs"]["script"]
+        assert script == "deploy CD-Destino env-valor"
+
+    def test_unresolved_stays_literal_and_reported(self):
+        unresolved = []
+        out = resolve_target_placeholders(
+            {"v": "[[target.var.NoExiste]]"}, _target(), unresolved)
+        assert out["v"] == "[[target.var.NoExiste]]"
+        assert unresolved == ["[[target.var.NoExiste]]"]
+
+    def test_no_collide_with_azdo_macros(self):
+        node = {"v": "$(var) #{tok}# {{jinja}} {ps:block}"}
+        assert resolve_target_placeholders(node, _target())["v"] == \
+            "$(var) #{tok}# {{jinja}} {ps:block}"
+
+
+class TestApplyTemplatePlaceholders:
+    def test_apply_resolves_placeholders_against_target(self, tmp_path):
+        c = _Client(_target())
+        tpl = clean_definition_for_template(_defn())
+        tpl["variables"]["Art"] = {"value": "[[target.artifact.alias]]"}
+        res = apply_template(c, 910, tpl, backup_dir=tmp_path)
+        _, payload = c.put_calls[0]
+        assert payload["variables"]["Art"]["value"] == "_MiBuild"
+
+    def test_unresolved_reported_in_summary(self):
+        c = _Client(_target())
+        tpl = clean_definition_for_template(_defn())
+        tpl["variables"]["X"] = {"value": "[[target.var.Inexistente]]"}
+        res = apply_template(c, 910, tpl, dry_run=True)
+        assert any("sin resolver" in l for l in res["summary"])

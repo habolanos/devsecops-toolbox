@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.45`** — 2026-10-08
+**`1.8.46`** — 2026-10-08
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-08 | **1.8.46** | **feat(azdo): opción 46 — placeholders `[[target.*]]`** — en la template full, `[[target.name\|id\|path]]`, `[[target.artifact.alias\|name]]` (+`artifact.N.*`), `[[target.var.X]]`, `[[target.env.S.var.X]]` se resuelven contra la definición **destino** antes del PUT (`resolve_target_placeholders`); no resolubles quedan literales y se reportan. Sintaxis documentada en el comment de la template. Tests: +11 (102 área). | `scm/azdo/pipeline_cd_template.py` (v1.0.1), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.45** | **feat(azdo): nueva opción 46 — Pipeline CD Template Export/Apply** — `pipeline_cd_template.py`: extrae definición completa de un CD pipeline como template YAML (`pipe_cd_full_*` normalizada + `pipe_cd_updater_*` DSL para opción 41) en `outcome/templates/`; secretos redactados, IDs resueltos a nombres. `--target-id` aplica el template sobre otro pipeline via PUT con backup, diff y dry-run. `AzdoClient.put()` añadido. Tests: +13 (91 área). | `scm/azdo/pipeline_cd_template.py` (v1.0.0), `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.44** | **feat(azdo): opción 45 — Comparación 1 elemento-por-elemento** — cuando el log del apply imprime los objetos resultantes (`-o yaml`), `diff_applied_objects` los normaliza (`normalize_applied_object`: quita `status`/`uid`/`resourceVersion`/`last-applied`) y compara campo a campo contra el manifiesto (`_diff_subset`: solo lo declarado, defaults del server ignorados). Clasifica: en-prod-sin-manifiesto (`EXTRA_IN_PROD` MEDIUM), manifiesto-sin-resultado, coincide, difiere (`SPEC_DIFFERS` MEDIUM con `path: m → a`). Render en consola y HTML (`<details>` por objeto). Tests: +14 (201 área). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.9), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.43** | **perf(azdo): opción 45 — escala a +2000 pipelines** — `$top` del listado de definitions 200→1000 (máximo VSRM). Selector de solo IDs omite el listado completo: `GET /definitions/{id}` directo por cada ID (`selector_all_numeric`), de descargar el catálogo entero a 1 request por pipeline. `all`/substring mantienen paginación + fallback por ID. Tests: +5 (187 área). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.8), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

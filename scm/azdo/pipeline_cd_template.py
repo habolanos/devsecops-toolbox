@@ -43,6 +43,7 @@ Autor: Harold Adrian
 import argparse
 import copy
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -53,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -226,7 +227,20 @@ def build_full_template(defn_clean: Dict, source_def: Dict, org: str,
                 "  - Los artifacts apuntan a los mismos orígenes (build/repo) "
                 "que el pipeline origen.\n"
                 "  - resolved_names documenta a qué corresponde cada ID de "
-                "queue/variable-group/task-group."
+                "queue/variable-group/task-group.\n\n"
+                "Placeholders [[target.*]] (resueltos contra el DESTINO al "
+                "aplicar con --target-id):\n"
+                "  [[target.name]]            nombre del pipeline destino\n"
+                "  [[target.id]]              definitionId destino\n"
+                "  [[target.path]]            carpeta del destino\n"
+                "  [[target.artifact.alias]]  alias del 1er artifact destino\n"
+                "  [[target.artifact.name]]   nombre def/repo del artifact\n"
+                "  [[target.artifact.N.alias|name]]  artifact N-ésimo\n"
+                "  [[target.var.NOMBRE]]      variable release del destino\n"
+                "  [[target.env.STAGE.var.NOMBRE]]  variable de un stage "
+                "del destino\n"
+                "Ej: value: \"[[target.artifact.alias]]\" toma el alias del "
+                "artifact del pipeline destino."
             ),
             "author": "SCM Team",
             "created_at": datetime.now().strftime("%Y-%m-%d"),
@@ -329,6 +343,79 @@ def export_templates(source_def: Dict, org: str, project: str, fmt: str,
 # APPLY — PUT del template sobre otra definition
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Placeholders resueltos contra la definición DESTINO al aplicar:
+#   [[target.name]]                  nombre del pipeline destino
+#   [[target.id]]                    definitionId destino
+#   [[target.path]]                  carpeta del destino
+#   [[target.artifact.alias]]        alias del 1er artifact del destino
+#   [[target.artifact.name]]         nombre de la def/repo del 1er artifact
+#   [[target.artifact.N.alias|name]] artifact N-ésimo del destino
+#   [[target.var.<NAME>]]            variable release del destino
+#   [[target.env.<STAGE>.var.<NAME>]] variable del stage <STAGE> del destino
+_TARGET_PH = re.compile(r"\[\[target\.([^\]]+)\]\]")
+
+
+def _target_lookup(target: Dict, path: str):
+    """Resuelve la ruta de un placeholder [[target.<path>]] contra la
+    definición destino. None si no se puede resolver."""
+    arts = target.get("artifacts") or []
+
+    if path == "name":
+        return target.get("name")
+    if path == "id":
+        return target.get("id")
+    if path == "path":
+        return target.get("path")
+
+    m = re.fullmatch(r"artifact(?:\.(\d+))?\.(alias|name)", path)
+    if m:
+        idx = int(m.group(1) or 0)
+        if idx >= len(arts):
+            return None
+        art = arts[idx]
+        if m.group(2) == "alias":
+            return art.get("alias")
+        return ((art.get("definitionReference") or {})
+                .get("definition") or {}).get("name")
+
+    m = re.fullmatch(r"var\.(.+)", path)
+    if m:
+        v = (target.get("variables") or {}).get(m.group(1))
+        return v.get("value") if isinstance(v, dict) else v
+
+    m = re.fullmatch(r"env\.(.+)\.var\.(.+)", path)
+    if m:
+        stage, var = m.group(1), m.group(2)
+        for env in target.get("environments", []):
+            if (env.get("name") or "").lower() == stage.lower():
+                v = (env.get("variables") or {}).get(var)
+                return v.get("value") if isinstance(v, dict) else v
+    return None
+
+
+def resolve_target_placeholders(node, target: Dict,
+                                unresolved: Optional[List[str]] = None):
+    """Sustituye recursivamente [[target.<path>]] en strings con valores
+    de la definición destino. Los no resolubles quedan literales y se
+    acumulan en `unresolved`."""
+    if isinstance(node, str):
+        def _rep(m):
+            val = _target_lookup(target, m.group(1))
+            if val is None:
+                if unresolved is not None:
+                    unresolved.append(m.group(0))
+                return m.group(0)
+            return str(val)
+        return _TARGET_PH.sub(_rep, node)
+    if isinstance(node, dict):
+        return {k: resolve_target_placeholders(v, target, unresolved)
+                for k, v in node.items()}
+    if isinstance(node, list):
+        return [resolve_target_placeholders(v, target, unresolved)
+                for v in node]
+    return node
+
+
 def load_template_definition(path: Path) -> Dict:
     """Carga la definición de una template exportada (acepta la envoltura
     {metadata, definition} o un dict de definición directo)."""
@@ -405,6 +492,12 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     payload["revision"] = target.get("revision")
     payload["name"] = new_name or target.get("name")
     payload["path"] = new_path or target.get("path", "\\")
+
+    unresolved: List[str] = []
+    payload = resolve_target_placeholders(payload, target, unresolved)
+    if unresolved:
+        summary.append("⚠ placeholders sin resolver: "
+                       + ", ".join(sorted(set(unresolved))))
 
     if dry_run:
         return {"backup": None, "result": None, "summary": summary,
