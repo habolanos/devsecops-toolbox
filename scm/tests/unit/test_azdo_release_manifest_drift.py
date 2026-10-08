@@ -8,10 +8,12 @@ from scm.azdo.azdo_release_manifest_drift import (
     _APPLY_VERDICTS,
     analyze_manifest,
     apply_resource_key,
+    applyish_task_names,
     diff_env_def_vs_release,
     diff_has_changes,
     extract_manifest_docs,
     extract_stage_tasks,
+    find_effective_deployments,
     find_stage_env,
     manifest_key,
     parse_apply_log,
@@ -69,6 +71,39 @@ class TestParseApplyLog:
         r = parse_apply_log(_log(["##[section]Finishing: kubectl apply",
                                   "random noise line"]))
         assert r["verdicts"] == {}
+
+    def test_old_kubectl_quoted_format(self):
+        """kubectl < 1.18 imprime 'kind "name" verdict' (con comillas)."""
+        log = _log([
+            'deployment.apps "web" configured',
+            'service "web-svc" unchanged',
+            'configmap "cfg" created',
+        ])
+        r = parse_apply_log(log)
+        assert r["verdicts"] == {
+            "deployment.apps/web": "configured",
+            "service/web-svc": "unchanged",
+            "configmap/cfg": "created",
+        }
+
+    def test_replaced_and_dry_run_verdicts(self):
+        log = _log([
+            "deployment.apps/web replaced",
+            "service/svc configured (server dry run)",
+            "configmap/cfg configured (dry run)",
+        ])
+        r = parse_apply_log(log)
+        assert r["verdicts"]["deployment.apps/web"] == "replaced"
+        assert r["verdicts"]["service/svc"] == "configured"
+        assert r["verdicts"]["configmap/cfg"] == "configured"
+
+    def test_old_generic_apply_warning(self):
+        log = _log([
+            "Warning: kubectl apply should be used on resource created by "
+            "either kubectl create --save-config or kubectl apply",
+        ])
+        r = parse_apply_log(log)
+        assert r["old_warn"] is True
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -383,3 +418,124 @@ class TestApplyResourceKey:
 
     def test_core_kind(self):
         assert apply_resource_key("service/x") == "service//x"
+
+
+class TestAnalyzeManifestDiagnostics:
+    """Nuevas señales de diagnóstico de logs y placeholders."""
+
+    _OBJS = {"deployment/ns/web": {"kind": "Deployment", "namespace": "ns",
+                                   "name": "web", "canonical": "c"}}
+
+    def test_unrendered_placeholder_is_info_not_medium(self):
+        objs = dict(self._OBJS)
+        objs["horizontalpodautoscaler/ns/hpa-#{ns}#-#{n}#"] = {
+            "kind": "HorizontalPodAutoscaler", "namespace": "ns",
+            "name": "hpa-#{ns}#-#{n}#", "canonical": "c"}
+        findings = analyze_manifest(objs, {"verdicts": {}})
+        rules = {f["rule"]: f["severity"] for f in findings}
+        assert rules["UNRENDERED_NAME"] == "INFO"
+        # el objeto con placeholder NO genera NOT_APPLIED
+        assert not any(f["rule"] == "NOT_APPLIED" and "#{" in f["object"]
+                       for f in findings)
+
+    def test_apply_no_verdicts_medium(self):
+        apply = {"verdicts": {}, "log_names": ["kubectl apply"],
+                 "empty_logs": []}
+        findings = analyze_manifest(self._OBJS, apply)
+        assert any(f["rule"] == "APPLY_NO_VERDICTS"
+                   and f["severity"] == "MEDIUM" for f in findings)
+
+    def test_apply_no_verdicts_skipped_when_all_empty(self):
+        apply = {"verdicts": {}, "log_names": ["kubectl apply"],
+                 "empty_logs": ["kubectl apply"]}
+        findings = analyze_manifest(self._OBJS, apply)
+        assert not any(f["rule"] == "APPLY_NO_VERDICTS" for f in findings)
+        assert any(f["rule"] == "EMPTY_LOG" for f in findings)
+
+    def test_old_apply_warning_low(self):
+        findings = analyze_manifest(self._OBJS,
+                                    {"verdicts": {}, "old_warn": True})
+        assert any(f["rule"] == "OLD_APPLY_WARNING"
+                   and f["severity"] == "LOW" for f in findings)
+
+
+class TestDiffHasChangesEmpty:
+    def test_empty_dict_no_crash(self):
+        assert diff_has_changes({}) is False
+
+
+class TestInputsEquivalence:
+    """Inputs ausentes (None) equivalen a defaults falsy explícitos."""
+
+    def _env(self, inputs):
+        return {"deployPhases": [{"workflowTasks": [
+            {"taskId": "T1", "name": "t", "version": "1.*",
+             "inputs": inputs}]}]}
+
+    def test_none_vs_false_is_no_diff(self):
+        cur = self._env({"flag": "false"})
+        snap = self._env({})  # input ausente en el snapshot
+        d = diff_env_def_vs_release(cur, snap)
+        assert not d["task_inputs_changed"]
+
+    def test_none_vs_true_is_diff(self):
+        cur = self._env({"flag": "true"})
+        snap = self._env({})
+        d = diff_env_def_vs_release(cur, snap)
+        assert d["task_inputs_changed"]
+
+    def test_none_vs_number_is_diff(self):
+        cur = self._env({"concurrentUploads": "10"})
+        snap = self._env({})
+        d = diff_env_def_vs_release(cur, snap)
+        assert d["task_inputs_changed"]
+
+
+class TestApplyishTaskNames:
+    def test_kubernetes_task_command_apply(self):
+        wfs = [{"name": "Deploy manifests",
+                "inputs": {"command": "apply",
+                           "manifests": "$(k8s)/*.yaml"}},
+               {"name": "Lint", "inputs": {"command": "get"}}]
+        assert applyish_task_names(wfs) == {"Deploy manifests"}
+
+    def test_inline_script_with_kubectl_apply(self):
+        wfs = [{"name": "Deploy",
+                "inputs": {"inlineScript": "kubectl apply -f m.yaml"}},
+               {"name": "Show", "inputs": {"inlineScript": "cat m.yaml"}}]
+        assert applyish_task_names(wfs) == {"Deploy"}
+
+    def test_create_and_replace_commands(self):
+        wfs = [{"name": "t1", "inputs": {"command": "create"}},
+               {"name": "t2", "inputs": {"command": "replace"}},
+               {"name": "t3", "inputs": {"command": "delete"}}]
+        assert applyish_task_names(wfs) == {"t1", "t2"}
+
+
+class TestEffectiveDeploymentsDedup:
+    """La Deployments API devuelve una entrada por attempt — dedup por
+    release.id para que 'prev release' sea un release distinto."""
+
+    class _Client:
+        base = "https://vsrm.dev.azure.com/o/p"
+
+        def get(self, url, params=None):
+            assert url.endswith("/deployments")
+            return {"value": [
+                {"release": {"id": 10, "name": "R-3"},
+                 "deploymentStatus": "succeeded"},   # attempt 2
+                {"release": {"id": 10, "name": "R-3"},
+                 "deploymentStatus": "failed"},      # attempt 1
+                {"release": {"id": 9, "name": "R-2"},
+                 "deploymentStatus": "succeeded"},
+                {"release": {"id": 8, "name": "R-1"},
+                 "deploymentStatus": "notDeployed"},
+            ]}
+
+    def test_dedup_by_release_id(self):
+        eff = find_effective_deployments(self._Client(), 1, 2, limit=2)
+        assert [d["release"]["id"] for d in eff] == [10, 9]
+
+    def test_respects_limit(self):
+        eff = find_effective_deployments(self._Client(), 1, 2, limit=1)
+        assert len(eff) == 1

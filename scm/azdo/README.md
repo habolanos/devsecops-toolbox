@@ -953,16 +953,25 @@ cluster** (cambios hechos por fuera del pipeline).
 3. Busca el **último deploy efectivo** del stage vía **Deployments API**
    (`release/deployments?definitionEnvironmentId=…&queryOrder=descending`,
    saltando `deploymentStatus=notDeployed`) — distinto a "último release",
-   un release puede existir sin haber desplegado en prod.
+   un release puede existir sin haber desplegado en prod. Las entradas se
+   deduplican por `release.id` (la API devuelve una por *attempt*), así el
+   "release anterior" de `--prev-release` es siempre un release distinto.
 4. Del release toma el `deployStep` de mayor `attempt` en el stage y descarga
-   el log (`tasks/{id}/logs`) solo de las tasks que matchean
-   `--task-patterns` (default
-   `get.?file.?k8.?manifest|show.?manifest|kubectl.*apply`).
+   el log (`tasks/{id}/logs`) de las tasks que matchean `--task-patterns`
+   (default `get.?file.?k8.?manifest|show.?manifest|kubectl.*apply`) **más
+   las tasks apply-typed detectadas por sus inputs** — `Kubernetes@1`/
+   `Kubectl@1` con `command: apply|create|replace|patch` o scripts inline
+   con `kubectl apply`, aunque su displayName no lo diga (p.ej. "Deploy
+   manifests").
 5. **Diff definición vs snapshot**: tasks añadidas/eliminadas, versión de
-   task, **inputs** de tasks y variables del environment.
+   task, **inputs** de tasks y variables del environment. Inputs ausentes
+   equivalen a defaults falsy (`false`, vacío, `0`) para evitar ruido de
+   diffs espurios al re-guardar la definición.
 6. **Análisis del manifiesto**: parsea el YAML mostrado por *show manifest*
    (`kind`/`metadata.name` por documento) y los verdicts de *kubectl apply*
-   (`created`/`configured`/`unchanged` + warnings).
+   (`created`/`configured`/`unchanged`/`deleted`/`replaced` + warnings).
+   Soporta el formato de kubectl < 1.18 (`kind "name" configured`) y el
+   moderno (`kind/name configured`), más sufijos `(server dry run)`.
 
 #### Señales de drift detectadas
 
@@ -973,7 +982,11 @@ cluster** (cambios hechos por fuera del pipeline).
 | MEDIUM | `NOT_APPLIED` | Objeto del manifiesto sin línea en la salida del apply |
 | MEDIUM | `DEF_RELEASE_DRIFT` | La definición difiere del snapshot (tasks/inputs/vars) |
 | MEDIUM | `APPLY_ERROR` | Líneas de error del apply |
+| MEDIUM | `APPLY_NO_VERDICTS` | El log de apply no produjo verdicts reconocibles (formato no soportado o salida silenciosa) |
 | LOW | `APPLIED_NOT_IN_MANIFEST` | El apply procesó un recurso no visto en *show manifest* |
+| LOW | `OLD_APPLY_WARNING` | kubectl antiguo emitió el warning genérico de recurso no creado con `--save-config` (no indica cuál) |
+| INFO | `UNRENDERED_NAME` | Objeto del manifiesto con placeholders sin renderizar (`#{var}#`, `$(var)`, `{{var}}`) — el show manifest mostró el template pre-sustitución |
+| INFO | `EMPTY_LOG` | Log de una task apply vacío o no descargable |
 | INFO | `CREATED` / `CONFIGURED` / `EXPECTED_CONFIG` | Contexto (creado, reconfigurado sin previo, cambio explicado por el manifiesto) |
 
 `--prev-release` repite el flujo sobre el **segundo** deploy efectivo y
@@ -997,8 +1010,9 @@ python azdo_release_manifest_drift.py --definition-ids "wms" \
 
 Credenciales: `--pat/--org/--project` o `azdo.*` en `scm/config.json`
 (PAT con scope **Release: Read**). Reporte por pipeline en consola +
-resumen; `--output json|csv|both` exporta a `outcome/`. Exit `2` si alguna
-severidad ≥ HIGH.
+resumen; los pipelines sin stage o sin deploy efectivo se colapsan en un
+conteo (`--show-skipped` para verlos uno a uno). `--output json|csv|both`
+exporta a `outcome/`. Exit `2` si alguna severidad ≥ HIGH.
 
 ---
 
@@ -1110,6 +1124,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-08 | 1.8.37 | **Fix opción 45 tras primer run real** — (1) crash `KeyError` en `print_summary` con diff vacío (`d.get`). (2) `parse_apply_log` soporta formato kubectl < 1.18 (`kind "name" configured`), verdicts `replaced`/`(dry run)` y el warning genérico antiguo → `OLD_APPLY_WARNING`. (3) Deployments API deduplicada por `release.id` — antes `--prev-release` podía devolver el mismo release por attempts. (4) Objetos con placeholders sin renderizar (`#{var}#`) → `UNRENDERED_NAME` INFO en vez de `NOT_APPLIED` MEDIUM. (5) Inputs ausentes ≡ defaults falsy → menos ruido en `task_inputs_changed`. (6) Tasks apply-typed detectadas por inputs (`command: apply` / `kubectl apply` inline) aunque el displayName no matchee. (7) Nuevas señales `APPLY_NO_VERDICTS`/`EMPTY_LOG` para diagnosticar logs sin salida. (8) `--show-skipped` — los ~120 pipelines sin stage/deploy se colapsan en conteo. Tests: +16. | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.2), `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.36 | **Fix opción 45: org como URL + stage Producción** — (1) `AzdoClient`/`get_azdo_params` normalizan `--org`: el launcher pasa `azdo.organization_url` completa (`https://dev.azure.com/ORG`) y el cliente la concatenaba al host vsrm → HTTP 400. Ahora se extrae el nombre de la org en ambos puntos. (2) `find_stage_env` agrega match por sufijo `duction` → cubre stages `Production`/`Producción` sin depender del nombre exacto. Tests: +5. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/azdo_release_manifest_drift.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.35 | **Nueva herramienta: Release Manifest Drift (opción 45)** — `azdo_release_manifest_drift.py` audita la consistencia del stage Production de pipelines CD: selección `all`/ID/lista/substring; último deploy efectivo vía Deployments API; logs de tasks de manifiesto (`get file k8-manifest`, `show manifest`, `kubectl apply`); diff def-vs-snapshot (tasks/versión/**inputs**/variables); detección de manipulación del cluster — `NOT_MANAGED_BY_APPLY` (sin anotación last-applied) y `EXTERNAL_MODIFICATION` (`configured` con YAML idéntico al release previo, flag `--prev-release`). Parser tolerante a ruido de log (`_YAMLISH` fallback), matching de tasks por regex configurable, paralelo por pipeline, export JSON/CSV, exit 2 si severidad ≥ HIGH. Launcher: prompts para `--definition-ids`, `--task-patterns`, `--prev-release`; defaults de stage/output específicos de la 45. Tests: +30. | `scm/azdo/azdo_release_manifest_drift.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.30 | **Pipeline Updater: default `allowOverride` → `false`** — El engine de definiciones (opción 41) creaba variables nuevas con `allowOverride: true` cuando la regla no lo especificaba ("Settable at release time" marcado). Default cambiado a `false`; `update` preserva el flag y reglas explícitas (`allowOverride: true`) siguen funcionando. Complementa v1.8.29 (que ya fijaba `false` en las reglas del remediator). Test `test_add_variable_default_allow_override` actualizado. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_triggers.py`, `scm/azdo/README.md` |

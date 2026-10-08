@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.32"
+__version__ = "1.8.37"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -442,6 +442,7 @@ TOOLS: Dict = {
         "path":        "azdo_release_manifest_drift.py",
         "args":        ["--pat", "--org", "--project", "--definition-ids",
                         "--stage-name", "--task-patterns", "--prev-release",
+                        "--show-skipped",
                         "--output", "--threads", "--severity", "--debug"],
         "group":       "drift",
         "status":      "ready",
@@ -2287,6 +2288,12 @@ def run_tool(tool_key: str):
         val = input().strip().lower()
         if val != "n":
             extra.append("--prev-release")
+
+    if "--show-skipped" in tool_args:
+        print(f"{Colors.BOLD}¿Mostrar pipelines omitidos (sin stage/deploy)? (s/n) [n]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val == "s":
+            extra.append("--show-skipped")
 
     if "--stage-name" in tool_args:
         if tool_key == "45":

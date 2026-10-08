@@ -52,7 +52,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -84,7 +84,8 @@ DEFAULT_STAGE = "production"
 DEFAULT_TASK_PATTERNS = (
     r"get.?file.?k8.?manifest|show.?manifest|kubectl.*apply"
 )
-_APPLY_VERDICTS = ("created", "configured", "unchanged", "deleted", "pruned")
+_APPLY_VERDICTS = ("created", "configured", "unchanged", "deleted", "pruned",
+                   "replaced")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -120,6 +121,9 @@ def get_args() -> argparse.Namespace:
                    help="Pipelines en paralelo (default: 4)")
     p.add_argument("--severity", choices=list(SEV_ORDER), default="NONE",
                    help="Solo mostrar pipelines con severidad >= N en el resumen")
+    p.add_argument("--show-skipped", action="store_true",
+                   help="Muestra panel por pipeline omitido (sin stage o sin "
+                        "deploy efectivo); por defecto se resumen en conteos")
     p.add_argument("--debug", action="store_true")
     return p.parse_args()
 
@@ -195,16 +199,22 @@ def find_stage_env(definition: Dict, stage_name: str) -> Optional[Dict]:
 def find_effective_deployments(client: AzdoClient, def_id, env_id,
                                top: int = 10, limit: int = 2) -> List[Dict]:
     """Últimos deployments EFECTIVOS del stage (deploymentStatus != notDeployed),
-    ordenados desc. Retorna hasta `limit` para soportar --prev-release."""
+    ordenados desc. Deduplica por release.id (la API devuelve una entrada por
+    attempt — el mismo release puede aparecer N veces).
+    Retorna hasta `limit` releases distintos (soporta --prev-release)."""
     data = client.get(
         f"{client.base}/deployments",
         params={"api-version": "7.1", "definitionId": def_id,
                 "definitionEnvironmentId": env_id,
                 "queryOrder": "descending", "$top": top})
-    effective = []
+    effective, seen = [], set()
     for d in data.get("value", []):
         if d.get("deploymentStatus") == "notDeployed":
             continue
+        rid = d.get("release", {}).get("id")
+        if rid in seen:
+            continue
+        seen.add(rid)
         effective.append(d)
         if len(effective) >= limit:
             break
@@ -251,27 +261,62 @@ def extract_stage_tasks(release_env: Dict) -> List[Dict]:
     return tasks
 
 
-def download_task_logs(client: AzdoClient, release_id, env_id,
-                       tasks: List[Dict], pattern: str) -> Dict[str, str]:
-    """Descarga logs de las tasks que matchean el regex (name, case-insens)."""
-    rx = re.compile(pattern, re.IGNORECASE)
-    logs: Dict[str, str] = {}
-    for t in tasks:
-        if not rx.search(t["name"]):
+_K8S_APPLY_CMDS = {"apply", "create", "replace", "patch"}
+_K8S_SCRIPT_RX = re.compile(
+    r"\bkubectl\s+(apply|create|replace|patch)\b", re.IGNORECASE)
+
+
+def applyish_task_names(workflow_tasks: List[Dict]) -> set:
+    """Nombres de workflowTasks que ejecutan kubectl apply/create/replace/patch
+    aunque su displayName no lo indique: tasks Kubernetes@1/Kubectl@1 con
+    inputs.command=apply|create|…, o scripts inline que corren kubectl."""
+    names = set()
+    for t in workflow_tasks:
+        inputs = t.get("inputs") or {}
+        cmd = (inputs.get("command") or "").strip().lower()
+        if cmd in _K8S_APPLY_CMDS:
+            if t.get("name"):
+                names.add(t["name"])
             continue
+        for k in ("inlineScript", "script", "targetScript", "scriptContents"):
+            v = inputs.get(k)
+            if isinstance(v, str) and _K8S_SCRIPT_RX.search(v):
+                if t.get("name"):
+                    names.add(t["name"])
+                break
+    return names
+
+
+def download_task_logs(client: AzdoClient, release_id, env_id,
+                       tasks: List[Dict], pattern: str,
+                       apply_names_extra: Optional[set] = None
+                       ) -> Tuple[Dict[str, str], set]:
+    """Descarga logs de las tasks que matchean el regex (name, case-insens)
+    o que están en apply_names_extra (tasks apply-typed detectados por sus
+    inputs). Retorna ({nombre: log}, {nombres de tasks de apply})."""
+    rx = re.compile(pattern, re.IGNORECASE)
+    extra = {n.lower() for n in (apply_names_extra or set())}
+    logs: Dict[str, str] = {}
+    apply_names: set = set()
+    for t in tasks:
+        name = t["name"]
+        if not rx.search(name) and name.lower() not in extra:
+            continue
+        if "apply" in name.lower() or name.lower() in extra:
+            apply_names.add(name)
         url = t.get("log_url") or (
             f"{client.base}/releases/{release_id}/environments/{env_id}"
             f"/deployPhases/{t['phase_id']}/tasks/{t['task_id']}/logs")
         try:
-            logs[t["name"]] = client.get(url, raw=True,
-                                         params={"api-version": "7.1"})
+            logs[name] = client.get(url, raw=True,
+                                    params={"api-version": "7.1"})
         except SystemExit:
             raise
         except Exception as e:
-            logs[t["name"]] = ""
+            logs[name] = ""
             if console:
-                console.print(f"  [yellow]⚠ log '{t['name']}': {e}[/]")
-    return logs
+                console.print(f"  [yellow]⚠ log '{name}': {e}[/]")
+    return logs, apply_names
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -279,40 +324,62 @@ def download_task_logs(client: AzdoClient, release_id, env_id,
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _RE_APPLY_VERDICT = re.compile(
-    r"^(\S+)\s+(created|configured|unchanged|deleted|pruned)\b")
+    r"^(\S+)\s+(created|configured|unchanged|deleted|pruned|replaced)\b"
+    r"(?:\s*\((?:server )?dry run\))?", re.IGNORECASE)
+# kubectl < 1.18 imprime: deployment.apps "web" configured
+_RE_APPLY_VERDICT_OLD = re.compile(
+    r'^([A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"([^"]+)"\s+'
+    r"(created|configured|unchanged|deleted|pruned|replaced)\b"
+    r"(?:\s*\((?:server )?dry run\))?", re.IGNORECASE)
 _RE_MISSING_ANNOTATION = re.compile(
     r"resource (\S+) is missing the "
     r"kubectl\.kubernetes\.io/last-applied-configuration")
+# kubectl < 1.13: warning genérico sin nombre de recurso
+_RE_OLD_APPLY_WARN = re.compile(
+    r"apply should be used on resource created by", re.IGNORECASE)
 
 
 def parse_apply_log(text: str) -> Dict:
     """Parsea salida de `kubectl apply`.
 
+    Soporta formato moderno (`kind/name verdict`) y antiguo
+    (`kind "name" verdict`, kubectl < 1.18), más sufijos `(dry run)`.
+
     Retorna {
-      verdicts: {resource_str: created|configured|unchanged|deleted|pruned},
+      verdicts: {resource_str: created|configured|unchanged|deleted|pruned|
+                 replaced},
       missing_annotation: {resources sin last-applied-configuration},
+      old_warn: warning genérico de kubectl antiguo (sin recurso),
       errors: [líneas de error],
     }
     """
     verdicts: Dict[str, str] = {}
     missing: set = set()
     errors: List[str] = []
+    old_warn = False
     for raw in text.splitlines():
         line = _LOG_TS.sub("", raw.rstrip("\r"))
         m = _RE_MISSING_ANNOTATION.search(line)
         if m:
             missing.add(m.group(1))
             continue
+        m = _RE_APPLY_VERDICT_OLD.match(line.strip())
+        if m:
+            verdicts[f"{m.group(1)}/{m.group(2)}"] = m.group(3).lower()
+            continue
         m = _RE_APPLY_VERDICT.search(line)
         if m:
-            verdicts[m.group(1)] = m.group(2)
+            verdicts[m.group(1)] = m.group(2).lower()
+            continue
+        if _RE_OLD_APPLY_WARN.search(line):
+            old_warn = True
             continue
         low = line.lower()
         if ("error" in low or "forbidden" in low or "refused" in low) \
                 and not line.startswith((" ", "#")):
             errors.append(line.strip())
     return {"verdicts": verdicts, "missing_annotation": missing,
-            "errors": errors}
+            "old_warn": old_warn, "errors": errors}
 
 
 _YAMLISH = re.compile(
@@ -405,9 +472,18 @@ def apply_resource_key(resource: str) -> str:
     return f"{short_kind}//{name}"
 
 
+# Tokens sin renderizar en el archivo mostrado por 'show manifest'
+# (#{var}# de Replace Tokens, $(var) de AzDO, {{var}} de Helm/Jinja)
+_PLACEHOLDER = re.compile(r"#\{[^}]*\}|\$\([^)]*\)|\{\{[^}]+\}\}")
+
+
 def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
                      prev_objects: Optional[Dict[str, Dict]] = None) -> List[Dict]:
     """Genera findings de drift a partir de manifiesto + salida apply.
+
+    apply acepta además: 'log_names' (logs apply descargados), 'empty_logs'
+    (logs apply vacíos/no descargables) y 'old_warn' (warning genérico de
+    kubectl < 1.13) para diagnosticar logs sin verdicts.
 
     prev_objects (opcional): objetos del release efectivo anterior — habilita
     la señal 'configured con YAML idéntico = edición manual'.
@@ -422,6 +498,33 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
                       if f"{o['kind'].lower()}//{o['name']}" == akey), None)
         verdict_by_key[match or f"?//{res}"] = (res, verdict)
 
+    # Diagnóstico de logs apply sin verdicts ni vacíos
+    apply_logs = apply.get("log_names", [])
+    if apply_logs and not apply.get("verdicts") \
+            and len(apply.get("empty_logs", [])) < len(apply_logs):
+        findings.append({
+            "severity": "MEDIUM", "rule": "APPLY_NO_VERDICTS",
+            "object": "",
+            "detail": "El log de apply no contiene líneas de verdict "
+                      "reconocibles (created/configured/unchanged) — formato "
+                      "no soportado o apply en modo silencioso.",
+        })
+    for name in apply.get("empty_logs", []):
+        findings.append({
+            "severity": "INFO", "rule": "EMPTY_LOG",
+            "object": "",
+            "detail": f"Log de '{name}' vacío o no descargable.",
+        })
+    if apply.get("old_warn"):
+        findings.append({
+            "severity": "LOW", "rule": "OLD_APPLY_WARNING",
+            "object": "",
+            "detail": "kubectl antiguo emitió el warning genérico 'apply "
+                      "should be used on resource created by either create "
+                      "--save-config or apply' — hay recursos no gestionados "
+                      "por apply, pero la versión no indica cuáles.",
+        })
+
     # Señal 1 (HIGH): recurso sin anotación last-applied-configuration
     for res in sorted(apply.get("missing_annotation", [])):
         findings.append({
@@ -434,6 +537,15 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
 
     # Señal 3 (MEDIUM): objetos del manifiesto sin verdict en apply
     for key, obj in objects.items():
+        if _PLACEHOLDER.search(obj["name"]):
+            findings.append({
+                "severity": "INFO", "rule": "UNRENDERED_NAME",
+                "object": f"{obj['kind']}/{obj['name']}",
+                "detail": "El nombre contiene placeholders sin renderizar — "
+                          "'show manifest' mostró el template antes de la "
+                          "sustitución de tokens.",
+            })
+            continue
         if key not in verdict_by_key:
             findings.append({
                 "severity": "MEDIUM", "rule": "NOT_APPLIED",
@@ -518,6 +630,21 @@ def _env_workflow_tasks(env: Dict) -> List[Dict]:
     return tasks
 
 
+_FALSY_INPUT = {"", "false", "0", "no", "none"}
+
+
+def _inputs_equiv(a, b) -> bool:
+    """True si los inputs son equivalentes. Un input ausente (None) equivale
+    a un valor falsy explícito ('false', '', '0') — AzDO materializa defaults
+    falsy al re-guardar la definición, generando diffs espurios."""
+    if a == b:
+        return True
+    if (a is None and str(b).strip().lower() in _FALSY_INPUT) or \
+            (b is None and str(a).strip().lower() in _FALSY_INPUT):
+        return True
+    return False
+
+
 def diff_env_def_vs_release(def_env: Dict, release_env: Dict) -> Dict:
     """Diff definición-actual vs snapshot-del-release para el stage:
     tasks añadidas/eliminadas, versión, inputs y variables."""
@@ -542,7 +669,7 @@ def diff_env_def_vs_release(def_env: Dict, release_env: Dict) -> Dict:
         cin = ct.get("inputs") or {}
         sin = st.get("inputs") or {}
         diff_keys = [kk for kk in set(cin) | set(sin)
-                     if cin.get(kk) != sin.get(kk)]
+                     if not _inputs_equiv(cin.get(kk), sin.get(kk))]
         for kk in sorted(diff_keys):
             inputs_changed.append({
                 "task": name, "input": kk,
@@ -567,9 +694,10 @@ def diff_env_def_vs_release(def_env: Dict, release_env: Dict) -> Dict:
 
 
 def diff_has_changes(d: Dict) -> bool:
-    return any(d[k] for k in ("tasks_added", "tasks_removed",
-                              "tasks_version_changed", "task_inputs_changed",
-                              "vars_added", "vars_removed"))
+    return any(d.get(k) for k in ("tasks_added", "tasks_removed",
+                                  "tasks_version_changed",
+                                  "task_inputs_changed",
+                                  "vars_added", "vars_removed"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -621,9 +749,13 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
         rel = get_release(client, rid)
         env = find_release_env(rel, def_env)
         tasks = extract_stage_tasks(env) if env else []
-        logs = download_task_logs(client, rid, env.get("id"), tasks, pattern) \
-            if want_logs and env else {}
-        return {"release": rel, "env": env, "tasks": tasks, "logs": logs}
+        extra = applyish_task_names(_env_workflow_tasks(env)) if env else set()
+        logs, apply_names = (
+            download_task_logs(client, rid, env.get("id"), tasks, pattern,
+                               apply_names_extra=extra)
+            if want_logs and env else ({}, set()))
+        return {"release": rel, "env": env, "tasks": tasks,
+                "logs": logs, "apply_names": apply_names}
 
     try:
         latest = _analyze_release(effective[0], want_logs=True)
@@ -653,16 +785,22 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
 
     # manifiesto + apply
     manifest_docs: List[str] = []
-    apply = {"verdicts": {}, "missing_annotation": set(), "errors": []}
+    apply = {"verdicts": {}, "missing_annotation": set(), "errors": [],
+             "old_warn": False, "log_names": [], "empty_logs": []}
+    apply_names = latest.get("apply_names", set())
     for name, text in logs.items():
-        low = name.lower()
-        if "manifest" in low and "apply" not in low:
-            manifest_docs.extend(extract_manifest_docs(text))
-        elif "apply" in low:
+        if name in apply_names:
+            apply["log_names"].append(name)
+            if not (text or "").strip():
+                apply["empty_logs"].append(name)
+                continue
             parsed = parse_apply_log(text)
             apply["verdicts"].update(parsed["verdicts"])
             apply["missing_annotation"] |= parsed["missing_annotation"]
             apply["errors"].extend(parsed["errors"])
+            apply["old_warn"] = apply["old_warn"] or parsed["old_warn"]
+        elif "manifest" in name.lower():
+            manifest_docs.extend(extract_manifest_docs(text))
 
     objects = parse_manifest_objects(manifest_docs)
     result["manifest_objects"] = len(objects)
@@ -675,8 +813,10 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
         try:
             prev = _analyze_release(effective[1], want_logs=True)
             prev_docs: List[str] = []
+            prev_apply_names = prev.get("apply_names", set())
             for name, text in prev["logs"].items():
-                if "manifest" in name.lower() and "apply" not in name.lower():
+                if name not in prev_apply_names \
+                        and "manifest" in name.lower():
                     prev_docs.extend(extract_manifest_docs(text))
             prev_objects = parse_manifest_objects(prev_docs)
             result["prev_release_id"] = prev["release"].get("id")
@@ -748,10 +888,12 @@ def print_result(r: Dict):
 
     if r["manifest_objects"] or r["task_logs"]:
         counts = r["apply_counts"]
+        verdict_line = ", ".join(
+            f"{counts.get(v, 0)} {v}" for v in _APPLY_VERDICTS
+            if counts.get(v) or v in ("created", "configured", "unchanged"))
         (console.print if console else print)(
             f"  Manifiesto: {r['manifest_objects']} objeto(s) — apply: "
-            f"{counts['created']} created, {counts['configured']} configured, "
-            f"{counts['unchanged']} unchanged")
+            f"{verdict_line}")
 
     if r["findings"]:
         for f in sorted(r["findings"],
@@ -762,9 +904,19 @@ def print_result(r: Dict):
             "  [green]✓ Sin findings[/]" if console else "  ✓ Sin findings")
 
 
+_SKIP_MARKERS = ("no existe en la definición", "sin deploy efectivo")
+
+
+def _is_skip(r: Dict) -> bool:
+    """Pipeline omitido por causa benigna (sin stage o sin deploy efectivo)."""
+    return bool(r.get("error")) and any(m in r["error"] for m in _SKIP_MARKERS)
+
+
 def print_summary(results: List[Dict], min_sev: str):
     rows = [r for r in results
-            if SEV_ORDER.get(r.get("severity", "NONE"), 9) <= SEV_ORDER[min_sev]]
+            if not _is_skip(r)
+            and SEV_ORDER.get(r.get("severity", "NONE"), 9)
+            <= SEV_ORDER[min_sev]]
     if console:
         t = Table(title="Resumen — Manifest Drift Audit")
         for col in ("Pipeline", "Release", "Objetos", "Configured",
@@ -864,6 +1016,7 @@ def main() -> int:
         console.print(f"[dim]{len(selected)} pipeline(s) a analizar[/]")
 
     results: List[Dict] = []
+    skipped: List[Dict] = []
     max_w = max(1, args.threads)
     with ThreadPoolExecutor(max_workers=max_w) as ex:
         futs = {ex.submit(analyze_definition, client, d, args,
@@ -871,7 +1024,19 @@ def main() -> int:
         for fut in as_completed(futs):
             r = fut.result()
             results.append(r)
-            print_result(r)
+            if not args.show_skipped and _is_skip(r):
+                skipped.append(r)
+            else:
+                print_result(r)
+
+    if skipped:
+        no_stage = sum(1 for r in skipped
+                       if "no existe" in r["error"])
+        no_deploy = len(skipped) - no_stage
+        (console.print if console else print)(
+            f"Omitidos: {len(skipped)} pipeline(s) — {no_stage} sin stage "
+            f"'{args.stage_name}' · {no_deploy} sin deploy efectivo "
+            f"(--show-skipped para detalle)")
 
     results.sort(key=lambda r: SEV_ORDER.get(r.get("severity", "NONE"), 9))
     print_summary(results, args.severity)
