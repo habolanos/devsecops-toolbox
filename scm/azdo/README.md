@@ -1009,10 +1009,13 @@ python azdo_release_manifest_drift.py --definition-ids "wms" \
 ```
 
 Credenciales: `--pat/--org/--project` o `azdo.*` en `scm/config.json`
-(PAT con scope **Release: Read**). Reporte por pipeline en consola +
-resumen; los pipelines sin stage o sin deploy efectivo se colapsan en un
-conteo (`--show-skipped` para verlos uno a uno). `--output json|csv|both`
-exporta a `outcome/`. Exit `2` si alguna severidad ≥ HIGH.
+(PAT con scope **Release: Read**). Por pipeline se imprime una **tabla
+objeto × verdict × severidad** (manifiesto vs apply — análisis principal)
+más los findings sin objeto; los pipelines sin stage o sin deploy efectivo
+se colapsan en un conteo (`--show-skipped` para verlos uno a uno).
+`--output json|csv|html|both|all` exporta a `outcome/` (`all` incluye un
+**reporte HTML autocontenido** con resumen, detalle por pipeline y tabla de
+objetos). Exit `2` si alguna severidad ≥ HIGH.
 
 ---
 
@@ -1124,6 +1127,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-08 | 1.8.38 | **Opción 45: tabla objeto×verdict + reporte HTML** — (1) El análisis de las 3 tasks (get manifest / show manifest / kubectl apply) ahora se presenta como **tabla por pipeline**: Objeto · NS · En manifiesto · Verdict apply · Severidad · Regla (`build_object_rows` reusa `map_verdicts`); findings sin objeto (DEF_RELEASE_DRIFT, APPLY_ERROR…) debajo. (2) `--output html|all` genera `manifest_drift_*.html` autocontenido en `outcome/`: resumen con badges de severidad + detalle por pipeline (release, diff, tabla de objetos, findings) + lista de omitidos. (3) Auto-descarga de tasks con "manifest" en el nombre aunque no matcheen el regex. (4) Nueva señal `NO_MANIFEST_TASKS` (INFO) cuando ninguna task produjo log. (5) El JSON exportado omite el canonical YAML (`objects`). Tests: +6 (build_object_rows, build_html_report). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.3), `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.37 | **Fix opción 45 tras primer run real** — (1) crash `KeyError` en `print_summary` con diff vacío (`d.get`). (2) `parse_apply_log` soporta formato kubectl < 1.18 (`kind "name" configured`), verdicts `replaced`/`(dry run)` y el warning genérico antiguo → `OLD_APPLY_WARNING`. (3) Deployments API deduplicada por `release.id` — antes `--prev-release` podía devolver el mismo release por attempts. (4) Objetos con placeholders sin renderizar (`#{var}#`) → `UNRENDERED_NAME` INFO en vez de `NOT_APPLIED` MEDIUM. (5) Inputs ausentes ≡ defaults falsy → menos ruido en `task_inputs_changed`. (6) Tasks apply-typed detectadas por inputs (`command: apply` / `kubectl apply` inline) aunque el displayName no matchee. (7) Nuevas señales `APPLY_NO_VERDICTS`/`EMPTY_LOG` para diagnosticar logs sin salida. (8) `--show-skipped` — los ~120 pipelines sin stage/deploy se colapsan en conteo. Tests: +16. | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.2), `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.36 | **Fix opción 45: org como URL + stage Producción** — (1) `AzdoClient`/`get_azdo_params` normalizan `--org`: el launcher pasa `azdo.organization_url` completa (`https://dev.azure.com/ORG`) y el cliente la concatenaba al host vsrm → HTTP 400. Ahora se extrae el nombre de la org en ambos puntos. (2) `find_stage_env` agrega match por sufijo `duction` → cubre stages `Production`/`Producción` sin depender del nombre exacto. Tests: +5. | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/azdo_release_manifest_drift.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.35 | **Nueva herramienta: Release Manifest Drift (opción 45)** — `azdo_release_manifest_drift.py` audita la consistencia del stage Production de pipelines CD: selección `all`/ID/lista/substring; último deploy efectivo vía Deployments API; logs de tasks de manifiesto (`get file k8-manifest`, `show manifest`, `kubectl apply`); diff def-vs-snapshot (tasks/versión/**inputs**/variables); detección de manipulación del cluster — `NOT_MANAGED_BY_APPLY` (sin anotación last-applied) y `EXTERNAL_MODIFICATION` (`configured` con YAML idéntico al release previo, flag `--prev-release`). Parser tolerante a ruido de log (`_YAMLISH` fallback), matching de tasks por regex configurable, paralelo por pipeline, export JSON/CSV, exit 2 si severidad ≥ HIGH. Launcher: prompts para `--definition-ids`, `--task-patterns`, `--prev-release`; defaults de stage/output específicos de la 45. Tests: +30. | `scm/azdo/azdo_release_manifest_drift.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |

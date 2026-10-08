@@ -9,6 +9,8 @@ from scm.azdo.azdo_release_manifest_drift import (
     analyze_manifest,
     apply_resource_key,
     applyish_task_names,
+    build_html_report,
+    build_object_rows,
     diff_env_def_vs_release,
     diff_has_changes,
     extract_manifest_docs,
@@ -539,3 +541,87 @@ class TestEffectiveDeploymentsDedup:
     def test_respects_limit(self):
         eff = find_effective_deployments(self._Client(), 1, 2, limit=1)
         assert len(eff) == 1
+
+
+def _result(**over):
+    """Resultado mínimo de analyze_definition para tests de reporte."""
+    r = {
+        "definition_id": 1, "definition_name": "pipe-x",
+        "stage": "production",
+        "release_id": 99, "release_name": "Release-9",
+        "release_created": "2026-01-01T00:00", "deployment_status": "succeeded",
+        "task_logs": ["show manifest", "kubectl apply"],
+        "manifest_objects": 0, "objects": {}, "apply_verdicts": {},
+        "apply_counts": {v: 0 for v in _APPLY_VERDICTS},
+        "def_release_diff": None, "findings": [], "error": "",
+        "severity": "NONE",
+    }
+    r.update(over)
+    return r
+
+
+class TestBuildObjectRows:
+    def test_manifest_object_with_verdict_and_finding(self):
+        objects = {"deployment/ns/web": {"kind": "Deployment",
+                                         "namespace": "ns", "name": "web",
+                                         "canonical": "c"}}
+        r = _result(objects=objects,
+                    apply_verdicts={"deployment.apps/web": "configured"},
+                    findings=analyze_manifest(
+                        objects, {"verdicts": {"deployment.apps/web":
+                                               "configured"}}))
+        rows, other = build_object_rows(r)
+        assert len(rows) == 1
+        assert rows[0]["in_manifest"] == "✓"
+        assert rows[0]["verdict"] == "configured"
+        assert "CONFIGURED" in rows[0]["rules"]
+        assert other == []
+
+    def test_apply_only_resource_row(self):
+        r = _result(apply_verdicts={"secret/x": "created"},
+                    findings=analyze_manifest(
+                        {}, {"verdicts": {"secret/x": "created"}}))
+        rows, _ = build_object_rows(r)
+        assert len(rows) == 1
+        assert rows[0]["in_manifest"] == "✗"
+        assert rows[0]["severity"] == "LOW"  # APPLIED_NOT_IN_MANIFEST
+
+    def test_non_object_findings_apart(self):
+        r = _result(findings=[{"severity": "MEDIUM", "rule": "APPLY_ERROR",
+                               "object": "", "detail": "boom"}])
+        rows, other = build_object_rows(r)
+        assert rows == [] and other[0]["rule"] == "APPLY_ERROR"
+
+
+class TestBuildHtmlReport:
+    def test_html_contains_pipeline_and_table(self):
+        objects = {"deployment/ns/web": {"kind": "Deployment",
+                                         "namespace": "ns", "name": "web",
+                                         "canonical": "c"}}
+        r = _result(manifest_objects=1, objects=objects,
+                    apply_verdicts={"deployment.apps/web": "configured"},
+                    findings=analyze_manifest(
+                        objects, {"verdicts": {"deployment.apps/web":
+                                               "configured"}}))
+        r["severity"] = "INFO"
+        out = build_html_report([r])
+        assert "pipe-x" in out
+        assert "Deployment/web" in out
+        assert "configured" in out
+        assert "CONFIGURED" in out
+        assert "Release-9" in out
+
+    def test_html_skipped_collapsed(self):
+        skip = _result(definition_name="pipe-skip",
+                       error="stage 'production' no existe en la definición")
+        out = build_html_report([skip])
+        assert "Omitidos (1)" in out
+        assert "pipe-skip" in out
+
+    def test_html_escapes_content(self):
+        r = _result(definition_name="<script>alert(1)</script>",
+                    findings=[{"severity": "MEDIUM", "rule": "X",
+                               "object": "", "detail": "<img onerror=x>"}])
+        out = build_html_report([r])
+        assert "<script>alert" not in out
+        assert "&lt;script&gt;" in out

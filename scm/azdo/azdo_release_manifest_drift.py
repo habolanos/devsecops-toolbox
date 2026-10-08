@@ -39,6 +39,7 @@ Autor: Harold Adrian
 """
 
 import argparse
+import html as _html
 import json
 import re
 import sys
@@ -52,7 +53,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -66,6 +67,7 @@ except ImportError:
     )
 
 try:
+    from rich import box
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
@@ -115,8 +117,10 @@ def get_args() -> argparse.Namespace:
                         "manual en el cluster")
     p.add_argument("--top-deployments", type=int, default=10,
                    help="Deployments a revisar buscando efectivos (default: 10)")
-    p.add_argument("--output", choices=["json", "csv", "both"], default="",
-                   help="Exportar resultados a outcome/")
+    p.add_argument("--output",
+                   choices=["json", "csv", "html", "both", "all"], default="",
+                   help="Exportar resultados a outcome/ (both=json+csv, "
+                        "all=json+csv+html)")
     p.add_argument("--threads", type=int, default=4,
                    help="Pipelines en paralelo (default: 4)")
     p.add_argument("--severity", choices=list(SEV_ORDER), default="NONE",
@@ -300,7 +304,8 @@ def download_task_logs(client: AzdoClient, release_id, env_id,
     apply_names: set = set()
     for t in tasks:
         name = t["name"]
-        if not rx.search(name) and name.lower() not in extra:
+        if not rx.search(name) and name.lower() not in extra \
+                and "manifest" not in name.lower():
             continue
         if "apply" in name.lower() or name.lower() in extra:
             apply_names.add(name)
@@ -477,6 +482,19 @@ def apply_resource_key(resource: str) -> str:
 _PLACEHOLDER = re.compile(r"#\{[^}]*\}|\$\([^)]*\)|\{\{[^}]+\}\}")
 
 
+def map_verdicts(objects: Dict[str, Dict],
+                 verdicts: Dict[str, str]) -> Dict[str, Tuple[str, str]]:
+    """Mapea verdicts apply → key manifiesto (apply no lleva namespace).
+    Recursos sin objeto manifiesto quedan bajo la clave '?//<res>'."""
+    out: Dict[str, Tuple[str, str]] = {}
+    for res, verdict in verdicts.items():
+        akey = apply_resource_key(res)
+        match = next((k for k, o in objects.items()
+                      if f"{o['kind'].lower()}//{o['name']}" == akey), None)
+        out[match or f"?//{res}"] = (res, verdict)
+    return out
+
+
 def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
                      prev_objects: Optional[Dict[str, Dict]] = None) -> List[Dict]:
     """Genera findings de drift a partir de manifiesto + salida apply.
@@ -487,16 +505,14 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
 
     prev_objects (opcional): objetos del release efectivo anterior — habilita
     la señal 'configured con YAML idéntico = edición manual'.
+
+    Los findings ligados a un objeto llevan 'key' = clave del objeto en el
+    manifiesto, o '?//<res>' para recursos solo vistos en el apply.
     """
     findings: List[Dict] = []
 
     # Mapear verdicts apply → key manifiesto (apply no lleva namespace)
-    verdict_by_key: Dict[str, Tuple[str, str]] = {}
-    for res, verdict in apply.get("verdicts", {}).items():
-        akey = apply_resource_key(res)
-        match = next((k for k, o in objects.items()
-                      if f"{o['kind'].lower()}//{o['name']}" == akey), None)
-        verdict_by_key[match or f"?//{res}"] = (res, verdict)
+    verdict_by_key = map_verdicts(objects, apply.get("verdicts", {}))
 
     # Diagnóstico de logs apply sin verdicts ni vacíos
     apply_logs = apply.get("log_names", [])
@@ -527,20 +543,25 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
 
     # Señal 1 (HIGH): recurso sin anotación last-applied-configuration
     for res in sorted(apply.get("missing_annotation", [])):
-        findings.append({
+        vk = next((k for k, (rr, _) in verdict_by_key.items() if rr == res),
+                  None)
+        f = {
             "severity": "HIGH", "rule": "NOT_MANAGED_BY_APPLY",
             "object": res,
             "detail": "Existe en el cluster sin anotación "
                       "last-applied-configuration — creado fuera de "
                       "kubectl apply (manipulación directa u otra vía).",
-        })
+        }
+        if vk:
+            f["key"] = vk
+        findings.append(f)
 
     # Señal 3 (MEDIUM): objetos del manifiesto sin verdict en apply
     for key, obj in objects.items():
         if _PLACEHOLDER.search(obj["name"]):
             findings.append({
                 "severity": "INFO", "rule": "UNRENDERED_NAME",
-                "object": f"{obj['kind']}/{obj['name']}",
+                "object": f"{obj['kind']}/{obj['name']}", "key": key,
                 "detail": "El nombre contiene placeholders sin renderizar — "
                           "'show manifest' mostró el template antes de la "
                           "sustitución de tokens.",
@@ -549,7 +570,7 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
         if key not in verdict_by_key:
             findings.append({
                 "severity": "MEDIUM", "rule": "NOT_APPLIED",
-                "object": f"{obj['kind']}/{obj['name']}",
+                "object": f"{obj['kind']}/{obj['name']}", "key": key,
                 "detail": "Presente en 'show manifest' pero sin línea de "
                           "salida en 'kubectl apply'.",
             })
@@ -559,7 +580,7 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
         if key not in objects:
             findings.append({
                 "severity": "LOW", "rule": "APPLIED_NOT_IN_MANIFEST",
-                "object": res,
+                "object": res, "key": key,
                 "detail": "El apply procesó un recurso que no se vio en "
                           "'show manifest' (¿otro doc del archivo?).",
             })
@@ -568,7 +589,7 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
         if verdict == "created":
             findings.append({
                 "severity": "INFO", "rule": "CREATED",
-                "object": res,
+                "object": res, "key": key,
                 "detail": "Recurso creado por este apply (nuevo o recreado).",
             })
         elif verdict == "configured":
@@ -576,7 +597,7 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
                 if prev_objects[key]["canonical"] == obj["canonical"]:
                     findings.append({
                         "severity": "HIGH", "rule": "EXTERNAL_MODIFICATION",
-                        "object": res,
+                        "object": res, "key": key,
                         "detail": "Manifiesto idéntico al release efectivo "
                                   "anterior pero el apply tuvo que "
                                   "RECONFIGURAR el objeto — el estado vivo "
@@ -586,7 +607,7 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
                 else:
                     findings.append({
                         "severity": "INFO", "rule": "EXPECTED_CONFIG",
-                        "object": res,
+                        "object": res, "key": key,
                         "detail": "Reconfigurado — el manifiesto cambió "
                                   "respecto al release anterior (cambio "
                                   "vía pipeline).",
@@ -594,7 +615,7 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
             else:
                 findings.append({
                     "severity": "INFO", "rule": "CONFIGURED",
-                    "object": res,
+                    "object": res, "key": key,
                     "detail": "Reconfigurado por el apply (sin release "
                               "previo para distinguir causa — use "
                               "--prev-release).",
@@ -714,6 +735,7 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
         "release_id": None, "release_name": "", "release_created": "",
         "deployment_status": "",
         "task_logs": [], "manifest_objects": 0,
+        "objects": {}, "apply_verdicts": {},
         "apply_counts": {v: 0 for v in _APPLY_VERDICTS},
         "def_release_diff": None,
         "findings": [],
@@ -771,6 +793,12 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
     result["release_created"] = rel.get("createdOn", "")
     result["deployment_status"] = effective[0].get("deploymentStatus", "")
     result["task_logs"] = sorted(logs.keys())
+    if not logs:
+        result["findings"].append({
+            "severity": "INFO", "rule": "NO_MANIFEST_TASKS", "object": "",
+            "detail": "Ninguna task del stage produjo log de manifiesto/apply "
+                      "(¿el pipeline no usa las 3 tasks de manifiesto?).",
+        })
 
     # diff definición vs snapshot del release
     if rel_env:
@@ -804,6 +832,9 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
 
     objects = parse_manifest_objects(manifest_docs)
     result["manifest_objects"] = len(objects)
+    result["objects"] = {k: {"kind": o["kind"], "namespace": o["namespace"],
+                             "name": o["name"]} for k, o in objects.items()}
+    result["apply_verdicts"] = dict(apply["verdicts"])
     for v in apply["verdicts"].values():
         if v in result["apply_counts"]:
             result["apply_counts"][v] += 1
@@ -844,6 +875,44 @@ def _print_finding(f: Dict):
         console.print(f"      [dim]{f['detail']}[/]")
     else:
         print(f"    {sev:<8} {f['rule']} {f['object']} — {f['detail']}")
+
+
+def build_object_rows(r: Dict) -> Tuple[List[Dict], List[Dict]]:
+    """Filas para la tabla objeto×apply del pipeline + findings sin objeto.
+
+    Cada fila: objeto, ns, en_manifiesto (✓/✗), verdict apply, severidad
+    (la peor de sus findings) y reglas. Findings sin 'key' (DEF_RELEASE_DRIFT,
+    APPLY_ERROR, EMPTY_LOG, …) van en la segunda lista.
+    """
+    objects = r.get("objects") or {}
+    vmap = map_verdicts(objects, r.get("apply_verdicts") or {})
+    fby_key: Dict[str, List[Dict]] = {}
+    other: List[Dict] = []
+    for f in r.get("findings", []):
+        if f.get("key"):
+            fby_key.setdefault(f["key"], []).append(f)
+        else:
+            other.append(f)
+
+    def _row(key, obj_name, ns, in_manifest, verdict):
+        fs = fby_key.get(key, [])
+        sev = min((f["severity"] for f in fs),
+                  key=lambda s: SEV_ORDER.get(s, 9), default="")
+        return {"object": obj_name, "ns": ns, "in_manifest": in_manifest,
+                "verdict": verdict or "—", "severity": sev,
+                "rules": ", ".join(sorted({f["rule"] for f in fs}))}
+
+    rows = []
+    for key, obj in objects.items():
+        _res, verdict = vmap.get(key, ("", ""))
+        rows.append(_row(key, f"{obj['kind']}/{obj['name']}",
+                         obj.get("namespace") or "—", "✓", verdict))
+    for key, (res, verdict) in vmap.items():
+        if key.startswith("?//"):
+            rows.append(_row(key, res, "—", "✗", verdict))
+    rows.sort(key=lambda x: (SEV_ORDER.get(x["severity"], 99)
+                             if x["severity"] else 99, x["object"]))
+    return rows, other
 
 
 def print_result(r: Dict):
@@ -895,11 +964,33 @@ def print_result(r: Dict):
             f"  Manifiesto: {r['manifest_objects']} objeto(s) — apply: "
             f"{verdict_line}")
 
-    if r["findings"]:
-        for f in sorted(r["findings"],
+    rows, other_findings = build_object_rows(r)
+    if rows:
+        if console:
+            t = Table(box=box.SIMPLE, expand=False)
+            for col in ("Objeto", "NS", "Manif.", "Apply",
+                        "Severidad", "Regla"):
+                t.add_column(col)
+            for row in rows:
+                sev = row["severity"]
+                sev_cell = (f"[{SEV_STYLE[sev]}]{sev}[/]"
+                            if sev else "[green]OK[/]")
+                t.add_row(row["object"], row["ns"], row["in_manifest"],
+                          row["verdict"], sev_cell, row["rules"] or "—")
+            console.print(t)
+        else:
+            print(f"    {'OBJETO':<44} {'NS':<18} {'MANIF':<5} "
+                  f"{'APPLY':<11} {'SEV':<8} REGLA")
+            for row in rows:
+                print(f"    {row['object']:<44.44} {row['ns']:<18.18} "
+                      f"{row['in_manifest']:<5} {row['verdict']:<11} "
+                      f"{row['severity'] or 'OK':<8} {row['rules'] or '-'}")
+
+    if other_findings:
+        for f in sorted(other_findings,
                         key=lambda x: SEV_ORDER.get(x["severity"], 9)):
             _print_finding(f)
-    else:
+    elif not r["findings"]:
         (console.print if console else print)(
             "  [green]✓ Sin findings[/]" if console else "  ✓ Sin findings")
 
@@ -953,15 +1044,16 @@ def export_results(results: List[Dict], fmt: str) -> List[Path]:
 
     def _clean(r: Dict) -> Dict:
         rr = dict(r)
+        rr.pop("objects", None)          # canonical YAML ya aplicado a findings
         return rr
 
-    if fmt in ("json", "both"):
+    if fmt in ("json", "both", "all"):
         p = out_dir / f"manifest_drift_{ts}.json"
         p.write_text(json.dumps([_clean(r) for r in results],
                                 indent=2, ensure_ascii=False, default=str),
                      encoding="utf-8")
         paths.append(p)
-    if fmt in ("csv", "both"):
+    if fmt in ("csv", "both", "all"):
         import csv as _csv
         p = out_dir / f"manifest_drift_{ts}.csv"
         with open(p, "w", newline="", encoding="utf-8") as f:
@@ -983,7 +1075,178 @@ def export_results(results: List[Dict], fmt: str) -> List[Path]:
                                 f_["severity"], f_["rule"], f_["object"],
                                 f_["detail"], ""])
         paths.append(p)
+    if fmt in ("html", "all"):
+        p = out_dir / f"manifest_drift_{ts}.html"
+        p.write_text(build_html_report(results), encoding="utf-8")
+        paths.append(p)
     return paths
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HTML REPORT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_SEV_CSS = {"CRITICAL": "#7f1d1d", "HIGH": "#b91c1c", "MEDIUM": "#b45309",
+            "LOW": "#1d4ed8", "INFO": "#6b7280", "NONE": "#15803d"}
+
+
+def _esc(s) -> str:
+    return _html.escape(str(s if s is not None else ""))
+
+
+def build_html_report(results: List[Dict]) -> str:
+    """Reporte HTML autocontenido: resumen + detalle por pipeline con la
+    tabla objeto×verdict×severidad (análisis principal de las 3 tasks)."""
+    e = _esc
+    analyzed = [r for r in results if not _is_skip(r)]
+    skipped = [r for r in results if _is_skip(r)]
+
+    sev_counts: Dict[str, int] = {}
+    for r in analyzed:
+        sev = r.get("severity", "NONE")
+        sev_counts[sev] = sev_counts.get(sev, 0) + 1
+
+    parts = ["""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<title>Release Manifest Drift — Auditoría</title>
+<style>
+body{font-family:'Segoe UI',system-ui,sans-serif;margin:24px;background:#f8fafc;color:#1f2937}
+h1{font-size:22px} h2{font-size:16px;margin:28px 0 6px}
+table{border-collapse:collapse;width:100%;background:#fff;margin:8px 0}
+th,td{border:1px solid #e5e7eb;padding:6px 10px;text-align:left;
+     font-size:12.5px;vertical-align:top}
+th{background:#1e3a5f;color:#fff;white-space:nowrap}
+tr:nth-child(even){background:#f9fafb}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;
+       font-size:11px;font-weight:600;white-space:nowrap}
+.pipe{border:1px solid #d1d5db;border-radius:8px;padding:14px 18px;
+      margin:14px 0;background:#fff}
+.meta{color:#4b5563;font-size:12.5px;line-height:1.7}
+.small{font-size:11.5px;color:#6b7280}
+.ok{color:#15803d;font-weight:600}
+.warn{color:#b45309}
+.kpi{display:inline-block;margin-right:18px}
+code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
+</style></head><body>"""]
+
+    worst_order = {s: SEV_ORDER.get(s, 9) for s in sev_counts}
+    sev_line = " · ".join(
+        f'<span class="badge" style="background:{_SEV_CSS[s]}">{s}: '
+        f'{sev_counts[s]}</span>'
+        for s in sorted(sev_counts, key=lambda s: worst_order[s]))
+    parts.append(
+        f"<h1>🌪️ Release Manifest Drift — Auditoría</h1>"
+        f"<div class='meta'>Generado: {e(datetime.now().strftime('%Y-%m-%d %H:%M'))} · "
+        f"Pipelines analizados: <b>{len(analyzed)}</b> · Omitidos (sin stage/deploy): "
+        f"<b>{len(skipped)}</b></div>"
+        f"<div style='margin:10px 0'>{sev_line or '<span class=ok>Sin severidades</span>'}</div>")
+
+    # ── Tabla resumen ────────────────────────────────────────────────
+    parts.append("<h2>Resumen por pipeline</h2><table><tr>"
+                 "<th>Pipeline</th><th>Release</th><th>Estado</th>"
+                 "<th>Objetos</th><th>Apply</th><th>Def-Diff</th>"
+                 "<th>Severidad</th><th>Findings</th></tr>")
+    for r in sorted(analyzed, key=lambda x: SEV_ORDER.get(
+            x.get("severity", "NONE"), 9)):
+        counts = r.get("apply_counts", {})
+        apply_txt = ", ".join(f"{counts.get(v, 0)} {v}" for v in _APPLY_VERDICTS
+                              if counts.get(v)) or "—"
+        d = r.get("def_release_diff") or {}
+        sev = r.get("severity", "NONE")
+        badge = (f'<span class="badge" style="background:{_SEV_CSS[sev]}">{sev}</span>'
+                 if sev != "NONE" else '<span class="ok">OK</span>')
+        findings_n = len(r.get("findings", []))
+        err = e(r.get("error", ""))
+        parts.append(
+            f"<tr><td><b>{e(r['definition_name'])}</b><br>"
+            f"<span class='small'>def {e(r['definition_id'])}</span></td>"
+            f"<td>{e(r.get('release_name', ''))}<br><span class='small'>"
+            f"id {e(r.get('release_id', ''))} · "
+            f"{e(str(r.get('release_created', ''))[:16])}</span></td>"
+            f"<td>{e(r.get('deployment_status', ''))}{' — ' + err if err else ''}</td>"
+            f"<td>{e(r.get('manifest_objects', 0))}</td>"
+            f"<td>{e(apply_txt)}</td>"
+            f"<td>{'Sí' if diff_has_changes(d) else '—'}</td>"
+            f"<td>{badge}</td><td>{findings_n}</td></tr>")
+    parts.append("</table>")
+
+    # ── Detalle por pipeline ─────────────────────────────────────────
+    parts.append("<h2>Detalle por pipeline</h2>")
+    for r in sorted(analyzed, key=lambda x: SEV_ORDER.get(
+            x.get("severity", "NONE"), 9)):
+        sev = r.get("severity", "NONE")
+        badge = (f'<span class="badge" style="background:{_SEV_CSS[sev]}">{sev}</span>'
+                 if sev != "NONE" else '<span class="ok">OK</span>')
+        parts.append(
+            f"<div class='pipe'><b>{e(r['definition_name'])}</b> {badge} "
+            f"<div class='meta'>Release <code>{e(r.get('release_name',''))}</code> "
+            f"(id {e(r.get('release_id',''))}) — {e(r.get('deployment_status',''))} — "
+            f"{e(str(r.get('release_created',''))[:16])}"
+            + (f" · Prev <code>{e(r.get('prev_release_name',''))}</code> "
+               f"(id {e(r.get('prev_release_id',''))})"
+               if r.get("prev_release_id") else "")
+            + (f"<br><span class='warn'>⚠ {e(r['error'])}</span>"
+               if r.get("error") else "")
+            + f"<br>Logs: <span class='small'>{e(', '.join(r.get('task_logs') or []) or '(ninguno)')}</span>"
+              "</div>")
+
+        d = r.get("def_release_diff")
+        if d and diff_has_changes(d):
+            parts.append("<div class='meta'><b>Def actual vs snapshot:</b> ")
+            for label, key in (("tasks añadidas", "tasks_added"),
+                               ("tasks eliminadas", "tasks_removed"),
+                               ("versión task", "tasks_version_changed"),
+                               ("vars añadidas", "vars_added"),
+                               ("vars eliminadas", "vars_removed")):
+                if d.get(key):
+                    parts.append(
+                        f"<br>&nbsp;&nbsp;{e(label)}: "
+                        f"{e(', '.join(map(str, d[key])))}")
+            for ic in d.get("task_inputs_changed", []):
+                parts.append(
+                    f"<br>&nbsp;&nbsp;input <code>{e(ic['task'])}.{e(ic['input'])}"
+                    f"</code>: <code>{e(ic['snapshot'])}</code> → "
+                    f"<code>{e(ic['current'])}</code>")
+            parts.append("</div>")
+
+        rows, other = build_object_rows(r)
+        if rows:
+            parts.append("<table><tr><th>Objeto</th><th>Namespace</th>"
+                         "<th>Manifiesto</th><th>Apply</th><th>Severidad</th>"
+                         "<th>Regla</th></tr>")
+            for row in rows:
+                sev_r = row["severity"]
+                cell = (f'<span class="badge" style="background:{_SEV_CSS[sev_r]}">'
+                        f"{sev_r}</span>" if sev_r
+                        else '<span class="ok">OK</span>')
+                parts.append(
+                    f"<tr><td>{e(row['object'])}</td><td>{e(row['ns'])}</td>"
+                    f"<td>{e(row['in_manifest'])}</td><td>{e(row['verdict'])}</td>"
+                    f"<td>{cell}</td><td>{e(row['rules'] or '—')}</td></tr>")
+            parts.append("</table>")
+
+        if other:
+            parts.append("<table><tr><th>Severidad</th><th>Regla</th>"
+                         "<th>Objeto</th><th>Detalle</th></tr>")
+            for f in sorted(other,
+                            key=lambda x: SEV_ORDER.get(x["severity"], 9)):
+                parts.append(
+                    f"<tr><td><span class='badge' style='background:"
+                    f"{_SEV_CSS.get(f['severity'],'#6b7280')}'>"
+                    f"{e(f['severity'])}</span></td><td>{e(f['rule'])}</td>"
+                    f"<td>{e(f['object'])}</td><td>{e(f['detail'])}</td></tr>")
+            parts.append("</table>")
+        elif not rows and not r["findings"]:
+            parts.append("<div class='ok'>✓ Sin findings</div>")
+        parts.append("</div>")
+
+    if skipped:
+        parts.append(
+            f"<h2>Omitidos ({len(skipped)})</h2><div class='small'>"
+            + ", ".join(e(r["definition_name"]) for r in skipped)
+            + "</div>")
+
+    parts.append("</body></html>")
+    return "".join(parts)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

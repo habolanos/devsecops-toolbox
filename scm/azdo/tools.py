@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.37"
+__version__ = "1.8.38"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -2332,7 +2332,8 @@ def run_tool(tool_key: str):
 
     if "--output" in tool_args:
         cfg_fmt = config_get(cfg, "defaults", "output_format", default="excel")
-        choices = ("json", "csv", "both") if tool_key == "45" else ("json", "csv", "excel")
+        choices = (("json", "csv", "html", "both", "all") if tool_key == "45"
+                   else ("json", "csv", "excel"))
         print(f"{Colors.BOLD}¿Exportar resultado? ({'/'.join(choices)}/ninguno) "
               f"[{Colors.CYAN}{cfg_fmt or 'ninguno'}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         val = input().strip().lower()
