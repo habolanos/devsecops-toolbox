@@ -116,6 +116,8 @@ def get_azdo_params(args) -> tuple:
     cfg = load_config().get("azdo", {})
     org = args.org or cfg.get("organization") or \
         (cfg.get("organization_url") or "").rstrip("/").split("/")[-1]
+    # Acepta URL completa (https://dev.azure.com/ORG) o nombre corto
+    org = org.rstrip("/").split("/")[-1]
     project = args.project or cfg.get("project", "")
     pat = args.pat or cfg.get("pat", "")
     if not org or not project or not pat:
@@ -132,7 +134,9 @@ def get_azdo_params(args) -> tuple:
 
 class AzdoClient:
     def __init__(self, org: str, project: str, pat: str):
-        self.base = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release"
+        # org puede llegar como nombre o URL completa del dev.azure.com
+        org_name = org.rstrip("/").split("/")[-1]
+        self.base = f"https://vsrm.dev.azure.com/{org_name}/{project}/_apis/release"
         self.session = requests.Session()
         self.session.auth = ("", pat)
         self.session.headers["Accept"] = "application/json"

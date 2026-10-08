@@ -311,8 +311,42 @@ class TestFindStageEnv:
         d = {"environments": [{"id": 9, "name": "Deploy PROD"}]}
         assert find_stage_env(d, "production")["id"] == 9
 
+    def test_produccion_suffix_duccion(self):
+        d = {"environments": [{"id": 21, "name": "Develop"},
+                              {"id": 22, "name": "Producción"}]}
+        assert find_stage_env(d, "production")["id"] == 22
+
+    def test_stage_produccion_matches_production(self):
+        d = {"environments": [{"id": 23, "name": "Production"}]}
+        assert find_stage_env(d, "producción")["id"] == 23
+
     def test_not_found(self):
         assert find_stage_env({"environments": []}, "production") is None
+
+
+class TestAzdoClientOrgNormalization:
+    """El launcher pasa --org como URL completa (azdo.organization_url);
+    AzdoClient debe usar solo el nombre de la organización."""
+
+    def test_client_with_org_url(self):
+        from scm.azdo.scm_inspection_remediator import AzdoClient
+        c = AzdoClient("https://dev.azure.com/MyOrg", "Proj", "pat")
+        assert c.base == ("https://vsrm.dev.azure.com/MyOrg/Proj"
+                          "/_apis/release")
+
+    def test_client_with_org_name(self):
+        from scm.azdo.scm_inspection_remediator import AzdoClient
+        c = AzdoClient("MyOrg", "Proj", "pat")
+        assert "MyOrg/Proj" in c.base
+
+    def test_get_azdo_params_normalizes_url(self, monkeypatch):
+        import argparse
+        import scm.azdo.scm_inspection_remediator as rem
+        monkeypatch.setattr(rem, "load_config", lambda: {})
+        args = argparse.Namespace(
+            org="https://dev.azure.com/MyOrg/", project="Proj", pat="x")
+        org, project, pat = rem.get_azdo_params(args)
+        assert org == "MyOrg" and project == "Proj"
 
 
 class TestExtractStageTasks:

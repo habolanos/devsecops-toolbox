@@ -52,7 +52,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -169,12 +169,20 @@ def get_definition(client: AzdoClient, def_id) -> Dict:
 
 
 def find_stage_env(definition: Dict, stage_name: str) -> Optional[Dict]:
-    """Environment de la definición que corresponde al stage (default prod)."""
+    """Environment de la definición que corresponde al stage (default prod).
+
+    Match en orden: nombre exacto → sufijo 'duction' (Production/Producción)
+    → token de ambiente (_env_token: prod/stg/qa/dev) → substring.
+    """
     target = (stage_name or "").lower()
     envs = definition.get("environments", [])
     for e in envs:
         if (e.get("name") or "").lower() == target:
             return e
+    if target.endswith("duction"):
+        for e in envs:
+            if (e.get("name") or "").lower().endswith("duction"):
+                return e
     for e in envs:
         if _env_token(e.get("name", "")) == "prod" and _env_token(stage_name) == "prod":
             return e
