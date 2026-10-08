@@ -26,6 +26,7 @@ from scm.azdo.azdo_release_manifest_drift import (
     parse_apply_log,
     parse_manifest_objects,
     select_definitions,
+    selector_all_numeric,
 )
 
 TS = "2026-10-08T14:22:33.1234567Z "
@@ -437,6 +438,23 @@ class TestFetchDefinitionById:
     def test_network_error(self):
         c = self._Client(exc=ConnectionError("boom"))
         assert fetch_definition_by_id(c, 1) is None
+
+
+class TestSelectorAllNumeric:
+    def test_single_id(self):
+        assert selector_all_numeric("905") == ["905"]
+
+    def test_csv_ids(self):
+        assert selector_all_numeric("1, 905 ,3") == ["1", "905", "3"]
+
+    def test_all_not_numeric(self):
+        assert selector_all_numeric("all") == []
+
+    def test_substring_not_numeric(self):
+        assert selector_all_numeric("prod") == []
+
+    def test_mixed_not_numeric(self):
+        assert selector_all_numeric("905,prod") == []
 
 
 class TestFindStageEnv:

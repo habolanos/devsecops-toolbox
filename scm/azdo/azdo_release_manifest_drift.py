@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -147,7 +147,7 @@ def list_release_definitions(client: AzdoClient, debug: bool = False) -> List[Di
     all_values: List[Dict] = []
     token = None
     while True:
-        params: Dict = {"api-version": "7.1", "$top": 200}
+        params: Dict = {"api-version": "7.1", "$top": 1000}
         if token:
             params["continuationToken"] = token
         data, headers = client.get(f"{client.base}/definitions",
@@ -183,6 +183,16 @@ def missing_numeric_tokens(selector: str, defs: List[Dict]) -> List[str]:
     ids = {str(d.get("id")) for d in defs}
     return [t.strip() for t in (selector or "").split(",")
             if t.strip().isdigit() and t.strip() not in ids]
+
+
+def selector_all_numeric(selector: str) -> List[str]:
+    """IDs si el selector son solo tokens numéricos ('905', '1,2,3');
+    lista vacía para 'all'/substrings — evita descargar todo el listado
+    cuando basta un GET directo por ID."""
+    tokens = [t.strip() for t in (selector or "").split(",") if t.strip()]
+    if tokens and all(t.isdigit() for t in tokens):
+        return tokens
+    return []
 
 
 def select_definitions(defs: List[Dict], selector: str) -> List[Dict]:
@@ -1577,8 +1587,22 @@ def main() -> int:
                       f"— stage '{args.stage_name}'"
                       + (" — prev-release ON" if args.prev_release else ""))
 
-    defs = list_release_definitions(client, args.debug)
-    selected = select_definitions(defs, args.definition_ids)
+    numeric = selector_all_numeric(args.definition_ids)
+    if numeric:
+        # Selector son solo IDs → GET directo por ID, sin descargar el
+        # listado completo (proyectos con +2000 definitions).
+        defs = []
+        for tid in numeric:
+            d = fetch_definition_by_id(client, tid)
+            if d:
+                defs.append(d)
+            else:
+                (console.print if console else print)(
+                    f"  [yellow]definition {tid} no encontrada en AzDO[/]")
+        selected = defs
+    else:
+        defs = list_release_definitions(client, args.debug)
+        selected = select_definitions(defs, args.definition_ids)
     for tid in missing_numeric_tokens(args.definition_ids, defs):
         d = fetch_definition_by_id(client, tid)
         if d:
