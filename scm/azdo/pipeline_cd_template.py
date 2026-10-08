@@ -1,0 +1,597 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Pipeline CD Template — extrae la definición completa de un pipeline CD como
+template YAML reutilizable y (opcionalmente) la aplica sobre otro
+definitionId.
+
+Modos:
+
+  Extract (default):  --source-id N
+      GET /release/definitions/{id} → limpia campos del servidor, redacta
+      secretos y resuelve IDs a nombres (queues, variable groups, task
+      groups). Genera en outcome/templates/:
+
+      * pipe_cd_full_<id>_<nombre>.yaml      — definición completa
+        normalizada (metadata + definition + resolved_names + secrets):
+        editable y aplicable via PUT sobre otro pipeline.
+      * pipe_cd_updater_<id>_<nombre>.yaml   — template DSL del
+        pipeline_updater (opción 41): search + update con un
+        `action: add` por stage (definición embebida) y variables de
+        nivel release.
+
+  Apply:              --template FILE --target-id M
+      Lee una template full exportada, hace backup del destino en
+      outcome/backups/template/, muestra diff (stages añadidos/eliminados,
+      variables) y hace PUT del definition transformado (id/revision del
+      destino; nombre/path propios salvo --new-name/--new-path).
+      Secretos con value:null conservan el valor existente del destino
+      si la variable ya existe.
+
+  Combinado:          --source-id N --target-id M [--dry-run]
+      Extrae de N y aplica sobre M en una sola corrida.
+
+Uso:
+    python pipeline_cd_template.py --source-id 905
+    python pipeline_cd_template.py --source-id 905 --target-id 910 --dry-run
+    python pipeline_cd_template.py --template outcome/templates/pipe_cd_full_905_x.yaml --target-id 910
+    python pipeline_cd_template.py --interactive
+
+Autor: Harold Adrian
+"""
+
+import argparse
+import copy
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import yaml
+
+BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
+SCM_ROOT = BASE_DIR.parent                          # scm/
+
+__version__ = "1.0.0"
+
+# Reuso del cliente/config del remediator (mismo directorio)
+try:
+    from scm.azdo.scm_inspection_remediator import (
+        AzdoClient, get_azdo_params, resolve_outcome_dir,
+    )
+except ImportError:
+    sys.path.insert(0, str(BASE_DIR))
+    from scm_inspection_remediator import (
+        AzdoClient, get_azdo_params, resolve_outcome_dir,
+    )
+
+try:
+    from rich import box
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    RICH = True
+except ImportError:
+    RICH = False
+
+console = Console() if RICH else None
+
+# Campos gestionados por el servidor — no forman parte del "template"
+SYSTEM_FIELDS = [
+    "id", "revision", "createdOn", "modifiedOn", "createdBy", "modifiedBy",
+    "_links", "url", "projectReference", "isDeleted", "currentRelease",
+    "badgeUrl", "lastRelease",
+]
+ENV_FIELDS = ["id", "releaseId", "badgeUrl"]
+PHASE_FIELDS = ["id"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXTRACT — limpieza, secretos, resolución de nombres
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def clean_definition_for_template(defn: Dict) -> Dict:
+    """Deep-copy de la definición sin campos del servidor.
+
+    Quita ids de definition/environment/deployPhase para que el template
+    pueda hacer PUT sobre otra definición (los envs se recrean por nombre).
+    """
+    d = copy.deepcopy(defn)
+    for f in SYSTEM_FIELDS:
+        d.pop(f, None)
+    for env in d.get("environments", []):
+        for f in ENV_FIELDS:
+            env.pop(f, None)
+        env.pop("queue", None)          # display-only (nombre cacheado)
+        for phase in env.get("deployPhases", []):
+            for f in PHASE_FIELDS:
+                phase.pop(f, None)
+        for ap in (env.get("preDeployApprovals") or {}).get("approvals", []):
+            ap.pop("id", None)
+        for ap in (env.get("postDeployApprovals") or {}).get("approvals", []):
+            ap.pop("id", None)
+    return d
+
+
+def redact_secret_values(defn: Dict) -> List[Dict]:
+    """Pone value:null a variables isSecret (in-place) y devuelve la lista.
+
+    En un PUT posterior, una variable secreta con value null conserva el
+    valor que ya tenga el destino si la variable existe.
+    """
+    secrets: List[Dict] = []
+    for scope_vars, env in ((defn.get("variables") or {}, None),):
+        for name, val in scope_vars.items():
+            if isinstance(val, dict) and val.get("isSecret"):
+                val["value"] = None
+                secrets.append({"scope": "definition", "name": name,
+                                "env": None})
+    for env in defn.get("environments", []):
+        for name, val in (env.get("variables") or {}).items():
+            if isinstance(val, dict) and val.get("isSecret"):
+                val["value"] = None
+                secrets.append({"scope": "environment", "name": name,
+                                "env": env.get("name")})
+    return secrets
+
+
+def _core_get(client: AzdoClient, org: str, project: str, path: str):
+    """GET contra dev.azure.com core API (AzdoClient.base es vsrm)."""
+    url = f"https://dev.azure.com/{org}/{project}/_apis/{path}"
+    try:
+        resp = client.session.get(url, params={"api-version": "7.1"},
+                                  timeout=20)
+        return resp.json() if resp.status_code == 200 else {}
+    except Exception:
+        return {}
+
+
+def resolve_reference_names(client: AzdoClient, org: str, project: str,
+                            defn: Dict) -> Dict:
+    """Resuelve IDs → nombres para queues, variable groups y task groups."""
+    resolved = {"agent_queues": {}, "variable_groups": {}, "task_groups": {}}
+    queue_ids, vg_ids, tg_ids = set(), set(), set()
+
+    for vg in defn.get("variableGroups", []) or []:
+        if isinstance(vg, int):
+            vg_ids.add(vg)
+        elif isinstance(vg, dict) and vg.get("id"):
+            vg_ids.add(vg["id"])
+
+    for env in defn.get("environments", []):
+        if env.get("queueId"):
+            queue_ids.add(env["queueId"])
+        for vg in env.get("variableGroups", []) or []:
+            if isinstance(vg, int):
+                vg_ids.add(vg)
+            elif isinstance(vg, dict) and vg.get("id"):
+                vg_ids.add(vg["id"])
+        for phase in env.get("deployPhases", []):
+            for inp_key in ("deploymentInput", "phaseInput"):
+                qid = (phase.get(inp_key) or {}).get("queueId")
+                if qid:
+                    queue_ids.add(qid)
+            for task in phase.get("workflowTasks", []):
+                t = task.get("task", {})
+                if t.get("taskGroup") and t.get("id"):
+                    tg_ids.add(str(t["id"]))
+
+    for qid in sorted(queue_ids):
+        name = _core_get(client, org, project,
+                         f"distributedtask/queues/{qid}").get("name")
+        resolved["agent_queues"][str(qid)] = name or str(qid)
+    for vgid in sorted(vg_ids, key=str):
+        name = _core_get(client, org, project,
+                         f"distributedtask/variablegroups/{vgid}").get("name")
+        resolved["variable_groups"][str(vgid)] = name or str(vgid)
+    for tgid in sorted(tg_ids):
+        name = _core_get(client, org, project,
+                         f"distributedtask/taskgroups/{tgid}").get("name")
+        resolved["task_groups"][tgid] = name or tgid
+    return resolved
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TEMPLATES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _safe_name(name: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_." else "_"
+                   for c in (name or "pipeline"))[:60]
+
+
+def build_full_template(defn_clean: Dict, source_def: Dict, org: str,
+                        project: str, resolved: Dict,
+                        secrets: List[Dict]) -> Dict:
+    """Template completa: metadata + definition normalizada."""
+    envs = defn_clean.get("environments", [])
+    return {
+        "metadata": {
+            "name": f"Template de {source_def.get('name', '?')}",
+            "version": "1.0",
+            "description": "Definición completa de pipeline CD extraída "
+                           "de Azure DevOps — editable y aplicable sobre "
+                           "otro definitionId via PUT",
+            "comment": (
+                "Template generada por pipeline_cd_template.py (opción 46).\n\n"
+                "Uso:\n"
+                "  python pipeline_cd_template.py --template <este archivo> "
+                "--target-id <definitionId>\n\n"
+                "Notas:\n"
+                "  - Los ids de stages se omiten: al aplicar se recrean.\n"
+                "  - Las variables secretas vienen con value null — al "
+                "aplicar conservan el valor del destino si la variable ya "
+                "existe; si no, quedan vacías (rellenar antes de usar).\n"
+                "  - Los artifacts apuntan a los mismos orígenes (build/repo) "
+                "que el pipeline origen.\n"
+                "  - resolved_names documenta a qué corresponde cada ID de "
+                "queue/variable-group/task-group."
+            ),
+            "author": "SCM Team",
+            "created_at": datetime.now().strftime("%Y-%m-%d"),
+            "source": {
+                "definition_id": source_def.get("id"),
+                "name": source_def.get("name"),
+                "path": source_def.get("path", "\\"),
+                "revision": source_def.get("revision"),
+                "org": org, "project": project,
+                "stages": [e.get("name") for e in envs],
+            },
+        },
+        "definition": defn_clean,
+        "resolved_names": resolved,
+        "secrets": secrets,
+    }
+
+
+def build_updater_template(defn_clean: Dict, source_def: Dict) -> Dict:
+    """Template DSL del pipeline_updater (opción 41): un `action: add` por
+    stage con la definición embebida + variables de nivel release."""
+    envs = defn_clean.get("environments", [])
+    stage_rules = [{
+        "action": "add",
+        "name": e.get("name", "stage"),
+        "position": "end",
+        "definition": e,
+    } for e in envs]
+    var_rules = [{
+        "name": name,
+        "action": "add",
+        "scope": "release",
+        "value": "" if (isinstance(v, dict) and v.get("isSecret"))
+                 else (v.get("value") if isinstance(v, dict) else v),
+        "allowOverride": bool((v or {}).get("allowOverride"))
+                         if isinstance(v, dict) else False,
+        "isSecret": bool((v or {}).get("isSecret"))
+                    if isinstance(v, dict) else False,
+    } for name, v in (defn_clean.get("variables") or {}).items()]
+
+    return {
+        "metadata": {
+            "name": f"Replicar stages de {source_def.get('name', '?')}",
+            "version": "1.0",
+            "description": "Template DSL (opción 41) que inserta los stages "
+                           f"del pipeline {source_def.get('id')} en el "
+                           "pipeline destino",
+            "comment": (
+                "Generada por pipeline_cd_template.py (opción 46).\n"
+                "ATENCIÓN: `action: add` AGREGA los stages — no reemplaza "
+                "los existentes con el mismo nombre. Para reemplazo total "
+                "del pipeline use la template full (pipe_cd_full_*.yaml) "
+                "con --target-id."
+            ),
+            "author": "SCM Team",
+            "created_at": datetime.now().strftime("%Y-%m-%d"),
+        },
+        "search": {"stages": [{"name": "*"}]},
+        "update": {
+            "variables": var_rules,
+            "stages": stage_rules,
+        },
+        "options": {"dry_run": True, "rollback_on_error": True},
+    }
+
+
+def export_templates(source_def: Dict, org: str, project: str, fmt: str,
+                     out_dir: Path, resolve_names: bool = True,
+                     client: Optional[AzdoClient] = None) -> List[Path]:
+    """Genera los archivos de template; devuelve paths escritos."""
+    clean = clean_definition_for_template(source_def)
+    secrets = redact_secret_values(clean)
+    resolved = (resolve_reference_names(client, org, project, clean)
+                if resolve_names and client else
+                {"agent_queues": {}, "variable_groups": {},
+                 "task_groups": {}})
+
+    sid = source_def.get("id")
+    safe = _safe_name(source_def.get("name"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: List[Path] = []
+
+    if fmt in ("full", "both"):
+        tpl = build_full_template(clean, source_def, org, project,
+                                  resolved, secrets)
+        p = out_dir / f"pipe_cd_full_{sid}_{safe}.yaml"
+        p.write_text(yaml.safe_dump(tpl, sort_keys=False,
+                                    allow_unicode=True), encoding="utf-8")
+        written.append(p)
+    if fmt in ("updater", "both"):
+        tpl = build_updater_template(clean, source_def)
+        p = out_dir / f"pipe_cd_updater_{sid}_{safe}.yaml"
+        p.write_text(yaml.safe_dump(tpl, sort_keys=False,
+                                    allow_unicode=True), encoding="utf-8")
+        written.append(p)
+    return written
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# APPLY — PUT del template sobre otra definition
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def load_template_definition(path: Path) -> Dict:
+    """Carga la definición de una template exportada (acepta la envoltura
+    {metadata, definition} o un dict de definición directo)."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: no es un mapping YAML")
+    defn = data.get("definition")
+    if isinstance(defn, dict) and "environments" in defn:
+        return defn
+    if "environments" in data:
+        return data
+    raise ValueError(f"{path}: no contiene una 'definition' con "
+                     "environments")
+
+
+def backup_definition(defn: Dict, backup_dir: Path) -> Path:
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe = _safe_name(defn.get("name"))
+    p = backup_dir / f"backup_def_{defn.get('id')}_{safe}_{ts}.json"
+    p.write_text(json.dumps({
+        "metadata": {"tool": "pipeline_cd_template",
+                     "version": __version__,
+                     "backupDate": datetime.now().isoformat(),
+                     "pipelineId": defn.get("id"),
+                     "pipelineName": defn.get("name"),
+                     "revision": defn.get("revision")},
+        "definition": defn,
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
+def apply_diff_summary(target: Dict, tpl_def: Dict) -> List[str]:
+    """Resumen legible de lo que cambiaría el PUT (stages y variables)."""
+    lines: List[str] = []
+    tgt_envs = {e.get("name"): e for e in target.get("environments", [])}
+    tpl_envs = {e.get("name"): e for e in tpl_def.get("environments", [])}
+    added = [n for n in tpl_envs if n not in tgt_envs]
+    removed = [n for n in tgt_envs if n not in tpl_envs]
+    kept = [n for n in tpl_envs if n in tgt_envs]
+    lines.append(f"stages template: {len(tpl_envs)} | destino actual: "
+                 f"{len(tgt_envs)}")
+    if added:
+        lines.append(f"+ stages nuevos: {', '.join(added)}")
+    if removed:
+        lines.append(f"- stages eliminados: {', '.join(removed)}")
+    lines.append(f"= stages reemplazados: {', '.join(kept) or 'ninguno'}")
+    tgt_vars = set(target.get("variables") or {})
+    tpl_vars = set(tpl_def.get("variables") or {})
+    if set(tpl_vars) - tgt_vars:
+        lines.append(f"+ variables: {', '.join(sorted(set(tpl_vars) - tgt_vars))}")
+    if tgt_vars - tpl_vars:
+        lines.append(f"- variables: {', '.join(sorted(tgt_vars - tpl_vars))}")
+    return lines
+
+
+def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
+                   new_name: str = "", new_path: str = "",
+                   dry_run: bool = False,
+                   backup_dir: Optional[Path] = None) -> Dict:
+    """PUT del template sobre la definición destino (con backup previo).
+
+    Devuelve {"backup": path|None, "result": respuesta|None,
+              "summary": [líneas]}.
+    """
+    target = client.get(f"{client.base}/definitions/{target_id}",
+                        params={"api-version": "7.1"})
+    summary = apply_diff_summary(target, tpl_def)
+    summary.append(f"target: id {target_id} '{target.get('name')}' "
+                   f"rev {target.get('revision')}")
+
+    payload = copy.deepcopy(tpl_def)
+    payload["id"] = target_id
+    payload["revision"] = target.get("revision")
+    payload["name"] = new_name or target.get("name")
+    payload["path"] = new_path or target.get("path", "\\")
+
+    if dry_run:
+        return {"backup": None, "result": None, "summary": summary,
+                "payload": payload}
+
+    backup_path = None
+    if backup_dir is not None:
+        backup_path = backup_definition(target, backup_dir)
+
+    result = client.put(f"{client.base}/definitions/{target_id}",
+                        payload, params={"api-version": "7.1"})
+    return {"backup": backup_path, "result": result, "summary": summary}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REPORTE + CLI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _print(msg: str = "", style: str = ""):
+    if console:
+        console.print(f"[{style}]{msg}[/]" if style else msg)
+    else:
+        print(msg)
+
+
+def _show_definition_summary(defn: Dict):
+    envs = defn.get("environments", [])
+    n_tasks = sum(len(p.get("workflowTasks", []))
+                  for e in envs for p in e.get("deployPhases", []))
+    lines = [
+        f"ID:        {defn.get('id')}",
+        f"Nombre:    {defn.get('name')}",
+        f"Path:      {defn.get('path', chr(92))}",
+        f"Revisión:  {defn.get('revision')}",
+        f"Stages:    {len(envs)} ({', '.join(e.get('name','?') for e in envs)})",
+        f"Tasks:     {n_tasks}",
+        f"Variables: {len(defn.get('variables') or {})}",
+        f"Artifacts: {len(defn.get('artifacts') or [])}",
+    ]
+    if console:
+        console.print(Panel("\n".join(lines), title="Definición",
+                            expand=False))
+    else:
+        print("\n".join("  " + l for l in lines))
+
+
+def get_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Extrae un pipeline CD como template YAML reutilizable "
+                    "y/o la aplica sobre otro definitionId.")
+    p.add_argument("--pat", default="")
+    p.add_argument("--org", default="")
+    p.add_argument("--project", default="")
+    p.add_argument("--source-id", type=int, default=0,
+                   help="definitionId origen a extraer")
+    p.add_argument("--template", default="",
+                   help="template YAML exportada previamente (modo apply)")
+    p.add_argument("--target-id", type=int, default=0,
+                   help="definitionId destino para aplicar (PUT)")
+    p.add_argument("--new-name", default="",
+                   help="nombre para el destino al aplicar (default: mantiene)")
+    p.add_argument("--new-path", default="",
+                   help="path para el destino al aplicar (default: mantiene)")
+    p.add_argument("--format", choices=["full", "updater", "both"],
+                   default="both", help="formato(s) de template a exportar")
+    p.add_argument("--output-dir", default="",
+                   help="carpeta de templates (default: outcome/templates)")
+    p.add_argument("--backup-dir", default="",
+                   help="carpeta de backups (default: outcome/backups/template)")
+    p.add_argument("--no-resolve-names", action="store_true",
+                   help="no resolver IDs de queue/variable-group/task-group "
+                        "a nombres")
+    p.add_argument("--dry-run", action="store_true",
+                   help="apply: muestra el diff sin hacer PUT")
+    p.add_argument("--yes", action="store_true",
+                   help="apply: no pedir confirmación")
+    p.add_argument("--interactive", action="store_true")
+    p.add_argument("--debug", action="store_true")
+    return p.parse_args()
+
+
+def _ask(prompt: str, default: str = "") -> str:
+    if console:
+        from rich.prompt import Prompt
+        return Prompt.ask(prompt, default=default) if default \
+            else Prompt.ask(prompt)
+    sfx = f" [{default}]" if default else ""
+    v = input(f"{prompt}{sfx}: ").strip()
+    return v or default
+
+
+def interactive(args) -> argparse.Namespace:
+    cfg_org, cfg_proj = "", ""
+    try:
+        cfg_org, cfg_proj, _ = get_azdo_params(args)
+    except SystemExit:
+        pass
+    _print("\nPipeline CD Template — interactivo", "bold cyan")
+    args.source_id = int(_ask("  definitionId ORIGEN a extraer",
+                              str(args.source_id) if args.source_id else ""))
+    fmt = _ask("  Formato (full/updater/both)", args.format)
+    args.format = fmt if fmt in ("full", "updater", "both") else "both"
+    ans = _ask("  ¿Aplicar sobre otro definitionId? (id destino o vacío)")
+    if ans.strip():
+        args.target_id = int(ans)
+        args.new_name = _ask("  Nombre destino (vacío = mantiene)",
+                             args.new_name)
+        args.new_path = _ask("  Path destino (vacío = mantiene)",
+                             args.new_path)
+        dr = _ask("  ¿Dry-run? (s/n)", "s" if args.dry_run else "n")
+        args.dry_run = dr.lower().startswith("s")
+    return args
+
+
+def main() -> int:
+    args = get_args()
+    if args.interactive or (not args.source_id and not args.template):
+        args = interactive(args)
+    org, project, pat = get_azdo_params(args)
+    client = AzdoClient(org, project, pat)
+
+    out_dir = (Path(args.output_dir) if args.output_dir
+               else resolve_outcome_dir() / "templates")
+    backup_dir = (Path(args.backup_dir) if args.backup_dir
+                  else resolve_outcome_dir() / "backups" / "template")
+
+    _print(f"Pipeline CD Template v{__version__} — {org}/{project}",
+           "bold cyan")
+
+    tpl_def: Optional[Dict] = None
+
+    # ── Extract ──────────────────────────────────────────────────────────
+    if args.source_id:
+        source = client.get(
+            f"{client.base}/definitions/{args.source_id}",
+            params={"api-version": "7.1"})
+        _show_definition_summary(source)
+        written = export_templates(
+            source, org, project, args.format, out_dir,
+            resolve_names=not args.no_resolve_names, client=client)
+        for p in written:
+            _print(f"  Template: {p}", "green")
+        if not args.target_id:
+            _print("\nÚsala con opción 41 (updater) o con esta misma "
+                   "opción: --template <archivo> --target-id <id>", "dim")
+        tpl_def = clean_definition_for_template(source)
+
+    # ── Apply ────────────────────────────────────────────────────────────
+    if args.target_id:
+        if tpl_def is None:
+            if not args.template:
+                _print("ERROR: --target-id requiere --source-id o "
+                       "--template", "bold red")
+                return 1
+            try:
+                tpl_def = load_template_definition(Path(args.template))
+            except Exception as e:
+                _print(f"ERROR leyendo template: {e}", "bold red")
+                return 1
+        # limpieza por si la template trae campos del servidor
+        tpl_def = clean_definition_for_template(tpl_def)
+
+        res = apply_template(client, args.target_id, tpl_def,
+                             new_name=args.new_name, new_path=args.new_path,
+                             dry_run=True)
+        _print("\nDiff destino ← template:", "bold")
+        for l in res["summary"]:
+            _print(f"  {l}")
+        if args.dry_run:
+            _print("\nDry-run — no se aplicó nada.", "yellow")
+            return 0
+        if not args.yes:
+            ans = _ask("\n¿Confirmar PUT sobre el destino? (s/n)", "n")
+            if not ans.lower().startswith("s"):
+                _print("Cancelado.", "yellow")
+                return 0
+        res = apply_template(client, args.target_id, tpl_def,
+                             new_name=args.new_name, new_path=args.new_path,
+                             dry_run=False, backup_dir=backup_dir)
+        if res["backup"]:
+            _print(f"  Backup destino: {res['backup']}", "dim")
+        new_def = res["result"]
+        _print(f"\n✓ Aplicado — definition {new_def.get('id')} "
+               f"'{new_def.get('name')}' rev {new_def.get('revision')}",
+               "bold green")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

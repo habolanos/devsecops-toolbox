@@ -172,6 +172,10 @@ class AzdoClient:
         """PATCH con la misma política de reintentos que get()."""
         return self._send("PATCH", url, params=params, payload=payload)
 
+    def put(self, url: str, payload: dict, params: dict = None):
+        """PUT con la misma política de reintentos que get()."""
+        return self._send("PUT", url, params=params, payload=payload)
+
 
 # ---------------------------------------------------------------------------
 # Descubrimiento (equivalente a inspection_errors.sh)

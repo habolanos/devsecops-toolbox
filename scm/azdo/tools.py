@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.39"
+__version__ = "1.8.45"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -445,6 +445,18 @@ TOOLS: Dict = {
                         "--show-skipped",
                         "--output", "--threads", "--severity", "--debug"],
         "group":       "drift",
+        "status":      "ready",
+    },
+    "46": {
+        "name":        "Pipeline CD Template Export/Apply",
+        "description": "Extrae la definición completa de un pipeline CD como template YAML reusable (definición full normalizada + template DSL para la opción 41) y puede aplicarla sobre otro definitionId via PUT con backup y dry-run. Los secretos se redactan (value null) y los IDs de queue/variable-group/task-group se resuelven a nombres.",
+        "path":        "pipeline_cd_template.py",
+        "args":        ["--org", "--project", "--source-id", "--template",
+                        "--target-id", "--new-name", "--new-path", "--format",
+                        "--output-dir", "--backup-dir", "--no-resolve-names",
+                        "--dry-run", "--yes", "--pat", "--interactive",
+                        "--debug"],
+        "group":       "updatepipe",
         "status":      "ready",
     },
     "_system_options": {
@@ -1672,6 +1684,63 @@ def run_tool(tool_key: str):
             elif option == "2":
                 print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
                 print(f"{Colors.DIM}Ej: --definition-id 1837 --dry-run  |  --definition-id 1837 --apply --target release --release-id 61062  |  --definition-id 1837 --apply --target both  |  --definition-id 1837 --set cluster_name=gke-prod{Colors.ENDC}")
+                print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
+                cli_args = input().strip()
+                if not cli_args:
+                    print(f"{Colors.YELLOW}Sin argumentos. Cancelando...{Colors.ENDC}")
+                    input("\nPresione Enter para continuar...")
+                    continue
+                cmd = [str(venv_python), str(script_path)] + cli_args.split()
+                print(f"\n{Colors.CYAN}▶ Ejecutando: {' '.join(cmd[:3])} ...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            else:
+                print(f"{Colors.RED}❌ Opción no válida.{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+    # ── Caso especial: Pipeline CD Template (tool 46) ──────────────────────────
+    if tool_key == "46":
+        while True:
+            print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
+            print(f"{Colors.BOLD}  📄 Pipeline CD Template - Seleccione una opción{Colors.ENDC}")
+            print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+            print(f"{Colors.CYAN}[1]{Colors.ENDC} Modo interactivo (extraer template y/o aplicar a otro pipeline)")
+            print(f"{Colors.CYAN}[2]{Colors.ENDC} Ejecutar desde CLI (argumentos directos)")
+            print(f"{Colors.WARNING}[0]{Colors.ENDC} Volver al menú principal")
+            print(f"\n{Colors.BOLD}Seleccione una opción:{Colors.ENDC} ", end="")
+
+            option = input().strip()
+
+            if option == "0":
+                return
+
+            elif option == "1":
+                cmd = [str(venv_python), str(script_path), "--interactive"]
+                print(f"\n{Colors.CYAN}▶ Ejecutando modo interactivo...{Colors.ENDC}\n")
+                try:
+                    result = subprocess.run(cmd, cwd=BASE_DIR)
+                    if result.returncode == 0:
+                        print(f"\n{Colors.GREEN}✅ Completado exitosamente.{Colors.ENDC}")
+                    else:
+                        print(f"\n{Colors.RED}✗ Falló (exit {result.returncode}){Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.FAIL}Error al ejecutar: {e}{Colors.ENDC}")
+                input("\nPresione Enter para continuar...")
+                continue
+
+            elif option == "2":
+                print(f"\n{Colors.BOLD}Ingrese los argumentos completos para el script:{Colors.ENDC}")
+                print(f"{Colors.DIM}Ej: --source-id 905  |  --source-id 905 --target-id 910 --dry-run  |  --template outcome/templates/pipe_cd_full_905_x.yaml --target-id 910{Colors.ENDC}")
                 print(f"{Colors.BOLD}Args:{Colors.ENDC} ", end="")
                 cli_args = input().strip()
                 if not cli_args:
