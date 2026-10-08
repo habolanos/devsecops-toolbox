@@ -436,6 +436,16 @@ TOOLS: Dict = {
         "group":       "updatepipe",
         "status":      "ready",
     },
+    "45": {
+        "name":        "Release Manifest Drift",
+        "description": "Audita consistencia del stage Production de pipelines CD: definición vs snapshot del último release efectivo + logs de tasks de manifiesto (get k8-manifest, show manifest, kubectl apply). Detecta recursos creados/editados fuera del pipeline (anotación last-applied ausente, 'configured' con YAML idéntico al release previo via --prev-release).",
+        "path":        "azdo_release_manifest_drift.py",
+        "args":        ["--pat", "--org", "--project", "--definition-ids",
+                        "--stage-name", "--task-patterns", "--prev-release",
+                        "--output", "--threads", "--severity", "--debug"],
+        "group":       "drift",
+        "status":      "ready",
+    },
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos",
@@ -2206,6 +2216,10 @@ def run_tool(tool_key: str):
             return
         extra += ["--definition-id", val]
 
+    if "--definition-ids" in tool_args:
+        val = prompt("Pipelines CD (all | id | id1,id2 | substring de nombre)", default="all")
+        extra += ["--definition-ids", val or "all"]
+
     if "--months" in tool_args:
         print(f"{Colors.BOLD}Meses hacia atrás a analizar [6]:{Colors.ENDC} ", end="")
         val = input().strip()
@@ -2263,8 +2277,22 @@ def run_tool(tool_key: str):
         if val == "s":
             extra.append("--debug")
 
+    if "--task-patterns" in tool_args:
+        val = prompt("Regex de tasks a auditar (vacío = default get-file-k8-manifest|show-manifest|kubectl-apply)", default="")
+        if val:
+            extra += ["--task-patterns", val]
+
+    if "--prev-release" in tool_args:
+        print(f"{Colors.BOLD}¿Comparar manifiesto con el release efectivo anterior? (s/n) [s]:{Colors.ENDC} ", end="")
+        val = input().strip().lower()
+        if val != "n":
+            extra.append("--prev-release")
+
     if "--stage-name" in tool_args:
-        cfg_stage = config_get(cfg, "tools", "pr_master_checker", "stage_name", default="validador")
+        if tool_key == "45":
+            cfg_stage = config_get(cfg, "tools", "manifest_drift", "stage_name", default="production")
+        else:
+            cfg_stage = config_get(cfg, "tools", "pr_master_checker", "stage_name", default="validador")
         val = prompt("Nombre del stage a buscar en CD", default=cfg_stage)
         extra += ["--stage-name", val]
 
@@ -2297,12 +2325,13 @@ def run_tool(tool_key: str):
 
     if "--output" in tool_args:
         cfg_fmt = config_get(cfg, "defaults", "output_format", default="excel")
-        print(f"{Colors.BOLD}¿Exportar resultado? (json/csv/excel/ninguno) "
+        choices = ("json", "csv", "both") if tool_key == "45" else ("json", "csv", "excel")
+        print(f"{Colors.BOLD}¿Exportar resultado? ({'/'.join(choices)}/ninguno) "
               f"[{Colors.CYAN}{cfg_fmt or 'ninguno'}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         val = input().strip().lower()
-        if val in ("json", "csv", "excel"):
+        if val in choices:
             extra += ["--output", val]
-        elif not val and cfg_fmt in ("json", "csv", "excel"):
+        elif not val and cfg_fmt in choices:
             extra += ["--output", cfg_fmt]
 
     if "--deadline" in tool_args:

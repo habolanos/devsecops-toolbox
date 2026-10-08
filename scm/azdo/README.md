@@ -934,7 +934,72 @@ el último release descubierto del stage.
 
 ---
 
-## Exportación de resultados
+### 10 · Release Manifest Drift — opción 45
+
+`azdo_release_manifest_drift.py` — Auditoría de consistencia entre la
+**definición** del pipeline CD, el **snapshot** del último release con deploy
+efectivo en el stage (default `Production`) y los **logs** de las tasks de
+manifiesto K8s. El objetivo es detectar **drift por manipulación directa del
+cluster** (cambios hechos por fuera del pipeline).
+
+#### Flujo por pipeline
+
+1. Lista release definitions (`release/definitions`, paginado) y filtra por
+   `all` | ID | lista `id1,id2` | substring de nombre (mezclables).
+2. Descarga la definición (`definitions/{id}?$expand=environments`) y ubica
+   el stage por nombre (`--stage-name`, default `production`; también match
+   por token `prod`).
+3. Busca el **último deploy efectivo** del stage vía **Deployments API**
+   (`release/deployments?definitionEnvironmentId=…&queryOrder=descending`,
+   saltando `deploymentStatus=notDeployed`) — distinto a "último release",
+   un release puede existir sin haber desplegado en prod.
+4. Del release toma el `deployStep` de mayor `attempt` en el stage y descarga
+   el log (`tasks/{id}/logs`) solo de las tasks que matchean
+   `--task-patterns` (default
+   `get.?file.?k8.?manifest|show.?manifest|kubectl.*apply`).
+5. **Diff definición vs snapshot**: tasks añadidas/eliminadas, versión de
+   task, **inputs** de tasks y variables del environment.
+6. **Análisis del manifiesto**: parsea el YAML mostrado por *show manifest*
+   (`kind`/`metadata.name` por documento) y los verdicts de *kubectl apply*
+   (`created`/`configured`/`unchanged` + warnings).
+
+#### Señales de drift detectadas
+
+| Severidad | Regla | Significado |
+|---|---|---|
+| HIGH | `NOT_MANAGED_BY_APPLY` | El recurso existe sin anotación `last-applied-configuration` → creado fuera de `kubectl apply` |
+| HIGH | `EXTERNAL_MODIFICATION` | `--prev-release`: manifiesto **idéntico** al release efectivo anterior pero el apply tuvo que `configured` → el objeto vivo fue editado a mano |
+| MEDIUM | `NOT_APPLIED` | Objeto del manifiesto sin línea en la salida del apply |
+| MEDIUM | `DEF_RELEASE_DRIFT` | La definición difiere del snapshot (tasks/inputs/vars) |
+| MEDIUM | `APPLY_ERROR` | Líneas de error del apply |
+| LOW | `APPLIED_NOT_IN_MANIFEST` | El apply procesó un recurso no visto en *show manifest* |
+| INFO | `CREATED` / `CONFIGURED` / `EXPECTED_CONFIG` | Contexto (creado, reconfigurado sin previo, cambio explicado por el manifiesto) |
+
+`--prev-release` repite el flujo sobre el **segundo** deploy efectivo y
+compara manifiestos documento a documento (YAML canonical): habilita la
+señal `EXTERNAL_MODIFICATION`, la más precisa para detectar manipulación.
+
+#### Uso
+
+```bash
+# Launcher: opción 45 (grupo Drift & Cambios)
+python tools.py
+
+# CLI
+python azdo_release_manifest_drift.py --definition-ids all
+python azdo_release_manifest_drift.py --definition-ids 3670
+python azdo_release_manifest_drift.py --definition-ids 3670,3701 --prev-release
+python azdo_release_manifest_drift.py --definition-ids "wms" \
+    --task-patterns "k8.?manifest|kubectl.*apply" \
+    --stage-name production --output both --threads 6
+```
+
+Credenciales: `--pat/--org/--project` o `azdo.*` en `scm/config.json`
+(PAT con scope **Release: Read**). Reporte por pipeline en consola +
+resumen; `--output json|csv|both` exporta a `outcome/`. Exit `2` si alguna
+severidad ≥ HIGH.
+
+---
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
 
@@ -1044,6 +1109,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-08 | 1.8.35 | **Nueva herramienta: Release Manifest Drift (opción 45)** — `azdo_release_manifest_drift.py` audita la consistencia del stage Production de pipelines CD: selección `all`/ID/lista/substring; último deploy efectivo vía Deployments API; logs de tasks de manifiesto (`get file k8-manifest`, `show manifest`, `kubectl apply`); diff def-vs-snapshot (tasks/versión/**inputs**/variables); detección de manipulación del cluster — `NOT_MANAGED_BY_APPLY` (sin anotación last-applied) y `EXTERNAL_MODIFICATION` (`configured` con YAML idéntico al release previo, flag `--prev-release`). Parser tolerante a ruido de log (`_YAMLISH` fallback), matching de tasks por regex configurable, paralelo por pipeline, export JSON/CSV, exit 2 si severidad ≥ HIGH. Launcher: prompts para `--definition-ids`, `--task-patterns`, `--prev-release`; defaults de stage/output específicos de la 45. Tests: +30. | `scm/azdo/azdo_release_manifest_drift.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.30 | **Pipeline Updater: default `allowOverride` → `false`** — El engine de definiciones (opción 41) creaba variables nuevas con `allowOverride: true` cuando la regla no lo especificaba ("Settable at release time" marcado). Default cambiado a `false`; `update` preserva el flag y reglas explícitas (`allowOverride: true`) siguen funcionando. Complementa v1.8.29 (que ya fijaba `false` en las reglas del remediator). Test `test_add_variable_default_allow_override` actualizado. | `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/test_triggers.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.29 | **Fix `allowOverride` ("Settable at release time") en opción 44** — Las reglas `add`/`update` ahora llevan `allowOverride: false`: antes el updater de definiciones creaba variables nuevas con `allowOverride: true` por default (bug: todas quedaban setteables) y el engine de release forzaba `allowOverride: True` en `build_var_entry`. El engine ganó el campo `allowOverride` en extras de `global_vars`/`env_vars` (explícito → se aplica; ausente → preserva el flag actual; variable nueva → `true` por back-compat). El editor conserva el flag al revertir remove→update. Tests: +5 (`TestAllowOverride`). | `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/pipeline_cd_update_release/pipeline_cd_update_release.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-07 | 1.8.28 | **SCM Inspection Remediator: resumen de cambios → `metadata.comment`** — El comentario simplificado (`rules_summary`) ahora viaja en `metadata.comment` en vez de `description`: ambos engines lo envían en el PUT (opción 41 → `definition.comment` = historial de revisiones de la definición; opción 42 → `release.comment`). `metadata.description` vuelve a ser solo el objetivo del template. El comentario `#` al inicio del archivo se conserva. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
