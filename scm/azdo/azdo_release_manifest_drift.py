@@ -53,7 +53,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -737,6 +737,7 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
         "deployment_status": "",
         "task_logs": [], "manifest_objects": 0,
         "objects": {}, "apply_verdicts": {},
+        "manifest_log_names": [], "apply_log_names": [],
         "apply_counts": {v: 0 for v in _APPLY_VERDICTS},
         "def_release_diff": None,
         "findings": [],
@@ -836,6 +837,8 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
                 continue
             manifest_docs.extend(extract_manifest_docs(text))
 
+    result["manifest_log_names"] = manifest_log_names
+    result["apply_log_names"] = list(apply["log_names"])
     objects = parse_manifest_objects(manifest_docs)
     if manifest_log_names and not objects:
         result["findings"].append({
@@ -927,6 +930,28 @@ def build_object_rows(r: Dict) -> Tuple[List[Dict], List[Dict]]:
     return rows, other
 
 
+def consistency_summary(r: Dict) -> Dict:
+    """Verificación explícita de consistencia entre las tasks de manifiesto
+    y las de apply del último release efectivo.
+
+    Retorna {manifest_logs, apply_logs, objects, verdicts,
+             missing_in_apply, applied_not_in_manifest}.
+    """
+    rows, _ = build_object_rows(r)
+    return {
+        "manifest_logs": r.get("manifest_log_names") or [],
+        "apply_logs": r.get("apply_log_names") or [],
+        "objects": r.get("manifest_objects", 0),
+        "verdicts": len(r.get("apply_verdicts") or {}),
+        "missing_in_apply": [
+            x["object"] for x in rows
+            if x["in_manifest"] == "✓" and x["verdict"] == "—"
+            and "UNRENDERED_NAME" not in x["rules"]],
+        "applied_not_in_manifest": [
+            x["object"] for x in rows if x["in_manifest"] == "✗"],
+    }
+
+
 def print_result(r: Dict):
     head = (f"[bold]{r['definition_name']}[/]  (def {r['definition_id']})"
             if console else f"{r['definition_name']} (def {r['definition_id']})")
@@ -950,6 +975,37 @@ def print_result(r: Dict):
     (console.print if console else print)(
         f"  Logs analizados: {', '.join(r['task_logs']) or '(ninguna task '
         'matcheó el patrón)'}")
+
+    # ── Consistencia explícita de las 3 tasks (análisis principal) ────
+    cs = consistency_summary(r)
+    manif_txt = (f"{', '.join(cs['manifest_logs'])} → "
+                 f"{cs['objects']} objeto(s)"
+                 if cs["manifest_logs"] else "✗ sin task de manifiesto")
+    apply_txt = (f"{', '.join(cs['apply_logs'])} → "
+                 f"{cs['verdicts']} verdict(s)"
+                 if cs["apply_logs"] else "✗ sin task de apply")
+    if console:
+        console.print("  [bold]Consistencia manifiesto ↔ apply:[/]")
+        console.print(f"    manifiesto: {manif_txt}")
+        console.print(f"    apply:      {apply_txt}")
+        for label, items, style in (
+                ("En manifiesto SIN línea en apply",
+                 cs["missing_in_apply"], "yellow"),
+                ("Aplicado sin aparecer en manifiesto",
+                 cs["applied_not_in_manifest"], "cyan")):
+            if items:
+                console.print(f"    [{style}]► {label}: "
+                              f"{', '.join(items)}[/]")
+            else:
+                console.print(f"    [green]✓ {label}: ninguno[/]")
+    else:
+        print("  Consistencia manifiesto <-> apply:")
+        print(f"    manifiesto: {manif_txt}")
+        print(f"    apply:      {apply_txt}")
+        print(f"    En manifiesto SIN linea en apply: "
+              f"{', '.join(cs['missing_in_apply']) or 'ninguno'}")
+        print(f"    Aplicado sin aparecer en manifiesto: "
+              f"{', '.join(cs['applied_not_in_manifest']) or 'ninguno'}")
 
     d = r.get("def_release_diff")
     if d and diff_has_changes(d):
@@ -1061,7 +1117,8 @@ def _missing_ann_count(r: Dict) -> int:
                if f["rule"] == "NOT_MANAGED_BY_APPLY")
 
 
-def export_results(results: List[Dict], fmt: str) -> List[Path]:
+def export_results(results: List[Dict], fmt: str,
+                   org: str = "", project: str = "") -> List[Path]:
     out_dir = resolve_outcome_dir()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     paths: List[Path] = []
@@ -1101,7 +1158,8 @@ def export_results(results: List[Dict], fmt: str) -> List[Path]:
         paths.append(p)
     if fmt in ("html", "all"):
         p = out_dir / f"manifest_drift_{ts}.html"
-        p.write_text(build_html_report(results), encoding="utf-8")
+        p.write_text(build_html_report(results, org=org, project=project),
+                     encoding="utf-8")
         paths.append(p)
     return paths
 
@@ -1118,7 +1176,22 @@ def _esc(s) -> str:
     return _html.escape(str(s if s is not None else ""))
 
 
-def build_html_report(results: List[Dict]) -> str:
+def _azdo_urls(org: str, project: str, r: Dict) -> Dict[str, str]:
+    """URLs web de Azure DevOps para la definición y el release."""
+    if not org or not project:
+        return {}
+    base = f"https://dev.azure.com/{org}/{project}"
+    out = {"definition":
+           f"{base}/_release?view=mine&definitionId={r['definition_id']}"}
+    if r.get("release_id"):
+        out["release"] = (f"{base}/_releaseProgress?"
+                          f"_a=release-pipeline-progress"
+                          f"&releaseId={r['release_id']}")
+    return out
+
+
+def build_html_report(results: List[Dict],
+                      org: str = "", project: str = "") -> str:
     """Reporte HTML autocontenido: resumen + detalle por pipeline con la
     tabla objeto×verdict×severidad (análisis principal de las 3 tasks)."""
     e = _esc
@@ -1180,10 +1253,20 @@ code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
                  if sev != "NONE" else '<span class="ok">OK</span>')
         findings_n = len(r.get("findings", []))
         err = e(r.get("error", ""))
+        urls = _azdo_urls(org, project, r)
+        azdo_link = (f' <a href="{e(urls["definition"])}" target="_blank" '
+                     f'title="Abrir definición en Azure DevOps">↗</a>'
+                     if urls.get("definition") else "")
+        rel_html = e(r.get("release_name", ""))
+        if urls.get("release"):
+            rel_html = (f'<a href="{e(urls["release"])}" target="_blank" '
+                        f'title="Abrir release en Azure DevOps">'
+                        f'{rel_html}</a>')
         parts.append(
-            f"<tr><td><b>{e(r['definition_name'])}</b><br>"
+            f"<tr><td><b><a href='#def-{e(r['definition_id'])}'>"
+            f"{e(r['definition_name'])}</a></b>{azdo_link}<br>"
             f"<span class='small'>def {e(r['definition_id'])}</span></td>"
-            f"<td>{e(r.get('release_name', ''))}<br><span class='small'>"
+            f"<td>{rel_html}<br><span class='small'>"
             f"id {e(r.get('release_id', ''))} · "
             f"{e(str(r.get('release_created', ''))[:16])}</span></td>"
             f"<td>{e(r.get('deployment_status', ''))}{' — ' + err if err else ''}</td>"
@@ -1200,9 +1283,19 @@ code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
         sev = r.get("severity", "NONE")
         badge = (f'<span class="badge" style="background:{_SEV_CSS[sev]}">{sev}</span>'
                  if sev != "NONE" else '<span class="ok">OK</span>')
+        urls = _azdo_urls(org, project, r)
+        name_html = e(r["definition_name"])
+        if urls.get("definition"):
+            name_html = (f'<a href="{e(urls["definition"])}" '
+                         f'target="_blank">{name_html}</a>')
+        rel_txt = e(r.get("release_name", ""))
+        if urls.get("release"):
+            rel_txt = (f'<a href="{e(urls["release"])}" target="_blank">'
+                       f'{rel_txt}</a>')
         parts.append(
-            f"<div class='pipe'><b>{e(r['definition_name'])}</b> {badge} "
-            f"<div class='meta'>Release <code>{e(r.get('release_name',''))}</code> "
+            f"<div class='pipe' id='def-{e(r['definition_id'])}'>"
+            f"<b>{name_html}</b> {badge} "
+            f"<div class='meta'>Release <code>{rel_txt}</code> "
             f"(id {e(r.get('release_id',''))}) — {e(r.get('deployment_status',''))} — "
             f"{e(str(r.get('release_created',''))[:16])}"
             + (f" · Prev <code>{e(r.get('prev_release_name',''))}</code> "
@@ -1212,6 +1305,28 @@ code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
                if r.get("error") else "")
             + f"<br>Logs: <span class='small'>{e(', '.join(r.get('task_logs') or []) or '(ninguno)')}</span>"
               "</div>")
+
+        # ── Consistencia explícita manifiesto ↔ apply ────────────────
+        cs = consistency_summary(r)
+        manif_txt = (f"{e(', '.join(cs['manifest_logs']))} → "
+                     f"{e(cs['objects'])} objeto(s)"
+                     if cs["manifest_logs"]
+                     else "✗ sin task de manifiesto")
+        apply_txt = (f"{e(', '.join(cs['apply_logs']))} → "
+                     f"{e(cs['verdicts'])} verdict(s)"
+                     if cs["apply_logs"] else "✗ sin task de apply")
+        miss = (f"<span class='warn'>{e(', '.join(cs['missing_in_apply']))}</span>"
+                if cs["missing_in_apply"] else '<span class="ok">ninguno</span>')
+        extra = (f"<span class='warn'>{e(', '.join(cs['applied_not_in_manifest']))}</span>"
+                 if cs["applied_not_in_manifest"]
+                 else '<span class="ok">ninguno</span>')
+        parts.append(
+            "<div class='meta'><b>Consistencia manifiesto ↔ apply:</b><br>"
+            f"&nbsp;&nbsp;manifiesto: {manif_txt}<br>"
+            f"&nbsp;&nbsp;apply: {apply_txt}<br>"
+            f"&nbsp;&nbsp;► En manifiesto SIN línea en apply: {miss}<br>"
+            f"&nbsp;&nbsp;► Aplicado sin aparecer en manifiesto: {extra}"
+            "</div>")
 
         d = r.get("def_release_diff")
         if d and diff_has_changes(d):
@@ -1329,7 +1444,7 @@ def main() -> int:
     print_summary(results, args.severity)
 
     if args.output:
-        paths = export_results(results, args.output)
+        paths = export_results(results, args.output, org, project)
         for p in paths:
             (console.print if console else print)(f"Exportado: {p}")
 

@@ -11,6 +11,7 @@ from scm.azdo.azdo_release_manifest_drift import (
     applyish_task_names,
     build_html_report,
     build_object_rows,
+    consistency_summary,
     diff_env_def_vs_release,
     diff_has_changes,
     extract_manifest_docs,
@@ -661,3 +662,69 @@ class TestManifestEmptyLogs:
                  "empty_logs": ["show manifest"]}
         findings = analyze_manifest({}, apply)
         assert any(f["rule"] == "EMPTY_LOG" for f in findings)
+
+
+class TestConsistencySummary:
+    """La verificación explícita de las 3 tasks es el análisis principal."""
+
+    def test_lists_diffs_exactly(self):
+        objects = {
+            "deployment/ns/web": {"kind": "Deployment", "namespace": "ns",
+                                  "name": "web", "canonical": "c"},
+            "service/ns/svc": {"kind": "Service", "namespace": "ns",
+                               "name": "svc", "canonical": "c"},
+        }
+        r = _result(
+            manifest_objects=2, objects=objects,
+            apply_verdicts={"deployment.apps/web": "configured",
+                            "secret/x": "created"},
+            manifest_log_names=["show manifest"],
+            apply_log_names=["kubectl apply"],
+            findings=analyze_manifest(
+                objects,
+                {"verdicts": {"deployment.apps/web": "configured",
+                              "secret/x": "created"},
+                 "log_names": ["kubectl apply"]}))
+        cs = consistency_summary(r)
+        assert cs["manifest_logs"] == ["show manifest"]
+        assert cs["apply_logs"] == ["kubectl apply"]
+        assert cs["objects"] == 2 and cs["verdicts"] == 2
+        assert cs["missing_in_apply"] == ["Service/svc"]
+        assert cs["applied_not_in_manifest"] == ["secret/x"]
+
+    def test_no_tasks(self):
+        cs = consistency_summary(_result())
+        assert cs["manifest_logs"] == [] and cs["apply_logs"] == []
+        assert cs["missing_in_apply"] == []
+
+    def test_placeholder_excluded_from_missing(self):
+        objects = {"hpa/ns/hpa-#{a}#": {"kind": "HorizontalPodAutoscaler",
+                                       "namespace": "ns",
+                                       "name": "hpa-#{a}#",
+                                       "canonical": "c"}}
+        r = _result(objects=objects,
+                    findings=analyze_manifest(objects, {"verdicts": {}}))
+        cs = consistency_summary(r)
+        assert cs["missing_in_apply"] == []  # placeholder no es NOT_APPLIED
+
+
+class TestHtmlLinks:
+    def test_links_to_azdo_and_anchor(self):
+        r = _result()
+        out = build_html_report([r], org="Org", project="Proj")
+        assert "href='#def-1'" in out                     # anchor resumen→detalle
+        assert "id='def-1'" in out                        # anchor en detalle
+        assert "_release?view=mine&amp;definitionId=1" in out  # link definición
+        assert "release-pipeline-progress&amp;releaseId=99" in out  # link release
+
+    def test_no_links_without_org(self):
+        out = build_html_report([_result()])
+        assert "dev.azure.com" not in out
+
+    def test_consistency_section_in_html(self):
+        r = _result(manifest_log_names=["show manifest"],
+                    apply_log_names=["kubectl apply"],
+                    manifest_objects=2, apply_verdicts={"a/b": "created"})
+        out = build_html_report([r])
+        assert "Consistencia manifiesto" in out
+        assert "show manifest" in out
