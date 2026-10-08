@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -506,8 +506,141 @@ def parse_manifest_objects(docs: List[str]) -> Dict[str, Dict]:
         except Exception:
             canonical = block
         out[key] = {"kind": kind, "namespace": ns, "name": name,
-                    "doc_index": i, "canonical": canonical}
+                    "doc_index": i, "canonical": canonical, "obj": obj}
     return out
+
+
+# Campos poblados por el servidor en `kubectl apply -o yaml` — se excluyen
+# de la comparación manifiesto↔resultado para no confundirlos con drift
+_VOLATILE_META = {"resourceVersion", "uid", "creationTimestamp",
+                  "managedFields", "generation", "selfLink",
+                  "deletionTimestamp", "ownerReferences"}
+_VOLATILE_ANNOT = {"kubectl.kubernetes.io/last-applied-configuration",
+                   "deployment.kubernetes.io/revision"}
+
+
+def normalize_applied_object(obj: Dict) -> Dict:
+    """Quita campos poblados por el servidor (status, resourceVersion,
+    last-applied-configuration…) de un objeto devuelto por
+    `kubectl apply -o yaml`."""
+    o = {k: v for k, v in obj.items() if k != "status"}
+    meta = dict(o.get("metadata") or {})
+    for k in _VOLATILE_META:
+        meta.pop(k, None)
+    ann = {k: v for k, v in (meta.get("annotations") or {}).items()
+           if k not in _VOLATILE_ANNOT}
+    if ann:
+        meta["annotations"] = ann
+    else:
+        meta.pop("annotations", None)
+    o["metadata"] = meta
+    return o
+
+
+def _short(v, limit: int = 80) -> str:
+    """Valor compacto para diffs: scalars → str; dict/list → flow YAML."""
+    if isinstance(v, (dict, list)):
+        try:
+            s = yaml.dump(v, default_flow_style=True).strip()
+        except Exception:
+            s = repr(v)
+    else:
+        s = "" if v is None else str(v)
+    return s if len(s) <= limit else s[:limit] + "…"
+
+
+def _diff_subset(m, a, path: str = "") -> List[Dict]:
+    """Campos declarados por el manifiesto (m) que difieren o ausentan en
+    el objeto aplicado (a). Compara solo lo que el manifiesto declara —
+    defaults del servidor presentes en 'a' se ignoran."""
+    diffs: List[Dict] = []
+    if isinstance(m, dict):
+        if not isinstance(a, dict):
+            return [{"path": path or "/", "manifest": _short(m),
+                     "apply": "ausente"}]
+        for k, v in m.items():
+            sub = f"{path}.{k}" if path else str(k)
+            if k not in a:
+                diffs.append({"path": sub, "manifest": _short(v),
+                              "apply": "ausente"})
+            else:
+                diffs.extend(_diff_subset(v, a[k], sub))
+        return diffs
+    if isinstance(m, list):
+        if not isinstance(a, list) or len(a) < len(m):
+            return [{"path": path, "manifest": _short(m),
+                     "apply": _short(a)}]
+        for i, v in enumerate(m):
+            diffs.extend(_diff_subset(v, a[i], f"{path}[{i}]"))
+        return diffs
+    if m != a:
+        diffs.append({"path": path, "manifest": _short(m),
+                      "apply": _short(a)})
+    return diffs
+
+
+def _object_of(entry: Dict) -> Dict:
+    """Dict K8s de una entrada de parse_manifest_objects (obj o canonical)."""
+    o = entry.get("obj")
+    if o is not None:
+        return o
+    try:
+        loaded = yaml.safe_load(entry.get("canonical", ""))
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+def diff_applied_objects(manifest_objects: Dict[str, Dict],
+                         apply_objects: Dict[str, Dict]) -> Dict:
+    """Comparación elemento-por-elemento del manifiesto contra los objetos
+    resultantes del `kubectl apply` (cuando el log imprime los objetos,
+    p.ej. `-o yaml`).
+
+    Retorna {
+      added:   [Kind/name] — en el resultado del apply pero NO en el
+               manifiesto → existe en producción fuera del manifiesto
+      removed: [Kind/name] — en el manifiesto sin objeto en el resultado
+      same:    [Kind/name] — coincide (los campos del manifiesto están
+               todos en el objeto aplicado)
+      changed: [{object, fields:[{path, manifest, apply}]}] — mismo
+               objeto, campos del manifiesto difieren del aplicado
+      placeholders: [Kind/name] — objetos del manifiesto con nombre sin
+                    renderizar (excluidos del diff)
+    }
+    """
+    man_all = dict(manifest_objects)
+    placeholders = sorted(
+        f"{o.get('kind', '?')}/{o.get('name', '?')}"
+        for k, o in man_all.items() if _PLACEHOLDER.search(o["name"]))
+    man = {k: o for k, o in man_all.items()
+           if not _PLACEHOLDER.search(o["name"])}
+
+    def _disp(key, src):
+        o = src.get(key) or {}
+        return f"{o.get('kind', '?')}/{o.get('name', '?')}"
+
+    added = sorted(set(apply_objects) - set(man))
+    removed = sorted(set(man) - set(apply_objects))
+    changed, same = [], []
+    for k in sorted(set(man) & set(apply_objects)):
+        m_obj = normalize_applied_object(_object_of(man[k]))
+        a_obj = normalize_applied_object(_object_of(apply_objects[k]))
+        fields = _diff_subset(m_obj, a_obj)
+        if fields:
+            changed.append({"object": _disp(k, man), "fields": fields})
+        else:
+            same.append(k)
+
+    return {
+        "added": [_disp(k, apply_objects) for k in added],
+        "added_keys": added,
+        "removed": [_disp(k, man) for k in removed],
+        "removed_keys": removed,
+        "same": [_disp(k, man) for k in same],
+        "changed": changed,
+        "placeholders": placeholders,
+    }
 
 
 def apply_resource_key(resource: str) -> str:
@@ -537,7 +670,8 @@ def map_verdicts(objects: Dict[str, Dict],
 
 
 def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
-                     prev_objects: Optional[Dict[str, Dict]] = None) -> List[Dict]:
+                     prev_objects: Optional[Dict[str, Dict]] = None,
+                     applied_diff: Optional[Dict] = None) -> List[Dict]:
     """Genera findings de drift a partir de manifiesto + salida apply.
 
     apply acepta además: 'log_names' (logs apply descargados), 'empty_logs'
@@ -662,6 +796,31 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
                               "previo para distinguir causa — use "
                               "--prev-release).",
                 })
+
+    # Comparación elemento-por-elemento (cuando el apply imprime los
+    # objetos resultantes, p.ej. `kubectl apply -o yaml`)
+    if applied_diff:
+        for key, disp in zip(applied_diff.get("added_keys", []),
+                             applied_diff.get("added", [])):
+            findings.append({
+                "severity": "MEDIUM", "rule": "EXTRA_IN_PROD",
+                "object": disp, "key": key,
+                "detail": "Objeto presente en el resultado del apply pero "
+                          "ausente del manifiesto — existe en producción "
+                          "fuera del manifiesto aplicado (¿aplicado desde "
+                          "otra task/archivo, o residual?).",
+            })
+        for c in applied_diff.get("changed", []):
+            paths = ", ".join(f["path"] for f in c["fields"][:4])
+            extra = (f" (+{len(c['fields']) - 4} más)"
+                     if len(c["fields"]) > 4 else "")
+            findings.append({
+                "severity": "MEDIUM", "rule": "SPEC_DIFFERS",
+                "object": c["object"],
+                "detail": f"Campos del manifiesto que difieren del objeto "
+                          f"aplicado: {paths}{extra} — ¿mutación por "
+                          f"webhook, defaults o token no sustituido?",
+            })
 
     for err in apply.get("errors", [])[:10]:
         findings.append({
@@ -859,6 +1018,7 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
     manifest_log_names: List[str] = []
     apply = {"verdicts": {}, "missing_annotation": set(), "errors": [],
              "old_warn": False, "log_names": [], "empty_logs": []}
+    apply_docs: List[str] = []
     apply_names = latest.get("apply_names", set())
     for name, text in logs.items():
         if name in apply_names:
@@ -871,6 +1031,8 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
             apply["missing_annotation"] |= parsed["missing_annotation"]
             apply["errors"].extend(parsed["errors"])
             apply["old_warn"] = apply["old_warn"] or parsed["old_warn"]
+            # objetos resultantes del apply (kubectl apply -o yaml)
+            apply_docs.extend(extract_manifest_docs(text))
         elif "manifest" in name.lower():
             manifest_log_names.append(name)
             if not (text or "").strip():
@@ -887,6 +1049,13 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
             "detail": "Los logs de manifiesto no contenían documentos YAML "
                       "K8s reconocibles (kind + metadata).",
         })
+    apply_objects = parse_manifest_objects(apply_docs)
+    if apply_objects:
+        result["apply_result_objects"] = {
+            k: {"kind": o["kind"], "namespace": o["namespace"],
+                "name": o["name"]} for k, o in apply_objects.items()}
+        result["applied_diff"] = diff_applied_objects(objects, apply_objects)
+
     result["manifest_objects"] = len(objects)
     result["objects"] = {k: {"kind": o["kind"], "namespace": o["namespace"],
                              "name": o["name"]} for k, o in objects.items()}
@@ -925,7 +1094,8 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
             result["prev_release_error"] = str(e)
 
     result["findings"].extend(
-        analyze_manifest(objects, apply, prev_objects))
+        analyze_manifest(objects, apply, prev_objects,
+                         result.get("applied_diff")))
     result["severity"] = min(
         (f["severity"] for f in result["findings"]),
         key=lambda s: SEV_ORDER.get(s, 9), default="NONE")
@@ -976,8 +1146,26 @@ def build_object_rows(r: Dict) -> Tuple[List[Dict], List[Dict]]:
         _res, verdict = vmap.get(key, ("", ""))
         rows.append(_row(key, f"{obj['kind']}/{obj['name']}",
                          obj.get("namespace") or "—", "✓", verdict))
+    apply_res = r.get("apply_result_objects") or {}
+    for key, obj in apply_res.items():
+        if key in objects:
+            continue
+        # objeto en el resultado del apply pero no en el manifiesto
+        verdict = next((v for k, (_rs, v) in vmap.items()
+                        if k.startswith("?//")
+                        and apply_resource_key(_rs)
+                        == f"{obj['kind'].lower()}//{obj['name']}"),
+                       "yaml")
+        rows.append(_row(key, f"{obj['kind']}/{obj['name']}",
+                         obj.get("namespace") or "—", "✗", verdict))
+    apply_only = set(apply_res) - set(objects)
     for key, (res, verdict) in vmap.items():
         if key.startswith("?//"):
+            # no duplicar: verdict ya representado por la fila apply-result
+            if apply_resource_key(res) in {
+                    f"{o['kind'].lower()}//{o['name']}"
+                    for k, o in apply_res.items() if k in apply_only}:
+                continue
             rows.append(_row(key, res, "—", "✗", verdict))
     rows.sort(key=lambda x: (SEV_ORDER.get(x["severity"], 99)
                              if x["severity"] else 99, x["object"]))
@@ -997,6 +1185,7 @@ def consistency_summary(r: Dict) -> Dict:
         "apply_logs": r.get("apply_log_names") or [],
         "objects": r.get("manifest_objects", 0),
         "verdicts": len(r.get("apply_verdicts") or {}),
+        "result_objects": len(r.get("apply_result_objects") or {}),
         "missing_in_apply": [
             x["object"] for x in rows
             if x["in_manifest"] == "✓" and x["verdict"] == "—"
@@ -1074,6 +1263,8 @@ def print_result(r: Dict):
                  if cs["manifest_logs"] else "✗ sin task de manifiesto")
     apply_txt = (f"{', '.join(cs['apply_logs'])} → "
                  f"{cs['verdicts']} verdict(s)"
+                 + (f" · {cs['result_objects']} objeto(s) resultantes"
+                    if cs["result_objects"] else "")
                  if cs["apply_logs"] else "✗ sin task de apply")
     h1 = (f"  Comparación 1 — manifiesto ↔ apply "
           f"(release {r.get('release_name','')}, último efectivo):")
@@ -1099,6 +1290,61 @@ def print_result(r: Dict):
               f"{', '.join(cs['missing_in_apply']) or 'ninguno'}")
         print(f"    Aplicado sin aparecer en manifiesto: "
               f"{', '.join(cs['applied_not_in_manifest']) or 'ninguno'}")
+
+    # Elemento por elemento: manifiesto vs objetos resultantes del apply
+    adiff = r.get("applied_diff")
+    if adiff is not None:
+        sub = ("  Elemento por elemento — manifiesto vs objeto resultante "
+               "del apply:")
+        if console:
+            console.print(f"    [bold]{sub.strip()}[/]")
+            def _eline(mark, label, items, style):
+                txt = ", ".join(items) if items else "ninguno"
+                console.print(f"      [{style}]{mark} {label}: {txt}[/]")
+            _eline("+", "en prod sin estar en manifiesto",
+                   adiff["added"], "red")
+            _eline("−", "en manifiesto sin objeto en resultado",
+                   adiff["removed"], "yellow")
+            _eline("=", "coincide", adiff["same"], "green")
+            if adiff["changed"]:
+                console.print("      [yellow]~ difiere (campo manifiesto "
+                              "≠ aplicado):[/]")
+                for c in adiff["changed"]:
+                    console.print(f"        [bold]{c['object']}[/]")
+                    for f_ in c["fields"][:6]:
+                        console.print(
+                            f"          [dim]{f_['path']}: "
+                            f"{f_['manifest']} → {f_['apply']}[/]")
+                    if len(c["fields"]) > 6:
+                        console.print(
+                            f"          [dim]…{len(c['fields']) - 6} "
+                            f"campo(s) más[/]")
+            if adiff["placeholders"]:
+                console.print(
+                    f"      [dim]({len(adiff['placeholders'])} objeto(s) "
+                    f"con placeholders excluidos: "
+                    f"{', '.join(adiff['placeholders'])})[/]")
+        else:
+            print(sub)
+            for mark, label, items in (
+                    ("+", "en prod sin estar en manifiesto",
+                     adiff["added"]),
+                    ("-", "en manifiesto sin objeto en resultado",
+                     adiff["removed"]),
+                    ("=", "coincide", adiff["same"])):
+                print(f"      {mark} {label}: "
+                      f"{', '.join(items) or 'ninguno'}")
+            for c in adiff["changed"]:
+                print(f"      ~ {c['object']}:")
+                for f_ in c["fields"][:6]:
+                    print(f"          {f_['path']}: {f_['manifest']} -> "
+                          f"{f_['apply']}")
+    elif cs["apply_logs"]:
+        (console.print if console else print)(
+            "    [dim](el apply no imprimió objetos YAML — comparación "
+            "solo por líneas de verdict)[/]" if console else
+            "    (el apply no imprimio objetos YAML — comparacion solo "
+            "por lineas de verdict)")
 
     d = r.get("def_release_diff")
     if d and diff_has_changes(d):
@@ -1454,20 +1700,54 @@ code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
                      else "✗ sin task de manifiesto")
         apply_txt = (f"{e(', '.join(cs['apply_logs']))} → "
                      f"{e(cs['verdicts'])} verdict(s)"
+                     + (f" · {e(cs['result_objects'])} objeto(s) resultantes"
+                        if cs["result_objects"] else "")
                      if cs["apply_logs"] else "✗ sin task de apply")
         miss = (f"<span class='warn'>{e(', '.join(cs['missing_in_apply']))}</span>"
                 if cs["missing_in_apply"] else '<span class="ok">ninguno</span>')
         extra = (f"<span class='warn'>{e(', '.join(cs['applied_not_in_manifest']))}</span>"
                  if cs["applied_not_in_manifest"]
                  else '<span class="ok">ninguno</span>')
-        parts.append(
+        comp1 = (
             "<div class='meta'><b>Comparación 1 — manifiesto ↔ apply "
             f"(release {e(r.get('release_name',''))}):</b><br>"
             f"&nbsp;&nbsp;manifiesto: {manif_txt}<br>"
             f"&nbsp;&nbsp;apply: {apply_txt}<br>"
             f"&nbsp;&nbsp;► En manifiesto SIN línea en apply: {miss}<br>"
-            f"&nbsp;&nbsp;► Aplicado sin aparecer en manifiesto: {extra}"
-            "</div>")
+            f"&nbsp;&nbsp;► Aplicado sin aparecer en manifiesto: {extra}")
+        adiff = r.get("applied_diff")
+        if adiff is not None:
+            comp1 += ("<br>&nbsp;&nbsp;<b>Elemento por elemento — "
+                      "manifiesto vs objeto resultante del apply:</b>")
+            for mark, label, items, cls in (
+                    ("+", "en prod sin estar en manifiesto",
+                     adiff["added"], "warn"),
+                    ("−", "en manifiesto sin objeto en resultado",
+                     adiff["removed"], "warn"),
+                    ("=", "coincide", adiff["same"], "ok")):
+                txt = e(", ".join(items)) if items else "ninguno"
+                comp1 += (f"<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class='{cls}'>"
+                          f"{mark} {label}: {txt}</span>")
+            for c in adiff["changed"]:
+                diff_pre = "\n".join(
+                    f"{f_['path']}: {f_['manifest']} → {f_['apply']}"
+                    for f_ in c["fields"])
+                comp1 += (
+                    f"<br>&nbsp;&nbsp;&nbsp;&nbsp;<details><summary>"
+                    f"<code>{e(c['object'])}</code> difiere</summary>"
+                    f"<pre class='small'>{e(diff_pre)}</pre></details>")
+            if adiff["placeholders"]:
+                comp1 += (
+                    f"<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class='small'>"
+                    f"({len(adiff['placeholders'])} objeto(s) con "
+                    f"placeholders excluidos: "
+                    f"{e(', '.join(adiff['placeholders']))})</span>")
+        elif cs["apply_logs"]:
+            comp1 += ("<br>&nbsp;&nbsp;<span class='small'>(el apply no "
+                      "imprimió objetos YAML — comparación solo por "
+                      "líneas de verdict)</span>")
+        comp1 += "</div>"
+        parts.append(comp1)
 
         d = r.get("def_release_diff")
         if d and diff_has_changes(d):

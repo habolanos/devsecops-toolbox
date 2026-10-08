@@ -12,6 +12,7 @@ from scm.azdo.azdo_release_manifest_drift import (
     build_html_report,
     build_object_rows,
     consistency_summary,
+    diff_applied_objects,
     diff_manifest_objects,
     diff_env_def_vs_release,
     diff_has_changes,
@@ -23,6 +24,7 @@ from scm.azdo.azdo_release_manifest_drift import (
     list_release_definitions,
     manifest_key,
     missing_numeric_tokens,
+    normalize_applied_object,
     parse_apply_log,
     parse_manifest_objects,
     select_definitions,
@@ -906,3 +908,221 @@ class TestHtmlLinks:
         assert "Release-8" in out
         assert "cambiados" in out
         assert "Deployment/web" in out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Comparación 1 — elemento por elemento: manifiesto vs objetos del apply
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestNormalizeAppliedObject:
+    def test_strips_server_fields(self):
+        obj = {"apiVersion": "apps/v1", "kind": "Deployment",
+               "metadata": {"name": "web", "namespace": "ns",
+                            "resourceVersion": "999", "uid": "abc",
+                            "creationTimestamp": "2026-01-01T00:00:00Z",
+                            "managedFields": [{"x": 1}], "generation": 5,
+                            "annotations": {
+                                "kubectl.kubernetes.io/"
+                                "last-applied-configuration": "{...}",
+                                "team": "oms"}},
+               "spec": {"replicas": 2},
+               "status": {"readyReplicas": 2}}
+        n = normalize_applied_object(obj)
+        assert "status" not in n
+        for k in ("resourceVersion", "uid", "creationTimestamp",
+                  "managedFields", "generation"):
+            assert k not in n["metadata"]
+        assert n["metadata"]["annotations"] == {"team": "oms"}
+        assert n["spec"]["replicas"] == 2
+
+    def test_drops_annotations_key_when_only_volatile(self):
+        obj = {"kind": "Deployment",
+               "metadata": {"name": "w",
+                            "annotations": {
+                                "kubectl.kubernetes.io/"
+                                "last-applied-configuration": "x"}}}
+        assert "annotations" not in \
+            normalize_applied_object(obj)["metadata"]
+
+
+_DEPLOY_MAN_YAML = """apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: ns
+spec:
+  replicas: 2
+"""
+
+# mismo objeto devuelto por `kubectl apply -o yaml`: status, uid,
+# last-applied y defaults del server (strategy) — debe 'coincidir'
+_DEPLOY_RES_YAML = """apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: ns
+  resourceVersion: "999"
+  uid: abc
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: "{...}"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+status:
+  readyReplicas: 2
+"""
+
+_SECRET_RES_YAML = """apiVersion: v1
+kind: Secret
+metadata:
+  name: sec
+  namespace: ns
+data:
+  k: dmFs
+"""
+
+
+def _parsed(*yamls):
+    return parse_manifest_objects(list(yamls))
+
+
+class TestDiffAppliedObjects:
+    def test_same_ignores_server_fields_and_defaults(self):
+        man = _parsed(_DEPLOY_MAN_YAML)
+        res = _parsed(_DEPLOY_RES_YAML)
+        d = diff_applied_objects(man, res)
+        assert d["same"] == ["Deployment/web"]
+        assert d["added"] == [] and d["removed"] == []
+        assert d["changed"] == []
+
+    def test_changed_field_reported_with_path(self):
+        man = _parsed(_DEPLOY_MAN_YAML)
+        res = _parsed(_DEPLOY_RES_YAML.replace("replicas: 2",
+                                               "replicas: 3"))
+        d = diff_applied_objects(man, res)
+        assert len(d["changed"]) == 1
+        f = d["changed"][0]
+        assert f["object"] == "Deployment/web"
+        assert {"path": "spec.replicas", "manifest": "2",
+                "apply": "3"} in f["fields"]
+
+    def test_missing_field_in_result(self):
+        res = _parsed(_DEPLOY_RES_YAML.replace("  replicas: 2\n", ""))
+        d = diff_applied_objects(_parsed(_DEPLOY_MAN_YAML), res)
+        fields = d["changed"][0]["fields"]
+        assert {"path": "spec.replicas", "manifest": "2",
+                "apply": "ausente"} in fields
+
+    def test_added_in_prod_not_in_manifest(self):
+        man = _parsed(_DEPLOY_MAN_YAML)
+        res = _parsed(_DEPLOY_RES_YAML, _SECRET_RES_YAML)
+        d = diff_applied_objects(man, res)
+        assert d["added"] == ["Secret/sec"]
+        assert "secret/ns/sec" in d["added_keys"]
+
+    def test_removed_manifest_object_without_result(self):
+        man = _parsed(_DEPLOY_MAN_YAML, _SECRET_RES_YAML)
+        res = _parsed(_DEPLOY_RES_YAML)
+        d = diff_applied_objects(man, res)
+        assert d["removed"] == ["Secret/sec"]
+
+    def test_placeholder_objects_excluded(self):
+        tpl = _DEPLOY_MAN_YAML.replace("name: web",
+                                       "name: web-#{env}#")
+        d = diff_applied_objects(_parsed(tpl),
+                                 _parsed(_DEPLOY_RES_YAML))
+        assert d["removed"] == []            # no cuenta como no-aplicado
+        assert d["placeholders"] == ["Deployment/web-#{env}#"]
+
+
+class TestAppliedDiffFindings:
+    """analyze_manifest traduce el diff a findings accionables."""
+
+    def test_extra_in_prod_and_spec_differs(self):
+        man = _parsed(_DEPLOY_MAN_YAML.replace("replicas: 2",
+                                               "replicas: 3"))
+        res = _parsed(_DEPLOY_RES_YAML, _SECRET_RES_YAML)
+        adiff = diff_applied_objects(man, res)
+        fs = analyze_manifest(man, _apply(), applied_diff=adiff)
+        rules = {f["rule"] for f in fs}
+        assert "EXTRA_IN_PROD" in rules
+        assert "SPEC_DIFFERS" in rules
+        extra = next(f for f in fs if f["rule"] == "EXTRA_IN_PROD")
+        assert extra["object"] == "Secret/sec"
+        assert extra["severity"] == "MEDIUM"
+        spec = next(f for f in fs if f["rule"] == "SPEC_DIFFERS")
+        assert "spec.replicas" in spec["detail"]
+
+    def test_no_diff_no_findings(self):
+        fs = analyze_manifest(_parsed(_DEPLOY_MAN_YAML), _apply())
+        assert "EXTRA_IN_PROD" not in {f["rule"] for f in fs}
+        assert "SPEC_DIFFERS" not in {f["rule"] for f in fs}
+
+
+class TestBuildObjectRowsAppliedResult:
+    def test_apply_result_only_object_gets_row(self):
+        r = _result(
+            objects={"deployment/ns/web": {"kind": "Deployment",
+                                           "namespace": "ns",
+                                           "name": "web"}},
+            apply_result_objects={
+                "secret/ns/sec": {"kind": "Secret", "namespace": "ns",
+                                  "name": "sec"}},
+            findings=[{"severity": "MEDIUM", "rule": "EXTRA_IN_PROD",
+                       "object": "Secret/sec", "key": "secret/ns/sec",
+                       "detail": "x"}])
+        rows, _ = build_object_rows(r)
+        row = next(x for x in rows if x["object"] == "Secret/sec")
+        assert row["in_manifest"] == "✗"
+        assert row["severity"] == "MEDIUM"
+
+    def test_no_dup_row_when_verdict_covers_apply_result(self):
+        r = _result(
+            objects={},
+            apply_verdicts={"secret/sec": "created"},
+            apply_result_objects={
+                "secret/ns/sec": {"kind": "Secret", "namespace": "ns",
+                                  "name": "sec"}})
+        rows, _ = build_object_rows(r)
+        matches = [x for x in rows if "sec" in x["object"]]
+        assert len(matches) == 1
+        assert matches[0]["verdict"] == "created"
+
+
+class TestAppliedDiffConsoleAndHtml:
+    def test_console_element_block(self, capsys, monkeypatch):
+        import scm.azdo.azdo_release_manifest_drift as m
+        monkeypatch.setattr(m, "console", None)
+        man = _parsed(_DEPLOY_MAN_YAML)
+        res = _parsed(_DEPLOY_RES_YAML, _SECRET_RES_YAML)
+        r = _result(
+            objects={k: {kk: o[kk] for kk in ("kind", "namespace", "name")}
+                     for k, o in man.items()},
+            apply_log_names=["kubectl apply"],
+            apply_result_objects={
+                k: {kk: o[kk] for kk in ("kind", "namespace", "name")}
+                for k, o in res.items()},
+            applied_diff=diff_applied_objects(man, res))
+        m.print_result(r)
+        out = capsys.readouterr().out
+        assert "Elemento por elemento" in out
+        assert "Secret/sec" in out
+        assert "coincide" in out
+
+    def test_html_element_block(self):
+        man = _parsed(_DEPLOY_MAN_YAML.replace("replicas: 2",
+                                               "replicas: 3"))
+        res = _parsed(_DEPLOY_RES_YAML, _SECRET_RES_YAML)
+        r = _result(
+            apply_log_names=["kubectl apply"],
+            apply_result_objects={
+                k: {kk: o[kk] for kk in ("kind", "namespace", "name")}
+                for k, o in res.items()},
+            applied_diff=diff_applied_objects(man, res))
+        out = build_html_report([r])
+        assert "Elemento por elemento" in out
+        assert "Secret/sec" in out
+        assert "spec.replicas" in out
+        assert "difiere" in out

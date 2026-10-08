@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.43`** — 2026-10-08
+**`1.8.44`** — 2026-10-08
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-08 | **1.8.44** | **feat(azdo): opción 45 — Comparación 1 elemento-por-elemento** — cuando el log del apply imprime los objetos resultantes (`-o yaml`), `diff_applied_objects` los normaliza (`normalize_applied_object`: quita `status`/`uid`/`resourceVersion`/`last-applied`) y compara campo a campo contra el manifiesto (`_diff_subset`: solo lo declarado, defaults del server ignorados). Clasifica: en-prod-sin-manifiesto (`EXTRA_IN_PROD` MEDIUM), manifiesto-sin-resultado, coincide, difiere (`SPEC_DIFFERS` MEDIUM con `path: m → a`). Render en consola y HTML (`<details>` por objeto). Tests: +14 (201 área). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.9), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.43** | **perf(azdo): opción 45 — escala a +2000 pipelines** — `$top` del listado de definitions 200→1000 (máximo VSRM). Selector de solo IDs omite el listado completo: `GET /definitions/{id}` directo por cada ID (`selector_all_numeric`), de descargar el catálogo entero a 1 request por pipeline. `all`/substring mantienen paginación + fallback por ID. Tests: +5 (187 área). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.8), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.42** | **fix(azdo): opción 45 — paginación de definitions por header + fetch directo por ID** — `list_release_definitions` leía `continuationToken` del body pero VSRM lo envía en el header `x-ms-continuationtoken` → solo primera página (~200 defs), IDs como 905 no matcheaban. Ahora lee header (fallback body) + tokens numéricos sin match intentan `GET /definitions/{id}` directo. `AzdoClient.get/_send`: `return_headers=True` opcional. Tests: +10 (182 área). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.7), `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.41** | **feat(azdo): opción 45 — dos comparaciones explícitas** — *Comparación 1* (manifiesto ↔ apply del último release efectivo) con listas exactas de diferencias en consola y HTML. *Comparación 2* (manifiesto actual vs release previo): `diff_manifest_objects` doc-a-doc → añadidos/eliminados/sin-cambio/cambiados con extracto unified-diff (`<details>` colapsable en HTML). Tests: +3 (72 módulo total). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.6), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
