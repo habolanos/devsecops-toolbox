@@ -1252,9 +1252,8 @@ def print_result(r: Dict):
         (console.print if console else print)(
             f"  Prev release {r.get('prev_release_name','')} "
             f"(id {r['prev_release_id']})")
-    (console.print if console else print)(
-        f"  Logs analizados: {', '.join(r['task_logs']) or '(ninguna task '
-        'matcheó el patrón)'}")
+    logs_txt = ", ".join(r["task_logs"]) or "(ninguna task matcheó el patrón)"
+    (console.print if console else print)(f"  Logs analizados: {logs_txt}")
 
     # ── Comparación 1: manifiesto vs apply (último release efectivo) ──
     cs = consistency_summary(r)
