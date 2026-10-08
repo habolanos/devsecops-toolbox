@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -138,21 +138,51 @@ def get_args() -> argparse.Namespace:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def list_release_definitions(client: AzdoClient, debug: bool = False) -> List[Dict]:
-    """Todas las release definitions (paginación continuationToken)."""
+    """Todas las release definitions.
+
+    VSRM devuelve el continuation token en el header
+    ``x-ms-continuationtoken`` (algunas respuestas también lo traen en el
+    body). Sin leer el header solo se descarga la primera página (~200).
+    """
     all_values: List[Dict] = []
     token = None
     while True:
         params: Dict = {"api-version": "7.1", "$top": 200}
         if token:
             params["continuationToken"] = token
-        data = client.get(f"{client.base}/definitions", params=params)
+        data, headers = client.get(f"{client.base}/definitions",
+                                   params=params, return_headers=True)
         all_values.extend(data.get("value", []))
-        token = data.get("continuationToken")
+        token = (data.get("continuationToken")
+                 or headers.get("x-ms-continuationtoken"))
         if not token:
             break
     if debug and console:
         console.print(f"  [dim]{len(all_values)} release definitions[/]")
     return all_values
+
+
+def fetch_definition_by_id(client: AzdoClient, def_id) -> Optional[Dict]:
+    """GET directo de una definition por ID.
+
+    Fallback para IDs válidos que el listado no incluye (paginación,
+    definición creada hace instantes, etc.). None si no existe (404) o
+    hay error de red — no propaga excepciones.
+    """
+    url = f"{client.base}/definitions/{def_id}"
+    try:
+        resp = client.session.get(url, params={"api-version": "7.1"},
+                                  timeout=30)
+        return resp.json() if resp.status_code == 200 else None
+    except Exception:
+        return None
+
+
+def missing_numeric_tokens(selector: str, defs: List[Dict]) -> List[str]:
+    """Tokens numéricos del selector sin match en las definitions dadas."""
+    ids = {str(d.get("id")) for d in defs}
+    return [t.strip() for t in (selector or "").split(",")
+            if t.strip().isdigit() and t.strip() not in ids]
 
 
 def select_definitions(defs: List[Dict], selector: str) -> List[Dict]:
@@ -1549,6 +1579,16 @@ def main() -> int:
 
     defs = list_release_definitions(client, args.debug)
     selected = select_definitions(defs, args.definition_ids)
+    for tid in missing_numeric_tokens(args.definition_ids, defs):
+        d = fetch_definition_by_id(client, tid)
+        if d:
+            selected.append(d)
+            if console:
+                console.print(
+                    f"  [dim]definition {tid} recuperada por GET directo[/]")
+        else:
+            (console.print if console else print)(
+                f"  [yellow]definition {tid} no encontrada en AzDO[/]")
     if not selected:
         (console.print if console else print)(
             f"Sin definitions que matcheen '{args.definition_ids}'.")

@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.41`** — 2026-10-08
+**`1.8.42`** — 2026-10-08
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-08 | **1.8.42** | **fix(azdo): opción 45 — paginación de definitions por header + fetch directo por ID** — `list_release_definitions` leía `continuationToken` del body pero VSRM lo envía en el header `x-ms-continuationtoken` → solo primera página (~200 defs), IDs como 905 no matcheaban. Ahora lee header (fallback body) + tokens numéricos sin match intentan `GET /definitions/{id}` directo. `AzdoClient.get/_send`: `return_headers=True` opcional. Tests: +10 (182 área). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.7), `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.41** | **feat(azdo): opción 45 — dos comparaciones explícitas** — *Comparación 1* (manifiesto ↔ apply del último release efectivo) con listas exactas de diferencias en consola y HTML. *Comparación 2* (manifiesto actual vs release previo): `diff_manifest_objects` doc-a-doc → añadidos/eliminados/sin-cambio/cambiados con extracto unified-diff (`<details>` colapsable en HTML). Tests: +3 (72 módulo total). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.6), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.40** | **feat(azdo): opción 45 — consistencia explícita de las 3 tasks + links AzDO** — Sección `Consistencia manifiesto ↔ apply` por pipeline (consola y HTML): tasks capturadas, objetos/verdicts producidos, y diferencias exactas en dos listas ("En manifiesto SIN línea en apply" / "Aplicado sin aparecer en manifiesto"). HTML con anchors `#def-N` resumen→detalle y links a la definición (`_release?definitionId=`) y al release (`_releaseProgress?releaseId=`) en Azure DevOps. Tests: +9 (69 módulo, 169 área). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.5), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.39** | **fix(azdo): opción 45 — export silencioso + resumen completo** — (1) El prompt de `--output` usaba el default global `excel` (inválido para la 45) → Enter no exportaba nada; ahora default efectivo `all` (json+csv+html). (2) Tabla resumen lista **todos** los pipelines con columna Estado; omitidos al final, errores reales siempre visibles. (3) Logs vacíos de manifiesto → `EMPTY_LOG`; logs sin YAML parseable → `MANIFEST_NO_DOCS` INFO. Tests: +3 (60 módulo). | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.4), `scm/azdo/tools.py` (v1.8.39), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

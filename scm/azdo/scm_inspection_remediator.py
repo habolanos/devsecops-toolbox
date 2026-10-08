@@ -142,12 +142,14 @@ class AzdoClient:
         self.session.headers["Accept"] = "application/json"
 
     def _send(self, method: str, url: str, params: dict = None,
-              payload: dict = None, raw: bool = False, timeout: int = 60):
+              payload: dict = None, raw: bool = False, timeout: int = 60,
+              return_headers: bool = False):
         for attempt in range(4):
             resp = self.session.request(method, url, params=params,
                                         json=payload, timeout=timeout)
             if resp.status_code == 200:
-                return resp.text if raw else resp.json()
+                body = resp.text if raw else resp.json()
+                return (body, resp.headers) if return_headers else body
             if resp.status_code == 429 or resp.status_code >= 500:
                 wait = int(resp.headers.get("Retry-After", (attempt + 1) * 2))
                 console.print(f"  [yellow]HTTP {resp.status_code} — "
@@ -161,8 +163,10 @@ class AzdoClient:
                      f"{resp.text[:500]}")
         sys.exit(f"ERROR: agotados los reintentos para {url}")
 
-    def get(self, url: str, raw: bool = False, params: dict = None):
-        return self._send("GET", url, params=params, raw=raw, timeout=30)
+    def get(self, url: str, raw: bool = False, params: dict = None,
+            return_headers: bool = False):
+        return self._send("GET", url, params=params, raw=raw, timeout=30,
+                          return_headers=return_headers)
 
     def patch(self, url: str, payload: dict, params: dict = None):
         """PATCH con la misma política de reintentos que get()."""

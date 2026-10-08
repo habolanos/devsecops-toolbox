@@ -17,9 +17,12 @@ from scm.azdo.azdo_release_manifest_drift import (
     diff_has_changes,
     extract_manifest_docs,
     extract_stage_tasks,
+    fetch_definition_by_id,
     find_effective_deployments,
     find_stage_env,
+    list_release_definitions,
     manifest_key,
+    missing_numeric_tokens,
     parse_apply_log,
     parse_manifest_objects,
     select_definitions,
@@ -336,6 +339,104 @@ class TestSelectDefinitions:
     def test_name_substring(self):
         sel = select_definitions(self.DEFS, "prod")
         assert {d["id"] for d in sel} == {1, 2}
+
+
+class TestListReleaseDefinitionsPagination:
+    """VSRM devuelve el token en el header x-ms-continuationtoken — la
+    paginación debe seguirlo o solo se descarga la primera página."""
+
+    class _Client:
+        base = "https://vsrm.dev.azure.com/o/p"
+
+        def __init__(self, pages, header_token=True):
+            self.pages = pages
+            self.header_token = header_token
+            self.calls = []
+
+        def get(self, url, params=None, return_headers=False):
+            self.calls.append(dict(params or {}))
+            idx = len(self.calls) - 1
+            data, tok = self.pages[idx]
+            headers = ({"x-ms-continuationtoken": tok}
+                       if self.header_token and tok else {})
+            return (data, headers) if return_headers else data
+
+    def test_follows_header_token(self):
+        pages = [
+            ({"value": [{"id": 1}]}, "tok2"),
+            ({"value": [{"id": 2}]}, None),
+        ]
+        c = self._Client(pages)
+        defs = list_release_definitions(c)
+        assert [d["id"] for d in defs] == [1, 2]
+        assert c.calls[1]["continuationToken"] == "tok2"
+
+    def test_body_token_also_works(self):
+        pages = [
+            ({"value": [{"id": 1}], "continuationToken": "tok2"}, None),
+            ({"value": [{"id": 2}]}, None),
+        ]
+        c = self._Client(pages)
+        defs = list_release_definitions(c)
+        assert [d["id"] for d in defs] == [1, 2]
+
+    def test_single_page(self):
+        c = self._Client([({"value": [{"id": 1}]}, None)])
+        assert len(list_release_definitions(c)) == 1
+        assert len(c.calls) == 1
+
+
+class TestMissingNumericTokens:
+    DEFS = [{"id": 1}, {"id": 2}]
+
+    def test_missing_id(self):
+        assert missing_numeric_tokens("1,905", self.DEFS) == ["905"]
+
+    def test_all_selector_no_numeric(self):
+        assert missing_numeric_tokens("all", self.DEFS) == []
+
+    def test_substring_ignored(self):
+        assert missing_numeric_tokens("prod", self.DEFS) == []
+
+    def test_present_id_not_missing(self):
+        assert missing_numeric_tokens("2", self.DEFS) == []
+
+
+class TestFetchDefinitionById:
+    class _Resp:
+        def __init__(self, code, payload=None):
+            self.status_code = code
+            self._payload = payload or {}
+
+        def json(self):
+            return self._payload
+
+    class _Session:
+        def __init__(self, resp=None, exc=None):
+            self.resp, self.exc = resp, exc
+
+        def get(self, url, params=None, timeout=None):
+            if self.exc:
+                raise self.exc
+            return self.resp
+
+    class _Client:
+        base = "https://vsrm.dev.azure.com/o/p"
+
+        def __init__(self, resp=None, exc=None):
+            self.session = TestFetchDefinitionById._Session(resp, exc)
+
+    def test_found(self):
+        c = self._Client(self._Resp(200, {"id": 905, "name": "CD-X"}))
+        assert fetch_definition_by_id(c, 905)["name"] == "CD-X"
+
+    def test_not_found_404(self):
+        c = self._Client(self._Resp(404))
+        assert fetch_definition_by_id(c, 999) is None
+
+    def test_network_error(self):
+        c = self._Client(exc=ConnectionError("boom"))
+        assert fetch_definition_by_id(c, 1) is None
 
 
 class TestFindStageEnv:
