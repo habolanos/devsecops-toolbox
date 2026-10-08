@@ -625,3 +625,39 @@ class TestBuildHtmlReport:
         out = build_html_report([r])
         assert "<script>alert" not in out
         assert "&lt;script&gt;" in out
+
+
+class TestPrintSummary:
+    """El resumen debe listar TODOS los pipelines, incluidos los omitidos."""
+
+    def test_skipped_included_in_summary(self, capsys, monkeypatch):
+        import scm.azdo.azdo_release_manifest_drift as m
+        monkeypatch.setattr(m, "console", None)  # fuerza fallback texto
+        skip = _result(definition_name="pipe-skip", deployment_status="",
+                       error="stage 'production' no existe en la definición")
+        ok = _result(definition_name="pipe-ok")
+        m.print_summary([skip, ok], "NONE")
+        out = capsys.readouterr().out
+        assert "pipe-skip" in out
+        assert "no existe en la definición" in out
+        assert "pipe-ok" in out
+
+    def test_severity_filter_keeps_real_errors(self, capsys, monkeypatch):
+        import scm.azdo.azdo_release_manifest_drift as m
+        monkeypatch.setattr(m, "console", None)
+        err = _result(definition_name="pipe-err",
+                      error="release: HTTP 500")
+        clean = _result(definition_name="pipe-clean")
+        m.print_summary([err, clean], "CRITICAL")
+        out = capsys.readouterr().out
+        assert "pipe-err" in out          # error real siempre visible
+        assert "pipe-clean" not in out    # NONE < CRITICAL → filtrado
+
+
+class TestManifestEmptyLogs:
+    def test_empty_manifest_log_emits_empty_log(self):
+        """Un log de manifiesto vacío cuenta como EMPTY_LOG (vía apply dict)."""
+        apply = {"verdicts": {}, "log_names": [],
+                 "empty_logs": ["show manifest"]}
+        findings = analyze_manifest({}, apply)
+        assert any(f["rule"] == "EMPTY_LOG" for f in findings)

@@ -53,7 +53,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -516,8 +516,9 @@ def analyze_manifest(objects: Dict[str, Dict], apply: Dict,
 
     # Diagnóstico de logs apply sin verdicts ni vacíos
     apply_logs = apply.get("log_names", [])
+    empty_apply = set(apply.get("empty_logs", [])) & set(apply_logs)
     if apply_logs and not apply.get("verdicts") \
-            and len(apply.get("empty_logs", [])) < len(apply_logs):
+            and len(empty_apply) < len(apply_logs):
         findings.append({
             "severity": "MEDIUM", "rule": "APPLY_NO_VERDICTS",
             "object": "",
@@ -813,6 +814,7 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
 
     # manifiesto + apply
     manifest_docs: List[str] = []
+    manifest_log_names: List[str] = []
     apply = {"verdicts": {}, "missing_annotation": set(), "errors": [],
              "old_warn": False, "log_names": [], "empty_logs": []}
     apply_names = latest.get("apply_names", set())
@@ -828,9 +830,19 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
             apply["errors"].extend(parsed["errors"])
             apply["old_warn"] = apply["old_warn"] or parsed["old_warn"]
         elif "manifest" in name.lower():
+            manifest_log_names.append(name)
+            if not (text or "").strip():
+                apply["empty_logs"].append(name)
+                continue
             manifest_docs.extend(extract_manifest_docs(text))
 
     objects = parse_manifest_objects(manifest_docs)
+    if manifest_log_names and not objects:
+        result["findings"].append({
+            "severity": "INFO", "rule": "MANIFEST_NO_DOCS", "object": "",
+            "detail": "Los logs de manifiesto no contenían documentos YAML "
+                      "K8s reconocibles (kind + metadata).",
+        })
     result["manifest_objects"] = len(objects)
     result["objects"] = {k: {"kind": o["kind"], "namespace": o["namespace"],
                              "name": o["name"]} for k, o in objects.items()}
@@ -1004,32 +1016,44 @@ def _is_skip(r: Dict) -> bool:
 
 
 def print_summary(results: List[Dict], min_sev: str):
-    rows = [r for r in results
-            if not _is_skip(r)
-            and SEV_ORDER.get(r.get("severity", "NONE"), 9)
-            <= SEV_ORDER[min_sev]]
+    """Tabla resumen con TODOS los pipelines: los analizados primero (por
+    severidad) y los omitidos al final marcados con su causa."""
+    min_rank = SEV_ORDER[min_sev]
+    analyzed = [r for r in results
+                if not _is_skip(r)
+                and (SEV_ORDER.get(r.get("severity", "NONE"), 9) <= min_rank
+                     or r.get("error"))]
+    skipped = [r for r in results if _is_skip(r)]
+    rows = analyzed + sorted(skipped,
+                             key=lambda r: str(r["definition_name"]).lower())
     if console:
         t = Table(title="Resumen — Manifest Drift Audit")
-        for col in ("Pipeline", "Release", "Objetos", "Configured",
+        for col in ("Pipeline", "Release", "Estado", "Objetos", "Configured",
                     "Missing-Ann", "Def-Diff", "Severidad"):
             t.add_column(col)
         for r in rows:
             d = r.get("def_release_diff") or {}
+            estado = (r.get("deployment_status") or
+                      (f"[dim]{r['error']}[/]" if r.get("error") else ""))
+            sev = r.get("severity", "NONE")
+            sev_cell = (f"[{SEV_STYLE.get(sev, '')}]{sev}[/]"
+                        if not r.get("error") else "[dim]—[/]")
             t.add_row(
                 str(r["definition_name"]),
-                str(r.get("release_name", "")),
+                str(r.get("release_name", "")) or "—",
+                estado,
                 str(r["manifest_objects"]),
                 str(r["apply_counts"]["configured"]),
                 str(_missing_ann_count(r)),
                 "Sí" if diff_has_changes(d) else "—",
-                f"[{SEV_STYLE.get(r.get('severity','NONE'),'')}]"
-                f"{r.get('severity','NONE')}[/]",
+                sev_cell,
             )
         console.print(t)
     else:
         for r in rows:
+            estado = r.get("deployment_status") or r.get("error", "")
             print(f"{r['definition_name']} | {r.get('release_name','')} | "
-                  f"sev={r.get('severity','NONE')}")
+                  f"{estado} | sev={r.get('severity','NONE')}")
 
 
 def _missing_ann_count(r: Dict) -> int:

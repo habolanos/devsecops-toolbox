@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.38"
+__version__ = "1.8.39"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -2334,13 +2334,17 @@ def run_tool(tool_key: str):
         cfg_fmt = config_get(cfg, "defaults", "output_format", default="excel")
         choices = (("json", "csv", "html", "both", "all") if tool_key == "45"
                    else ("json", "csv", "excel"))
+        # Si el default de config no es válido para esta tool, caer a "all"
+        # (45) para no quedar sin export silenciosamente.
+        eff_default = cfg_fmt if cfg_fmt in choices else (
+            "all" if tool_key == "45" else cfg_fmt)
         print(f"{Colors.BOLD}¿Exportar resultado? ({'/'.join(choices)}/ninguno) "
-              f"[{Colors.CYAN}{cfg_fmt or 'ninguno'}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
+              f"[{Colors.CYAN}{eff_default or 'ninguno'}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
         val = input().strip().lower()
         if val in choices:
             extra += ["--output", val]
-        elif not val and cfg_fmt in choices:
-            extra += ["--output", cfg_fmt]
+        elif not val and eff_default in choices:
+            extra += ["--output", eff_default]
 
     if "--deadline" in tool_args:
         print(f"{Colors.BOLD}Fecha deadline (YYYY-MM-DD, obligatorio):{Colors.ENDC} ", end="")
