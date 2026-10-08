@@ -12,6 +12,7 @@ from scm.azdo.azdo_release_manifest_drift import (
     build_html_report,
     build_object_rows,
     consistency_summary,
+    diff_manifest_objects,
     diff_env_def_vs_release,
     diff_has_changes,
     extract_manifest_docs,
@@ -708,6 +709,46 @@ class TestConsistencySummary:
         assert cs["missing_in_apply"] == []  # placeholder no es NOT_APPLIED
 
 
+class TestDiffManifestObjects:
+    """Comparación 2: manifiesto actual vs manifiesto del release previo."""
+
+    _CUR = {
+        "deployment/ns/web": {"kind": "Deployment", "namespace": "ns",
+                              "name": "web",
+                              "canonical": "replicas: 3\nimage: v2"},
+        "service/ns/svc": {"kind": "Service", "namespace": "ns",
+                           "name": "svc", "canonical": "port: 80"},
+        "configmap/ns/new": {"kind": "ConfigMap", "namespace": "ns",
+                             "name": "new", "canonical": "x: 1"},
+    }
+    _PREV = {
+        "deployment/ns/web": {"kind": "Deployment", "namespace": "ns",
+                              "name": "web",
+                              "canonical": "replicas: 2\nimage: v1"},
+        "service/ns/svc": {"kind": "Service", "namespace": "ns",
+                           "name": "svc", "canonical": "port: 80"},
+        "ingress/ns/old": {"kind": "Ingress", "namespace": "ns",
+                           "name": "old", "canonical": "y: 9"},
+    }
+
+    def test_added_removed_changed_same(self):
+        d = diff_manifest_objects(self._CUR, self._PREV)
+        assert d["added"] == ["ConfigMap/new"]
+        assert d["removed"] == ["Ingress/old"]
+        assert d["same"] == ["Service/svc"]
+        assert len(d["changed"]) == 1
+        assert d["changed"][0]["object"] == "Deployment/web"
+        # extracto del diff contiene ambas versiones
+        assert "-replicas: 2" in d["changed"][0]["diff"]
+        assert "+replicas: 3" in d["changed"][0]["diff"]
+
+    def test_identical_manifests(self):
+        d = diff_manifest_objects(self._CUR, self._CUR)
+        assert d["added"] == [] and d["removed"] == []
+        assert d["changed"] == []
+        assert len(d["same"]) == 3
+
+
 class TestHtmlLinks:
     def test_links_to_azdo_and_anchor(self):
         r = _result()
@@ -726,5 +767,23 @@ class TestHtmlLinks:
                     apply_log_names=["kubectl apply"],
                     manifest_objects=2, apply_verdicts={"a/b": "created"})
         out = build_html_report([r])
-        assert "Consistencia manifiesto" in out
+        assert "Comparación 1" in out
         assert "show manifest" in out
+
+    def test_comparison2_section_in_html(self):
+        cur = {"deployment/ns/web": {"kind": "Deployment", "namespace": "ns",
+                                     "name": "web", "canonical": "a: 1"}}
+        prev = {"deployment/ns/web": {"kind": "Deployment", "namespace": "ns",
+                                      "name": "web", "canonical": "a: 2"}}
+        r = _result(prev_release_name="Release-8", prev_release_id=98,
+                    prev_objects={k: {kk: o[kk] for kk in
+                                      ("kind", "namespace", "name")}
+                                  for k, o in prev.items()},
+                    prev_manifest_log_names=["show manifest"],
+                    prev_apply_verdicts=1,
+                    prev_manifest_diff=diff_manifest_objects(cur, prev))
+        out = build_html_report([r])
+        assert "Comparación 2" in out
+        assert "Release-8" in out
+        assert "cambiados" in out
+        assert "Deployment/web" in out

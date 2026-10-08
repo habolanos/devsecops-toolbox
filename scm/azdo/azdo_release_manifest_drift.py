@@ -39,6 +39,7 @@ Autor: Harold Adrian
 """
 
 import argparse
+import difflib
 import html as _html
 import json
 import re
@@ -53,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -858,15 +859,28 @@ def analyze_definition(client: AzdoClient, summary: Dict, args,
     if args.prev_release and len(effective) >= 2:
         try:
             prev = _analyze_release(effective[1], want_logs=True)
-            prev_docs: List[str] = []
             prev_apply_names = prev.get("apply_names", set())
+            prev_docs: List[str] = []
+            prev_mlog_names: List[str] = []
+            prev_verdicts = 0
             for name, text in prev["logs"].items():
-                if name not in prev_apply_names \
-                        and "manifest" in name.lower():
+                if name in prev_apply_names:
+                    if (text or "").strip():
+                        prev_verdicts += len(
+                            parse_apply_log(text)["verdicts"])
+                elif "manifest" in name.lower():
+                    prev_mlog_names.append(name)
                     prev_docs.extend(extract_manifest_docs(text))
             prev_objects = parse_manifest_objects(prev_docs)
             result["prev_release_id"] = prev["release"].get("id")
             result["prev_release_name"] = prev["release"].get("name", "")
+            result["prev_manifest_log_names"] = prev_mlog_names
+            result["prev_apply_verdicts"] = prev_verdicts
+            result["prev_manifest_diff"] = diff_manifest_objects(
+                objects, prev_objects)
+            result["prev_objects"] = {
+                k: {"kind": o["kind"], "namespace": o["namespace"],
+                    "name": o["name"]} for k, o in prev_objects.items()}
         except Exception as e:
             result["prev_release_error"] = str(e)
 
@@ -952,6 +966,43 @@ def consistency_summary(r: Dict) -> Dict:
     }
 
 
+def diff_manifest_objects(cur: Dict[str, Dict],
+                          prev: Dict[str, Dict]) -> Dict:
+    """Diff doc-a-doc entre manifiestos de dos releases (por canonical YAML).
+
+    Retorna {added, removed, same, changed:[{object, diff}]} — las listas
+    contienen 'Kind/name'; 'changed' incluye un extracto unified-diff
+    (hasta 8 líneas +/- del cuerpo)."""
+    def _disp(key, src):
+        o = src.get(key) or {}
+        return f"{o.get('kind', '?')}/{o.get('name', '?')}"
+
+    added = sorted(set(cur) - set(prev))
+    removed = sorted(set(prev) - set(cur))
+    changed, same = [], []
+    for k in sorted(set(cur) & set(prev)):
+        if cur[k]["canonical"] == prev[k]["canonical"]:
+            same.append(k)
+        else:
+            changed.append(k)
+
+    def _excerpt(key):
+        a = prev[key]["canonical"].splitlines()
+        b = cur[key]["canonical"].splitlines()
+        d = difflib.unified_diff(a, b, lineterm="", n=0)
+        return [l for l in d
+                if l.startswith(("+", "-"))
+                and not l.startswith(("+++", "---"))][:8]
+
+    return {
+        "added": [_disp(k, cur) for k in added],
+        "removed": [_disp(k, prev) for k in removed],
+        "same": [_disp(k, cur) for k in same],
+        "changed": [{"object": _disp(k, cur), "diff": _excerpt(k)}
+                    for k in changed],
+    }
+
+
 def print_result(r: Dict):
     head = (f"[bold]{r['definition_name']}[/]  (def {r['definition_id']})"
             if console else f"{r['definition_name']} (def {r['definition_id']})")
@@ -976,7 +1027,7 @@ def print_result(r: Dict):
         f"  Logs analizados: {', '.join(r['task_logs']) or '(ninguna task '
         'matcheó el patrón)'}")
 
-    # ── Consistencia explícita de las 3 tasks (análisis principal) ────
+    # ── Comparación 1: manifiesto vs apply (último release efectivo) ──
     cs = consistency_summary(r)
     manif_txt = (f"{', '.join(cs['manifest_logs'])} → "
                  f"{cs['objects']} objeto(s)"
@@ -984,8 +1035,10 @@ def print_result(r: Dict):
     apply_txt = (f"{', '.join(cs['apply_logs'])} → "
                  f"{cs['verdicts']} verdict(s)"
                  if cs["apply_logs"] else "✗ sin task de apply")
+    h1 = (f"  Comparación 1 — manifiesto ↔ apply "
+          f"(release {r.get('release_name','')}, último efectivo):")
     if console:
-        console.print("  [bold]Consistencia manifiesto ↔ apply:[/]")
+        console.print(f"  [bold cyan]{h1.strip()}[/]")
         console.print(f"    manifiesto: {manif_txt}")
         console.print(f"    apply:      {apply_txt}")
         for label, items, style in (
@@ -999,7 +1052,7 @@ def print_result(r: Dict):
             else:
                 console.print(f"    [green]✓ {label}: ninguno[/]")
     else:
-        print("  Consistencia manifiesto <-> apply:")
+        print(h1)
         print(f"    manifiesto: {manif_txt}")
         print(f"    apply:      {apply_txt}")
         print(f"    En manifiesto SIN linea en apply: "
@@ -1053,6 +1106,53 @@ def print_result(r: Dict):
                 print(f"    {row['object']:<44.44} {row['ns']:<18.18} "
                       f"{row['in_manifest']:<5} {row['verdict']:<11} "
                       f"{row['severity'] or 'OK':<8} {row['rules'] or '-'}")
+
+    # ── Comparación 2: manifiesto actual vs release previo ────────────
+    pdiff = r.get("prev_manifest_diff")
+    pname = r.get("prev_release_name", "")
+    h2 = (f"  Comparación 2 — manifiesto actual vs release previo "
+          f"({pname or '—'}):")
+    if pdiff is not None:
+        pv = r.get("prev_apply_verdicts", 0)
+        sub = (f"prev: {', '.join(r.get('prev_manifest_log_names') or [])}"
+               f" → {len(r.get('prev_objects') or {})} objeto(s), "
+               f"{pv} verdict(s) apply")
+        if console:
+            console.print(f"  [bold cyan]{h2.strip()}[/]")
+            console.print(f"    [dim]{sub}[/]")
+            def _plist(mark, label, items, style):
+                txt = ", ".join(items) if items else "ninguno"
+                console.print(
+                    f"    [{style}]{mark} {label}: {txt}[/]")
+            _plist("+", "añadidos", pdiff["added"], "green")
+            _plist("−", "eliminados", pdiff["removed"], "red")
+            _plist("=", "sin cambio", pdiff["same"], "dim")
+            if pdiff["changed"]:
+                console.print("    [yellow]~ cambiados:[/]")
+                for c in pdiff["changed"]:
+                    console.print(f"      [bold]{c['object']}[/]")
+                    for l in c["diff"]:
+                        console.print(f"        [dim]{l}[/]")
+        else:
+            print(h2)
+            print(f"    {sub}")
+            for mark, label in (("+", "anadidos"), ("-", "eliminados"),
+                                ("=", "sin cambio")):
+                items = pdiff[{ "+": "added", "-": "removed",
+                               "=": "same"}[mark]]
+                print(f"    {mark} {label}: "
+                      f"{', '.join(items) or 'ninguno'}")
+            for c in pdiff["changed"]:
+                print(f"    ~ {c['object']}:")
+                for l in c["diff"]:
+                    print(f"        {l}")
+    elif pname or r.get("prev_release_error"):
+        (console.print if console else print)(
+            f"{h2} [dim]sin manifiesto previo "
+            f"({r.get('prev_release_error', 'sin docs')}.)[/]"
+            if console else
+            f"{h2} sin manifiesto previo "
+            f"({r.get('prev_release_error', 'sin docs')}).")
 
     if other_findings:
         for f in sorted(other_findings,
@@ -1306,7 +1406,7 @@ code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
             + f"<br>Logs: <span class='small'>{e(', '.join(r.get('task_logs') or []) or '(ninguno)')}</span>"
               "</div>")
 
-        # ── Consistencia explícita manifiesto ↔ apply ────────────────
+        # ── Comparación 1: manifiesto ↔ apply ────────────────────────
         cs = consistency_summary(r)
         manif_txt = (f"{e(', '.join(cs['manifest_logs']))} → "
                      f"{e(cs['objects'])} objeto(s)"
@@ -1321,7 +1421,8 @@ code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
                  if cs["applied_not_in_manifest"]
                  else '<span class="ok">ninguno</span>')
         parts.append(
-            "<div class='meta'><b>Consistencia manifiesto ↔ apply:</b><br>"
+            "<div class='meta'><b>Comparación 1 — manifiesto ↔ apply "
+            f"(release {e(r.get('release_name',''))}):</b><br>"
             f"&nbsp;&nbsp;manifiesto: {manif_txt}<br>"
             f"&nbsp;&nbsp;apply: {apply_txt}<br>"
             f"&nbsp;&nbsp;► En manifiesto SIN línea en apply: {miss}<br>"
@@ -1362,6 +1463,44 @@ code{background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11.5px}
                     f"<td>{e(row['in_manifest'])}</td><td>{e(row['verdict'])}</td>"
                     f"<td>{cell}</td><td>{e(row['rules'] or '—')}</td></tr>")
             parts.append("</table>")
+
+        # ── Comparación 2: manifiesto actual vs release previo ────────
+        pdiff = r.get("prev_manifest_diff")
+        if pdiff is not None or r.get("prev_release_name") \
+                or r.get("prev_release_error"):
+            parts.append(
+                "<div class='meta'><b>Comparación 2 — manifiesto actual vs "
+                f"release previo ({e(r.get('prev_release_name') or '—')}):</b>")
+            if pdiff is not None:
+                prev_logs = ", ".join(r.get("prev_manifest_log_names") or [])
+                parts.append(
+                    f"<br>&nbsp;&nbsp;<span class='small'>prev: "
+                    f"{e(prev_logs)} → {len(r.get('prev_objects') or {})} "
+                    f"objeto(s), {e(r.get('prev_apply_verdicts', 0))} "
+                    f"verdict(s) apply</span>")
+                for mark, label, items, cls in (
+                        ("+", "añadidos", pdiff["added"], "ok"),
+                        ("−", "eliminados", pdiff["removed"], "warn"),
+                        ("=", "sin cambio", pdiff["same"], "small")):
+                    txt = (e(", ".join(items)) if items else "ninguno")
+                    parts.append(
+                        f"<br>&nbsp;&nbsp;<span class='{cls}'>"
+                        f"{mark} {label}: {txt}</span>")
+                if pdiff["changed"]:
+                    parts.append("<br>&nbsp;&nbsp;<span class='warn'>"
+                                 "~ cambiados:</span>")
+                    for c in pdiff["changed"]:
+                        diff_pre = "\n".join(c["diff"])
+                        parts.append(
+                            f"<details><summary><code>{e(c['object'])}</code>"
+                            f"</summary><pre class='small'>"
+                            f"{e(diff_pre)}</pre></details>")
+            else:
+                parts.append(
+                    f"<br>&nbsp;&nbsp;<span class='small'>sin manifiesto "
+                    f"previo ({e(r.get('prev_release_error', 'sin docs'))})"
+                    f"</span>")
+            parts.append("</div>")
 
         if other:
             parts.append("<table><tr><th>Severidad</th><th>Regla</th>"
