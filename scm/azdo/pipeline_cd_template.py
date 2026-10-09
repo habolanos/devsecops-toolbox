@@ -55,7 +55,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.15"
+__version__ = "1.0.16"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -994,6 +994,7 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    ask_fn=None,
                    decisions: Optional[Dict[str, bool]] = None,
                    comment: str = "",
+                   template_comment: str = "",
                    description: Optional[str] = None) -> Dict:
     """PUT del template sobre la definición destino (con backup previo).
 
@@ -1048,22 +1049,13 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     payload["name"] = new_name or preserve_src.get("name")
     payload["path"] = new_path or preserve_src.get("path", "\\")
 
-    # Descripción y comentario del PUT: la 'description' de la template es
-    # la del pipeline ORIGEN — no aplica al destino. Por defecto se
-    # conserva la descripción del destino; el comentario de revisión
-    # (historial AzDO) se toma del tag 'comment'/'description' de la
-    # template (vía `comment`) o se genera uno descriptivo del apply.
+    # Descripción: la 'description' de la template es la del pipeline
+    # ORIGEN — no aplica al destino. Por defecto se conserva la del
+    # destino; --description la sobreescribe explícitamente.
     if description is not None:
         payload["description"] = description
     elif preserve_src.get("description"):
         payload["description"] = preserve_src["description"]
-    payload["comment"] = comment or (
-        f"pipeline_cd_template v{__version__}: template "
-        f"'{tpl_def.get('name', '?')}' aplicada sobre definition "
-        f"{target_id} (strategy={strategy}, dry_run={dry_run})")
-    summary.append(f"comentario PUT: {(payload.get('comment') or '')[:120]}")
-    summary.append(
-        f"descripción: {(payload.get('description') or '')[:120]}")
 
     if preserve:
         applied, skipped = preserve_from_target(payload, preserve_src,
@@ -1097,6 +1089,23 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     # desde 1 — tras merge/preserve hay que renumerarlos.
     for i, env in enumerate(payload.get("environments", []), 1):
         env["rank"] = i
+
+    # Comentario del PUT (historial AzDO) = resumen de todo lo actualizado:
+    # el diff de stages/variables, target, estrategia, preserve aplicado,
+    # alias remapeados y placeholders. Se construye al final, cuando el
+    # summary ya recoge todos los cambios. El encabezado es --comment,
+    # o el tag comment/description de la template, o uno generado.
+    head = (comment or template_comment
+            or f"pipeline_cd_template v{__version__} — apply a "
+               f"definition {target_id}")
+    change_lines = [
+        l for l in summary
+        if not l.startswith(("backup ", "origen yaml:", "updater yaml:",
+                             "comentario PUT:", "descripción:"))]
+    payload["comment"] = "\n".join([head] + change_lines)
+    summary.append(f"comentario PUT: {payload['comment'][:160]}")
+    summary.append(
+        f"descripción: {(payload.get('description') or '')[:120]}")
 
     # Siempre guardar los YAML del origen (template) y del updater
     # resultante (payload final) junto al BACKUP_DESTINO.
@@ -1386,9 +1395,10 @@ def get_args() -> argparse.Namespace:
                         "'none' desactiva). Soporta var.<NOMBRE> y "
                         "env.<STAGE>.<campo>")
     p.add_argument("--comment", default="",
-                   help="apply: comentario de revisión del PUT (historial "
-                        "AzDO). Default: tag 'comment'/'description' de la "
-                        "template o uno generado")
+                   help="apply: encabezado del comentario de revisión del "
+                        "PUT (historial AzDO) — se le agrega el resumen de "
+                        "los cambios aplicados. Default: tag 'comment'/"
+                        "'description' de la template")
     p.add_argument("--description", default=None,
                    help="apply: descripción de la definición en el PUT "
                         "(default: conserva la del destino, no la del "
@@ -1454,8 +1464,8 @@ def interactive(args) -> argparse.Namespace:
         dr = _ask("  ¿Dry-run? (s/n)", "s" if args.dry_run else "n")
         args.dry_run = dr.lower().startswith("s")
         args.comment = _ask(
-            "  Comentario del PUT (vacío = tag comment de la template "
-            "o auto)", args.comment)
+            "  Comentario del PUT (encabezado; se agrega el resumen "
+            "de cambios)", args.comment)
     return args
 
 
@@ -1546,12 +1556,13 @@ def main() -> int:
                                    if s.strip()])
         decisions: Dict[str, bool] = {}
 
-        # Comentario del PUT: --comment > tag 'comment'/'description' de la
-        # template > autogenerado en apply_template.
-        put_comment = (args.comment
-                       or tpl_meta.get("comment")
-                       or tpl_meta.get("description") or "")
-        _REPORT_META["comment"] = put_comment or "(auto)"
+        # Encabezado del comentario del PUT: --comment explícito, o el tag
+        # 'comment'/'description' de la template. apply_template le agrega
+        # el resumen completo de los cambios aplicados.
+        template_comment = (tpl_meta.get("comment")
+                            or tpl_meta.get("description") or "")
+        _REPORT_META["comment"] = (args.comment or template_comment
+                                   or "(auto-resumen)")
 
         def _ask_stage(name: str) -> bool:
             if console:
@@ -1573,7 +1584,8 @@ def main() -> int:
                              strategy=args.strategy, overwrite=overwrite,
                              update_vars=args.update_vars,
                              ask_fn=_ask_stage, decisions=decisions,
-                             comment=put_comment,
+                             comment=args.comment,
+                             template_comment=template_comment,
                              description=args.description)
         _print("\nDiff destino ← template:", "bold")
         for l in res["summary"]:
@@ -1612,7 +1624,8 @@ def main() -> int:
                              preserve=preserve, strategy=args.strategy,
                              overwrite=overwrite, update_vars=args.update_vars,
                              ask_fn=_ask_stage, decisions=decisions,
-                             comment=put_comment,
+                             comment=args.comment,
+                             template_comment=template_comment,
                              description=args.description)
         _print_files(res)
         new_def = res["result"]
