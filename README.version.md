@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.58`** — 2026-10-09
+**`1.8.59`** — 2026-10-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-09 | **1.8.59** | **feat(azdo): opción 46 — `UPDATER_*.yaml` incluye en su `metadata.summary` el resumen completo del apply** (estrategia, stages nuevos/conservados/sobrescritos, variables, preserve aplicado, alias remapeados) — el mismo reporte de consola queda documentado dentro del archivo del payload. Tests: +1 (59 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.10), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.58** | **fix(azdo): opción 46 — remapeo de alias cubre `downloadInputs[].alias`** — además de `conditions[].name`/`artifactAlias`, el remap ahora reescribe el `alias` de los artifact download inputs dentro de `deployPhases[].deploymentInput.artifactsDownloadInput` (los stages nuevos referenciaban el alias origen en el "Download artifact" del deploy phase). Tests: +1 (58 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.9), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.57** | **fix(azdo): opción 46 — artifact filters de stages nuevos apuntaban al alias del origen** — al preservar `artifacts`/`triggers` del destino, las condiciones de los stages agregados por la template (`environments[].conditions[]` con `conditionType: artifact`, `name` = alias) quedaban referenciando el alias del pipeline origen → AzDO las ignoraba y el stage quedaba sin artifact filter. Nuevo `remap_artifact_aliases`: tras preserve, remapea alias origen→destino en conditions/triggers/gates/deployPhases de los envs (match por `definitionReference.definition.name`, fallback por posición). Reportado en el summary. Tests: +6 (57 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.8), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.56** | **feat(azdo): opción 46 — bloque "Archivos generados" en consola** — tras el preview y tras el PUT se imprime una sección explícita con las rutas de `BACKUP_DESTINO` (yaml+json), `ORIGEN` y `UPDATER`. Fix: llamada duplicada a `apply_template` en el preview eliminada. | `scm/azdo/pipeline_cd_template.py` (v1.0.7), `README.version.md`, `VERSION` |

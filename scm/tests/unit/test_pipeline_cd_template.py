@@ -617,6 +617,21 @@ class TestMergeDefinitions:
         assert data["definition"]["id"] == 910
         assert c.put_calls == []   # dry-run no toca AzDO
 
+    def test_updater_yaml_metadata_includes_apply_summary(self, tmp_path):
+        tgt = self._target_def()
+        tgt["artifacts"] = [{"alias": "_d", "type": "Build"}]
+        c = _Client(tgt)
+        tpl = {"environments": [_tpl_env("QA"), _tpl_env("Nuevo")],
+               "variables": {}}
+        res = apply_template(c, 910, tpl, dry_run=True, backup_dir=tmp_path,
+                             overwrite="none")
+        data = yaml.safe_load(res["updater_yaml"].read_text())
+        meta_summary = data["metadata"]["summary"]
+        assert any("strategy: merge" in l for l in meta_summary)
+        assert any("stage nuevo" in l and "Nuevo" in l
+                   for l in meta_summary)
+        assert any("preservado del destino" in l for l in meta_summary)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Artifact alias remap — conditions de stages nuevos apuntan al alias destino

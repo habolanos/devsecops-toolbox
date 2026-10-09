@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -913,9 +913,12 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
         origen_yaml = save_apply_yaml(
             backup_dir, "ORIGEN", tpl_def.get("id") or "src",
             tpl_def.get("name", "template"), tpl_def, extra)
+        # El UPDATER documenta en su metadata el resumen de lo aplicado
+        # (mismo reporte que se muestra en consola).
         updater_yaml = save_apply_yaml(
             backup_dir, "UPDATER", target_id,
-            payload.get("name", "target"), payload, extra)
+            payload.get("name", "target"), payload,
+            {**extra, "summary": list(summary)})
         summary.append(f"origen yaml: {origen_yaml}")
         summary.append(f"updater yaml: {updater_yaml}")
 
