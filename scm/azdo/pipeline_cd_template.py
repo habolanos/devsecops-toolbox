@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -1063,8 +1063,25 @@ def main() -> int:
         _print("\nDiff destino ← template:", "bold")
         for l in res["summary"]:
             _print(f"  {l}")
+
+        def _print_files(r):
+            files = []
+            if r.get("backup"):
+                files += [("BACKUP_DESTINO (yaml)", r["backup"]["yaml"]),
+                          ("BACKUP_DESTINO (json)", r["backup"]["json"])]
+            if r.get("origen_yaml"):
+                files.append(("ORIGEN (yaml)", r["origen_yaml"]))
+            if r.get("updater_yaml"):
+                files.append(("UPDATER (yaml)", r["updater_yaml"]))
+            if files:
+                _print("\nArchivos generados:", "bold")
+                for label, p in files:
+                    _print(f"  {label}: {p}", "dim")
+
+        _print_files(res)
         if args.dry_run:
-            _print("\nDry-run — no se aplicó nada.", "yellow")
+            _print("\nDry-run — no se aplicó nada en AzDO "
+                   "(los YAML de arriba sí se guardaron).", "yellow")
             return 0
         if not args.yes:
             ans = _ask("\n¿Confirmar PUT sobre el destino? (s/n)", "n")
@@ -1077,13 +1094,7 @@ def main() -> int:
                              preserve=preserve, strategy=args.strategy,
                              overwrite=overwrite, update_vars=args.update_vars,
                              ask_fn=_ask_stage, decisions=decisions)
-        if res["backup"]:
-            _print(f"  Backup destino (yaml): {res['backup']['yaml']}", "dim")
-            _print(f"  Backup destino (json): {res['backup']['json']}", "dim")
-        if res.get("origen_yaml"):
-            _print(f"  Origen usado (yaml): {res['origen_yaml']}", "dim")
-        if res.get("updater_yaml"):
-            _print(f"  Updater aplicado (yaml): {res['updater_yaml']}", "dim")
+        _print_files(res)
         new_def = res["result"]
         _print(f"\n✓ Aplicado — definition {new_def.get('id')} "
                f"'{new_def.get('name')}' rev {new_def.get('revision')}",
