@@ -83,6 +83,7 @@ TOOL_GROUPS = {
     "inventory": {"name": "Inventory", "emoji": "📋", "color": "bright_white"},
     "reports": {"name": "Reports", "emoji": "📈", "color": "bright_white"},
     "consolidation": {"name": "Consolidación", "emoji": "🔗", "color": "bright_magenta"},
+    "ecs": {"name": "ECS (Cloud Run equiv.)", "emoji": "🚀", "color": "bright_cyan"},
     "system": {"name": "Sistema", "emoji": "⚙️", "color": "white"},
 }
 
@@ -113,6 +114,53 @@ OUTCOME_DIR = BASE_DIR / "outcome"
 # Valores por defecto AWS
 DEFAULT_PROFILE = "default"
 DEFAULT_REGION = "us-east-1"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Helpers multi-cuenta (equivalente a multi-proyecto GCP)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def load_profiles_from_config(path=None) -> list:
+    """Lee profiles AWS desde scm/config.json (aws.accounts/aws.profiles
+    o aws.profile). Retorna [] si no hay."""
+    import json as _json
+    cfg_path = Path(path) if path else BASE_DIR.parent / "config.json"
+    try:
+        cfg = _json.loads(cfg_path.read_text(encoding="utf-8"))
+        aws_cfg = cfg.get("aws", {})
+        for key in ("accounts", "profiles"):
+            items = aws_cfg.get(key)
+            if isinstance(items, list) and items:
+                return [str(i) for i in items]
+        profile = aws_cfg.get("profile")
+        return [profile] if profile else []
+    except Exception:
+        return []
+
+
+def list_cli_profiles() -> list:
+    """Profiles del shared config de AWS CLI."""
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["aws", "configure", "list-profiles"],
+            capture_output=True, text=True, timeout=15)
+        if r.returncode == 0 and r.stdout.strip():
+            return [p.strip() for p in r.stdout.splitlines()
+                    if p.strip()]
+    except Exception:
+        pass
+    return []
+
+
+def resolve_profiles(input_str: str) -> list:
+    """Resuelve selección de profiles: 'ALL'/vacío → todos los
+    configurados (config.json primero, AWS CLI después); CSV → lista."""
+    configured = load_profiles_from_config() or list_cli_profiles() \
+        or [DEFAULT_PROFILE]
+    if not input_str or input_str.strip().lower() == "all":
+        return configured
+    return [p.strip() for p in input_str.split(",") if p.strip()]
 
 # Definición de las herramientas disponibles (con grupo asignado)
 # Ordenadas por grupo: iam(1-3), security(17), database(4-5,14), network(6-8,18), kubernetes(9,15,16), artifacts(10), compute(11-12), monitoring(13), inventory(19)
@@ -481,7 +529,7 @@ TOOLS = {
         "name": "IAM Service Linked Roles Reporter",
         "description": "Reporte multi-cuenta de Service Linked Roles",
         "path": "iam/aws_service_linked_roles_reporter.py",
-        "args": ["--profile", "-o"],
+        "args": ["--profiles", "-o"],
         "requirements": None,
         "group": "iam",
         "status": "ready"
@@ -506,14 +554,105 @@ TOOLS = {
         "group": "monitoring",
         "status": "ready"
     },
+    "42": {
+        "name": "CloudTrail Event Tracker",
+        "description": "Rastreo de eventos por usuario/recurso/acción con severidad y correlación",
+        "path": "cloudtrail/aws_cloudtrail_event_tracker.py",
+        "args": ["--profile", "--region", "--username", "--resource-name", "--event-name", "--hours", "-o"],
+        "requirements": None,
+        "group": "reports",
+        "status": "ready"
+    },
+    "43": {
+        "name": "SQS/SNS Monitor",
+        "description": "Monitorea colas SQS (backlog, edad, DLQ) y topics SNS (suscripciones pendientes)",
+        "path": "sqs/aws_sqs_sns_monitor.py",
+        "args": ["--profile", "--region", "--queue-prefix", "-o"],
+        "requirements": None,
+        "group": "monitoring",
+        "status": "ready"
+    },
+    # ══════════ ECS SUITE — Cloud Run equivalentes (44-51) ══════════
+    "44": {
+        "name": "ECS Health Analyzer",
+        "description": "Salud de servicios ECS: desired vs running, rollouts, stopped tasks",
+        "path": "ecs/aws_ecs_health_analyzer.py",
+        "args": ["--profile", "--region", "--cluster", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "45": {
+        "name": "ECS Security Auditor",
+        "description": "IP pública, secretos en env, privileged, root user, EFS sin cifrado, logging",
+        "path": "ecs/aws_ecs_security_auditor.py",
+        "args": ["--profile", "--region", "--cluster", "--severity", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "46": {
+        "name": "ECS Cost Analyzer",
+        "description": "Estimación mensual por servicio Fargate (vCPU + GB) y recomendaciones",
+        "path": "ecs/aws_ecs_cost_analyzer.py",
+        "args": ["--profile", "--region", "--cluster", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "47": {
+        "name": "ECS Deployment Validator",
+        "description": "Circuit breaker, health grace, imagen ECR, healthcheck, límites de memoria",
+        "path": "ecs/aws_ecs_deployment_validator.py",
+        "args": ["--profile", "--region", "--cluster", "--service", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "48": {
+        "name": "ECS Dependency Mapper",
+        "description": "Servicio → target groups → LBs → subnets/SGs; servicios internos",
+        "path": "ecs/aws_ecs_dependency_mapper.py",
+        "args": ["--profile", "--region", "--cluster", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "49": {
+        "name": "ECS Traffic Analyzer",
+        "description": "Deployments PRIMARY/ACTIVE, rollouts, RequestCount por target group",
+        "path": "ecs/aws_ecs_traffic_analyzer.py",
+        "args": ["--profile", "--region", "--cluster", "--hours", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "50": {
+        "name": "ECS VPC IP Diagnostic",
+        "description": "IPs disponibles por subnet vs desired tasks (capacidad ENI)",
+        "path": "ecs/aws_ecs_vpc_ip_diagnostic.py",
+        "args": ["--profile", "--region", "--cluster", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "51": {
+        "name": "ECS Executive Dashboard",
+        "description": "KPIs de flota ECS: estado, rollouts fallidos, HTML con gráficos",
+        "path": "ecs/aws_ecs_executive_dashboard.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos (Checkers)",
             "description": "Ejecuta todos los checkers con profile y región por defecto",
             "type": "auto_run",
-            "exclude": ["26", "27", "35", "39", "19", "40"],
-            "reason": "Excluye: EKS Pod Connectivity (requiere deployment), EKS Deployment Validator (requiere deployment), EKS Deployments Off Analyzer (requiere cluster), EKS Deploy Dependency Checker (requiere deployment), Inventory (pipeline propio), Inventory Consolidator (requiere múltiples regiones)"
+            "exclude": ["26", "27", "35", "39", "19", "40", "47"],
+            "reason": "Excluye: EKS Pod Connectivity (requiere deployment), EKS Deployment Validator (requiere deployment), EKS Deployments Off Analyzer (requiere cluster), EKS Deploy Dependency Checker (requiere deployment), Inventory (pipeline propio), Inventory Consolidator (requiere múltiples regiones), ECS Deployment Validator (requiere cluster)"
         },
         "Q": {
             "name": "Salir",
@@ -969,10 +1108,16 @@ def run_tool(tool_key: str):
         args.extend(["--region", region])
 
     if "--cluster" in tool_args:
-        print(f"\n{Colors.BOLD}Nombre del cluster EKS (vacío para selección automática):{Colors.ENDC} ", end="")
+        print(f"\n{Colors.BOLD}Nombre del cluster EKS/ECS (vacío para todos/auto-detectar):{Colors.ENDC} ", end="")
         cluster = input().strip()
         if cluster:
             args.extend(["--cluster", cluster])
+
+    if "--service" in tool_args:
+        print(f"\n{Colors.BOLD}Nombre del servicio ECS (vacío para todos):{Colors.ENDC} ", end="")
+        service = input().strip()
+        if service:
+            args.extend(["--service", service])
 
     if "--namespace" in tool_args:
         print(f"\n{Colors.BOLD}Namespace Kubernetes (vacío para todos/auto-detectar):{Colors.ENDC} ", end="")
@@ -1051,6 +1196,43 @@ def run_tool(tool_key: str):
         csv_file = input().strip()
         if csv_file:
             args.extend(["--csv-file", csv_file])
+
+    if "--username" in tool_args:
+        print(f"\n{Colors.BOLD}Usuario/rol IAM a rastrear (vacío = todos):{Colors.ENDC} ", end="")
+        username = input().strip()
+        if username:
+            args.extend(["--username", username])
+
+    if "--resource-name" in tool_args:
+        print(f"\n{Colors.BOLD}Nombre de recurso a rastrear (vacío = todos):{Colors.ENDC} ", end="")
+        resource = input().strip()
+        if resource:
+            args.extend(["--resource-name", resource])
+
+    if "--event-name" in tool_args:
+        print(f"\n{Colors.BOLD}Nombre de evento (ej. DeleteBucket; vacío = todos):{Colors.ENDC} ", end="")
+        event_name = input().strip()
+        if event_name:
+            args.extend(["--event-name", event_name])
+
+    if "--hours" in tool_args:
+        print(f"\n{Colors.BOLD}Horas hacia atrás [24]:{Colors.ENDC} ", end="")
+        hours = input().strip()
+        if hours.isdigit():
+            args.extend(["--hours", hours])
+
+    if "--queue-prefix" in tool_args:
+        print(f"\n{Colors.BOLD}Prefijo de colas SQS (vacío = todas):{Colors.ENDC} ", end="")
+        prefix = input().strip()
+        if prefix:
+            args.extend(["--queue-prefix", prefix])
+
+    if "--profiles" in tool_args:
+        print(f"\n{Colors.BOLD}Profiles CSV o 'ALL' para todos [ALL]:{Colors.ENDC} ", end="")
+        profiles = input().strip() or "ALL"
+        resolved = resolve_profiles(profiles)
+        if resolved:
+            args.extend(["--profiles", ",".join(resolved)])
 
     if "--scope" in tool_args:
         print(f"\n{Colors.BOLD}WAF Scope (REGIONAL/CLOUDFRONT) [REGIONAL]:{Colors.ENDC} ", end="")

@@ -161,8 +161,10 @@ def main():
         sys.exit(1)
 
     profiles = ([args.profile] if args.profile else
-                [p.strip() for p in args.profiles.split(",")
-                 if p.strip()] or list_profiles())
+                (list_profiles() if args.profiles.strip().lower()
+                 in ("", "all") else
+                 [p.strip() for p in args.profiles.split(",")
+                  if p.strip()]))
 
     accounts = {}
     for profile in profiles:

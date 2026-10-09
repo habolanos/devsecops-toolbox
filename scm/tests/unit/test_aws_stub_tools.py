@@ -523,6 +523,173 @@ class TestSlrReporter:
 # Arg parsing
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# cloudtrail_event_tracker
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ct = _load("aws_cloudtrail_event_tracker",
+           "cloudtrail/aws_cloudtrail_event_tracker.py")
+sqsmon = _load("aws_sqs_sns_monitor",
+               "sqs/aws_sqs_sns_monitor.py")
+
+
+class TestEventTracker:
+    def _ct_event(self, **kw):
+        base = {
+            "EventTime": "2024-01-01T00:00:00Z",
+            "EventName": "DescribeInstances",
+            "EventSource": "ec2.amazonaws.com",
+            "Username": "deploy",
+            "Resources": [],
+            "CloudTrailEvent": json.dumps({
+                "sourceIPAddress": "10.0.0.1",
+                "awsRegion": "us-east-1",
+                "readOnly": True}),
+        }
+        base.update(kw)
+        return base
+
+    def test_normalize_basic(self):
+        e = ct.normalize_event(self._ct_event())
+        assert e["event_name"] == "DescribeInstances"
+        assert e["source_ip"] == "10.0.0.1"
+        assert e["severity"] == "info"
+
+    def test_severity_critical_on_error(self):
+        e = ct.normalize_event(self._ct_event(
+            CloudTrailEvent=json.dumps({
+                "errorCode": "AccessDenied"})))
+        assert e["severity"] == "critical"
+
+    def test_severity_warning_destructive(self):
+        e = ct.normalize_event(self._ct_event(
+            EventName="DeleteBucket",
+            EventSource="s3.amazonaws.com"))
+        assert e["severity"] == "warning"
+
+    def test_severity_warning_security_service(self):
+        e = ct.normalize_event(self._ct_event(
+            EventName="AttachRolePolicy",
+            EventSource="iam.amazonaws.com"))
+        assert e["severity"] == "warning"
+
+    def test_lookup_events_pagination(self):
+        client = MagicMock()
+        client.lookup_events.side_effect = [
+            {"Events": [self._ct_event()], "NextToken": "t"},
+            {"Events": [self._ct_event()], "NextToken": None}]
+        from datetime import datetime, timezone
+        events = ct.lookup_events(
+            client, datetime.now(timezone.utc),
+            datetime.now(timezone.utc))
+        assert len(events) == 2
+
+    def test_lookup_attributes(self):
+        client = MagicMock()
+        client.lookup_events.return_value = {"Events": []}
+        from datetime import datetime, timezone
+        ct.lookup_events(client, datetime.now(timezone.utc),
+                         datetime.now(timezone.utc),
+                         username="u", resource_name="r",
+                         event_name="e")
+        attrs = client.lookup_events.call_args[1]["LookupAttributes"]
+        assert {a["AttributeKey"] for a in attrs} == {
+            "Username", "ResourceName", "EventName"}
+
+    def test_correlate_by_user(self):
+        events = [{"username": "a"}, {"username": "a"},
+                  {"username": "b"}]
+        grouped = ct.correlate(events)
+        assert len(grouped["a"]) == 2 and len(grouped["b"]) == 1
+
+    def test_export_html(self, tmp_path):
+        events = [{"timestamp": "2024-01-01", "severity": "critical",
+                   "event_name": "Delete", "event_source": "s3",
+                   "username": "u", "resources": "b1",
+                   "source_ip": "1.1.1.1", "error": "AccessDenied"}]
+        out = tmp_path / "r.html"
+        ct.export_html(events, {"window": "24h"}, out)
+        assert "Delete" in out.read_text(encoding="utf-8")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# sqs_sns_monitor
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestSqsMonitor:
+    def test_queue_name(self):
+        assert sqsmon.queue_name(
+            "https://sqs.us-east-1.amazonaws.com/1/my-queue") == \
+            "my-queue"
+
+    def test_queue_status_critical_backlog(self):
+        assert sqsmon.queue_status(
+            {"visible": 2000, "oldest_message_s": 0}) == "CRITICAL"
+
+    def test_queue_status_warn_age(self):
+        assert sqsmon.queue_status(
+            {"visible": 10, "oldest_message_s": 400}) == "WARNING"
+
+    def test_queue_status_ok(self):
+        assert sqsmon.queue_status(
+            {"visible": 5, "oldest_message_s": 10}) == "OK"
+
+    def test_analyze_queues_marks_dlq(self):
+        sqs = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"QueueUrls": [
+            "https://sqs/1/main",
+            "https://sqs/1/main-dlq"]}]
+        sqs.get_paginator.return_value = paginator
+        # main tiene RedrivePolicy → main-dlq
+        def get_attrs(QueueUrl, AttributeNames):
+            if QueueUrl.endswith("main"):
+                return {"Attributes": {
+                    "RedrivePolicy": json.dumps(
+                        {"deadLetterTargetArn":
+                         "arn:aws:sqs:us-east-1:1:main-dlq"})}}
+            return {"Attributes": {}}
+        sqs.get_queue_attributes.side_effect = get_attrs
+        queues = sqsmon.analyze_queues(sqs)
+        by_name = {q["queue"]: q for q in queues}
+        assert by_name["main-dlq"]["is_dlq"] is True
+        assert by_name["main"]["dlq_arn"] == \
+            "arn:aws:sqs:us-east-1:1:main-dlq"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# multi-account helpers (tools.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestMultiAccountHelpers:
+    def test_resolve_profiles_all(self, tmp_path):
+        import aws.tools as aws_tools
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "aws": {"accounts": ["dev", "qa", "prod"]}}))
+        with patch.object(aws_tools, "load_profiles_from_config",
+                          return_value=["dev", "qa", "prod"]):
+            assert aws_tools.resolve_profiles("ALL") == \
+                ["dev", "qa", "prod"]
+            assert aws_tools.resolve_profiles("") == \
+                ["dev", "qa", "prod"]
+            assert aws_tools.resolve_profiles("dev,prod") == \
+                ["dev", "prod"]
+
+    def test_load_profiles_from_config(self, tmp_path):
+        import aws.tools as aws_tools
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({
+            "aws": {"profiles": ["a", "b"]}}))
+        assert aws_tools.load_profiles_from_config(cfg) == ["a", "b"]
+
+    def test_load_profiles_single(self, tmp_path):
+        import aws.tools as aws_tools
+        cfg = tmp_path / "config.json"
+        cfg.write_text(json.dumps({"aws": {"profile": "main"}}))
+        assert aws_tools.load_profiles_from_config(cfg) == ["main"]
+
+
 class TestArgParsing:
     def test_rds_comparator_args(self):
         with patch.object(sys, "argv",
