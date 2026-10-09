@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -785,7 +785,7 @@ def remap_artifact_aliases(payload: Dict, alias_map: Dict[str, str]
     def _walk(node, env_name):
         if isinstance(node, dict):
             changed = False
-            for key in ("name", "artifactAlias"):
+            for key in ("name", "artifactAlias", "alias"):
                 v = node.get(key)
                 if isinstance(v, str) and v in alias_map:
                     node[key] = alias_map[v]

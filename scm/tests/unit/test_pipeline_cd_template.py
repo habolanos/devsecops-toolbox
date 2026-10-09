@@ -662,6 +662,26 @@ class TestArtifactAliasRemap:
         assert cond["name"] == "_DESTINO_CI"
         assert touched == ["Team-01-oms-dev"]
 
+    def test_remap_download_inputs_alias(self):
+        payload = {"environments": [
+            {"name": "Team-01-oms-dev",
+             "deployPhases": [{
+                 "deploymentInput": {
+                     "artifactsDownloadInput": {
+                         "downloadInputs": [
+                             {"alias": "_ORIGEN_CI",
+                              "artifactType": "Build",
+                              "artifactItems": []},
+                             {"alias": "_OTRO"}]}}}]}]}
+        touched = remap_artifact_aliases(payload,
+                                         {"_ORIGEN_CI": "_DESTINO_CI"})
+        inputs = (payload["environments"][0]["deployPhases"][0]
+                  ["deploymentInput"]["artifactsDownloadInput"]
+                  ["downloadInputs"])
+        assert inputs[0]["alias"] == "_DESTINO_CI"
+        assert inputs[1]["alias"] == "_OTRO"
+        assert touched == ["Team-01-oms-dev"]
+
     def test_remap_does_not_touch_env_name(self):
         payload = {"environments": [{"name": "_ORIGEN_CI",
                                      "conditions": []}]}
