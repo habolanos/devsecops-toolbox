@@ -8,7 +8,7 @@ echo "============================================================"
 
 export DEBIAN_FRONTEND=noninteractive
 
-echo "[1/7] Installing base packages..."
+echo "[1/10] Installing base packages..."
 
 sudo apt-get update
 sudo apt --fix-broken install
@@ -33,7 +33,7 @@ sudo apt-get install -y \
   rustc \
   cargo
 
-echo "[2/7] Configuring pipx..."
+echo "[2/10] Configuring pipx..."
 
 pipx ensurepath || true
 export PATH="$HOME/.local/bin:$PATH"
@@ -42,7 +42,7 @@ if ! grep -q 'HOME/.local/bin' "$HOME/.bashrc" 2>/dev/null; then
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
 fi
 
-echo "[3/7] Configuring Google Cloud repository..."
+echo "[3/10] Configuring Google Cloud repository..."
 
 sudo mkdir -p /usr/share/keyrings
 
@@ -55,18 +55,18 @@ echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.clou
 
 sudo apt-get update
 
-echo "[4/7] Installing gcloud, kubectl and GKE auth plugin..."
+echo "[4/10] Installing gcloud, kubectl and GKE auth plugin..."
 
 sudo apt-get install -y \
   google-cloud-cli \
   google-cloud-cli-gke-gcloud-auth-plugin \
   kubectl
 
-echo "[5/7] Installing Helm..."
+echo "[5/10] Installing Helm..."
 
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-echo "[6/7] Installing K9s..."
+echo "[6/10] Installing K9s..."
 
 ARCH=$(dpkg --print-architecture)
 
@@ -91,7 +91,44 @@ sudo apt-get install -y "/tmp/${K9S_PACKAGE}"
 
 rm -f "/tmp/${K9S_PACKAGE}"
 
-echo "[7/7] Validating installations..."
+echo "[7/10] Installing PowerShell..."
+
+source /etc/os-release
+
+curl -fsSL \
+  "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" \
+  -o /tmp/packages-microsoft-prod.deb
+
+sudo dpkg -i /tmp/packages-microsoft-prod.deb
+rm -f /tmp/packages-microsoft-prod.deb
+
+sudo apt-get update
+sudo apt-get install -y powershell
+
+echo "[8/10] Installing AWS CLI v2..."
+
+case "$ARCH" in
+  amd64)
+    AWS_ARCH="x86_64"
+    ;;
+  arm64)
+    AWS_ARCH="aarch64"
+    ;;
+esac
+
+curl -fsSL \
+  "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" \
+  -o /tmp/awscliv2.zip
+
+unzip -q -o /tmp/awscliv2.zip -d /tmp
+sudo /tmp/aws/install --update
+rm -rf /tmp/awscliv2.zip /tmp/aws
+
+echo "[9/10] Installing Azure CLI..."
+
+curl -fsSL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+echo "[10/10] Validating installations..."
 
 echo
 printf "%-25s %s\n" "TOOL" "VERSION"
@@ -114,6 +151,9 @@ printf "%-25s %s\n" "Go" "$(go version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "Rust" "$(rustc --version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "Cargo" "$(cargo --version 2>/dev/null || echo FAILED)"
 printf "%-25s %s\n" "Git" "$(git --version 2>/dev/null || echo FAILED)"
+printf "%-25s %s\n" "PowerShell" "$(pwsh --version 2>/dev/null || echo FAILED)"
+printf "%-25s %s\n" "AWS CLI" "$(aws --version 2>/dev/null | cut -d' ' -f1 || echo FAILED)"
+printf "%-25s %s\n" "Azure CLI" "$(az --version 2>/dev/null | head -1 || echo FAILED)"
 
 echo
 echo "============================================================"

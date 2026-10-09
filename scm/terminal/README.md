@@ -204,8 +204,12 @@ rol **SCM DevOps Engineer**. Instala y valida automáticamente cada herramienta.
 | 2 | `pipx ensurepath` + `~/.local/bin` en `PATH` (persistente en `.bashrc`) |
 | 3 | Repositorio APT de Google Cloud (keyring + source list) |
 | 4 | `google-cloud-cli`, `kubectl`, `gke-gcloud-auth-plugin` |
-| 5 | `k9s` (.deb para amd64/arm64 desde GitHub releases) |
-| 6 | Validación: tabla de versiones de cada herramienta |
+| 5 | `helm` (script oficial get-helm-3) |
+| 6 | `k9s` (.deb para amd64/arm64 desde GitHub releases) |
+| 7 | `powershell` (repo APT de Microsoft, `pwsh`) |
+| 8 | `aws cli` v2 (instalador oficial zip, amd64/arm64) |
+| 9 | `azure cli` (`az`, script oficial aka.ms/InstallAzureCLIDeb) |
+| 10 | Validación: tabla de versiones de cada herramienta |
 
 #### Uso
 
@@ -288,6 +292,7 @@ razón, detalle, task).
 
 | Fecha | Versión | Cambio | Archivos |
 |-------|---------|--------|---------|
+| 2026-10-09 | 1.0.8 | **Script 8: +PowerShell, AWS CLI v2 y Azure CLI** — El instalador `install-devops-tools.sh` agrega 3 pasos: PowerShell vía repo APT de Microsoft (`pwsh`), AWS CLI v2 vía instalador oficial zip (x86_64/aarch64) y Azure CLI vía `aka.ms/InstallAzureCLIDeb`. Validación final incluye las 3 herramientas. `tools.py` (terminal) v1.8.33. | `operation_setup_initial/install-devops-tools.sh`, `tools.py`, `README.md` |
 | 2026-10-04 | 1.0.7 | **Script 10: AzDO SCM Inspection Violations** — `inspection_errors.sh` registrado en el launcher (prompts: pipeline/`--all`, severidad, stage, `--release`, `--keep-logs`). El script ahora resuelve salida al outcome global (`DEVSECOPS_OUTPUT_DIR` → `global.output_dir` → `scm/outcome`) y lee credenciales de `config.json` (`azdo.pat`/`organization`/`project`) como fallback de las env vars. `prepare_env_from_config` también inyecta `AZDO_*` al hijo. Tests en `test_terminal_tools.py`. | `azdo_check_scm_inspection/inspection_errors.sh`, `tools.py`, `README.md` |
 | 2026-09-29 | 1.0.6 | **Cert backup/renew: salida única en outcome global** — `cert_backup_and_renew_tls_certs.sh` ahora agrupa `tls-backups/`, `update-certs-*.yaml` y `evidencia-*.html` en `<OUTCOME>/certs-<cluster>-<ts>/`. Resolución de `<OUTCOME>`: `DEVSECOPS_OUTPUT_DIR` → `scm/config.json` (`global.output_dir`) → `scm/outcome`. El submenú (v1.0.1) inyecta `DEVSECOPS_OUTPUT_DIR` resuelto al ejecutar standalone. | `operation_update_certs_on_gke_gcp/cert_backup_and_renew_tls_certs.sh`, `operation_update_certs_on_gke_gcp/tools.py`, `operation_update_certs_on_gke_gcp/README.md`, `tools.py` |
 | 2026-09-29 | 1.0.5 | **Script 9: Cert Manager Tools (submenú Python)** — Nuevo launcher `operation_update_certs_on_gke_gcp/tools.py` con interfaz Rich: agrupa los 3 scripts de certificados (backup/renovación Secrets TLS, validación TLS de endpoint, inventario ssl-certificates GCP) más una opción de verificación de prerrequisitos (kubectl/gcloud/bash/openssl/jq). Prompts guiados para `--base-cert-file`, host/puerto, PROJECT_ID y `--todos`; exportación del inventario a `outcome/`. `tools.py` (terminal) v1.0.5. | `operation_update_certs_on_gke_gcp/tools.py` (nuevo), `tools.py`, `README.md` |

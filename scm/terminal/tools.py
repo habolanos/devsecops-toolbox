@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -194,7 +194,7 @@ SCRIPTS = {
     },
     "8": {
         "name": "Setup Entorno DevOps (Linux/WSL)",
-        "description": "Configura el entorno Linux para SCM DevOps Engineer: instala gcloud, kubectl, gke-gcloud-auth-plugin, kubectx/kubens, k9s, jq, python3, pipx, nodejs y git vía apt. Requiere Ubuntu/WSL y sudo.",
+        "description": "Configura el entorno Linux para SCM DevOps Engineer: instala gcloud, kubectl, gke-gcloud-auth-plugin, kubectx/kubens, k9s, helm, PowerShell, AWS CLI v2, Azure CLI, jq, python3, pipx, nodejs y git. Requiere Ubuntu/WSL y sudo.",
         "path": "operation_setup_initial/install-devops-tools.sh",
         "args": [],
         "status": "ready",
