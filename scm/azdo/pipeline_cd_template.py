@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -739,6 +739,74 @@ def apply_diff_summary(target: Dict, tpl_def: Dict) -> List[str]:
     return lines
 
 
+def _artifact_alias_map(tpl_def: Dict, target: Dict) -> Dict[str, str]:
+    """Mapea alias de artifacts de la template → alias del destino.
+
+    Match por nombre de la definición del artifact (definitionReference.
+    definition.name); si no hay match por nombre, por posición. Solo se
+    incluyen pares donde el alias difiere.
+    """
+    tpl_arts = tpl_def.get("artifacts") or []
+    tgt_arts = target.get("artifacts") or []
+    mapping: Dict[str, str] = {}
+    for i, ta in enumerate(tpl_arts):
+        alias = ta.get("alias")
+        if not alias:
+            continue
+        tname = ((ta.get("definitionReference") or {})
+                 .get("definition") or {}).get("name")
+        match = None
+        if tname:
+            for xa in tgt_arts:
+                xname = ((xa.get("definitionReference") or {})
+                         .get("definition") or {}).get("name")
+                if xname == tname:
+                    match = xa
+                    break
+        if match is None and i < len(tgt_arts):
+            match = tgt_arts[i]
+        if match and match.get("alias") and match["alias"] != alias:
+            mapping[alias] = match["alias"]
+    return mapping
+
+
+def remap_artifact_aliases(payload: Dict, alias_map: Dict[str, str]
+                           ) -> List[str]:
+    """Reemplaza alias de artifact del origen por los del destino en las
+    condiciones de los environments (artifact filters por stage,
+    conditionType 'artifact', campo name/artifactAlias) y en cualquier
+    campo 'artifactAlias' del payload.
+
+    Devuelve la lista de envs donde se remapeó algo."""
+    if not alias_map:
+        return []
+    touched: List[str] = []
+
+    def _walk(node, env_name):
+        if isinstance(node, dict):
+            changed = False
+            for key in ("name", "artifactAlias"):
+                v = node.get(key)
+                if isinstance(v, str) and v in alias_map:
+                    node[key] = alias_map[v]
+                    changed = True
+            if changed and env_name and env_name not in touched:
+                touched.append(env_name)
+            for v in node.values():
+                _walk(v, env_name)
+        elif isinstance(node, list):
+            for v in node:
+                _walk(v, env_name)
+
+    for env in payload.get("environments", []):
+        # Solo condiciones/triggers del env — no tocar su 'name'
+        for field in ("conditions", "triggers", "preDeploymentGates",
+                      "postDeploymentGates", "deployPhases"):
+            if field in env:
+                _walk(env[field], env.get("name"))
+    return touched
+
+
 def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    new_name: str = "", new_path: str = "",
                    dry_run: bool = False,
@@ -810,6 +878,19 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
         if skipped:
             summary.append("preserve sin valor en destino: "
                            + ", ".join(skipped))
+
+    # Si se preservaron los artifacts del destino, las condiciones de los
+    # stages traídos de la template referencian alias del ORIGEN que no
+    # existen en el destino → remapear al alias destino (artifact filters).
+    if preserve and "artifacts" in preserve:
+        alias_map = _artifact_alias_map(tpl_def, preserve_src)
+        if alias_map:
+            touched = remap_artifact_aliases(payload, alias_map)
+            summary.append(
+                "alias de artifact remapeados: "
+                + ", ".join(f"{k}→{v}" for k, v in sorted(alias_map.items())))
+            if touched:
+                summary.append("  en stages: " + ", ".join(touched))
 
     unresolved: List[str] = []
     payload = resolve_target_placeholders(payload, preserve_src, unresolved)

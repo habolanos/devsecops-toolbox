@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.56`** — 2026-10-09
+**`1.8.57`** — 2026-10-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-09 | **1.8.57** | **fix(azdo): opción 46 — artifact filters de stages nuevos apuntaban al alias del origen** — al preservar `artifacts`/`triggers` del destino, las condiciones de los stages agregados por la template (`environments[].conditions[]` con `conditionType: artifact`, `name` = alias) quedaban referenciando el alias del pipeline origen → AzDO las ignoraba y el stage quedaba sin artifact filter. Nuevo `remap_artifact_aliases`: tras preserve, remapea alias origen→destino en conditions/triggers/gates/deployPhases de los envs (match por `definitionReference.definition.name`, fallback por posición). Reportado en el summary. Tests: +6 (57 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.8), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.56** | **feat(azdo): opción 46 — bloque "Archivos generados" en consola** — tras el preview y tras el PUT se imprime una sección explícita con las rutas de `BACKUP_DESTINO` (yaml+json), `ORIGEN` y `UPDATER`. Fix: llamada duplicada a `apply_template` en el preview eliminada. | `scm/azdo/pipeline_cd_template.py` (v1.0.7), `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.55** | **feat(azdo): opción 46 — 3 YAML con prefijos claros por apply** — `ORIGEN_<id|src>_<nombre>_<ts>.yaml` (template usada), `BACKUP_DESTINO_<id>_<nombre>_<ts>.yaml|.json` (estado previo del destino) y `UPDATER_<id>_<nombre>_<ts>.yaml` (payload final post-merge/preserve/placeholders con metadata targetId/strategy/dryRun), todos en `outcome/backups/template/` y escritos también en dry-run. `save_apply_yaml()` helper. | `scm/azdo/pipeline_cd_template.py` (v1.0.6), `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.54** | **fix(azdo): opción 46 — VS402874 ranks no consecutivos + YAMLs siempre** — (1) el merge concatenaba envs con sus `rank` originales → PUT rechazado ("ranks need to be consecutive natural numbers starting from 1"); ahora el payload renombra `rank` 1..N en orden final. (2) Los tres YAML se guardan siempre que haya backup_dir (incluso en dry-run, son archivos locales): backup destino JSON+YAML + `updater_result_<id>_*.yaml` con el payload final aplicado + metadata (targetId, strategy, dryRun). (3) Label del diff: "stages reemplazados" → "stages en ambos" / "stages solo en destino" (más fiel a merge). Tests: +2 (51 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.5), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

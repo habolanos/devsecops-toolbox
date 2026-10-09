@@ -616,3 +616,73 @@ class TestMergeDefinitions:
         assert data["metadata"]["targetId"] == 910
         assert data["definition"]["id"] == 910
         assert c.put_calls == []   # dry-run no toca AzDO
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Artifact alias remap — conditions de stages nuevos apuntan al alias destino
+# ═══════════════════════════════════════════════════════════════════════════
+
+from scm.azdo.pipeline_cd_template import (
+    _artifact_alias_map, remap_artifact_aliases,
+)
+
+
+class TestArtifactAliasRemap:
+    def test_map_by_definition_name(self):
+        tpl = {"artifacts": [{"alias": "_ORIGEN_CI",
+                              "definitionReference":
+                              {"definition": {"name": "CI-Main"}}}]}
+        tgt = {"artifacts": [{"alias": "_DESTINO_CI",
+                              "definitionReference":
+                              {"definition": {"name": "CI-Main"}}}]}
+        assert _artifact_alias_map(tpl, tgt) == {"_ORIGEN_CI": "_DESTINO_CI"}
+
+    def test_map_by_position_when_names_differ(self):
+        tpl = {"artifacts": [{"alias": "_A"}, {"alias": "_B"}]}
+        tgt = {"artifacts": [{"alias": "_X"}]}
+        m = _artifact_alias_map(tpl, tgt)
+        assert m == {"_A": "_X"}   # solo el 1ro mapea por posición
+
+    def test_same_alias_no_mapping(self):
+        tpl = {"artifacts": [{"alias": "_CI"}]}
+        tgt = {"artifacts": [{"alias": "_CI"}]}
+        assert _artifact_alias_map(tpl, tgt) == {}
+
+    def test_remap_conditions_artifact_filter(self):
+        payload = {"environments": [
+            {"name": "Team-01-oms-dev",
+             "conditions": [{"name": "_ORIGEN_CI",
+                             "conditionType": "artifact",
+                             "value": "{...}"}]},
+            {"name": "Otro", "conditions": []},
+        ]}
+        touched = remap_artifact_aliases(payload,
+                                         {"_ORIGEN_CI": "_DESTINO_CI"})
+        cond = payload["environments"][0]["conditions"][0]
+        assert cond["name"] == "_DESTINO_CI"
+        assert touched == ["Team-01-oms-dev"]
+
+    def test_remap_does_not_touch_env_name(self):
+        payload = {"environments": [{"name": "_ORIGEN_CI",
+                                     "conditions": []}]}
+        remap_artifact_aliases(payload, {"_ORIGEN_CI": "_X"})
+        assert payload["environments"][0]["name"] == "_ORIGEN_CI"
+
+    def test_apply_remaps_stage_filters_when_artifacts_preserved(self):
+        tgt = _target()   # artifacts: _MiBuild, _Repo
+        c = _Client(tgt)
+        tpl = clean_definition_for_template(_defn())
+        tpl["artifacts"] = [{"alias": "_ORIGEN",
+                             "definitionReference":
+                             {"definition": {"name": "CI-Main"}}}]
+        tpl["environments"].append({
+            "name": "NewStage",
+            "conditions": [{"name": "_ORIGEN",
+                            "conditionType": "artifact"}],
+            "deployPhases": []})
+        res = apply_template(c, 910, tpl, dry_run=True, overwrite="none")
+        new_env = [e for e in res["payload"]["environments"]
+                   if e["name"] == "NewStage"][0]
+        assert new_env["conditions"][0]["name"] == "_MiBuild"
+        assert any("alias de artifact remapeados" in l
+                   for l in res["summary"])
