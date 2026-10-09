@@ -11,8 +11,12 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 import logging
-import schedule
 import time
+
+try:
+    import schedule
+except ImportError:
+    schedule = None
 
 try:
     from rich.console import Console
@@ -55,9 +59,22 @@ class AutoScheduler:
         self.jobs = []
         self.schedule_file = self.output_dir / "schedule.json"
         logger.info("Auto Scheduler inicializado")
-    
+
+    def _require_schedule(self) -> bool:
+        """Verifica que la dependencia 'schedule' esté instalada."""
+        if schedule is None:
+            msg = ("'schedule' no está instalado. Instala con: "
+                   "pip install -r scm/kpi_analyzer/requirements.txt")
+            logger.error(msg)
+            if RICH_AVAILABLE and console:
+                console.print(f"[red]❌ {msg}[/red]")
+            return False
+        return True
+
     def schedule_daily(self, time_str: str = "09:00", job_name: str = "daily_analysis") -> bool:
         """Planifica ejecución diaria"""
+        if not self._require_schedule():
+            return False
         try:
             job = schedule.every().day.at(time_str).do(self._execute_job, job_name=job_name)
             self.jobs.append({
@@ -81,6 +98,8 @@ class AutoScheduler:
     def schedule_weekly(self, day: str = "monday", time_str: str = "09:00", 
                        job_name: str = "weekly_analysis") -> bool:
         """Planifica ejecución semanal"""
+        if not self._require_schedule():
+            return False
         try:
             days_map = {
                 "monday": schedule.every().monday,
@@ -118,6 +137,8 @@ class AutoScheduler:
     
     def schedule_hourly(self, job_name: str = "hourly_analysis") -> bool:
         """Planifica ejecución cada hora"""
+        if not self._require_schedule():
+            return False
         try:
             job = schedule.every().hour.do(self._execute_job, job_name=job_name)
             self.jobs.append({
@@ -155,6 +176,8 @@ class AutoScheduler:
     
     def run_pending(self):
         """Ejecuta jobs pendientes"""
+        if not self._require_schedule():
+            return
         try:
             schedule.run_pending()
             logger.info("Jobs pendientes ejecutados")
@@ -163,6 +186,8 @@ class AutoScheduler:
     
     def run_all(self):
         """Ejecuta todos los jobs"""
+        if not self._require_schedule():
+            return
         try:
             schedule.run_all()
             logger.info("Todos los jobs ejecutados")
@@ -191,6 +216,8 @@ class AutoScheduler:
     
     def clear_schedule(self) -> bool:
         """Limpia todos los jobs"""
+        if not self._require_schedule():
+            return False
         try:
             schedule.clear()
             self.jobs = []

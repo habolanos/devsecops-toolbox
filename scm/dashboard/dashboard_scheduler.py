@@ -6,12 +6,22 @@ Ejecuta el dashboard automáticamente y envía notificaciones a Teams
 
 import json
 import sys
-import requests
 from pathlib import Path
 from datetime import datetime
 import logging
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
+
+# Dependencias opcionales: el paquete debe ser importable aunque falten.
+try:
+    import requests
+except ImportError:
+    requests = None
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.cron import CronTrigger
+except ImportError:
+    BackgroundScheduler = None
+    CronTrigger = None
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
 try:
@@ -30,6 +40,42 @@ except ImportError:
         return p
 # -------------------------------------------------------------------
 
+# Helpers de credenciales AZDO y webhook Teams (config.json / env vars)
+try:
+    from dashboard.dashboard_common import resolve_credentials, resolve_webhook, resolve_cron
+except ImportError:
+    try:
+        from dashboard_common import resolve_credentials, resolve_webhook, resolve_cron
+    except ImportError:
+        import os as _os2
+        def _load_cfg():
+            cfg_path = Path(__file__).parent.parent / "config.json"
+            try:
+                return json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+            except Exception:
+                return {}
+        def resolve_credentials(org=None, project=None, pat=None):
+            azdo = _load_cfg().get("azdo", {})
+            return (
+                org or _os2.getenv("AZDO_ORG") or azdo.get("organization") or azdo.get("organization_url") or "",
+                project or _os2.getenv("AZDO_PROJECT") or azdo.get("project") or "",
+                pat or _os2.getenv("AZDO_PAT") or azdo.get("pat") or "",
+            )
+        def resolve_webhook(webhook=None):
+            if webhook:
+                return webhook
+            env = _os2.getenv("TEAMS_WEBHOOK_URL")
+            if env:
+                return env
+            dash = _load_cfg().get("dashboard", {})
+            url = dash.get("webhook_url") or dash.get("notifications", {}).get("teams", {}).get("webhook_url") or ""
+            return "" if url == "<TU_TEAMS_WEBHOOK_URL>" else url
+        def resolve_cron(cron=None):
+            if cron:
+                return cron
+            dash = _load_cfg().get("dashboard", {})
+            return dash.get("schedule", {}).get("cron") or "0 7 * * *"
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -45,6 +91,9 @@ class TeamsNotifier:
     
     def send_notification(self, dashboard_data):
         """Envía notificación a Teams"""
+        if requests is None:
+            logger.error("❌ 'requests' no está instalado: pip install -r scm/dashboard/requirements.txt")
+            return False
         try:
             summary = dashboard_data.get('summary', {})
             alerts = dashboard_data.get('alerts', {})
@@ -152,18 +201,24 @@ class TeamsNotifier:
 class DashboardScheduler:
     """Ejecuta el dashboard automáticamente"""
     
-    def __init__(self, org, project, pat, webhook_url=None, 
-                 consolidator_path="scm/dashboard/dashboard_consolidator.py",
-                 generator_path="scm/dashboard/dashboard_generator.py"):
+    def __init__(self, org, project, pat, webhook_url=None,
+                 consolidator_path=None,
+                 generator_path=None):
+        if BackgroundScheduler is None:
+            raise ImportError(
+                "apscheduler no está instalado. Instala con: "
+                "pip install -r scm/dashboard/requirements.txt"
+            )
         self.org = org
         self.project = project
         self.pat = pat
         self.webhook_url = webhook_url
-        self.consolidator_path = consolidator_path
-        self.generator_path = generator_path
+        base = Path(__file__).resolve().parent
+        self.consolidator_path = consolidator_path or str(base / "dashboard_consolidator.py")
+        self.generator_path = generator_path or str(base / "dashboard_generator.py")
         self.scheduler = BackgroundScheduler()
         self.notifier = TeamsNotifier(webhook_url) if webhook_url else None
-        
+
         logger.info("Scheduler inicializado")
     
     def run_once(self):
@@ -175,20 +230,20 @@ class DashboardScheduler:
             logger.info("Ejecutando consolidator...")
             import subprocess
             result = subprocess.run([
-                'python', self.consolidator_path,
+                sys.executable, self.consolidator_path,
                 '--org', self.org,
                 '--project', self.project,
                 '--pat', self.pat
             ], capture_output=True, text=True)
-            
+
             if result.returncode != 0:
                 logger.error(f"Error en consolidator: {result.stderr}")
                 return False
-            
+
             # 2. Ejecutar generator
             logger.info("Ejecutando generator...")
             result = subprocess.run([
-                'python', self.generator_path
+                sys.executable, self.generator_path
             ], capture_output=True, text=True)
             
             if result.returncode != 0:
@@ -244,15 +299,25 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Dashboard Scheduler - Tool 29')
-    parser.add_argument('--org', required=True, help='Organización Azure DevOps')
-    parser.add_argument('--project', required=True, help='Proyecto Azure DevOps')
-    parser.add_argument('--pat', required=True, help='Personal Access Token')
-    parser.add_argument('--webhook', help='Webhook URL de Microsoft Teams')
+    parser.add_argument('--org', help='Organización Azure DevOps (o env AZDO_ORG / config.json azdo.organization)')
+    parser.add_argument('--project', help='Proyecto Azure DevOps (o env AZDO_PROJECT / config.json azdo.project)')
+    parser.add_argument('--pat', help='Personal Access Token (o env AZDO_PAT / config.json azdo.pat)')
+    parser.add_argument('--webhook', help='Webhook URL de Microsoft Teams (o env TEAMS_WEBHOOK_URL / config.json)')
     parser.add_argument('--run-once', action='store_true', help='Ejecutar una sola vez')
-    parser.add_argument('--cron', default='0 7 * * *', help='Expresión cron (default: 7 AM)')
-    
+    parser.add_argument('--cron', help='Expresión cron (default: config.json dashboard.schedule.cron o 7 AM)')
+
     args = parser.parse_args()
-    
+
+    # Resolver credenciales: CLI > variables de entorno > config.json
+    args.org, args.project, args.pat = resolve_credentials(args.org, args.project, args.pat)
+    args.webhook = resolve_webhook(args.webhook)
+    args.cron = resolve_cron(args.cron)
+
+    if not (args.org and args.project and args.pat):
+        print("\n❌ Se requieren credenciales AZDO: --org/--project/--pat, "
+              "variables AZDO_ORG/AZDO_PROJECT/AZDO_PAT, o sección 'azdo' en scm/config.json")
+        return 1
+
     try:
         scheduler = DashboardScheduler(
             org=args.org,
@@ -260,14 +325,14 @@ def main():
             pat=args.pat,
             webhook_url=args.webhook
         )
-        
+
         if args.run_once:
             result = scheduler.run_once()
             return 0 if result else 1
         else:
             scheduler.start_scheduler(cron_expression=args.cron)
             return 0
-            
+
     except Exception as e:
         print(f"\n❌ Error: {str(e)}")
         return 1

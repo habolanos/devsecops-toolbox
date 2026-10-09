@@ -5,15 +5,12 @@
 pyyaml>=6.0.0
 rich>=13.0.0
 
-# Dashboard dependencies
+# Dashboard interactivo (streamlit_app.py, opción 8)
 streamlit>=1.28.0
 plotly>=5.17.0
 
-# PDF generation
-reportlab>=4.0.0
+# Exportación Excel (exporter.py, opción 16)
+openpyxl>=3.1.0
 
-# Data processing
-pandas>=2.0.0
-
-# Optional: for enhanced visualizations
-matplotlib>=3.7.0
+# Planificador automático (scheduler.py, opción 11)
+schedule>=1.2.0

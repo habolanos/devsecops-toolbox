@@ -29,6 +29,28 @@ except ImportError:
         return p
 # -------------------------------------------------------------------
 
+# Helpers de credenciales AZDO (config.json / env vars)
+try:
+    from dashboard.dashboard_common import resolve_credentials
+except ImportError:
+    try:
+        from dashboard_common import resolve_credentials
+    except ImportError:
+        import os as _os2
+        def _load_cfg():
+            cfg_path = Path(__file__).parent.parent / "config.json"
+            try:
+                return json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+            except Exception:
+                return {}
+        def resolve_credentials(org=None, project=None, pat=None):
+            azdo = _load_cfg().get("azdo", {})
+            return (
+                org or _os2.getenv("AZDO_ORG") or azdo.get("organization") or azdo.get("organization_url") or "",
+                project or _os2.getenv("AZDO_PROJECT") or azdo.get("project") or "",
+                pat or _os2.getenv("AZDO_PAT") or azdo.get("pat") or "",
+            )
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
@@ -369,13 +391,20 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Dashboard Consolidator - Tool 26')
-    parser.add_argument('--org', required=True, help='Organización Azure DevOps')
-    parser.add_argument('--project', required=True, help='Proyecto Azure DevOps')
-    parser.add_argument('--pat', required=True, help='Personal Access Token')
+    parser.add_argument('--org', help='Organización Azure DevOps (o env AZDO_ORG / config.json azdo.organization)')
+    parser.add_argument('--project', help='Proyecto Azure DevOps (o env AZDO_PROJECT / config.json azdo.project)')
+    parser.add_argument('--pat', help='Personal Access Token (o env AZDO_PAT / config.json azdo.pat)')
     parser.add_argument('--output', default='outcome/dashboard', help='Directorio de salida')
-    
+
     args = parser.parse_args()
-    
+
+    # Resolver credenciales: CLI > variables de entorno > config.json
+    args.org, args.project, args.pat = resolve_credentials(args.org, args.project, args.pat)
+    if not (args.org and args.project and args.pat):
+        print("\n❌ Se requieren credenciales AZDO: --org/--project/--pat, "
+              "variables AZDO_ORG/AZDO_PROJECT/AZDO_PAT, o sección 'azdo' en scm/config.json")
+        return 1
+
     try:
         consolidator = DashboardConsolidator(
             org=args.org,

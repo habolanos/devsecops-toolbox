@@ -36,9 +36,13 @@ pip install -r scm/requirements.txt
 
 - `pyyaml>=6.0.0` — Parsing del schema YAML
 - `rich>=13.0.0` — Interfaz CLI moderna
-- `streamlit>=1.28.0` — Dashboard interactivo
+- `streamlit>=1.28.0` — Dashboard interactivo (opción 8)
 - `plotly>=5.17.0` — Visualizaciones avanzadas
-- `pandas>=2.0.0` — Procesamiento de datos
+- `openpyxl>=3.1.0` — Exportación Excel (opción 16)
+- `schedule>=1.2.0` — Planificador automático (opción 11)
+
+`scheduler.py` y `exporter.py` son importables aunque falten `schedule`/`openpyxl`;
+solo las funciones que los usan reportan un error claro en runtime.
 
 ---
 
@@ -310,7 +314,16 @@ Para agregar nuevos KPIs:
 
 ---
 
-## 📝 Licencia
+## � Historial de Cambios
+
+| Versión | Fecha | Cambios |
+|---------|-------|--------|
+| **1.8.33** | 2026-07-18 | `requirements.txt` corregido: agregados `openpyxl` y `schedule` (estaban importados pero no declarados); eliminados `reportlab`/`pandas`/`matplotlib` (nunca importados en este paquete). `scheduler.py` ahora importable sin `schedule` instalado (guard `_require_schedule`). `exporter.py` ya no auto-instala `openpyxl` con pip en runtime — reporta error claro. |
+| 1.8.32 | — | Versión previa del paquete. |
+
+---
+
+## �📝 Licencia
 
 MIT License — Ver archivo LICENSE en el repositorio raíz
 
@@ -319,7 +332,7 @@ MIT License — Ver archivo LICENSE en el repositorio raíz
 ## 👤 Autor
 
 **Harold Adrian Bolaños Rodríguez**  
-DevSecOps Toolbox — v1.6.9
+DevSecOps Toolbox — v1.8.33
 
 ---
 

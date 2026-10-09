@@ -1,6 +1,6 @@
 # 📊 Dashboard Matutino DevSecOps
 
-**Versión:** 2.0.0  
+**Versión:** 2.0.1  
 **Autor:** Harold Adrian  
 **Fecha:** 15 de Julio de 2026
 
@@ -241,8 +241,12 @@ outcome/dashboard/
 
 ### **Dependencias**
 ```bash
-pip install apscheduler requests
+pip install -r scm/dashboard/requirements.txt
 ```
+
+Contenido de `requirements.txt`: `rich`, `requests` (Teams), `APScheduler` (scheduling).
+Los módulos son importables aunque falten `requests`/`APScheduler`; solo el scheduler
+y las notificaciones las requieren en runtime.
 
 ### **Configuración**
 
@@ -277,17 +281,20 @@ export TEAMS_WEBHOOK_URL="https://outlook.webhook.office.com/..."
 ## 🚀 Uso
 
 ### **Ejecución Manual**
+
+Las credenciales se resuelven automáticamente: `--org/--project/--pat` > variables
+de entorno `AZDO_*` > `scm/config.json` (sección `azdo`). El webhook se resuelve igual:
+`--webhook` > `TEAMS_WEBHOOK_URL` > `config.json` (`dashboard.webhook_url` o
+`dashboard.notifications.teams.webhook_url`). El cron del scheduler usa
+`--cron` > `dashboard.schedule.cron` > `0 7 * * *`.
+
 ```bash
-# Consolidar datos
-python scm/dashboard/dashboard_consolidator.py \
-  --org "$AZDO_ORG" \
-  --project "$AZDO_PROJECT" \
-  --pat "$AZDO_PAT"
-
-# Generar dashboard
+# Si config.json tiene la sección 'azdo', no hace falta pasar credenciales:
+python scm/dashboard/dashboard_consolidator.py
 python scm/dashboard/dashboard_generator.py
+python scm/dashboard/dashboard_scheduler.py --run-once
 
-# Enviar notificación
+# O con overrides explícitos:
 python scm/dashboard/dashboard_scheduler.py \
   --org "$AZDO_ORG" \
   --project "$AZDO_PROJECT" \
@@ -436,6 +443,7 @@ El sistema genera logs detallados:
 
 | Versión | Fecha | Cambios |
 |---------|-------|--------|
+| **2.0.1** | 2026-07-18 | Credenciales AZDO resueltas desde `config.json`/`env` (args `--org/--project/--pat` ahora opcionales). Webhook Teams y cron también resueltos desde config. Nuevo `dashboard_common.py` (helpers compartidos) y `requirements.txt` (`rich`, `requests`, `APScheduler`). Imports de `requests`/`apscheduler` ahora lazy: el paquete importa sin ellos. Fix: scheduler usa `sys.executable` y paths relativos al archivo (ya no depende del cwd). |
 | **2.0.0** | 2026-07-15 | Integración de 5 nuevas herramientas AZDO (security logs, repo vulnerabilities, pending approvals, CI/CD inventory, prod deploy). Eliminación de Code Coverage (sin tool generadora). Alertas dinámicas. 4 gráficos Chart.js. Tablas de inventario y prod deploy. |
 | 1.0.0 | 2026-06-22 | Versión inicial: Health Score, Code Coverage, PR Metrics, Branch Compliance, Pipeline Status. Scheduler con Teams. |
 
@@ -449,6 +457,6 @@ Para problemas o preguntas, contactar a:
 
 ---
 
-**Versión:** 2.0.0  
+**Versión:** 2.0.1  
 **Última actualización:** 15 de Julio de 2026  
 **Estado:** ✅ PRODUCCIÓN

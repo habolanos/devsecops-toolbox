@@ -1,0 +1,11 @@
+# Requirements para Dashboard Matutino — DevSecOps Toolbox
+# Orquestación, consolidación, generación HTML y scheduling del dashboard
+
+# Core (opcional pero recomendado para UI de terminal)
+rich>=13.0.0
+
+# Notificaciones a Microsoft Teams (TeamsNotifier)
+requests>=2.28.0
+
+# Scheduling automático (dashboard_scheduler.py)
+APScheduler>=3.9.0

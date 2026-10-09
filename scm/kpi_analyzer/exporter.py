@@ -5,7 +5,6 @@ KPI Analyzer Pro Exporter
 Exporta datos a múltiples formatos: JSON, CSV, HTML, Excel
 """
 
-import sys
 import json
 import csv
 from pathlib import Path
@@ -145,12 +144,11 @@ class ExporterPro:
             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
             from openpyxl.utils import get_column_letter
         except ImportError:
-            logger.warning("openpyxl no está instalado. Instalando...")
-            import subprocess
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "openpyxl"])
-            import openpyxl
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from openpyxl.utils import get_column_letter
+            msg = "openpyxl no está instalado. Instala con: pip install -r scm/kpi_analyzer/requirements.txt"
+            logger.error(msg)
+            if RICH_AVAILABLE and console:
+                console.print(f"[red]❌ {msg}[/red]")
+            return False
         
         try:
             if filepath is None:

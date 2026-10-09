@@ -26,6 +26,38 @@ except ImportError:
 
 console = Console() if RICH_AVAILABLE else None
 
+# Helpers de credenciales/webhook (funciona como script o como paquete)
+try:
+    from dashboard.dashboard_common import resolve_credentials, resolve_webhook
+except ImportError:
+    try:
+        from dashboard_common import resolve_credentials, resolve_webhook
+    except ImportError:
+        import os as _os
+        import json as _json
+        def _load_cfg():
+            cfg_path = Path(__file__).parent.parent / "config.json"
+            try:
+                return _json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+            except Exception:
+                return {}
+        def resolve_credentials(org=None, project=None, pat=None):
+            azdo = _load_cfg().get("azdo", {})
+            return (
+                org or _os.getenv("AZDO_ORG") or azdo.get("organization") or azdo.get("organization_url") or "",
+                project or _os.getenv("AZDO_PROJECT") or azdo.get("project") or "",
+                pat or _os.getenv("AZDO_PAT") or azdo.get("pat") or "",
+            )
+        def resolve_webhook(webhook=None):
+            if webhook:
+                return webhook
+            env = _os.getenv("TEAMS_WEBHOOK_URL")
+            if env:
+                return env
+            dash = _load_cfg().get("dashboard", {})
+            url = dash.get("webhook_url") or dash.get("notifications", {}).get("teams", {}).get("webhook_url") or ""
+            return "" if url == "<TU_TEAMS_WEBHOOK_URL>" else url
+
 # Número de workers paralelos (ajusta según tu máquina)
 MAX_WORKERS = 4
 
@@ -213,12 +245,26 @@ def execute_azdo_tools(org, project, pat):
 def main():
     """Función principal"""
     parser = argparse.ArgumentParser(description='Dashboard Matutino DevSecOps')
-    parser.add_argument('--org', required=True, help='Organización Azure DevOps')
-    parser.add_argument('--project', required=True, help='Proyecto Azure DevOps')
-    parser.add_argument('--pat', required=True, help='Personal Access Token')
-    parser.add_argument('--webhook', default='', help='Webhook Teams (opcional)')
-    
+    parser.add_argument('--org', help='Organización Azure DevOps (o env AZDO_ORG / config.json azdo.organization)')
+    parser.add_argument('--project', help='Proyecto Azure DevOps (o env AZDO_PROJECT / config.json azdo.project)')
+    parser.add_argument('--pat', help='Personal Access Token (o env AZDO_PAT / config.json azdo.pat)')
+    parser.add_argument('--webhook', default='', help='Webhook Teams (o env TEAMS_WEBHOOK_URL / config.json dashboard.webhook_url)')
+
     args = parser.parse_args()
+
+    # Resolver credenciales: CLI > variables de entorno > config.json
+    args.org, args.project, args.pat = resolve_credentials(args.org, args.project, args.pat)
+    args.webhook = resolve_webhook(args.webhook)
+
+    if not (args.org and args.project and args.pat):
+        msg = ("Se requieren credenciales AZDO: --org/--project/--pat, "
+               "variables AZDO_ORG/AZDO_PROJECT/AZDO_PAT, "
+               "o sección 'azdo' en scm/config.json")
+        if RICH_AVAILABLE and console:
+            console.print(f"[red]❌ {msg}[/red]")
+        else:
+            print(f"❌ {msg}")
+        return 1
     
     # Header
     if RICH_AVAILABLE and console:
