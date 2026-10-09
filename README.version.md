@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.60`** — 2026-10-09
+**`1.8.61`** — 2026-10-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-09 | **1.8.61** | **feat(azdo): opción 46↔41 — template updater emite `artifact_filters` + nuevo `artifact_alias_map`** — `pipe_cd_updater_*.yaml` ahora traduce las conditions `artifact` de cada stage a reglas `artifact_filters` del DSL de la opción 41 (alias resuelto en el destino vía `$auto:<Tipo>` cuando el tipo es único en el origen; alias literal + warning en `metadata.comment` cuando es ambiguo; política all-or-nothing por stage si alguna condition no es reconstruible). Nuevo campo de regla `artifact_alias_map` en `UpdateEngine._add_stage` que remapea `alias`/`artifactAlias` dentro de `deployPhases` (downloadInputs) resolviendo tokens `$auto` contra los artifacts del destino; propagado en `parallel_executor` para `copy_from`. Verificado E2E: TemplateParser de la 41 + UpdateEngine — conditions y downloadInputs quedan con el alias destino. Tests: +19 (78 módulo 46; 220 suite 41 sin regresiones). | `scm/azdo/pipeline_cd_template.py` (v1.0.12), `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/parallel_executor.py`, `scm/azdo/pipeline_updater/__init__.py` (v1.8.33), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.60** | **fix(azdo): opción 46 — metadata del `UPDATER_*.yaml` renombrada a `comment`** (consistente con el campo `comment` de las templates exportadas). | `scm/azdo/pipeline_cd_template.py` (v1.0.11), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.59** | **feat(azdo): opción 46 — `UPDATER_*.yaml` incluye en su `metadata.summary` el resumen completo del apply** (estrategia, stages nuevos/conservados/sobrescritos, variables, preserve aplicado, alias remapeados) — el mismo reporte de consola queda documentado dentro del archivo del payload. Tests: +1 (59 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.10), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.58** | **fix(azdo): opción 46 — remapeo de alias cubre `downloadInputs[].alias`** — además de `conditions[].name`/`artifactAlias`, el remap ahora reescribe el `alias` de los artifact download inputs dentro de `deployPhases[].deploymentInput.artifactsDownloadInput` (los stages nuevos referenciaban el alias origen en el "Download artifact" del deploy phase). Tests: +1 (58 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.9), `scm/tests/unit/test_pipeline_cd_template.py`, `README.version.md`, `VERSION` |

@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.11"
+__version__ = "1.0.12"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -266,16 +266,149 @@ def build_full_template(defn_clean: Dict, source_def: Dict, org: str,
     }
 
 
+def _updater_artifact_filters(env: Dict, artifacts: List[Dict]
+                              ) -> Tuple[Optional[List[Dict]], List[str]]:
+    """Traduce las conditions de artifact de un stage a reglas
+    `artifact_filters` del DSL de la opción 41 (que resuelve el alias
+    contra los artifacts del pipeline DESTINO al aplicar).
+
+    Devuelve (filters, warnings):
+      - filters == []   → el stage no tiene condiciones artifact.
+      - filters == lista → todas reconstruibles; la opción 41 las
+        reescribirá con el alias del destino al aplicar.
+      - filters == None → alguna condición no es reconstruible (sin name o
+        sin sourceBranch parseable): NO emitir artifact_filters — las
+        conditions quedan tal cual en la definición embebida (política
+        all-or-nothing para no borrar filtros en silencio).
+
+    Token `artifact`: `$auto:<Tipo>` cuando el artifact del origen es el
+    único de su tipo (resolución inequívoca en el destino); si el tipo se
+    repite o el alias no figura en los artifacts del origen, se emite el
+    alias literal (mejor esfuerzo) y se reporta un warning.
+    """
+    conds = [c for c in env.get("conditions", [])
+             if c.get("conditionType") == "artifact"]
+    if not conds:
+        return [], []
+
+    alias_to_art = {a.get("alias"): a for a in artifacts if a.get("alias")}
+    type_count: Dict[str, int] = {}
+    for a in artifacts:
+        t = a.get("type") or "Build"
+        type_count[t] = type_count.get(t, 0) + 1
+
+    warnings: List[str] = []
+    grouped: Dict[str, Dict] = {}
+    order: List[str] = []
+    for c in conds:
+        alias = c.get("name")
+        try:
+            val = json.loads(c.get("value") or "{}")
+        except (ValueError, TypeError):
+            val = {}
+        branch = val.get("sourceBranch")
+        if not alias or not isinstance(branch, str) or not branch:
+            warnings.append(
+                f"stage '{env.get('name')}': condition artifact sin "
+                f"alias/sourceBranch reconstruible — artifact_filters no "
+                f"emitido para este stage")
+            return None, warnings
+        if alias not in grouped:
+            art = alias_to_art.get(alias)
+            if art is not None and type_count.get(
+                    art.get("type") or "Build", 0) == 1:
+                token = f"$auto:{art.get('type') or 'Build'}"
+            else:
+                token = alias
+                warnings.append(
+                    f"stage '{env.get('name')}': artifact '{alias}' "
+                    f"sin token $auto inequívoco (tipo repetido o alias "
+                    f"no encontrado en origen) — se emite el alias "
+                    f"literal; verifique que el destino lo reutilice")
+            grouped[alias] = {"artifact": token, "type": "include",
+                              "branches": []}
+            order.append(alias)
+        if branch not in grouped[alias]["branches"]:
+            grouped[alias]["branches"].append(branch)
+    return [grouped[a] for a in order], warnings
+
+
+def _updater_artifact_alias_map(env: Dict, artifacts: List[Dict]
+                                ) -> Tuple[Dict[str, str], List[str]]:
+    """Detecta alias de artifact del ORIGEN referenciados dentro de
+    deployPhases del stage (downloadInputs, etc.) y los mapea a tokens
+    `artifact_alias_map` de la opción 41 (`$auto:<Tipo>` cuando el tipo
+    es único en el origen; alias literal + warning si es ambiguo)."""
+    alias_to_art = {a.get("alias"): a for a in artifacts if a.get("alias")}
+    type_count: Dict[str, int] = {}
+    for a in artifacts:
+        t = a.get("type") or "Build"
+        type_count[t] = type_count.get(t, 0) + 1
+
+    found: List[str] = []
+
+    def _walk(node):
+        if isinstance(node, dict):
+            for key in ("alias", "artifactAlias"):
+                v = node.get(key)
+                if (isinstance(v, str) and v in alias_to_art
+                        and v not in found):
+                    found.append(v)
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                _walk(v)
+
+    for phase in env.get("deployPhases", []):
+        _walk(phase)
+
+    mapping: Dict[str, str] = {}
+    warnings: List[str] = []
+    for alias in found:
+        art = alias_to_art[alias]
+        atype = art.get("type") or "Build"
+        if type_count.get(atype, 0) == 1:
+            mapping[alias] = f"$auto:{atype}"
+        else:
+            mapping[alias] = alias
+            warnings.append(
+                f"stage '{env.get('name')}': deployPhases usa '{alias}' "
+                f"con tipo '{atype}' repetido en el origen — "
+                f"artifact_alias_map emitido con alias literal; "
+                f"verifique el alias en el destino")
+    return mapping, warnings
+
+
 def build_updater_template(defn_clean: Dict, source_def: Dict) -> Dict:
     """Template DSL del pipeline_updater (opción 41): un `action: add` por
-    stage con la definición embebida + variables de nivel release."""
+    stage con la definición embebida + variables de nivel release.
+
+    Si el stage tiene artifact filters (conditions tipo 'artifact'), se
+    emiten también como reglas `artifact_filters` para que la opción 41
+    los reescriba con el alias del artifact del pipeline DESTINO (la
+    definición embebida conserva las conditions originales como
+    referencia, pero son las reglas las que mandan al aplicar)."""
     envs = defn_clean.get("environments", [])
-    stage_rules = [{
-        "action": "add",
-        "name": e.get("name", "stage"),
-        "position": "end",
-        "definition": e,
-    } for e in envs]
+    artifacts = defn_clean.get("artifacts") or []
+    stage_rules: List[Dict] = []
+    warnings_all: List[str] = []
+    for e in envs:
+        rule: Dict = {
+            "action": "add",
+            "name": e.get("name", "stage"),
+            "position": "end",
+            "definition": e,
+        }
+        filters, warns = _updater_artifact_filters(e, artifacts)
+        if filters:
+            rule["artifact_filters"] = filters
+        warnings_all += warns
+        alias_map, am_warns = _updater_artifact_alias_map(e, artifacts)
+        if alias_map:
+            rule["artifact_alias_map"] = alias_map
+        warnings_all += am_warns
+        stage_rules.append(rule)
     var_rules = [{
         "name": name,
         "action": "add",
@@ -300,7 +433,14 @@ def build_updater_template(defn_clean: Dict, source_def: Dict) -> Dict:
                 "ATENCIÓN: `action: add` AGREGA los stages — no reemplaza "
                 "los existentes con el mismo nombre. Para reemplazo total "
                 "del pipeline use la template full (pipe_cd_full_*.yaml) "
-                "con --target-id."
+                "con --target-id.\n"
+                "Las reglas `artifact_filters` reemplazan las conditions "
+                "de artifact del stage al aplicar (el alias se resuelve "
+                "contra los artifacts del pipeline destino vía "
+                "$auto:<Tipo>); `artifact_alias_map` remapea los alias "
+                "referenciados en deployPhases (downloadInputs)."
+                + ("\nADVERTENCIAS:\n- " + "\n- ".join(warnings_all)
+                   if warnings_all else "")
             ),
             "author": "SCM Team",
             "created_at": datetime.now().strftime("%Y-%m-%d"),

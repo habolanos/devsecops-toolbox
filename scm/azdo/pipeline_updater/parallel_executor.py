@@ -575,6 +575,8 @@ class ParallelExecutor:
                 new_rule['make_dependents'] = rule['make_dependents']
             if rule.get('artifact_filters'):
                 new_rule['artifact_filters'] = rule['artifact_filters']
+            if rule.get('artifact_alias_map'):
+                new_rule['artifact_alias_map'] = rule['artifact_alias_map']
             
             new_stage_rules.append(new_rule)
             

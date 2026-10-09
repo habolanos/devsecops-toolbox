@@ -279,7 +279,12 @@ class UpdateEngine:
         artifact_filters = rule.get('artifact_filters', [])
         if artifact_filters:
             self._apply_artifact_filters(new_stage, artifact_filters, new_name)
-        
+
+        # Remapear alias de artifact dentro de deployPhases (opcional)
+        alias_map = rule.get('artifact_alias_map')
+        if alias_map:
+            self._apply_artifact_alias_map(new_stage, alias_map, new_name)
+
         insert_index = self._resolve_insert_index(
             environments, rule, rule.get('after_stage')
         )
@@ -1082,7 +1087,59 @@ class UpdateEngine:
             })
         
         stage['conditions'] = non_artifact_conditions + new_artifact_conditions
-    
+
+    def _apply_artifact_alias_map(self, stage: Dict, alias_map: Dict,
+                                  stage_name: str):
+        """
+        Remapear alias de artifact dentro de deployPhases del stage nuevo.
+
+        Pensado para definiciones embebidas traídas de otro pipeline:
+        `downloadInputs[].alias` (y cualquier clave 'alias'/'artifactAlias'
+        bajo deployPhases) quedan apuntando al alias del pipeline origen,
+        que no existe en el destino — sin remap el deploy no descarga el
+        artifact.
+
+        Formato de la regla:
+          artifact_alias_map:
+            _origen-alias: "$auto:Build"   # token $auto / $auto:<Tipo>
+            _otro: "_alias-destino"        # o alias literal
+
+        Los tokens $auto se resuelven contra los artifacts del pipeline
+        DESTINO (self.definition).
+        """
+        resolved = {}
+        for old_alias, token in (alias_map or {}).items():
+            alias = self._resolve_artifact_name(str(token))
+            if alias:
+                resolved[old_alias] = alias
+            else:
+                print(f"  ⚠ artifact_alias_map: no se pudo resolver "
+                      f"'{token}' para '{old_alias}', se conserva el alias "
+                      f"original")
+        if not resolved:
+            return
+
+        def _walk(node):
+            if isinstance(node, dict):
+                for key in ('alias', 'artifactAlias'):
+                    v = node.get(key)
+                    if isinstance(v, str) and v in resolved:
+                        node[key] = resolved[v]
+                for v in node.values():
+                    _walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    _walk(v)
+
+        for phase in stage.get('deployPhases', []):
+            _walk(phase)
+
+        self.changes.append({
+            'type': 'stage_artifact_alias_map',
+            'stage': stage_name,
+            'map': resolved
+        })
+
     def _apply_task_updates_to_stage(self, stage: Dict, task_updates: List[Dict], stage_name: str):
         """
         Aplicar modificaciones de atributos a tasks dentro de un stage.

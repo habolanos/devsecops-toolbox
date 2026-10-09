@@ -2,6 +2,8 @@
 """Tests para pipeline_cd_template — limpieza de definición, templates
 (full + DSL updater), diff de apply y carga de templates (sin API)."""
 
+import json
+
 import pytest
 import yaml
 
@@ -720,3 +722,214 @@ class TestArtifactAliasRemap:
         assert new_env["conditions"][0]["name"] == "_MiBuild"
         assert any("alias de artifact remapeados" in l
                    for l in res["summary"])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# artifact_filters en template updater (DSL opción 41)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from scm.azdo.pipeline_cd_template import _updater_artifact_filters
+
+
+def _art_cond(alias, branch="develop", extra=None):
+    val = {"sourceBranch": branch}
+    if extra:
+        val.update(extra)
+    return {"name": alias, "conditionType": "artifact",
+            "value": json.dumps(val), "result": None}
+
+
+def _env_with_conds(name, conditions):
+    return {"name": name, "conditions": conditions, "deployPhases": []}
+
+
+class TestUpdaterArtifactFilters:
+    ARTS = [{"alias": "_CI", "type": "Build"}]
+
+    def test_no_artifact_conditions(self):
+        env = _env_with_conds("QA", [{"name": "ReleaseStarted",
+                                      "conditionType": "event"}])
+        filters, warns = _updater_artifact_filters(env, self.ARTS)
+        assert filters == [] and warns == []
+
+    def test_single_condition_to_auto_token(self):
+        env = _env_with_conds("QA", [_art_cond("_CI", "develop")])
+        filters, warns = _updater_artifact_filters(env, self.ARTS)
+        assert filters == [{"artifact": "$auto:Build", "type": "include",
+                            "branches": ["develop"]}]
+        assert warns == []
+
+    def test_git_artifact_token(self):
+        arts = [{"alias": "_CI", "type": "Build"},
+                {"alias": "_repo", "type": "Git"}]
+        env = _env_with_conds("QA", [_art_cond("_repo", "main")])
+        filters, _ = _updater_artifact_filters(env, arts)
+        assert filters[0]["artifact"] == "$auto:Git"
+
+    def test_multiple_branches_same_alias_grouped(self):
+        env = _env_with_conds("QA", [_art_cond("_CI", "develop"),
+                                     _art_cond("_CI", "release/*")])
+        filters, _ = _updater_artifact_filters(env, self.ARTS)
+        assert len(filters) == 1
+        assert filters[0]["branches"] == ["develop", "release/*"]
+
+    def test_multiple_aliases_multiple_filters(self):
+        arts = [{"alias": "_CI", "type": "Build"},
+                {"alias": "_repo", "type": "Git"}]
+        env = _env_with_conds("QA", [_art_cond("_CI", "develop"),
+                                     _art_cond("_repo", "main")])
+        filters, _ = _updater_artifact_filters(env, arts)
+        assert [f["artifact"] for f in filters] == ["$auto:Build",
+                                                    "$auto:Git"]
+
+    def test_repeated_type_literal_alias(self):
+        arts = [{"alias": "_A", "type": "Build"},
+                {"alias": "_B", "type": "Build"}]
+        env = _env_with_conds("QA", [_art_cond("_B", "qa")])
+        filters, warns = _updater_artifact_filters(env, arts)
+        assert filters[0]["artifact"] == "_B"
+        assert any("alias literal" in w for w in warns)
+
+    def test_alias_not_in_artifacts_literal(self):
+        env = _env_with_conds("QA", [_art_cond("_X", "dev")])
+        filters, warns = _updater_artifact_filters(env, self.ARTS)
+        assert filters[0]["artifact"] == "_X"
+        assert warns
+
+    def test_unparseable_value_no_filters(self):
+        env = _env_with_conds("QA", [{"name": "_CI",
+                                      "conditionType": "artifact",
+                                      "value": "not-json{",
+                                      "result": None}])
+        filters, warns = _updater_artifact_filters(env, self.ARTS)
+        assert filters is None and warns
+
+    def test_missing_sourcebranch_no_filters(self):
+        env = _env_with_conds("QA", [{"name": "_CI",
+                                      "conditionType": "artifact",
+                                      "value": json.dumps({}),
+                                      "result": None}])
+        filters, warns = _updater_artifact_filters(env, self.ARTS)
+        assert filters is None and warns
+
+    def test_no_alias_name_no_filters(self):
+        env = _env_with_conds("QA", [{"name": "",
+                                      "conditionType": "artifact",
+                                      "value": json.dumps(
+                                          {"sourceBranch": "dev"}),
+                                      "result": None}])
+        filters, _ = _updater_artifact_filters(env, self.ARTS)
+        assert filters is None
+
+
+class TestBuildUpdaterTemplateArtifactFilters:
+    def test_rule_emits_artifact_filters(self):
+        clean = clean_definition_for_template(_defn())
+        clean["artifacts"] = [{"alias": "_CI", "type": "Build"}]
+        clean["environments"][0]["conditions"] = [
+            {"name": "ReleaseStarted", "conditionType": "event",
+             "value": "", "result": None},
+            _art_cond("_CI", "develop"),
+        ]
+        tpl = build_updater_template(clean, _defn())
+        rule = tpl["update"]["stages"][0]
+        assert rule["artifact_filters"] == [
+            {"artifact": "$auto:Build", "type": "include",
+             "branches": ["develop"]}]
+        # la definición embebida conserva las conditions originales
+        assert len(rule["definition"]["conditions"]) == 2
+        # stages sin filtros no llevan la clave
+        assert "artifact_filters" not in tpl["update"]["stages"][1]
+
+    def test_comment_documents_warnings(self):
+        clean = clean_definition_for_template(_defn())
+        clean["artifacts"] = [{"alias": "_A", "type": "Build"},
+                              {"alias": "_B", "type": "Build"}]
+        clean["environments"][0]["conditions"] = [_art_cond("_B", "qa")]
+        tpl = build_updater_template(clean, _defn())
+        assert "ADVERTENCIAS" in tpl["metadata"]["comment"]
+        assert "_B" in tpl["metadata"]["comment"]
+
+    def test_comment_no_warnings_when_clean(self):
+        tpl = build_updater_template(clean_definition_for_template(_defn()),
+                                     _defn())
+        assert "ADVERTENCIAS" not in tpl["metadata"]["comment"]
+
+    def test_unreconstructable_stage_keeps_raw_conditions(self):
+        clean = clean_definition_for_template(_defn())
+        clean["artifacts"] = [{"alias": "_CI", "type": "Build"}]
+        clean["environments"][0]["conditions"] = [
+            {"name": "_CI", "conditionType": "artifact",
+             "value": "not-json{", "result": None}]
+        tpl = build_updater_template(clean, _defn())
+        rule = tpl["update"]["stages"][0]
+        assert "artifact_filters" not in rule
+        assert rule["definition"]["conditions"][0]["name"] == "_CI"
+        assert "ADVERTENCIAS" in tpl["metadata"]["comment"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# artifact_alias_map — alias en deployPhases (downloadInputs) → destino
+# ═══════════════════════════════════════════════════════════════════════════
+
+from scm.azdo.pipeline_cd_template import _updater_artifact_alias_map
+
+
+def _env_with_downloads(name, aliases):
+    return {"name": name, "deployPhases": [{
+        "deploymentInput": {"artifactsDownloadInput": {
+            "downloadInputs": [{"alias": a} for a in aliases]}}}]}
+
+
+class TestUpdaterArtifactAliasMap:
+    ARTS = [{"alias": "_CI", "type": "Build"}]
+
+    def test_download_inputs_mapped_to_auto(self):
+        env = _env_with_downloads("QA", ["_CI"])
+        m, warns = _updater_artifact_alias_map(env, self.ARTS)
+        assert m == {"_CI": "$auto:Build"} and warns == []
+
+    def test_unknown_alias_ignored(self):
+        env = _env_with_downloads("QA", ["_no-existe"])
+        m, warns = _updater_artifact_alias_map(env, self.ARTS)
+        assert m == {} and warns == []
+
+    def test_repeated_type_literal(self):
+        arts = [{"alias": "_A", "type": "Build"},
+                {"alias": "_B", "type": "Build"}]
+        env = _env_with_downloads("QA", ["_B"])
+        m, warns = _updater_artifact_alias_map(env, arts)
+        assert m == {"_B": "_B"} and warns
+
+    def test_rule_emits_alias_map(self):
+        clean = clean_definition_for_template(_defn())
+        clean["artifacts"] = [{"alias": "_CI", "type": "Build"}]
+        clean["environments"][0]["deployPhases"] = [{
+            "deploymentInput": {"artifactsDownloadInput": {
+                "downloadInputs": [{"alias": "_CI"}]}}}]
+        tpl = build_updater_template(clean, _defn())
+        rule = tpl["update"]["stages"][0]
+        assert rule["artifact_alias_map"] == {"_CI": "$auto:Build"}
+        assert "artifact_alias_map" not in tpl["update"]["stages"][1]
+
+    def test_engine_applies_alias_map_to_destination(self):
+        """E2E: la opción 41 remapea downloadInputs al alias del destino."""
+        from scm.azdo.pipeline_updater.update_engine import UpdateEngine
+
+        target = {
+            "artifacts": [{"alias": "_DESTINO", "type": "Build"}],
+            "environments": [{"id": 1, "name": "Develop", "rank": 1}],
+        }
+        stage_def = _env_with_downloads("NuevoStage", ["_CI"])
+        rules = {"stages": [{
+            "action": "add", "name": "NuevoStage", "position": "end",
+            "definition": stage_def,
+            "artifact_alias_map": {"_CI": "$auto:Build"}}]}
+        ue = UpdateEngine(target, [], rules)
+        assert ue.apply_updates()
+        inputs = (target["environments"][1]["deployPhases"][0]
+                  ["deploymentInput"]["artifactsDownloadInput"]
+                  ["downloadInputs"])
+        assert inputs[0]["alias"] == "_DESTINO"
+        assert any(c["type"] == "stage_artifact_alias_map"
+                   for c in ue.changes)
