@@ -162,8 +162,8 @@ class TestApplyDiffSummary:
                              "extra": {"value": "9"}}))
         lines = "\n".join(apply_diff_summary(target, tpl))
         assert "+ stages nuevos: Nuevo" in lines
-        assert "- stages eliminados: Production" in lines
-        assert "= stages reemplazados: Develop" in lines
+        assert "- stages solo en destino: Production" in lines
+        assert "= stages en ambos: Develop" in lines
         assert "+ variables: extra" in lines
         assert "- variables: topsecret" in lines
 
@@ -588,3 +588,31 @@ class TestMergeDefinitions:
                              strategy="replace", preserve=[])
         names = [e["name"] for e in res["payload"]["environments"]]
         assert names == ["Solo"]
+
+    def test_ranks_renumbered_consecutive(self):
+        """VS402874: ranks deben ser naturales consecutivos desde 1."""
+        tgt = self._target_def()
+        tgt["environments"][0]["rank"] = 5
+        tgt["environments"][1]["rank"] = 17
+        c = _Client(tgt)
+        tpl = {"environments": [_tpl_env("QA", rank=3),
+                                _tpl_env("Nuevo", rank=9)],
+               "variables": {}}
+        res = apply_template(c, 910, tpl, dry_run=True,
+                             strategy="merge", overwrite="none")
+        ranks = [e["rank"] for e in res["payload"]["environments"]]
+        assert ranks == [1, 2, 3]
+
+    def test_dry_run_writes_target_and_updater_yaml(self, tmp_path):
+        c = _Client(self._target_def())
+        tpl = {"environments": [_tpl_env("QA")], "variables": {}}
+        res = apply_template(c, 910, tpl, dry_run=True, backup_dir=tmp_path,
+                             overwrite="none")
+        assert res["backup"]["yaml"].exists()
+        assert res["backup"]["json"].exists()
+        assert res["updater_yaml"].exists()
+        data = yaml.safe_load(res["updater_yaml"].read_text())
+        assert data["metadata"]["dryRun"] is True
+        assert data["metadata"]["targetId"] == 910
+        assert data["definition"]["id"] == 910
+        assert c.put_calls == []   # dry-run no toca AzDO

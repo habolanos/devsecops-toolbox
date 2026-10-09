@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -710,8 +710,8 @@ def apply_diff_summary(target: Dict, tpl_def: Dict) -> List[str]:
     if added:
         lines.append(f"+ stages nuevos: {', '.join(added)}")
     if removed:
-        lines.append(f"- stages eliminados: {', '.join(removed)}")
-    lines.append(f"= stages reemplazados: {', '.join(kept) or 'ninguno'}")
+        lines.append(f"- stages solo en destino: {', '.join(removed)}")
+    lines.append(f"= stages en ambos: {', '.join(kept) or 'ninguno'}")
     tgt_vars = set(target.get("variables") or {})
     tpl_vars = set(tpl_def.get("variables") or {})
     if set(tpl_vars) - tgt_vars:
@@ -738,12 +738,16 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     salvo decisión de overwrite (ask/all/none/lista), variables del destino
     preservadas salvo update_vars. strategy="replace": reemplazo total.
 
-    Flujo no-dry-run: descarga el destino → lo guarda como backup
-    JSON+YAML → relee el YAML del destino original como fuente de
-    merge/preserve/placeholders → PUT.
+    Flujo: descarga el destino → backup JSON+YAML del destino original →
+    relee el YAML como fuente de merge/preserve/placeholders → renumera
+    ranks → guarda el payload resultante como YAML (updater aplicado) →
+    PUT (solo si no es dry-run). Los YAML del destino y del updater se
+    escriben siempre que backup_dir esté definido — incluso en dry-run,
+    pues son archivos locales y no tocan AzDO.
 
-    Devuelve {"backup": {json,yaml}|None, "result": respuesta|None,
-              "summary": [líneas], "preserve_applied": [...]}.
+    Devuelve {"backup": {json,yaml}|None, "updater_yaml": Path|None,
+              "result": respuesta|None, "summary": [líneas],
+              "preserve_applied": [...], "payload": payload}.
     """
     if preserve is None:
         preserve = list(DEFAULT_PRESERVE_PATHS)
@@ -755,11 +759,12 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    f"rev {target.get('revision')}")
     summary.append(f"strategy: {strategy}")
 
+    # Backup del destino siempre que haya backup_dir (archivo local, no
+    # toca AzDO) — y se relee el YAML como fuente de merge/preserve.
     backup_paths: Optional[Dict] = None
     preserve_src = target
-    if not dry_run and backup_dir is not None:
+    if backup_dir is not None:
         backup_paths = backup_definition(target, backup_dir)
-        # Releer el YAML del destino original como fuente de merge/preserve
         try:
             preserve_src = load_target_backup(backup_paths["yaml"]) or target
         except Exception:
@@ -794,13 +799,40 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
         summary.append("⚠ placeholders sin resolver: "
                        + ", ".join(sorted(set(unresolved))))
 
+    # VS402874: los ranks de los stages deben ser naturales consecutivos
+    # desde 1 — tras merge/preserve hay que renumerarlos.
+    for i, env in enumerate(payload.get("environments", []), 1):
+        env["rank"] = i
+
+    # Siempre guardar el YAML del updater resultante (payload final).
+    updater_yaml: Optional[Path] = None
+    if backup_dir is not None:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        updater_yaml = backup_dir / (
+            f"updater_result_{target_id}_"
+            f"{_safe_name(payload.get('name'))}_{ts}.yaml")
+        updater_yaml.write_text(yaml.safe_dump(
+            {"metadata": {"tool": "pipeline_cd_template",
+                          "version": __version__,
+                          "generated": datetime.now().isoformat(),
+                          "targetId": target_id,
+                          "strategy": strategy,
+                          "dryRun": dry_run},
+             "definition": payload},
+            allow_unicode=True, sort_keys=False, default_flow_style=False),
+            encoding="utf-8")
+        summary.append(f"updater yaml: {updater_yaml}")
+
     if dry_run:
-        return {"backup": None, "result": None, "summary": summary,
-                "payload": payload, "preserve_applied": applied if preserve else []}
+        return {"backup": backup_paths, "updater_yaml": updater_yaml,
+                "result": None, "summary": summary, "payload": payload,
+                "preserve_applied": applied if preserve else []}
 
     result = client.put(f"{client.base}/definitions/{target_id}",
                         payload, params={"api-version": "7.1"})
-    return {"backup": backup_paths, "result": result, "summary": summary,
+    return {"backup": backup_paths, "updater_yaml": updater_yaml,
+            "result": result, "summary": summary, "payload": payload,
             "preserve_applied": applied if preserve else []}
 
 
@@ -1008,6 +1040,7 @@ def main() -> int:
         res = apply_template(client, args.target_id, tpl_def,
                              new_name=args.new_name, new_path=args.new_path,
                              dry_run=True, preserve=preserve,
+                             backup_dir=backup_dir,
                              strategy=args.strategy, overwrite=overwrite,
                              update_vars=args.update_vars,
                              ask_fn=_ask_stage, decisions=decisions)
@@ -1031,6 +1064,8 @@ def main() -> int:
         if res["backup"]:
             _print(f"  Backup destino (yaml): {res['backup']['yaml']}", "dim")
             _print(f"  Backup destino (json): {res['backup']['json']}", "dim")
+        if res.get("updater_yaml"):
+            _print(f"  Updater aplicado (yaml): {res['updater_yaml']}", "dim")
         new_def = res["result"]
         _print(f"\n✓ Aplicado — definition {new_def.get('id')} "
                f"'{new_def.get('name')}' rev {new_def.get('revision')}",
