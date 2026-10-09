@@ -55,7 +55,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.16"
+__version__ = "1.0.17"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -225,6 +225,14 @@ def resolve_reference_names(client: AzdoClient, org: str, project: str,
 def _safe_name(name: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "_"
                    for c in (name or "pipeline"))[:60]
+
+
+def _ids_tag(source_id, target_id) -> str:
+    """Segmento '<srcId>-to-<dstId>' para los archivos del apply
+    (ej. '3687-to-1899'; 'src-to-1899' si el origen se desconoce)."""
+    s = str(source_id) if source_id else "src"
+    t = str(target_id) if target_id else "dst"
+    return f"{s}-to-{t}"
 
 
 def build_full_template(defn_clean: Dict, source_def: Dict, org: str,
@@ -841,11 +849,17 @@ def merge_definitions(tpl_def: Dict, target: Dict,
     return merged, report
 
 
-def backup_definition(defn: Dict, backup_dir: Path) -> Dict:
-    """Backup del destino en JSON + YAML; devuelve {"json": p, "yaml": p}."""
+def backup_definition(defn: Dict, backup_dir: Path,
+                      ids_tag: str = "") -> Dict:
+    """Backup del destino en JSON + YAML; devuelve {"json": p, "yaml": p}.
+
+    `ids_tag` opcional ('<srcId>-to-<dstId>') va en el nombre del archivo
+    para trazabilidad origen→destino.
+    """
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe = _safe_name(defn.get("name"))
+    tag = ids_tag or str(defn.get("id"))
     data = {
         "metadata": {"tool": "pipeline_cd_template",
                      "version": __version__,
@@ -855,10 +869,10 @@ def backup_definition(defn: Dict, backup_dir: Path) -> Dict:
                      "revision": defn.get("revision")},
         "definition": defn,
     }
-    pj = backup_dir / f"BACKUP_DESTINO_{defn.get('id')}_{safe}_{ts}.json"
+    pj = backup_dir / f"BACKUP_DESTINO_{tag}_{safe}_{ts}.json"
     pj.write_text(json.dumps(data, indent=2, ensure_ascii=False),
                   encoding="utf-8")
-    py = backup_dir / f"BACKUP_DESTINO_{defn.get('id')}_{safe}_{ts}.yaml"
+    py = backup_dir / f"BACKUP_DESTINO_{tag}_{safe}_{ts}.yaml"
     py.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False,
                                  default_flow_style=False),
                   encoding="utf-8")
@@ -995,7 +1009,8 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    decisions: Optional[Dict[str, bool]] = None,
                    comment: str = "",
                    template_comment: str = "",
-                   description: Optional[str] = None) -> Dict:
+                   description: Optional[str] = None,
+                   source_id=None) -> Dict:
     """PUT del template sobre la definición destino (con backup previo).
 
     strategy="merge" (default): solo agrega lo que el destino no tiene —
@@ -1024,12 +1039,16 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    f"rev {target.get('revision')}")
     summary.append(f"strategy: {strategy}")
 
+    # Tag '<srcId>-to-<dstId>' para los archivos del apply (trazabilidad
+    # origen→destino en BACKUP_DESTINO / ORIGEN / UPDATER).
+    ids = _ids_tag(source_id, target_id)
+
     # Backup del destino siempre que haya backup_dir (archivo local, no
     # toca AzDO) — y se relee el YAML como fuente de merge/preserve.
     backup_paths: Optional[Dict] = None
     preserve_src = target
     if backup_dir is not None:
-        backup_paths = backup_definition(target, backup_dir)
+        backup_paths = backup_definition(target, backup_dir, ids)
         try:
             preserve_src = load_target_backup(backup_paths["yaml"]) or target
         except Exception:
@@ -1115,12 +1134,12 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
         extra = {"targetId": target_id, "strategy": strategy,
                  "dryRun": dry_run}
         origen_yaml = save_apply_yaml(
-            backup_dir, "ORIGEN", tpl_def.get("id") or "src",
+            backup_dir, "ORIGEN", ids,
             tpl_def.get("name", "template"), tpl_def, extra)
         # El UPDATER documenta en su metadata el resumen de lo aplicado
         # (mismo reporte que se muestra en consola).
         updater_yaml = save_apply_yaml(
-            backup_dir, "UPDATER", target_id,
+            backup_dir, "UPDATER", ids,
             payload.get("name", "target"), payload,
             {**extra, "comment": list(summary)})
         summary.append(f"origen yaml: {origen_yaml}")
@@ -1282,7 +1301,11 @@ def write_evidence_report(report_dir: Path) -> Optional[Path]:
         return None
     report_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = report_dir / f"EVIDENCIA_pipe_cd_template_{ts}.html"
+    ids = ""
+    if _REPORT_META.get("source_id") or _REPORT_META.get("target_id"):
+        ids = "_" + _ids_tag(_REPORT_META.get("source_id"),
+                             _REPORT_META.get("target_id"))
+    path = report_dir / f"EVIDENCIA_pipe_cd_template{ids}_{ts}.html"
 
     meta = dict(_REPORT_META)
     mode = str(meta.get("mode") or "cli")
@@ -1564,6 +1587,19 @@ def main() -> int:
         _REPORT_META["comment"] = (args.comment or template_comment
                                    or "(auto-resumen)")
 
+        # definitionId del origen para los nombres de archivo: el arg, o
+        # metadata.source.definition_id de la template, o el dígito del
+        # propio nombre pipe_cd_(full|updater)_<id>_*.yaml.
+        apply_src_id = args.source_id or (
+            (tpl_meta.get("source") or {}).get("definition_id"))
+        if not apply_src_id and args.template:
+            mfile = re.search(r"pipe_cd_(?:full|updater)_(\d+)",
+                              Path(args.template).name)
+            if mfile:
+                apply_src_id = int(mfile.group(1))
+        if apply_src_id:
+            _REPORT_META["source_id"] = apply_src_id
+
         def _ask_stage(name: str) -> bool:
             if console:
                 from rich.prompt import Confirm
@@ -1586,7 +1622,8 @@ def main() -> int:
                              ask_fn=_ask_stage, decisions=decisions,
                              comment=args.comment,
                              template_comment=template_comment,
-                             description=args.description)
+                             description=args.description,
+                             source_id=apply_src_id)
         _print("\nDiff destino ← template:", "bold")
         for l in res["summary"]:
             _print(f"  {l}")
@@ -1626,7 +1663,8 @@ def main() -> int:
                              ask_fn=_ask_stage, decisions=decisions,
                              comment=args.comment,
                              template_comment=template_comment,
-                             description=args.description)
+                             description=args.description,
+                             source_id=apply_src_id)
         _print_files(res)
         new_def = res["result"]
         _REPORT_META["result"] = f"aplicado — definition {new_def.get('id')}"

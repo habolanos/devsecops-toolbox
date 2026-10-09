@@ -8,9 +8,11 @@ import pytest
 import yaml
 
 from scm.azdo.pipeline_cd_template import (
+    _ids_tag,
     _safe_name,
     apply_diff_summary,
     apply_template,
+    backup_definition,
     build_full_template,
     build_updater_template,
     clean_definition_for_template,
@@ -1120,3 +1122,37 @@ class TestPutCommentDescription:
         html = p.read_text(encoding="utf-8")
         assert "verde rich" in html
         assert "rich-terminal" in html or "#" in html  # estilos del export
+
+
+class TestGeneratedFileNames:
+    """Los archivos del apply llevan '<srcId>-to-<dstId>' en el nombre."""
+
+    def test_ids_tag_format(self):
+        assert _ids_tag(3687, 1899) == "3687-to-1899"
+        assert _ids_tag(None, 1899) == "src-to-1899"
+        assert _ids_tag(3687, None) == "3687-to-dst"
+
+    def test_apply_files_carry_both_ids(self, tmp_path):
+        c = _Client(_defn(id=910, name="CD-Destino", revision=7))
+        tpl = clean_definition_for_template(_defn())
+        res = apply_template(c, 910, tpl, dry_run=True,
+                             backup_dir=tmp_path, source_id=3687)
+        assert "3687-to-910" in res["backup"]["yaml"].name
+        assert "3687-to-910" in res["backup"]["json"].name
+        assert "3687-to-910" in res["origen_yaml"].name
+        assert "3687-to-910" in res["updater_yaml"].name
+        assert res["origen_yaml"].name.startswith("ORIGEN_")
+        assert res["updater_yaml"].name.startswith("UPDATER_")
+        assert res["backup"]["yaml"].name.startswith("BACKUP_DESTINO_")
+
+    def test_apply_files_without_source_id(self, tmp_path):
+        c = _Client(_defn(id=910, name="CD-Destino", revision=7))
+        res = apply_template(c, 910, clean_definition_for_template(_defn()),
+                             dry_run=True, backup_dir=tmp_path)
+        assert "src-to-910" in res["updater_yaml"].name
+
+    def test_backup_definition_accepts_ids_tag(self, tmp_path):
+        paths = backup_definition(_defn(id=910), tmp_path, "3687-to-910")
+        assert "3687-to-910" in paths["yaml"].name
+        paths2 = backup_definition(_defn(id=910), tmp_path / "b2")
+        assert paths2["yaml"].name.startswith("BACKUP_DESTINO_910_")

@@ -1148,10 +1148,17 @@ En `outcome/backups/template/`:
 
 | Prefijo | Contenido |
 |---|---|
-| `ORIGEN_<id\|src>_<nombre>_<ts>.yaml` | Template usada como origen |
-| `BACKUP_DESTINO_<id>_<nombre>_<ts>.yaml` + `.json` | Estado previo del destino |
-| `UPDATER_<id>_<nombre>_<ts>.yaml` | Payload final aplicado (post-merge + preserve + placeholders) con metadata `targetId`, `strategy`, `dryRun` |
-| `EVIDENCIA_pipe_cd_template_<ts>.html` (en `outcome/reports/`) | **Reporte de evidencia**: toda la salida de consola (prompts y respuestas del modo interactivo incluidos), metadatos del run (org/proyecto/modo/parámetros), archivos generados y resultado (aplicado/dry-run/cancelado/error). Se escribe siempre al terminar — extract o apply, éxito o error. |
+| `ORIGEN_<srcId>-to-<dstId>_<nombre>_<ts>.yaml` | Template usada como origen |
+| `BACKUP_DESTINO_<srcId>-to-<dstId>_<nombre>_<ts>.yaml` + `.json` | Estado previo del destino |
+| `UPDATER_<srcId>-to-<dstId>_<nombre>_<ts>.yaml` | Payload final aplicado (post-merge + preserve + placeholders) con metadata `targetId`, `strategy`, `dryRun` |
+| `EVIDENCIA_pipe_cd_template_<srcId>-to-<dstId>_<ts>.html` (en `outcome/reports/`) | **Reporte de evidencia**: toda la salida de consola (prompts y respuestas del modo interactivo incluidos), metadatos del run (org/proyecto/modo/parámetros), archivos generados y resultado (aplicado/dry-run/cancelado/error). Se escribe siempre al terminar — extract o apply, éxito o error. |
+
+Todos los nombres llevan el segmento `<srcId>-to-<dstId>` (definitionId del
+origen y del destino, ej. `3687-to-1899`) para trazabilidad. El srcId se
+resuelve desde `--source-id`, `metadata.source.definition_id` de la template
+o el dígito del nombre `pipe_cd_(full|updater)_<id>_*.yaml`; si no se puede
+determinar queda `src` (`src-to-1899`). La evidencia omite el segmento cuando
+no hay ids.
 
 ---
 
@@ -1263,6 +1270,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-09 | 1.8.73 | **Opción 46: nombres de archivo con `<srcId>-to-<dstId>`** — los archivos del apply (`ORIGEN_`, `BACKUP_DESTINO_`, `UPDATER_`) y el reporte `EVIDENCIA_` ahora llevan ambos definitionIds (ej. `UPDATER_3687-to-1899_LAB-X_<ts>.yaml`). El srcId se resuelve de `--source-id` → `metadata.source.definition_id` de la template → dígito del nombre `pipe_cd_(full|updater)_<id>_*.yaml`; fallback `src`. Nuevo helper `_ids_tag`, parámetros `source_id` en `apply_template` e `ids_tag` en `backup_definition`. Tests: +4 (99 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.17), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.72 | **Opción 46: comentario del PUT = resumen de todo lo actualizado** — el `comment` de revisión (historial AzDO) se construye al final del apply con el summary completo: diff de stages/variables, target, estrategia, stages conservados/nuevos/sobrescritos, variables, preserve aplicado/sin valor, alias remapeados, placeholders sin resolver. Encabezado: `--comment` → `metadata.comment`/`description` de la template → autogenerado (antes era un texto estático fijado antes de calcular los cambios). Nuevo parámetro `template_comment` separado de `comment` (override). Se excluyen rutas de archivos locales (backup/yaml). Tests: +2, 95 módulo. | `scm/azdo/pipeline_cd_template.py` (v1.0.16), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.71 | **Opción 46: reporte de evidencia con colores de terminal** — la sección "Salida de consola" del `EVIDENCIA_*.html` ahora reproduce los estilos del terminal: `Console(record=True)` + `export_html(theme=MONOKAI, inline_styles, code_format="{code}")` dentro del `<pre class="console">` oscuro (cyan/green/red/dim/bold exactos). Las respuestas de `Prompt.ask`/`Confirm.ask` se ecean en `dim` al buffer de Rich (no quedan en el record por sí solas). Fallback sin Rich: transcript ahora guarda `(texto, estilo)` y se renderiza como spans con mapa `_STYLE_COLORS`→CSS. Tests: +2 (93 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.15), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.70 | **Fix opción 46: PUT sin comentario de revisión y descripción del origen pisada** — el apply enviaba `description` de la template (la del pipeline origen, p.ej. `commitPropertiesRollback`) sobre el destino y ningún `comment` de revisión. Ahora el PUT lleva `comment` desde `--comment` → `metadata.comment`/`description` de la template → autogenerado, y `description` conservada del destino por defecto (`--description` la sobreescribe). `load_template()` nuevo devuelve `(definition, metadata)`; `load_template_definition()` preserva la firma. Prompt interactivo del comentario; metadato `comment` en el reporte de evidencia. Tests: +7 (90 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.14), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
