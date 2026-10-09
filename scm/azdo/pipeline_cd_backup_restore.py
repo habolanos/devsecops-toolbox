@@ -14,6 +14,9 @@ Submenu:
   5. Listar Backups Disponibles
   6. Backup Masivo (todos los pipelines del proyecto)
   7. Convertir Backup JSON -> YAML
+  8. Rollback a Revision (definitionId): lista las ultimas 5 revisiones del
+     pipeline, permite elegir una y restaura la definicion a esa revision
+     (backup automatico previo + diff + confirmacion).
 
 Uso:
     # Submenu interactivo
@@ -39,10 +42,19 @@ Uso:
 
     # Convertir JSON a YAML
     python pipeline_cd_backup_restore.py --mode convert-yaml --backup-files b1.json,b2.json
+
+    # Listar ultimas 5 revisiones de una definicion
+    python pipeline_cd_backup_restore.py --mode list-revisions --pipeline-id 905 --org X --project Y --pat Z
+
+    # Rollback a una revision historica (interactivo si no se pasa --to-revision)
+    python pipeline_cd_backup_restore.py --mode rollback --pipeline-id 905 --org X --project Y --pat Z
+    python pipeline_cd_backup_restore.py --mode rollback --pipeline-id 905 --to-revision 42 --org X --project Y --pat Z --yes
+    python pipeline_cd_backup_restore.py --mode rollback --pipeline-id 905 --to-revision 42 --dry-run --org X --project Y --pat Z
 """
 
 import argparse
 import base64
+import copy
 import json
 import os
 import sys
@@ -76,7 +88,7 @@ except ImportError:
 
 console = Console()
 
-__version__ = "1.8.32"
+__version__ = "1.8.47"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.0"
@@ -792,6 +804,115 @@ def restore_definition(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# REVISION HISTORY & ROLLBACK
+# ═══════════════════════════════════════════════════════════════════════════════
+def get_definition_revisions(org: str, project: str, def_id: int, pat: str, top: int = 5) -> List[Dict]:
+    """Lista las ultimas N revisiones de una definicion (metadata barata, sin payload completo).
+
+    GET /definitions/{id}/revisions devuelve solo metadatos: revision, changedDate,
+    changedBy, changeType, comment. La definicion completa se obtiene con
+    get_definition_at_revision().
+    """
+    url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions/{def_id}/revisions?api-version={API_VERSION}"
+    data = api_get(url, pat)
+    revs = data if isinstance(data, list) else data.get("value", [])
+    revs = [r for r in revs if isinstance(r, dict) and r.get("revision") is not None]
+    revs.sort(key=lambda r: r.get("revision", 0), reverse=True)
+    return revs[:top] if top > 0 else revs
+
+
+def get_definition_at_revision(org: str, project: str, def_id: int, revision: int, pat: str) -> Dict:
+    """Obtiene la definicion completa tal como estaba en una revision especifica."""
+    url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions/{def_id}?revision={revision}&api-version={API_VERSION}"
+    return api_get(url, pat)
+
+
+def print_revisions_table(revisions: List[Dict], current_revision: int = 0) -> None:
+    table = Table(title="Ultimas revisiones", box=None)
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Rev", style="cyan", justify="right")
+    table.add_column("Fecha", style="white")
+    table.add_column("Modificado por", style="white")
+    table.add_column("Cambio", style="white")
+    table.add_column("Comentario", style="dim")
+
+    for idx, rev in enumerate(revisions, 1):
+        rev_num = rev.get("revision", "?")
+        changed = rev.get("changedDate") or rev.get("modifiedOn") or "N/A"
+        if isinstance(changed, str) and "T" in changed:
+            changed = changed.replace("T", " ")[:19]
+        author = rev.get("changedBy") or rev.get("modifiedBy") or {}
+        author_name = author.get("displayName", "N/A") if isinstance(author, dict) else str(author)
+        change_type = str(rev.get("changeType", ""))
+        comment = (rev.get("comment") or "").strip()
+        marker = " [yellow](actual)[/yellow]" if rev_num == current_revision else ""
+        table.add_row(str(idx), f"{rev_num}{marker}", str(changed), author_name, change_type, comment[:60])
+
+    console.print(table)
+
+
+def build_rollback_payload(revision_def: Dict, current_def: Dict, comment: str = "") -> Dict:
+    """Construye el payload de PUT: contenido de la revision historica con los
+    identificadores de la definicion actual (id, revision para concurrency check,
+    nombre y path actuales). Los valores secretos vienen como null desde la API
+    y preservan el valor existente en el destino."""
+    payload = copy.deepcopy(revision_def)
+    payload["id"] = current_def.get("id")
+    payload["revision"] = current_def.get("revision")
+    payload["name"] = current_def.get("name", payload.get("name"))
+    payload["path"] = current_def.get("path", payload.get("path", "\\"))
+    payload["comment"] = comment or f"[Rollback] Restaurado a revision {revision_def.get('revision', '?')}"
+    for env in payload.get("environments", []):
+        env.pop("releaseId", None)
+    return payload
+
+
+def rollback_to_revision(
+    org: str,
+    project: str,
+    def_id: int,
+    revision: int,
+    pat: str,
+    dry_run: bool = False,
+    comment: str = "",
+) -> Dict:
+    """Rollback de una definicion de pipeline a una revision historica.
+
+    Flujo: GET actual -> GET revision historica -> diff -> backup del estado
+    actual -> PUT del payload reconstruido. En dry_run no hace backup ni PUT.
+    """
+    current_def = get_release_definition(org, project, def_id, pat)
+    revision_def = get_definition_at_revision(org, project, def_id, revision, pat)
+    diffs = diff_definitions(revision_def, current_def)
+
+    result = {
+        "status": "dry_run" if dry_run else "ok",
+        "pipeline_id": def_id,
+        "pipeline_name": current_def.get("name", ""),
+        "from_revision": current_def.get("revision"),
+        "to_revision": revision,
+        "diffs": diffs,
+        "backup_file": "",
+    }
+
+    if dry_run:
+        return result
+
+    backup = backup_single_pipeline(def_id, org, project, pat, BACKUP_DIR)
+    if backup.get("status") != "ok":
+        result["status"] = "error"
+        result["message"] = f"No se pudo crear backup previo al rollback: {backup.get('status')}"
+        return result
+    result["backup_file"] = backup["files"][0] if backup.get("files") else ""
+
+    payload = build_rollback_payload(revision_def, current_def, comment)
+    update_result = update_release_definition(org, project, def_id, payload, pat)
+    result["new_revision"] = update_result.get("revision")
+    result["result"] = update_result
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CREATE FROM BACKUP
 # ═══════════════════════════════════════════════════════════════════════════════
 def create_from_backup(
@@ -1092,6 +1213,7 @@ def interactive_mode() -> int:
         ("5", "Listar Backups Disponibles", "cyan"),
         ("6", "Backup Masivo (todos los pipelines)", "cyan"),
         ("7", "Convertir Backup JSON -> YAML", "cyan"),
+        ("8", "Rollback a Revision (definitionId)", "magenta"),
         ("Q", "Volver", "red"),
     ]
 
@@ -1246,6 +1368,64 @@ def interactive_mode() -> int:
                     prog.update(task, description="[green]Conversion completada")
                 console.print(f"[green]Convertidos {len(bfiles)} archivos a YAML[/green]")
 
+        elif choice == '8':
+            def_id_str = prompt_with_default("Definition ID del pipeline", "", required=True)
+            try:
+                def_id = int(def_id_str)
+            except ValueError:
+                console.print("[red]Definition ID invalido[/red]")
+                continue
+            try:
+                with console.status(f"[cyan]Obteniendo revisiones del pipeline {def_id}...", spinner="dots"):
+                    revisions = get_definition_revisions(org, project, def_id, pat, 5)
+                    current_def = get_release_definition(org, project, def_id, pat)
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+                continue
+            current_rev = current_def.get("revision", 0)
+            console.print(f"[cyan]Pipeline:[/cyan] {current_def.get('name')} (ID {def_id}, revision actual: {current_rev})")
+            if not revisions:
+                console.print("[yellow]No se encontraron revisiones[/yellow]")
+                continue
+            print_revisions_table(revisions, current_rev)
+
+            valid = {str(r.get("revision")) for r in revisions}
+            sel = Prompt.ask("[bold]Revision a restaurar[/bold]", choices=sorted(valid))
+            target_rev = int(sel)
+            if target_rev == current_rev:
+                console.print("[yellow]La revision seleccionada es la actual; nada que restaurar[/yellow]")
+                continue
+
+            try:
+                with console.status(f"[cyan]Obteniendo revision {target_rev}...", spinner="dots"):
+                    revision_def = get_definition_at_revision(org, project, def_id, target_rev, pat)
+                diffs = diff_definitions(revision_def, current_def)
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+                continue
+            print_diff_table(diffs, current_def.get("name", str(def_id)))
+
+            dry = Confirm.ask("Solo dry-run (simular)?", default=False)
+            if dry:
+                console.print("[yellow]Dry-run: no se aplicaron cambios[/yellow]")
+                continue
+            if not Confirm.ask(f"Confirmar rollback a revision {target_rev}?", default=False):
+                console.print("[yellow]Cancelado[/yellow]")
+                continue
+            try:
+                comment = f"[Rollback] Pipeline {def_id} restaurado de rev {current_rev} a rev {target_rev}"
+                with console.status(f"[cyan]Backup previo + rollback a revision {target_rev}...", spinner="dots"):
+                    result = rollback_to_revision(org, project, def_id, target_rev, pat,
+                                                  dry_run=False, comment=comment)
+                if result["status"] == "ok":
+                    console.print(f"[green]Rollback aplicado. Nueva revision: {result.get('new_revision')}[/green]")
+                    if result.get("backup_file"):
+                        console.print(f"[dim]Backup previo: {result['backup_file']}[/dim]")
+                else:
+                    console.print(f"[red]Error: {result.get('message', result)}[/red]")
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+
         else:
             console.print("[red]Opcion invalida[/red]")
 
@@ -1261,9 +1441,14 @@ def get_args():
     parser.add_argument('--org', '--organization', default='Coppel-Retail', help='Organizacion de Azure DevOps')
     parser.add_argument('--project', default='', help='Proyecto')
     parser.add_argument('--pat', required=False, help='Personal Access Token')
-    parser.add_argument('--mode', choices=['backup', 'backup-all', 'restore', 'create', 'diff', 'list', 'convert-yaml'],
+    parser.add_argument('--mode', choices=['backup', 'backup-all', 'restore', 'create', 'diff', 'list',
+                                           'convert-yaml', 'rollback', 'list-revisions'],
                         help='Modo de operacion')
     parser.add_argument('--pipeline-ids', default='', help='IDs separados por coma (max 500)')
+    parser.add_argument('--pipeline-id', type=int, default=0, help='ID de definicion para rollback/list-revisions')
+    parser.add_argument('--to-revision', type=int, default=0, help='Revision destino para rollback')
+    parser.add_argument('--top-revisions', type=int, default=5, help='Cuantas revisiones listar (default 5)')
+    parser.add_argument('--yes', '-y', action='store_true', help='Confirmar rollback sin preguntar')
     parser.add_argument('--backup-files', default='', help='Archivo(s) de backup separados por coma')
     parser.add_argument('--backup-file', default='', help='Archivo de backup unico')
     parser.add_argument('--new-name', default='', help='Nuevo nombre para crear pipeline')
@@ -1342,6 +1527,72 @@ def main():
         if not project:
             console.print("[red]Project requerido[/red]")
             return 1
+
+    if args.mode in ('list-revisions', 'rollback'):
+        def_id = args.pipeline_id
+        if not def_id and args.pipeline_ids:
+            def_id = int(args.pipeline_ids.split(",")[0].strip())
+        if not def_id:
+            console.print("[red]--pipeline-id requerido para rollback/list-revisions[/red]")
+            return 1
+        with console.status(f"[cyan]Obteniendo revisiones del pipeline {def_id}...", spinner="dots"):
+            try:
+                revisions = get_definition_revisions(org, project, def_id, pat, args.top_revisions)
+                current_def = get_release_definition(org, project, def_id, pat)
+            except Exception as e:
+                console.print(f"[red]Error consultando revisiones: {e}[/red]")
+                return 1
+        current_rev = current_def.get("revision", 0)
+        console.print(f"[cyan]Pipeline:[/cyan] {current_def.get('name')} (ID {def_id}, revision actual: {current_rev})")
+        if not revisions:
+            console.print("[yellow]No se encontraron revisiones[/yellow]")
+            return 1
+        print_revisions_table(revisions, current_rev)
+        if args.mode == 'list-revisions':
+            return 0
+
+        target_rev = args.to_revision
+        if not target_rev:
+            valid = {str(r.get("revision")) for r in revisions}
+            sel = Prompt.ask("[bold]Revision a restaurar[/bold]", choices=sorted(valid), default="")
+            target_rev = int(sel)
+        if target_rev == current_rev:
+            console.print("[yellow]La revision seleccionada es la actual; nada que restaurar[/yellow]")
+            return 0
+
+        console.print(f"\n[cyan]Comparando revision {target_rev} vs actual ({current_rev})...[/cyan]")
+        try:
+            revision_def = get_definition_at_revision(org, project, def_id, target_rev, pat)
+        except Exception as e:
+            console.print(f"[red]Error obteniendo revision {target_rev}: {e}[/red]")
+            return 1
+        diffs = diff_definitions(revision_def, current_def)
+        print_diff_table(diffs, current_def.get("name", str(def_id)))
+
+        if args.dry_run:
+            console.print("[yellow]Dry-run: no se aplicaron cambios[/yellow]")
+            return 0
+
+        if not args.yes:
+            if not Confirm.ask(f"Confirmar rollback de pipeline {def_id} a revision {target_rev}?", default=False):
+                console.print("[yellow]Cancelado[/yellow]")
+                return 0
+
+        comment = f"[Rollback] Pipeline {def_id} restaurado de rev {current_rev} a rev {target_rev}"
+        with console.status(f"[cyan]Backup previo + rollback a revision {target_rev}...", spinner="dots"):
+            try:
+                result = rollback_to_revision(org, project, def_id, target_rev, pat,
+                                              dry_run=False, comment=comment)
+            except Exception as e:
+                console.print(f"[red]Error en rollback: {e}[/red]")
+                return 1
+        if result["status"] == "ok":
+            console.print(f"[green]Rollback aplicado. Nueva revision: {result.get('new_revision')}[/green]")
+            if result.get("backup_file"):
+                console.print(f"[dim]Backup previo: {result['backup_file']}[/dim]")
+            return 0
+        console.print(f"[red]Error: {result.get('message', result)}[/red]")
+        return 1
 
     if args.mode == 'backup':
         if not args.pipeline_ids:

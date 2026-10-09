@@ -1017,6 +1017,47 @@ se colapsan en un conteo (`--show-skipped` para verlos uno a uno).
 **reporte HTML autocontenido** con resumen, detalle por pipeline y tabla de
 objetos). Exit `2` si alguna severidad ≥ HIGH.
 
+### 11 · Pipeline CD Backup & Restore — rollback por revisión — opción 27
+
+`pipeline_cd_backup_restore.py` además de backup/restore desde archivos
+locales permite **rollback de la definición de un release pipeline a una
+revisión histórica** usando el historial de revisiones de AzDO:
+
+```bash
+# Listar las últimas 5 revisiones de una definición
+python pipeline_cd_backup_restore.py --mode list-revisions --pipeline-id 905 \
+    --org X --project Y --pat Z
+
+# Rollback: lista las últimas 5 y pide selección interactiva
+python pipeline_cd_backup_restore.py --mode rollback --pipeline-id 905 \
+    --org X --project Y --pat Z
+
+# Rollback directo a una revisión (sin prompt con --yes, simular con --dry-run)
+python pipeline_cd_backup_restore.py --mode rollback --pipeline-id 905 \
+    --to-revision 42 --org X --project Y --pat Z --yes
+python pipeline_cd_backup_restore.py --mode rollback --pipeline-id 905 \
+    --to-revision 42 --dry-run --org X --project Y --pat Z
+```
+
+Flujo del rollback (`--mode rollback` o submenú interactivo opción **8**):
+
+1. `GET /definitions/{id}/revisions` — tabla con las últimas N revisiones
+   (`--top-revisions`, default **5**): número, fecha, autor, tipo de cambio y
+   comentario. La revisión actual se marca `(actual)`.
+2. Selección de la revisión destino (prompt con `--to-revision` omitido).
+3. Diff revisión histórica ↔ definición actual (`diff_definitions`).
+4. Confirmación explícita (`--yes` la omite; `--dry-run` termina aquí).
+5. **Backup automático del estado actual** en `outcome/backups/definitions/`
+   antes de modificar — si el backup falla, el rollback se aborta.
+6. `PUT /definitions/{id}` con el contenido de la revisión histórica, pero con
+   `id`/`revision`/`name`/`path` **actuales** (concurrency check) y comentario
+   `[Rollback] …`. Los valores `isSecret` vienen `null` desde la API → AzDO
+   conserva el secreto existente en el destino.
+
+> **No confundir**: esto restaura la *definición* del pipeline (config, stages,
+> tasks, variables). Para re-desplegar un release anterior usar la opción 23
+> (Refresh Release); para rollback desde backup local la opción 22.
+
 ---
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
@@ -1127,6 +1168,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-08 | 1.8.47 | **Opción 27: rollback de definición por revisión historica** — nuevos modos `list-revisions` y `rollback` en `pipeline_cd_backup_restore.py`. `GET /definitions/{id}/revisions` lista las últimas N revisiones (default 5, `--top-revisions`) con fecha/autor/tipo/comentario. `--mode rollback --pipeline-id N` muestra la tabla, permite elegir revisión (o `--to-revision`), presenta diff revisión↔actual, pide confirmación (`--yes` la omite, `--dry-run` no modifica), crea **backup automático del estado actual** antes del PUT y envía el payload con `id`/`revision` actuales (concurrency check). Secretos `null` conservan el valor del destino. Submenú interactivo gana opción 8. Tests: +15 (`test_pipeline_cd_backup_restore.py`). | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.47), `scm/azdo/tools.py` (v1.8.47), `scm/tests/unit/test_pipeline_cd_backup_restore.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.46 | **Opción 46: placeholders `[[target.*]]`** — en la template full, cualquier string puede contener `[[target.<ruta>]]` y se resuelve contra la definición **destino** al aplicar (`resolve_target_placeholders` recursivo antes del PUT). Rutas: `name`, `id`, `path`, `artifact.alias`/`artifact.name` (+`artifact.N.*`), `var.<NOMBRE>` (variable release destino), `env.<STAGE>.var.<NOMBRE>` (variable de stage destino, stage case-insensitive). Ej.: `value: "[[target.artifact.alias]]"` toma el alias del artifact del pipeline destino. Placeholders no resolubles quedan literales y se reportan en el diff (`⚠ placeholders sin resolver`). La sintaxis queda documentada en el `metadata.comment` de cada template generada. Tests: +11. | `scm/azdo/pipeline_cd_template.py` (v1.0.1), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.45 | **Nueva opción 46: Pipeline CD Template Export/Apply** — `pipeline_cd_template.py` extrae la definición completa de un pipeline CD (`--source-id`) y genera en `outcome/templates/`: (1) **`pipe_cd_full_<id>_<nombre>.yaml`** — definición normalizada (sin campos de servidor: id/revision/_links/env ids), secretos con `value: null` (al aplicar conservan el valor del destino si la variable existe), e IDs resueltos a nombres (`resolved_names`: queues, variable groups, task groups). (2) **`pipe_cd_updater_<id>_<nombre>.yaml`** — template DSL de la opción 41 con un `action: add` por stage (definición embebida) + variables release. **Apply**: `--target-id` hace PUT del template sobre otro pipeline — backup previo en `outcome/backups/template/`, diff de stages/variables, `--dry-run` y confirmación `--yes`. Acepta `--template <yaml>` para aplicar una exportada antes. `AzdoClient` gana `put()`. Tests: +13. | `scm/azdo/pipeline_cd_template.py` (v1.0.0), `scm/azdo/scm_inspection_remediator.py` (put), `scm/azdo/tools.py` (opción 46), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md` |
 | 2026-10-08 | 1.8.44 | **Opción 45: Comparación 1 elemento-por-elemento (contenido)** — cuando el log del apply imprime los objetos resultantes (`kubectl apply -o yaml`), se extraen como YAML (`extract_manifest_docs`) y se comparan contra el manifiesto a nivel de campo: `diff_applied_objects` normaliza el objeto del server (`normalize_applied_object` quita `status`, `resourceVersion`, `uid`, `managedFields`, `last-applied-configuration`…) y verifica que **los campos declarados por el manifiesto** estén presentes e iguales en el aplicado (`_diff_subset` — los defaults del server no cuentan como drift). Resultado por elemento: **+ en prod sin estar en manifiesto** (finding `EXTRA_IN_PROD` MEDIUM — existe en producción fuera del manifiesto aplicado), **− en manifiesto sin objeto en resultado**, **= coincide**, **~ difiere** (finding `SPEC_DIFFERS` MEDIUM con `path: manifiesto → aplicado`). Objetos con placeholders (`#{var}#`) se excluyen del diff. Consola y HTML muestran el bloque "Elemento por elemento" (HTML con `<details>` por objeto que difiere); si el apply no imprime objetos YAML se indica explícitamente. Tests: +14. | `scm/azdo/azdo_release_manifest_drift.py` (v1.0.9), `scm/tests/unit/test_azdo_release_manifest_drift.py`, `scm/azdo/README.md` |

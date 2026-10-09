@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.45"
+__version__ = "1.8.47"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -383,9 +383,10 @@ TOOLS: Dict = {
     },
     "27": {
         "name":        "Pipeline CD Backup & Restore",
-        "description": "Backup/restore completo de definiciones de Pipeline CD. Individual (max 500 IDs), masivo, restore, crear desde backup, diff y conversion JSON→YAML. Submenú interactivo.",
+        "description": "Backup/restore completo de definiciones de Pipeline CD. Individual (max 500 IDs), masivo, restore, crear desde backup, diff, conversion JSON→YAML y rollback a revision historica por definitionId (ultimas 5 revisiones). Submenú interactivo.",
         "path":        "pipeline_cd_backup_restore.py",
         "args":        ["--org", "--project", "--pat", "--mode", "--pipeline-ids",
+                        "--pipeline-id", "--to-revision", "--top-revisions", "--yes",
                         "--backup-files", "--backup-file", "--new-name", "--path-filter",
                         "--format", "--workers", "--dry-run", "--interactive", "--output"],
         "group":       "updatepipe",
