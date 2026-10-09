@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.47`** — 2026-10-08
+**`1.8.48`** — 2026-10-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-09 | **1.8.48** | **fix(azdo): opción 27 — crash en backup previo al rollback** — `resolve_names` asumía `variableGroups` como lista de dicts (`vg_ref.get("id")`) pero AzDO devuelve lista de ints → `'int' object has no attribute 'get'` y el backup previo al rollback fallaba (el rollback se abortaba sin modificar nada, seguro por diseño). Ahora acepta refs int o dict a nivel definición y environment. Test: +1. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.48), `scm/tests/unit/test_pipeline_cd_backup_restore.py`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.47** | **feat(azdo): opción 27 — rollback de definición por revisión** — nuevos modos `list-revisions` (GET `/definitions/{id}/revisions`: últimas N revisiones con fecha/autor/tipo/comentario, default 5) y `rollback` (`--pipeline-id` + `--to-revision` o selección interactiva → diff revisión-vs-actual → confirmación → **backup automático del estado actual** → PUT con `id`/`revision` actuales para concurrency check). `build_rollback_payload` preserva nombre/path del destino, quita `releaseId` de envs y mantiene secretos en `null` (conservan valor existente). `--dry-run` y `--yes` soportados. Submenú interactivo gana opción 8. Tests: +15 (`test_pipeline_cd_backup_restore.py`). | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.47), `scm/azdo/tools.py` (v1.8.47), `scm/tests/unit/test_pipeline_cd_backup_restore.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.46** | **feat(azdo): opción 46 — placeholders `[[target.*]]`** — en la template full, `[[target.name\|id\|path]]`, `[[target.artifact.alias\|name]]` (+`artifact.N.*`), `[[target.var.X]]`, `[[target.env.S.var.X]]` se resuelven contra la definición **destino** antes del PUT (`resolve_target_placeholders`); no resolubles quedan literales y se reportan. Sintaxis documentada en el comment de la template. Tests: +11 (102 área). | `scm/azdo/pipeline_cd_template.py` (v1.0.1), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.45** | **feat(azdo): nueva opción 46 — Pipeline CD Template Export/Apply** — `pipeline_cd_template.py`: extrae definición completa de un CD pipeline como template YAML (`pipe_cd_full_*` normalizada + `pipe_cd_updater_*` DSL para opción 41) en `outcome/templates/`; secretos redactados, IDs resueltos a nombres. `--target-id` aplica el template sobre otro pipeline via PUT con backup, diff y dry-run. `AzdoClient.put()` añadido. Tests: +13 (91 área). | `scm/azdo/pipeline_cd_template.py` (v1.0.0), `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

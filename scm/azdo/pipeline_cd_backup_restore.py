@@ -88,7 +88,7 @@ except ImportError:
 
 console = Console()
 
-__version__ = "1.8.47"
+__version__ = "1.8.48"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.0"
@@ -274,10 +274,10 @@ def resolve_names(definition: Dict, org: str, project: str, pat: str) -> Dict:
 
     vg_ids = set()
     for vg_ref in definition.get("variableGroups", []):
-        vg_ids.add(vg_ref.get("id"))
+        vg_ids.add(vg_ref.get("id") if isinstance(vg_ref, dict) else vg_ref)
     for env in definition.get("environments", []):
         for vg_ref in env.get("variableGroups", []):
-            vg_ids.add(vg_ref.get("id"))
+            vg_ids.add(vg_ref.get("id") if isinstance(vg_ref, dict) else vg_ref)
 
     for vgid in vg_ids:
         if vgid:

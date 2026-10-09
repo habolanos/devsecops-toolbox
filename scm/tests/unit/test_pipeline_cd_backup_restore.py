@@ -151,6 +151,25 @@ def test_rollback_api_error_propagates(current_def):
             m.rollback_to_revision("o", "p", 905, 7, "pat")
 
 
+# ───────────────────────────── resolve_names (int variableGroups) ────────────
+def test_resolve_names_accepts_int_variable_groups():
+    """AzDO puede devolver variableGroups como lista de ints, no de dicts."""
+    definition = {
+        "variableGroups": [123, {"id": 456}],
+        "environments": [{
+            "name": "Prod",
+            "variableGroups": [789],
+            "deployPhases": [{"deploymentInput": {"queueId": 9}, "workflowTasks": []}],
+        }],
+    }
+    with patch.object(m, "get_agent_queue_name", return_value="pool"), \
+         patch.object(m, "get_variable_group_name", return_value="vg") as mock_vg, \
+         patch.object(m, "get_task_group_name", return_value="tg"):
+        resolved = m.resolve_names(definition, "o", "p", "pat")
+    assert set(resolved["variable_groups"].keys()) == {"123", "456", "789"}
+    assert resolved["agent_pools"] == {"9": "pool"}
+
+
 # ───────────────────────────── print_revisions_table ─────────────────────────
 def test_print_revisions_table_marks_current():
     revs = [{"revision": 10, "changedDate": "2026-01-01T10:00:00Z",
