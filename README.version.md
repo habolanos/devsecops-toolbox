@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.49`** — 2026-10-09
+**`1.8.50`** — 2026-10-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-09 | **1.8.50** | **fix(azdo): opción 27 — outcome dir global** — `BACKUP_DIR` estaba hardcodeado a `outcome/` relativo al cwd; ahora `_resolve_outcome_dir()` respeta la convención `DEVSECOPS_OUTPUT_DIR` > `config.json global.output_dir` > `scm/outcome` (igual que `resolve_outcome_dir` del remediator). Backups/exports de la opción 27 quedan en `scm/outcome/backups/definitions/` por defecto. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.50), `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.49** | **fix(azdo): opción 27 — HTTP 400 en PUT de rollback** — el payload de la revisión histórica llevaba campos de solo-lectura (`url`, `_links`, `lastRelease`, `createdOn`…) y `id`s de environments que ya no existen en la definición actual (stages recreados entre revisiones). `build_rollback_payload` ahora limpia los campos de sistema, quita `badgeUrl`/`releaseId` por env y conserva el `id` de env solo si sigue existiendo en la actual (si no, AzDO lo recrea). `api_put`/`api_post` ahora incluyen el **body del error** de AzDO en la excepción para diagnóstico real. Tests: +2 (18 módulo). | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.49), `scm/tests/unit/test_pipeline_cd_backup_restore.py`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.48** | **fix(azdo): opción 27 — crash en backup previo al rollback** — `resolve_names` asumía `variableGroups` como lista de dicts (`vg_ref.get("id")`) pero AzDO devuelve lista de ints → `'int' object has no attribute 'get'` y el backup previo al rollback fallaba (el rollback se abortaba sin modificar nada, seguro por diseño). Ahora acepta refs int o dict a nivel definición y environment. Test: +1. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.48), `scm/tests/unit/test_pipeline_cd_backup_restore.py`, `README.version.md`, `VERSION` |
 | 2026-10-08 | **1.8.47** | **feat(azdo): opción 27 — rollback de definición por revisión** — nuevos modos `list-revisions` (GET `/definitions/{id}/revisions`: últimas N revisiones con fecha/autor/tipo/comentario, default 5) y `rollback` (`--pipeline-id` + `--to-revision` o selección interactiva → diff revisión-vs-actual → confirmación → **backup automático del estado actual** → PUT con `id`/`revision` actuales para concurrency check). `build_rollback_payload` preserva nombre/path del destino, quita `releaseId` de envs y mantiene secretos en `null` (conservan valor existente). `--dry-run` y `--yes` soportados. Submenú interactivo gana opción 8. Tests: +15 (`test_pipeline_cd_backup_restore.py`). | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.47), `scm/azdo/tools.py` (v1.8.47), `scm/tests/unit/test_pipeline_cd_backup_restore.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

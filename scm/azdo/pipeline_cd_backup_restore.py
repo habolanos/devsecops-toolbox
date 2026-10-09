@@ -88,13 +88,34 @@ except ImportError:
 
 console = Console()
 
-__version__ = "1.8.49"
+__version__ = "1.8.50"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.0"
 MAX_PIPELINE_IDS = 500
 DEFAULT_WORKERS = 10
-BACKUP_DIR = Path("outcome") / "backups" / "definitions"
+
+
+def _resolve_outcome_dir() -> Path:
+    """DEVSECOPS_OUTPUT_DIR > config.json global.output_dir > scm/outcome."""
+    env = os.environ.get("DEVSECOPS_OUTPUT_DIR")
+    if env:
+        return Path(env)
+    scm_root = Path(__file__).resolve().parent.parent
+    out = Path("outcome")
+    config_file = scm_root / "config.json"
+    if config_file.exists():
+        try:
+            out = Path(json.loads(config_file.read_text(encoding="utf-8"))
+                       .get("global", {}).get("output_dir") or "outcome")
+        except Exception:
+            pass
+    if not out.is_absolute():
+        out = scm_root / out
+    return out
+
+
+BACKUP_DIR = _resolve_outcome_dir() / "backups" / "definitions"
 
 SYSTEM_FIELDS_TO_CLEAN = [
     "_links", "self", "web", "artifactsLocation",
