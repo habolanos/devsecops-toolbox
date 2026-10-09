@@ -998,6 +998,60 @@ def run_tool(tool_key: str):
         if validate in ["configmaps", "secrets", "connectivity"]:
             args.extend(["--validate", validate])
 
+    if "--region1" in tool_args:
+        print(f"\n{Colors.BOLD}Región origen 1 [us-east-1]:{Colors.ENDC} ", end="")
+        region1 = input().strip()
+        if region1:
+            args.extend(["--region1", region1])
+
+    if "--region2" in tool_args:
+        print(f"\n{Colors.BOLD}Región origen 2 [us-west-2]:{Colors.ENDC} ", end="")
+        region2 = input().strip()
+        if region2:
+            args.extend(["--region2", region2])
+
+    if "--regions" in tool_args:
+        print(f"\n{Colors.BOLD}Regiones CSV o 'all' [all]:{Colors.ENDC} ", end="")
+        regions = input().strip()
+        if regions:
+            args.extend(["--regions", regions])
+
+    if "--instance" in tool_args:
+        print(f"\n{Colors.BOLD}Nombre de instancia RDS (vacío = todas):{Colors.ENDC} ", end="")
+        instance = input().strip()
+        if instance:
+            args.extend(["--instance", instance])
+
+    if "--function" in tool_args:
+        print(f"\n{Colors.BOLD}Nombre de función Lambda (vacío = todas):{Colors.ENDC} ", end="")
+        function = input().strip()
+        if function:
+            args.extend(["--function", function])
+
+    if "--view" in tool_args:
+        print(f"\n{Colors.BOLD}Vista (summary/security/performance/all/map/orphans) [default]:{Colors.ENDC} ", end="")
+        view = input().strip()
+        if view:
+            args.extend(["--view", view])
+
+    if "--period" in tool_args:
+        print(f"\n{Colors.BOLD}Período en días [default]:{Colors.ENDC} ", end="")
+        period = input().strip()
+        if period.isdigit():
+            args.extend(["--period", period])
+
+    if "--severity" in tool_args:
+        print(f"\n{Colors.BOLD}Severidad mínima (critical/high/medium/low/all) [all]:{Colors.ENDC} ", end="")
+        severity = input().strip().lower()
+        if severity:
+            args.extend(["--severity", severity])
+
+    if "--csv-file" in tool_args:
+        print(f"\n{Colors.BOLD}Ruta al archivo CSV:{Colors.ENDC} ", end="")
+        csv_file = input().strip()
+        if csv_file:
+            args.extend(["--csv-file", csv_file])
+
     if "--scope" in tool_args:
         print(f"\n{Colors.BOLD}WAF Scope (REGIONAL/CLOUDFRONT) [REGIONAL]:{Colors.ENDC} ", end="")
         scope = input().strip().upper()
