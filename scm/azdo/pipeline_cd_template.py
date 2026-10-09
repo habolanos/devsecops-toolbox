@@ -55,7 +55,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.14"
+__version__ = "1.0.15"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -77,7 +77,7 @@ try:
 except ImportError:
     RICH = False
 
-console = Console() if RICH else None
+console = Console(record=True) if RICH else None
 
 if sys.platform == "win32":
     try:
@@ -90,12 +90,12 @@ if sys.platform == "win32":
 # Todo lo que _print/_ask/_show_definition_summary emite queda registrado
 # aquí (incluye las respuestas del usuario en modo interactivo) y se vuelca
 # a outcome/reports/EVIDENCIA_pipe_cd_template_<ts>.html al final del run.
-_TRANSCRIPT: List[str] = []
+_TRANSCRIPT: List[Tuple[str, str]] = []   # (texto, estilo rich)
 _REPORT_META: Dict[str, object] = {}
 
 
-def _record(line: str = "") -> None:
-    _TRANSCRIPT.append(line)
+def _record(line: str = "", style: str = "") -> None:
+    _TRANSCRIPT.append((line, style))
 
 
 def _record_files(files) -> None:
@@ -1136,7 +1136,7 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _print(msg: str = "", style: str = ""):
-    _record(msg)
+    _record(msg, style)
     if console:
         console.print(f"[{style}]{msg}[/]" if style else msg)
     else:
@@ -1157,9 +1157,9 @@ def _show_definition_summary(defn: Dict):
         f"Variables: {len(defn.get('variables') or {})}",
         f"Artifacts: {len(defn.get('artifacts') or [])}",
     ]
-    _record("[Definición]")
+    _record("[Definición]", "bold cyan")
     for l in lines:
-        _record(l)
+        _record(l, "cyan")
     if console:
         console.print(Panel("\n".join(lines), title="Definición",
                             expand=False))
@@ -1207,13 +1207,67 @@ _EVIDENCE_CSS = """
 """
 
 
+# Mapa de estilos Rich usados por el script → CSS (fallback cuando Rich no
+# está instalado; con Rich se usa console.export_html, que reproduce los
+# colores exactos del terminal).
+_STYLE_COLORS = {
+    "black": "#495057", "red": "#ff6b6b", "green": "#51cf66",
+    "yellow": "#ffd43b", "blue": "#74c0fc", "magenta": "#e599f7",
+    "cyan": "#66d9e8", "white": "#f1f3f5", "orange": "#ffa94d",
+    "purple": "#b197fc", "grey": "#adb5bd", "gray": "#adb5bd",
+}
+
+
+def _style_to_css(style: str) -> str:
+    """Traduce un estilo Rich ('bold cyan', 'dim', ...) a declaraciones CSS."""
+    decls = []
+    for tok in (style or "").split():
+        if tok == "bold":
+            decls.append("font-weight:700")
+        elif tok in ("dim", "faint"):
+            decls.append("opacity:.6")
+        elif tok == "italic":
+            decls.append("font-style:italic")
+        elif tok == "underline":
+            decls.append("text-decoration:underline")
+        elif tok in _STYLE_COLORS:
+            decls.append(f"color:{_STYLE_COLORS[tok]}")
+    return ";".join(decls)
+
+
+def _console_section_html() -> str:
+    """HTML de la salida de consola con los colores del terminal.
+
+    Con Rich disponible usa console.export_html (fidelidad total: colores,
+    negritas, paneles, tablas). Sin Rich renderiza el transcript (texto,
+    estilo) como spans con el mapa _STYLE_COLORS sobre fondo oscuro.
+    """
+    if console is not None:
+        try:
+            from rich.terminal_theme import MONOKAI
+            # code_format="{code}": solo los spans estilizados (sin <html>
+            # embebido); el <pre class="console"> aporta el fondo oscuro.
+            frag = console.export_html(theme=MONOKAI, inline_styles=True,
+                                       clear=False, code_format="{code}")
+            if frag:
+                return f'<pre class="console">{frag}</pre>'
+        except Exception:
+            pass
+    lines = []
+    for text, style in _TRANSCRIPT:
+        css = _style_to_css(style)
+        esc = _html.escape(text)
+        lines.append(f'<span style="{css}">{esc}</span>' if css else esc)
+    return f'<pre class="console">{"\n".join(lines)}</pre>'
+
+
 def write_evidence_report(report_dir: Path) -> Optional[Path]:
-    """Vuelca el transcript de consola a un reporte HTML de evidencia.
+    """Vuelca la salida de consola a un reporte HTML de evidencia.
 
     Incluye metadatos del run (org/proyecto/modo/parámetros), los archivos
-    generados y la salida completa de consola tal como se imprimió
-    (prompts y respuestas incluidos). Devuelve el path escrito o None si
-    no hubo salida.
+    generados y la salida de consola **con los mismos colores del
+    terminal** (export_html de Rich cuando está instalado). Devuelve el
+    path escrito o None si no hubo salida.
     """
     if not _TRANSCRIPT:
         return None
@@ -1259,7 +1313,7 @@ def write_evidence_report(report_dir: Path) -> Optional[Path]:
         files_html = (f'<div class="card"><h2>📁 Archivos generados</h2>'
                       f'<ul class="files">{items}</ul></div>')
 
-    console_text = _html.escape("\n".join(_TRANSCRIPT))
+    console_block = _console_section_html()
     html_doc = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1280,7 +1334,7 @@ def write_evidence_report(report_dir: Path) -> Optional[Path]:
   {files_html}
   <div class="card">
     <h2>🖥️ Salida de consola</h2>
-    <pre class="console">{console_text}</pre>
+    {console_block}
   </div>
   <div class="footer">DevSecOps Toolbox — pipeline_cd_template v{__version__} — generado {ts}</div>
 </div>
@@ -1357,9 +1411,12 @@ def _ask(prompt: str, default: str = "") -> str:
         sfx = f" [{default}]" if default else ""
         v = input(f"{prompt}{sfx}: ").strip()
         v = v or default
-    # Evidencia: la respuesta del usuario no queda en el transcript de
-    # _print — la registramos como pregunta→respuesta.
-    _record(f"{prompt} -> {v}")
+    # Evidencia: la respuesta del usuario no queda en el buffer de Rich —
+    # la ecoamos en dim para que el export HTML la incluya, y registramos
+    # pregunta→respuesta en el transcript de respaldo.
+    if console:
+        console.print(f"  → {v}", style="dim")
+    _record(f"{prompt} -> {v}", "dim")
     return v
 
 
@@ -1502,8 +1559,9 @@ def main() -> int:
                 ans = Confirm.ask(
                     f"  Stage '{name}' existe en el destino — "
                     f"¿sobrescribir con la template?", default=False)
+                console.print(f"  → {'s' if ans else 'n'}", style="dim")
                 _record(f"  ¿Sobrescribir stage '{name}'? -> "
-                        f"{'s' if ans else 'n'}")
+                        f"{'s' if ans else 'n'}", "dim")
                 return ans
             ans = _ask(f"  ¿Sobrescribir stage '{name}'? (s/n)", "n")
             return ans.lower().startswith("s")

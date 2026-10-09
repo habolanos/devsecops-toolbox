@@ -945,15 +945,17 @@ class TestEvidenceReport:
         m._print("hola mundo", "bold")
         monkeypatch.setattr("builtins.input", lambda p: " 42 ")
         assert m._ask("definitionId") == "42"
-        assert m._TRANSCRIPT == ["hola mundo", "definitionId -> 42"]
+        assert m._TRANSCRIPT == [("hola mundo", "bold"),
+                               ("definitionId -> 42", "dim")]
 
     def test_show_definition_summary_records(self, monkeypatch):
         import scm.azdo.pipeline_cd_template as m
         m._TRANSCRIPT.clear()
         monkeypatch.setattr(m, "console", None)
         m._show_definition_summary(_defn())
-        assert "[Definición]" in m._TRANSCRIPT
-        assert any("Nombre:    CD-Origen" in l for l in m._TRANSCRIPT)
+        texts = [t for t, _ in m._TRANSCRIPT]
+        assert "[Definición]" in texts
+        assert any("Nombre:    CD-Origen" in l for l in texts)
 
     def test_write_evidence_report_html(self, tmp_path, monkeypatch):
         import scm.azdo.pipeline_cd_template as m
@@ -1061,3 +1063,36 @@ class TestPutCommentDescription:
         res = apply_template(c, 910, tpl, dry_run=True)
         assert res["payload"]["comment"]
         assert any("descripción:" in s for s in res["summary"])
+
+    def test_console_section_fallback_uses_styles(self, tmp_path, monkeypatch):
+        """Sin Rich: el transcript (texto, estilo) se renderiza con spans CSS."""
+        import scm.azdo.pipeline_cd_template as m
+        m._TRANSCRIPT.clear()
+        m._REPORT_META.clear()
+        monkeypatch.setattr(m, "console", None)
+        m._print("aplicado ok", "bold green")
+        m._print("error grave", "red")
+        m._REPORT_META["mode"] = "cli"
+        p = m.write_evidence_report(tmp_path)
+        html = p.read_text(encoding="utf-8")
+        assert 'font-weight:700' in html and '#51cf66' in html  # bold green
+        assert '#ff6b6b' in html                                 # red
+        assert 'aplicado ok' in html and 'error grave' in html
+
+    def test_console_section_uses_rich_export(self, tmp_path, monkeypatch):
+        """Con Rich: la sección usa console.export_html (colores reales)."""
+        import scm.azdo.pipeline_cd_template as m
+        if not m.RICH:
+            pytest.skip("rich no instalado")
+        from rich.console import Console
+        fake = Console(record=True)
+        monkeypatch.setattr(m, "console", fake)
+        m._TRANSCRIPT.clear()
+        m._REPORT_META.clear()
+        fake.print("[green]verde rich[/]")
+        m._REPORT_META["mode"] = "cli"
+        m._record("trigger")          # transcript no vacío → escribe reporte
+        p = m.write_evidence_report(tmp_path)
+        html = p.read_text(encoding="utf-8")
+        assert "verde rich" in html
+        assert "rich-terminal" in html or "#" in html  # estilos del export
