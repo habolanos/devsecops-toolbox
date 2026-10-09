@@ -1083,6 +1083,20 @@ rutas indicadas → resuelve `[[target.*]]` → PUT. Rutas preserve: cualquier
 campo top-level (`artifacts`, `triggers`, `releaseNameFormat`,
 `variableGroups`, `variables`…), `var.<NOMBRE>` (variable release),
 `env.<STAGE>.<campo>` (campo de un stage que exista en la template).
+También stages completos: `env.<STAGE>` toma el environment entero del
+destino (reemplaza el del mismo nombre en la template o lo agrega al final;
+conserva el `id` del destino y quita `releaseId`/`badgeUrl`/`queue`), y
+`env.*` preserva **todos** los stages del destino — útil para mantener
+stages como `SCM Inspection`, `Develop`, `QA`, `Validator`, `Staging`,
+`Production` intactos mientras la template actualiza el resto:
+
+```bash
+python pipeline_cd_template.py --template t.yaml --target-id 910 \
+    --preserve "artifacts,triggers,env.SCM Inspection,env.Develop,env.QA,env.Validator,env.Staging,env.Production"
+# o todos los stages del destino:
+python pipeline_cd_template.py --template t.yaml --target-id 910 \
+    --preserve "artifacts,triggers,env.*"
+```
 
 ---
 
@@ -1194,6 +1208,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-09 | 1.8.52 | **Opción 46: preserve de stages completos** — `--preserve env.<STAGE>` preserva el environment entero del destino (reemplaza mismo nombre en template o lo agrega si falta; conserva `id`, quita `releaseId`/`badgeUrl`/`queue`); `env.*` preserva todos los stages del destino. Tests: +4 (41 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.3), `scm/tests/unit/test_pipeline_cd_template.py` |
 | 2026-10-09 | 1.8.51 | **Opción 46: backup YAML del destino + `--preserve` anti-overwrite** — el apply (PUT reemplazo total) "planchaba" los `artifacts`/`triggers` del origen sobre el destino (p.ej. cambiaba el build artifact al del pipeline origen). Nuevo flujo: GET destino → backup **JSON+YAML** del destino original en `outcome/backups/template/` → relee el YAML → `preserve_from_target` copia las rutas preservadas del destino al payload → placeholders `[[target.*]]` → PUT. `--preserve` default `artifacts,triggers`; rutas soportadas: campo top-level (`artifacts`, `triggers`, `releaseNameFormat`, `variableGroups`, `variables`…), `var.<NOMBRE>`, `env.<STAGE>.<campo>`; `none` desactiva. Prompt de preserve en modo interactivo. Tests: +13 (37 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.2), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md` |
 | 2026-10-09 | 1.8.50 | **Opción 27: outcome dir global** — `BACKUP_DIR` dejaba de ser relativo al cwd; `_resolve_outcome_dir()` aplica `DEVSECOPS_OUTPUT_DIR` > `config.json global.output_dir` > `scm/outcome`, alineado con el resto del toolbox. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.50) |
 | 2026-10-09 | 1.8.49 | **Fix opción 27: HTTP 400 en PUT de rollback** — el payload histórico incluía campos read-only (`url`, `_links`, `lastRelease`, `createdOn`, `modifiedBy`…) y `id` de environments inexistentes en la definición actual (stages recreados entre revisiones → AzDO rechaza IDs huérfanos). Se limpian campos de sistema y se conserva `id` de env solo si existe en la actual; si no se omite y AzDO lo recrea. `api_put`/`api_post` ahora propagan el **body del error HTTP** para diagnóstico real. Tests: +2. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.49), `scm/tests/unit/test_pipeline_cd_backup_restore.py` |

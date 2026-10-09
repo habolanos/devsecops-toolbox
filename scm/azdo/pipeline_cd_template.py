@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -445,9 +445,22 @@ def load_template_definition(path: Path) -> Dict:
 #   variableGroups       grupos de variables del destino
 #   variables            todas las variables de release del destino
 #   var.<NOMBRE>         una variable de release concreta del destino
+#   env.<STAGE>          stage completo del destino (reemplaza el mismo nombre
+#                        en la template o lo agrega si no existe)
+#   env.*                todos los stages del destino
 #   env.<STAGE>.variables   variables de un stage del destino (si existe en payload)
 #   retentionPolicy / processParameters / description / badgeOptions  (top-level)
 DEFAULT_PRESERVE_PATHS = ["artifacts", "triggers"]
+
+# Campos read-only de un environment preservado del destino
+_ENV_PRESERVE_STRIP = ("releaseId", "badgeUrl", "queue")
+
+
+def _env_by_name(defn: Dict, stage: str) -> Optional[Dict]:
+    for env in defn.get("environments", []):
+        if (env.get("name") or "").lower() == stage.lower():
+            return env
+    return None
 
 
 def _preserve_get(target: Dict, path: str):
@@ -455,13 +468,13 @@ def _preserve_get(target: Dict, path: str):
     m = re.fullmatch(r"var\.(.+)", path)
     if m:
         return (target.get("variables") or {}).get(m.group(1))
-    m = re.fullmatch(r"env\.(.+)\.(.+)", path)
+    m = re.fullmatch(r"env\.(.+?)\.(.+)", path)
     if m:
-        stage, field = m.group(1), m.group(2)
-        for env in target.get("environments", []):
-            if (env.get("name") or "").lower() == stage.lower():
-                return env.get(field)
-        return None
+        env = _env_by_name(target, m.group(1))
+        return env.get(m.group(2)) if env else None
+    m = re.fullmatch(r"env\.(.+)", path)
+    if m:
+        return _env_by_name(target, m.group(1))
     return target.get(path)
 
 
@@ -472,14 +485,26 @@ def _preserve_set(payload: Dict, path: str, value) -> bool:
     if m:
         payload.setdefault("variables", {})[m.group(1)] = value
         return True
-    m = re.fullmatch(r"env\.(.+)\.(.+)", path)
+    m = re.fullmatch(r"env\.(.+?)\.(.+)", path)
     if m:
-        stage, field = m.group(1), m.group(2)
-        for env in payload.get("environments", []):
-            if (env.get("name") or "").lower() == stage.lower():
-                env[field] = value
-                return True
-        return False
+        env = _env_by_name(payload, m.group(1))
+        if env is None:
+            return False
+        env[m.group(2)] = value
+        return True
+    m = re.fullmatch(r"env\.(.+)", path)
+    if m:
+        # Stage completo: reemplaza el mismo nombre o se agrega al final.
+        if isinstance(value, dict):
+            for f in _ENV_PRESERVE_STRIP:
+                value.pop(f, None)
+        envs = payload.setdefault("environments", [])
+        existing = _env_by_name(payload, m.group(1))
+        if existing is not None:
+            envs[envs.index(existing)] = value
+        else:
+            envs.append(value)
+        return True
     payload[path] = value
     return True
 
@@ -489,11 +514,21 @@ def preserve_from_target(payload: Dict, target: Dict,
     """Copia valores del destino al payload para que el PUT no los planche.
 
     Devuelve (paths_aplicados, paths_no_aplicados). Un path no aplica cuando
-    el destino no tiene el valor o el stage no existe en la template.
+    el destino no tiene el valor o el stage no existe en la template
+    (para env.<STAGE>.<campo>; env.<STAGE> siempre aplica).
     """
+    expanded: List[str] = []
+    for p in paths:
+        if p == "env.*":
+            expanded += [f"env.{e.get('name')}"
+                         for e in target.get("environments", [])
+                         if e.get("name")]
+        else:
+            expanded.append(p)
+
     applied: List[str] = []
     skipped: List[str] = []
-    for path in paths:
+    for path in expanded:
         value = _preserve_get(target, path)
         if value is None:
             skipped.append(path)

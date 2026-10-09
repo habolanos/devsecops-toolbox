@@ -370,6 +370,45 @@ class TestPreserveFromTarget:
                                                 ["env.Prod.variables"])
         assert applied == [] and skipped == ["env.Prod.variables"]
 
+    def test_env_whole_stage_replaces_same_name(self):
+        payload = {"environments": [{"name": "QA", "rank": 1,
+                                     "variables": {"T": {"value": "tpl"}}}]}
+        target = {"environments": [{"name": "qa", "id": 7, "releaseId": 3,
+                                    "badgeUrl": "b",
+                                    "variables": {"K": {"value": "dst"}}}]}
+        applied, _ = preserve_from_target(payload, target, ["env.QA"])
+        assert applied == ["env.QA"]
+        env = payload["environments"][0]
+        assert env["variables"]["K"]["value"] == "dst"   # del destino
+        assert env["id"] == 7                            # id del destino se conserva
+        assert "releaseId" not in env and "badgeUrl" not in env
+
+    def test_env_whole_stage_appended_if_missing_in_template(self):
+        payload = {"environments": [{"name": "Dev"}]}
+        target = {"environments": [{"name": "SCM Inspection", "id": 9,
+                                    "variables": {"A": {"value": "1"}}}]}
+        applied, _ = preserve_from_target(payload, target,
+                                          ["env.SCM Inspection"])
+        assert applied == ["env.SCM Inspection"]
+        assert [e["name"] for e in payload["environments"]] == \
+            ["Dev", "SCM Inspection"]
+
+    def test_env_wildcard_preserves_all_target_stages(self):
+        payload = {"environments": [{"name": "QA", "variables": {"T": {"v": "t"}}},
+                                    {"name": "NuevoStage"}]}
+        target = {"environments": [{"name": "Develop"}, {"name": "QA"},
+                                   {"name": "Production"}]}
+        applied, _ = preserve_from_target(payload, target, ["env.*"])
+        names = [e["name"] for e in payload["environments"]]
+        assert applied == ["env.Develop", "env.QA", "env.Production"]
+        assert names == ["QA", "NuevoStage", "Develop", "Production"]
+
+    def test_env_stage_absent_in_target_skipped(self):
+        payload = {"environments": []}
+        applied, skipped = preserve_from_target(
+            payload, {"environments": []}, ["env.Inexistente"])
+        assert applied == [] and skipped == ["env.Inexistente"]
+
     def test_deepcopy_no_aliasing(self):
         target = {"artifacts": [{"alias": "_d"}]}
         payload = {}
