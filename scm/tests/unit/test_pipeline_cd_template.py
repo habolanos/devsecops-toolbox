@@ -1156,3 +1156,17 @@ class TestGeneratedFileNames:
         assert "3687-to-910" in paths["yaml"].name
         paths2 = backup_definition(_defn(id=910), tmp_path / "b2")
         assert paths2["yaml"].name.startswith("BACKUP_DESTINO_910_")
+
+    def test_write_files_false_creates_nothing(self, tmp_path):
+        """Preview previo a PUT real (write_files=False): solo cálculo,
+        sin backup ni yamls en disco."""
+        c = _Client(_defn(id=910, name="CD-Destino", revision=7))
+        res = apply_template(c, 910, clean_definition_for_template(_defn()),
+                             dry_run=True, backup_dir=tmp_path,
+                             source_id=3687, write_files=False)
+        assert res["backup"] is None
+        assert res["origen_yaml"] is None
+        assert res["updater_yaml"] is None
+        assert list(tmp_path.iterdir()) == []      # nada escrito
+        assert res["summary"]                       # pero sí el diff
+        assert res["payload"]["environments"]       # y el payload completo

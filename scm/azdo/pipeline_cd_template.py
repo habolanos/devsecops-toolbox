@@ -55,7 +55,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.17"
+__version__ = "1.0.18"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -1010,7 +1010,8 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    comment: str = "",
                    template_comment: str = "",
                    description: Optional[str] = None,
-                   source_id=None) -> Dict:
+                   source_id=None,
+                   write_files: bool = True) -> Dict:
     """PUT del template sobre la definición destino (con backup previo).
 
     strategy="merge" (default): solo agrega lo que el destino no tiene —
@@ -1023,7 +1024,8 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     ranks → guarda el payload resultante como YAML (updater aplicado) →
     PUT (solo si no es dry-run). Los YAML del destino y del updater se
     escriben siempre que backup_dir esté definido — incluso en dry-run,
-    pues son archivos locales y no tocan AzDO.
+    pues son archivos locales y no tocan AzDO. `write_files=False` (preview
+    previo a un PUT real) omite backup/YAMLs: solo calcula diff+payload.
 
     Devuelve {"backup": {json,yaml}|None, "updater_yaml": Path|None,
               "result": respuesta|None, "summary": [líneas],
@@ -1045,9 +1047,12 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
 
     # Backup del destino siempre que haya backup_dir (archivo local, no
     # toca AzDO) — y se relee el YAML como fuente de merge/preserve.
+    # write_files=False (preview previo a un PUT real): solo se calcula el
+    # diff/payload — los archivos los escribe el apply definitivo para no
+    # duplicar BACKUP/ORIGEN/UPDATER en disco.
     backup_paths: Optional[Dict] = None
     preserve_src = target
-    if backup_dir is not None:
+    if backup_dir is not None and write_files:
         backup_paths = backup_definition(target, backup_dir, ids)
         try:
             preserve_src = load_target_backup(backup_paths["yaml"]) or target
@@ -1127,10 +1132,11 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
         f"descripción: {(payload.get('description') or '')[:120]}")
 
     # Siempre guardar los YAML del origen (template) y del updater
-    # resultante (payload final) junto al BACKUP_DESTINO.
+    # resultante (payload final) junto al BACKUP_DESTINO — salvo en un
+    # preview con write_files=False.
     origen_yaml: Optional[Path] = None
     updater_yaml: Optional[Path] = None
-    if backup_dir is not None:
+    if backup_dir is not None and write_files:
         extra = {"targetId": target_id, "strategy": strategy,
                  "dryRun": dry_run}
         origen_yaml = save_apply_yaml(
@@ -1613,6 +1619,11 @@ def main() -> int:
             ans = _ask(f"  ¿Sobrescribir stage '{name}'? (s/n)", "n")
             return ans.lower().startswith("s")
 
+        # Preview: con dry_run=True es la corrida definitiva (escribe los
+        # archivos para inspección); si luego habrá PUT real, el preview es
+        # solo de cómputo (write_files=False) — el apply real escribe los
+        # archivos una sola vez y no se imprime "Archivos generados" dos
+        # veces.
         res = apply_template(client, args.target_id, tpl_def,
                              new_name=args.new_name, new_path=args.new_path,
                              dry_run=True, preserve=preserve,
@@ -1623,7 +1634,8 @@ def main() -> int:
                              comment=args.comment,
                              template_comment=template_comment,
                              description=args.description,
-                             source_id=apply_src_id)
+                             source_id=apply_src_id,
+                             write_files=args.dry_run)
         _print("\nDiff destino ← template:", "bold")
         for l in res["summary"]:
             _print(f"  {l}")
