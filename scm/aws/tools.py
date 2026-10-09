@@ -975,10 +975,28 @@ def run_tool(tool_key: str):
             args.extend(["--cluster", cluster])
 
     if "--namespace" in tool_args:
-        print(f"\n{Colors.BOLD}Namespace Kubernetes (vacío para todos):{Colors.ENDC} ", end="")
+        print(f"\n{Colors.BOLD}Namespace Kubernetes (vacío para todos/auto-detectar):{Colors.ENDC} ", end="")
         namespace = input().strip()
         if namespace:
             args.extend(["--namespace", namespace])
+
+    if "--deployment" in tool_args:
+        print(f"\n{Colors.BOLD}Nombre del deployment EKS:{Colors.ENDC} ", end="")
+        deployment = input().strip()
+        if deployment:
+            args.extend(["--deployment", deployment])
+
+    if "--rds-instance" in tool_args:
+        print(f"\n{Colors.BOLD}RDS DBInstanceIdentifier:{Colors.ENDC} ", end="")
+        rds_instance = input().strip()
+        if rds_instance:
+            args.extend(["--rds-instance", rds_instance])
+
+    if "--validate" in tool_args:
+        print(f"\n{Colors.BOLD}Validación (all/configmaps/secrets/connectivity) [all]:{Colors.ENDC} ", end="")
+        validate = input().strip().lower()
+        if validate in ["configmaps", "secrets", "connectivity"]:
+            args.extend(["--validate", validate])
 
     if "--scope" in tool_args:
         print(f"\n{Colors.BOLD}WAF Scope (REGIONAL/CLOUDFRONT) [REGIONAL]:{Colors.ENDC} ", end="")
