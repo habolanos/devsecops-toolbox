@@ -626,11 +626,10 @@ class TestMergeDefinitions:
         res = apply_template(c, 910, tpl, dry_run=True, backup_dir=tmp_path,
                              overwrite="none")
         data = yaml.safe_load(res["updater_yaml"].read_text())
-        meta_summary = data["metadata"]["summary"]
-        assert any("strategy: merge" in l for l in meta_summary)
-        assert any("stage nuevo" in l and "Nuevo" in l
-                   for l in meta_summary)
-        assert any("preservado del destino" in l for l in meta_summary)
+        comment = data["metadata"]["comment"]
+        assert any("strategy: merge" in l for l in comment)
+        assert any("stage nuevo" in l and "Nuevo" in l for l in comment)
+        assert any("preservado del destino" in l for l in comment)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
