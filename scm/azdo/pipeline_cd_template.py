@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -679,14 +679,32 @@ def backup_definition(defn: Dict, backup_dir: Path) -> Dict:
                      "revision": defn.get("revision")},
         "definition": defn,
     }
-    pj = backup_dir / f"backup_def_{defn.get('id')}_{safe}_{ts}.json"
+    pj = backup_dir / f"BACKUP_DESTINO_{defn.get('id')}_{safe}_{ts}.json"
     pj.write_text(json.dumps(data, indent=2, ensure_ascii=False),
                   encoding="utf-8")
-    py = backup_dir / f"backup_def_{defn.get('id')}_{safe}_{ts}.yaml"
+    py = backup_dir / f"BACKUP_DESTINO_{defn.get('id')}_{safe}_{ts}.yaml"
     py.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False,
                                  default_flow_style=False),
                   encoding="utf-8")
     return {"json": pj, "yaml": py}
+
+
+def save_apply_yaml(backup_dir: Path, prefix: str, def_id,
+                    name: str, data: Dict, extra_meta: Optional[Dict] = None
+                    ) -> Path:
+    """Guarda un YAML con prefijo ORIGEN_/UPDATER_ + metadata del apply."""
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    meta = {"tool": "pipeline_cd_template", "version": __version__,
+            "generated": datetime.now().isoformat()}
+    if extra_meta:
+        meta.update(extra_meta)
+    p = backup_dir / f"{prefix}_{def_id}_{_safe_name(name)}_{ts}.yaml"
+    p.write_text(yaml.safe_dump({"metadata": meta, "definition": data},
+                                allow_unicode=True, sort_keys=False,
+                                default_flow_style=False),
+                 encoding="utf-8")
+    return p
 
 
 def load_target_backup(path: Path) -> Dict:
@@ -804,35 +822,33 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     for i, env in enumerate(payload.get("environments", []), 1):
         env["rank"] = i
 
-    # Siempre guardar el YAML del updater resultante (payload final).
+    # Siempre guardar los YAML del origen (template) y del updater
+    # resultante (payload final) junto al BACKUP_DESTINO.
+    origen_yaml: Optional[Path] = None
     updater_yaml: Optional[Path] = None
     if backup_dir is not None:
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        updater_yaml = backup_dir / (
-            f"updater_result_{target_id}_"
-            f"{_safe_name(payload.get('name'))}_{ts}.yaml")
-        updater_yaml.write_text(yaml.safe_dump(
-            {"metadata": {"tool": "pipeline_cd_template",
-                          "version": __version__,
-                          "generated": datetime.now().isoformat(),
-                          "targetId": target_id,
-                          "strategy": strategy,
-                          "dryRun": dry_run},
-             "definition": payload},
-            allow_unicode=True, sort_keys=False, default_flow_style=False),
-            encoding="utf-8")
+        extra = {"targetId": target_id, "strategy": strategy,
+                 "dryRun": dry_run}
+        origen_yaml = save_apply_yaml(
+            backup_dir, "ORIGEN", tpl_def.get("id") or "src",
+            tpl_def.get("name", "template"), tpl_def, extra)
+        updater_yaml = save_apply_yaml(
+            backup_dir, "UPDATER", target_id,
+            payload.get("name", "target"), payload, extra)
+        summary.append(f"origen yaml: {origen_yaml}")
         summary.append(f"updater yaml: {updater_yaml}")
 
     if dry_run:
-        return {"backup": backup_paths, "updater_yaml": updater_yaml,
-                "result": None, "summary": summary, "payload": payload,
+        return {"backup": backup_paths, "origen_yaml": origen_yaml,
+                "updater_yaml": updater_yaml, "result": None,
+                "summary": summary, "payload": payload,
                 "preserve_applied": applied if preserve else []}
 
     result = client.put(f"{client.base}/definitions/{target_id}",
                         payload, params={"api-version": "7.1"})
-    return {"backup": backup_paths, "updater_yaml": updater_yaml,
-            "result": result, "summary": summary, "payload": payload,
+    return {"backup": backup_paths, "origen_yaml": origen_yaml,
+            "updater_yaml": updater_yaml, "result": result,
+            "summary": summary, "payload": payload,
             "preserve_applied": applied if preserve else []}
 
 
@@ -1064,6 +1080,8 @@ def main() -> int:
         if res["backup"]:
             _print(f"  Backup destino (yaml): {res['backup']['yaml']}", "dim")
             _print(f"  Backup destino (json): {res['backup']['json']}", "dim")
+        if res.get("origen_yaml"):
+            _print(f"  Origen usado (yaml): {res['origen_yaml']}", "dim")
         if res.get("updater_yaml"):
             _print(f"  Updater aplicado (yaml): {res['updater_yaml']}", "dim")
         new_def = res["result"]

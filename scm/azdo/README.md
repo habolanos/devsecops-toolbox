@@ -1127,6 +1127,16 @@ python pipeline_cd_template.py --template t.yaml --target-id 910 \
 `ask` se cachean — se pregunta una vez en el dry-run de preview y se
 reutilizan en el PUT real.
 
+#### Archivos generados por apply (siempre, incluso dry-run)
+
+En `outcome/backups/template/`:
+
+| Prefijo | Contenido |
+|---|---|
+| `ORIGEN_<id\|src>_<nombre>_<ts>.yaml` | Template usada como origen |
+| `BACKUP_DESTINO_<id>_<nombre>_<ts>.yaml` + `.json` | Estado previo del destino |
+| `UPDATER_<id>_<nombre>_<ts>.yaml` | Payload final aplicado (post-merge + preserve + placeholders) con metadata `targetId`, `strategy`, `dryRun` |
+
 ---
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
@@ -1237,6 +1247,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-09 | 1.8.55 | **Opción 46: 3 YAML con prefijos por apply** — `ORIGEN_*.yaml` (template), `BACKUP_DESTINO_*.yaml|.json` (estado previo) y `UPDATER_*.yaml` (payload final con metadata targetId/strategy/dryRun), todos en `outcome/backups/template/` y escritos también en dry-run. | `scm/azdo/pipeline_cd_template.py` (v1.0.6), `scm/azdo/README.md` |
 | 2026-10-09 | 1.8.54 | **Fix opción 46: VS402874 ranks no consecutivos + YAMLs siempre** — merge concatenaba envs con `rank` originales → PUT rechazado; ahora el payload renombra `rank` 1..N. Los 3 YAML se guardan siempre (incluso dry-run): backup destino JSON+YAML + `updater_result_<id>_*.yaml` con el payload final + metadata. Label del diff: "stages reemplazados" → "stages en ambos" / "stages solo en destino". Tests: +2 (51 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.5), `scm/tests/unit/test_pipeline_cd_template.py` |
 | 2026-10-09 | 1.8.53 | **Opción 46: estrategia merge como default del apply** — `merge_definitions`: stages nuevos de la template se agregan, compartidos se conservan salvo overwrite por stage (`--overwrite-stages ask/all/none/CSV`; `ask` pregunta una vez y cachea decisiones entre dry-run y PUT), stages solo en destino intactos, variables preservadas salvo `--update-vars`. Stage sobrescrito conserva `id` del destino. `--strategy replace` = reemplazo total anterior. Tests: +8 (49 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.4), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md` |
 | 2026-10-09 | 1.8.52 | **Opción 46: preserve de stages completos** — `--preserve env.<STAGE>` preserva el environment entero del destino (reemplaza mismo nombre en template o lo agrega si falta; conserva `id`, quita `releaseId`/`badgeUrl`/`queue`); `env.*` preserva todos los stages del destino. Tests: +4 (41 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.3), `scm/tests/unit/test_pipeline_cd_template.py` |
