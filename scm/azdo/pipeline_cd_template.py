@@ -55,7 +55,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.13"
+__version__ = "1.0.14"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -588,19 +588,30 @@ def resolve_target_placeholders(node, target: Dict,
     return node
 
 
-def load_template_definition(path: Path) -> Dict:
-    """Carga la definición de una template exportada (acepta la envoltura
-    {metadata, definition} o un dict de definición directo)."""
+def load_template(path: Path) -> Tuple[Dict, Dict]:
+    """Carga una template exportada y devuelve (definition, metadata).
+
+    Acepta la envoltura {metadata, definition} o un dict de definición
+    directo (metadata vacía en ese caso).
+    """
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{path}: no es un mapping YAML")
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) \
+        else {}
     defn = data.get("definition")
     if isinstance(defn, dict) and "environments" in defn:
-        return defn
+        return defn, meta
     if "environments" in data:
-        return data
+        return data, meta
     raise ValueError(f"{path}: no contiene una 'definition' con "
                      "environments")
+
+
+def load_template_definition(path: Path) -> Dict:
+    """Carga solo la definición de una template exportada."""
+    defn, _ = load_template(path)
+    return defn
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -981,7 +992,9 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    overwrite: str = "ask",
                    update_vars: bool = False,
                    ask_fn=None,
-                   decisions: Optional[Dict[str, bool]] = None) -> Dict:
+                   decisions: Optional[Dict[str, bool]] = None,
+                   comment: str = "",
+                   description: Optional[str] = None) -> Dict:
     """PUT del template sobre la definición destino (con backup previo).
 
     strategy="merge" (default): solo agrega lo que el destino no tiene —
@@ -1034,6 +1047,22 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     payload["revision"] = preserve_src.get("revision")
     payload["name"] = new_name or preserve_src.get("name")
     payload["path"] = new_path or preserve_src.get("path", "\\")
+
+    # Descripción y comentario del PUT: la 'description' de la template es
+    # la del pipeline ORIGEN — no aplica al destino. Por defecto se
+    # conserva la descripción del destino; el comentario de revisión
+    # (historial AzDO) se toma del tag 'comment'/'description' de la
+    # template (vía `comment`) o se genera uno descriptivo del apply.
+    if description is not None:
+        payload["description"] = description
+    elif preserve_src.get("description"):
+        payload["description"] = preserve_src["description"]
+    payload["comment"] = comment or (
+        f"pipeline_cd_template v{__version__}: template "
+        f"'{tpl_def.get('name', '?')}' aplicada sobre definition "
+        f"{target_id} (strategy={strategy}, dry_run={dry_run})")
+    summary.append(f"comentario PUT: {payload['comment'][:120]}")
+    summary.append(f"descripción: {payload.get('description', '')[:120]}")
 
     if preserve:
         applied, skipped = preserve_from_target(payload, preserve_src,
@@ -1213,7 +1242,8 @@ def write_evidence_report(report_dir: Path) -> Optional[Path]:
         ("Modo", mode),
     ]
     for k in ("source_id", "target_id", "template", "strategy",
-              "preserve", "overwrite_stages", "update_vars", "dry_run"):
+              "preserve", "overwrite_stages", "update_vars", "dry_run",
+              "comment"):
         v = meta.get(k)
         if v not in (None, "", []):
             meta_rows.append((k.replace("_", " ").title(), str(v)))
@@ -1300,6 +1330,14 @@ def get_args() -> argparse.Namespace:
                         "separadas por coma (default: artifacts,triggers; "
                         "'none' desactiva). Soporta var.<NOMBRE> y "
                         "env.<STAGE>.<campo>")
+    p.add_argument("--comment", default="",
+                   help="apply: comentario de revisión del PUT (historial "
+                        "AzDO). Default: tag 'comment'/'description' de la "
+                        "template o uno generado")
+    p.add_argument("--description", default=None,
+                   help="apply: descripción de la definición en el PUT "
+                        "(default: conserva la del destino, no la del "
+                        "pipeline origen)")
     p.add_argument("--dry-run", action="store_true",
                    help="apply: muestra el diff sin hacer PUT")
     p.add_argument("--yes", action="store_true",
@@ -1357,6 +1395,9 @@ def interactive(args) -> argparse.Namespace:
             args.update_vars = uv.lower().startswith("s")
         dr = _ask("  ¿Dry-run? (s/n)", "s" if args.dry_run else "n")
         args.dry_run = dr.lower().startswith("s")
+        args.comment = _ask(
+            "  Comentario del PUT (vacío = tag comment de la template "
+            "o auto)", args.comment)
     return args
 
 
@@ -1400,6 +1441,7 @@ def main() -> int:
            "bold cyan")
 
     tpl_def: Optional[Dict] = None
+    tpl_meta: Dict = {}
 
     # ── Extract ──────────────────────────────────────────────────────────
     if args.source_id:
@@ -1417,6 +1459,12 @@ def main() -> int:
             _print("\nÚsala con opción 41 (updater) o con esta misma "
                    "opción: --template <archivo> --target-id <id>", "dim")
         tpl_def = clean_definition_for_template(source)
+        tpl_meta = {
+            "name": f"Template de {source.get('name', '?')}",
+            "description": (f"Template extraída del pipeline "
+                            f"{source.get('id')} "
+                            f"'{source.get('name', '?')}'"),
+        }
 
     # ── Apply ────────────────────────────────────────────────────────────
     if args.target_id:
@@ -1426,7 +1474,7 @@ def main() -> int:
                        "--template", "bold red")
                 return 1
             try:
-                tpl_def = load_template_definition(Path(args.template))
+                tpl_def, tpl_meta = load_template(Path(args.template))
             except Exception as e:
                 _print(f"ERROR leyendo template: {e}", "bold red")
                 return 1
@@ -1439,6 +1487,13 @@ def main() -> int:
                              else [s.strip() for s in ow.split(",")
                                    if s.strip()])
         decisions: Dict[str, bool] = {}
+
+        # Comentario del PUT: --comment > tag 'comment'/'description' de la
+        # template > autogenerado en apply_template.
+        put_comment = (args.comment
+                       or tpl_meta.get("comment")
+                       or tpl_meta.get("description") or "")
+        _REPORT_META["comment"] = put_comment or "(auto)"
 
         def _ask_stage(name: str) -> bool:
             if console:
@@ -1458,7 +1513,9 @@ def main() -> int:
                              backup_dir=backup_dir,
                              strategy=args.strategy, overwrite=overwrite,
                              update_vars=args.update_vars,
-                             ask_fn=_ask_stage, decisions=decisions)
+                             ask_fn=_ask_stage, decisions=decisions,
+                             comment=put_comment,
+                             description=args.description)
         _print("\nDiff destino ← template:", "bold")
         for l in res["summary"]:
             _print(f"  {l}")
@@ -1495,7 +1552,9 @@ def main() -> int:
                              dry_run=False, backup_dir=backup_dir,
                              preserve=preserve, strategy=args.strategy,
                              overwrite=overwrite, update_vars=args.update_vars,
-                             ask_fn=_ask_stage, decisions=decisions)
+                             ask_fn=_ask_stage, decisions=decisions,
+                             comment=put_comment,
+                             description=args.description)
         _print_files(res)
         new_def = res["result"]
         _REPORT_META["result"] = f"aplicado — definition {new_def.get('id')}"

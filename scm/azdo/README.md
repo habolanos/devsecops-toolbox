@@ -1127,6 +1127,21 @@ python pipeline_cd_template.py --template t.yaml --target-id 910 \
 `ask` se cachean — se pregunta una vez en el dry-run de preview y se
 reutilizan en el PUT real.
 
+#### Comentario y descripción del PUT
+
+El PUT envía dos campos relacionados con el historial de la definición:
+
+| Campo | Origen |
+|---|---|
+| `comment` (comentario de revisión, visible en el historial AzDO) | `--comment` → `metadata.comment` de la template → `metadata.description` → comentario autogenerado (`pipeline_cd_template vX: template '…' aplicada sobre definition N`) |
+| `description` (descripción de la definición) | `--description` → **la del destino** (default) → la de la template solo si el destino no tiene |
+
+La `description` de la template es la del **pipeline origen** — antes se
+aplicaba tal cual al destino y quedaban textos ajenos como
+`commitPropertiesRollback`. Ahora el destino conserva su propia descripción
+y el comentario de revisión documenta el apply. En modo interactivo se
+pregunta el comentario del PUT (vacío = el de la template o autogenerado).
+
 #### Archivos generados por apply (siempre, incluso dry-run)
 
 En `outcome/backups/template/`:
@@ -1248,6 +1263,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-09 | 1.8.70 | **Fix opción 46: PUT sin comentario de revisión y descripción del origen pisada** — el apply enviaba `description` de la template (la del pipeline origen, p.ej. `commitPropertiesRollback`) sobre el destino y ningún `comment` de revisión. Ahora el PUT lleva `comment` desde `--comment` → `metadata.comment`/`description` de la template → autogenerado, y `description` conservada del destino por defecto (`--description` la sobreescribe). `load_template()` nuevo devuelve `(definition, metadata)`; `load_template_definition()` preserva la firma. Prompt interactivo del comentario; metadato `comment` en el reporte de evidencia. Tests: +7 (90 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.14), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.69 | **Opción 46: reporte de evidencia HTML** — todo lo que se imprime en consola (incluidos prompts y respuestas del modo interactivo, que no quedan en el buffer de Rich) se registra en un transcript y se vuelca a `outcome/reports/EVIDENCIA_pipe_cd_template_<ts>.html` al terminar: metadatos del run (org/proyecto/modo/parámetros), archivos generados, salida completa y resultado (aplicado/dry-run/cancelado/error). Se genera en modo interactivo y CLI, en éxito o error (wrapper `_run` con `finally`). Fix: `sys.stdout.reconfigure(utf-8)` en Windows (caracteres como `←` crasheaban sin Rich). Tests: +5 (83 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.13), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.61 | **Opción 46↔41: template updater DSL ahora porta los artifact filters** — `build_updater_template` emite `artifact_filters` por stage (alias resuelto en destino vía `$auto:<Tipo>`; alias literal + warning si ambiguo; all-or-nothing si una condition no es reconstruible) y `artifact_alias_map` para remapear `alias`/`artifactAlias` dentro de `deployPhases` (downloadInputs). Nuevo soporte `artifact_alias_map` en `UpdateEngine._add_stage` (v1.8.33) y propagación en `parallel_executor`. Verificado E2E con TemplateParser+UpdateEngine reales. Tests: +19. | `scm/azdo/pipeline_cd_template.py` (v1.0.12), `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/parallel_executor.py`, `scm/tests/unit/test_pipeline_cd_template.py` |
 | 2026-10-09 | 1.8.60 | **Opción 46: metadata del `UPDATER_*.yaml` renombrada a `comment`** (consistente con el `comment` de las templates exportadas). | `scm/azdo/pipeline_cd_template.py` (v1.0.11), `scm/tests/unit/test_pipeline_cd_template.py` |
