@@ -25,6 +25,7 @@ Herramientas DevSecOps para análisis y monitoreo de recursos AWS.
 | **[cloudtrail/](cloudtrail/)** | Rastreo de eventos CloudTrail |
 | **[sqs/](sqs/)** | Monitor de colas SQS y topics SNS |
 | **[ecs/](ecs/README.md)** | Suite ECS: salud, seguridad, costos, despliegues, tráfico, dependencias, IPs y dashboard |
+| **[apprunner/](apprunner/)** | App Runner Checker (equivalente AWS de Cloud Run Checker) |
 | **[tools.py](tools.py)** | Lanzador unificado con menú interactivo |
 
 ## 🚀 AWS Tools Launcher
@@ -68,6 +69,9 @@ python tools.py --profile my-profile --region us-west-2
 | 49 | ECS | **ECS Traffic Analyzer** *(nuevo)* | gcp_cloudrun_traffic_analyzer | Deployments PRIMARY/ACTIVE, rollouts, RequestCount |
 | 50 | ECS | **ECS VPC IP Diagnostic** *(nuevo)* | gcp_cloudrun_vpc_ip_diagnostic | IPs disponibles por subnet vs desired tasks |
 | 51 | ECS | **ECS Executive Dashboard** *(nuevo)* | gcp_cloudrun_executive_dashboard | KPIs de flota, export HTML con gráficos |
+| 52 | ECS | **App Runner Checker** *(nuevo)* | gcp_cloudrun_checker | Servicios App Runner: estado, fuente ECR/GitHub, egress VPC, auto-deploys |
+| 53 | IAM & Security | **IAM Service Accounts Checker** *(nuevo)* | gcp_service_account_checker | Roles de servicio, instance profiles, access keys sin rotar/usar |
+| 54 | IAM & Security | **IAM Multi-Account Reporter** *(nuevo)* | gcp_sa_multi_project_reporter | Matriz IAM entre perfiles: users, roles, MFA% por cuenta |
 | A | Sistema | Ejecutar Todos | — | Corre todos los checkers automáticamente |
 | Q | Sistema | Salir | — | Salir del menú |
 
@@ -225,6 +229,7 @@ python eks/aws_eks_checker.py --cluster my-cluster -o json
 
 | Fecha | Versión | Descripción | Archivos |
 |-------|---------|-------------|----------|
+| 2026-10-09 | **1.8.65** | **feat(aws): paridad GCP restante — opciones 52-54** — 52 App Runner Checker (equiv. `gcp_cloudrun_checker`: estado, fuente ECR/GitHub, egress VPC, auto-deploys, VPC connectors), 53 IAM Service Accounts Checker (equiv. `gcp_service_account_checker`: service-trust roles + RoleLastUsed, instance profiles, access keys edad/uso, `--key-days`), 54 IAM Multi-Account Reporter (equiv. `gcp_sa_multi_project_reporter`: `--profiles ALL`, matriz users/roles/MFA% paralela). 23 tests nuevos. | `apprunner/aws_apprunner_checker.py`, `iam/aws_iam_service_accounts_checker.py`, `iam/aws_iam_multi_account_reporter.py`, `tools.py`, `tests/unit/test_aws_parity_tools.py` |
 | 2026-10-09 | **1.8.64** | **feat(aws): suite ECS (Cloud Run equiv.) + CloudTrail + SQS/SNS** — Opciones 42 CloudTrail Event Tracker (equiv. Event Tracker GCP) y 43 SQS/SNS Monitor (equiv. Pub/Sub). Suite ECS 44-51 (equiv. Cloud Run): 44 Health, 45 Security Auditor, 46 Cost, 47 Deployment Validator, 48 Dependency Mapper, 49 Traffic Analyzer, 50 VPC IP Diagnostic, 51 Executive Dashboard + `ecs/aws_ecs_common.py` compartido. Grupo `ecs` en tools.py, prompt `--service`, 47 excluida de run-all. 49 tests nuevos (suite AWS: 269 passed). | `ecs/` (9 + README), `cloudtrail/aws_cloudtrail_event_tracker.py`, `sqs/aws_sqs_sns_monitor.py`, `tools.py`, `tests/unit/test_aws_ecs_tools.py` |
 | 2026-10-09 | **1.8.63** | **feat(aws): paridad — 14 stubs restantes → implementaciones reales** — 23 RDS Comparator (regiones/profiles, semáforos), 24 API Gateway Checker (v1+v2, métodos sin auth, stages sin logging), 25 VPC IP Addresses (capacidad subnets, umbrales), 28/31/34/36 Lambda suite (analyzer, cost, health score, security auditor), 29 ECR Image Filter (semver heredado GCP), 30 Reports Viewer (HTML Chart.js), 32 Infrastructure Consolidator (LB→TG→targets, huérfanos), 33 Unified Dashboard (KPIs+alertas+score, HTML), 40 Inventory Consolidator (multi-región), 37-38 SLR checker/reporter (huérfanos + matriz multi-cuenta). `tools.py`: prompts para region1/2, regions, instance, function, view, period, severity, csv-file. 59 tests nuevos. | `rds/aws_rds_comparator.py`, `vpc/aws_api_gateway_checker.py`, `vpc/aws_vpc_ip_addresses_checker.py`, `lambda/` (4), `ecr/aws_ecr_image_filter.py`, `inventory/` (4), `iam/` (2), `tools.py`, `tests/unit/test_aws_stub_tools.py` |
 | 2026-10-09 | **1.8.62** | **feat(aws): paridad EKS — 4 stubs → implementaciones reales (port GCP)** — Tool 26 Pod Connectivity Checker (cadena EKS→RDS→VPC→SGs→IRSA→LB→test TCP), Tool 27 Deployment Validator (ConfigMaps/Secrets, placeholders, masking, connectivity), Tool 35 Deployments Off Analyzer (causas raíz, severidad, recomendaciones), Tool 39 Deploy Dependency Checker (endpoints, AWS Secrets Manager, TCP local/pod). Kubectl vía `aws eks update-kubeconfig` + `-o json`. `tools.py`: prompts para `--deployment`/`--rds-instance`/`--validate`. 93 tests nuevos. | `eks/aws_eks_pod_connectivity_checker.py`, `eks/aws_eks_deployment_validator.py`, `eks/aws_eks_deployments_off_analyzer.py`, `eks/aws_eks_deploy_dependency_checker.py`, `tools.py`, `tests/unit/test_aws_eks_tools.py` |

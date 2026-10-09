@@ -645,6 +645,34 @@ TOOLS = {
         "group": "ecs",
         "status": "ready"
     },
+    # ══════════ PARIDAD GCP — App Runner / IAM SA (52-54) ══════════
+    "52": {
+        "name": "App Runner Checker",
+        "description": "Servicios App Runner (equiv. Cloud Run): estado, fuente ECR/GitHub, egress VPC, auto-deploys",
+        "path": "apprunner/aws_apprunner_checker.py",
+        "args": ["--profile", "--region", "-o"],
+        "requirements": None,
+        "group": "ecs",
+        "status": "ready"
+    },
+    "53": {
+        "name": "IAM Service Accounts Checker",
+        "description": "Roles de servicio, instance profiles y access keys: edad, nunca usados, sin rotar",
+        "path": "iam/aws_iam_service_accounts_checker.py",
+        "args": ["--profile", "--region", "--key-days", "-o"],
+        "requirements": None,
+        "group": "iam",
+        "status": "ready"
+    },
+    "54": {
+        "name": "IAM Multi-Account Reporter",
+        "description": "Matriz IAM entre perfiles: users, roles, MFA%, access keys por cuenta",
+        "path": "iam/aws_iam_multi_account_reporter.py",
+        "args": ["--profiles", "--region", "-o"],
+        "requirements": None,
+        "group": "iam",
+        "status": "ready"
+    },
     # ══════════ SYSTEM (A, Q) ══════════
     "_system_options": {
         "A": {
