@@ -1136,6 +1136,7 @@ En `outcome/backups/template/`:
 | `ORIGEN_<id\|src>_<nombre>_<ts>.yaml` | Template usada como origen |
 | `BACKUP_DESTINO_<id>_<nombre>_<ts>.yaml` + `.json` | Estado previo del destino |
 | `UPDATER_<id>_<nombre>_<ts>.yaml` | Payload final aplicado (post-merge + preserve + placeholders) con metadata `targetId`, `strategy`, `dryRun` |
+| `EVIDENCIA_pipe_cd_template_<ts>.html` (en `outcome/reports/`) | **Reporte de evidencia**: toda la salida de consola (prompts y respuestas del modo interactivo incluidos), metadatos del run (org/proyecto/modo/parámetros), archivos generados y resultado (aplicado/dry-run/cancelado/error). Se escribe siempre al terminar — extract o apply, éxito o error. |
 
 ---
 
@@ -1247,6 +1248,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-09 | 1.8.69 | **Opción 46: reporte de evidencia HTML** — todo lo que se imprime en consola (incluidos prompts y respuestas del modo interactivo, que no quedan en el buffer de Rich) se registra en un transcript y se vuelca a `outcome/reports/EVIDENCIA_pipe_cd_template_<ts>.html` al terminar: metadatos del run (org/proyecto/modo/parámetros), archivos generados, salida completa y resultado (aplicado/dry-run/cancelado/error). Se genera en modo interactivo y CLI, en éxito o error (wrapper `_run` con `finally`). Fix: `sys.stdout.reconfigure(utf-8)` en Windows (caracteres como `←` crasheaban sin Rich). Tests: +5 (83 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.13), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.61 | **Opción 46↔41: template updater DSL ahora porta los artifact filters** — `build_updater_template` emite `artifact_filters` por stage (alias resuelto en destino vía `$auto:<Tipo>`; alias literal + warning si ambiguo; all-or-nothing si una condition no es reconstruible) y `artifact_alias_map` para remapear `alias`/`artifactAlias` dentro de `deployPhases` (downloadInputs). Nuevo soporte `artifact_alias_map` en `UpdateEngine._add_stage` (v1.8.33) y propagación en `parallel_executor`. Verificado E2E con TemplateParser+UpdateEngine reales. Tests: +19. | `scm/azdo/pipeline_cd_template.py` (v1.0.12), `scm/azdo/pipeline_updater/update_engine.py`, `scm/azdo/pipeline_updater/parallel_executor.py`, `scm/tests/unit/test_pipeline_cd_template.py` |
 | 2026-10-09 | 1.8.60 | **Opción 46: metadata del `UPDATER_*.yaml` renombrada a `comment`** (consistente con el `comment` de las templates exportadas). | `scm/azdo/pipeline_cd_template.py` (v1.0.11), `scm/tests/unit/test_pipeline_cd_template.py` |
 | 2026-10-09 | 1.8.59 | **Opción 46: `UPDATER_*.yaml` documenta el apply** — su `metadata.comment` lleva el resumen completo (estrategia, stages nuevos/conservados/sobrescritos, variables, preserve, alias remapeados). Tests: +1 (59 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.10), `scm/tests/unit/test_pipeline_cd_template.py` |

@@ -42,6 +42,7 @@ Autor: Harold Adrian
 
 import argparse
 import copy
+import html as _html
 import json
 import re
 import sys
@@ -54,7 +55,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.12"
+__version__ = "1.0.13"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -77,6 +78,30 @@ except ImportError:
     RICH = False
 
 console = Console() if RICH else None
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# ── Transcript de consola → reporte de evidencia HTML ─────────────────────
+# Todo lo que _print/_ask/_show_definition_summary emite queda registrado
+# aquí (incluye las respuestas del usuario en modo interactivo) y se vuelca
+# a outcome/reports/EVIDENCIA_pipe_cd_template_<ts>.html al final del run.
+_TRANSCRIPT: List[str] = []
+_REPORT_META: Dict[str, object] = {}
+
+
+def _record(line: str = "") -> None:
+    _TRANSCRIPT.append(line)
+
+
+def _record_files(files) -> None:
+    _REPORT_META.setdefault("files", [])
+    _REPORT_META["files"].extend((label, str(p)) for label, p in files)
+
 
 # Campos gestionados por el servidor — no forman parte del "template"
 SYSTEM_FIELDS = [
@@ -1081,6 +1106,7 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _print(msg: str = "", style: str = ""):
+    _record(msg)
     if console:
         console.print(f"[{style}]{msg}[/]" if style else msg)
     else:
@@ -1101,11 +1127,136 @@ def _show_definition_summary(defn: Dict):
         f"Variables: {len(defn.get('variables') or {})}",
         f"Artifacts: {len(defn.get('artifacts') or [])}",
     ]
+    _record("[Definición]")
+    for l in lines:
+        _record(l)
     if console:
         console.print(Panel("\n".join(lines), title="Definición",
                             expand=False))
     else:
         print("\n".join("  " + l for l in lines))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REPORTE DE EVIDENCIA HTML
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_EVIDENCE_CSS = """
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5;
+           padding: 24px; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .card { background: #fff; border-radius: 10px; padding: 24px;
+            margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    h1 { color: #2b579a; font-size: 22px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 12px;
+             font-size: 12px; font-weight: bold; margin-left: 10px;
+             vertical-align: middle; }
+    .badge-interactive { background: #d1ecf1; color: #0c5460; }
+    .badge-cli { background: #e2e3e5; color: #383d41; }
+    .badge-dryrun { background: #fff3cd; color: #856404; }
+    .badge-applied { background: #d4edda; color: #155724; }
+    .badge-cancelled { background: #f8d7da; color: #721c24; }
+    .muted { color: #777; font-size: 13px; }
+    table.meta { width: 100%; border-collapse: collapse; margin-top: 14px; }
+    table.meta th, table.meta td { text-align: left; padding: 8px 10px;
+        border-bottom: 1px solid #eee; font-size: 13px; }
+    table.meta th { width: 190px; color: #555; background: #f8f9fa;
+        font-weight: 600; }
+    h2 { color: #2b579a; font-size: 16px; margin-bottom: 12px; }
+    pre.console { background: #1e1e2e; color: #d4d4d4; padding: 18px;
+        border-radius: 8px; font-family: 'Cascadia Code', Consolas, monospace;
+        font-size: 12.5px; line-height: 1.5; overflow-x: auto;
+        white-space: pre-wrap; word-break: break-word; }
+    ul.files { list-style: none; }
+    ul.files li { padding: 6px 0; border-bottom: 1px solid #f0f0f0;
+        font-family: Consolas, monospace; font-size: 12.5px; }
+    ul.files .flabel { color: #2b579a; font-weight: 600; }
+    .footer { text-align: center; color: #999; font-size: 12px;
+              margin-top: 10px; }
+"""
+
+
+def write_evidence_report(report_dir: Path) -> Optional[Path]:
+    """Vuelca el transcript de consola a un reporte HTML de evidencia.
+
+    Incluye metadatos del run (org/proyecto/modo/parámetros), los archivos
+    generados y la salida completa de consola tal como se imprimió
+    (prompts y respuestas incluidos). Devuelve el path escrito o None si
+    no hubo salida.
+    """
+    if not _TRANSCRIPT:
+        return None
+    report_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = report_dir / f"EVIDENCIA_pipe_cd_template_{ts}.html"
+
+    meta = dict(_REPORT_META)
+    mode = str(meta.get("mode") or "cli")
+    status = str(meta.get("result") or "")
+    badge_cls = ("badge-interactive" if mode == "interactivo"
+                 else "badge-cli")
+    status_html = ""
+    if status:
+        scls = ("badge-applied" if "aplicado" in status.lower()
+                else "badge-dryrun" if "dry" in status.lower()
+                else "badge-cancelled")
+        status_html = f'<span class="badge {scls}">{_html.escape(status)}</span>'
+
+    meta_rows = [
+        ("Herramienta", "Pipeline CD Template (opción 46)"),
+        ("Versión", __version__),
+        ("Fecha/Hora", str(meta.get("timestamp")
+                           or datetime.now().isoformat(timespec="seconds"))),
+        ("Organización", str(meta.get("org") or "-")),
+        ("Proyecto", str(meta.get("project") or "-")),
+        ("Modo", mode),
+    ]
+    for k in ("source_id", "target_id", "template", "strategy",
+              "preserve", "overwrite_stages", "update_vars", "dry_run"):
+        v = meta.get(k)
+        if v not in (None, "", []):
+            meta_rows.append((k.replace("_", " ").title(), str(v)))
+
+    files = meta.get("files") or []
+    files_html = ""
+    if files:
+        items = "".join(
+            f'<li><span class="flabel">{_html.escape(str(lbl))}:</span> '
+            f'{_html.escape(str(p))}</li>'
+            for lbl, p in files)
+        files_html = (f'<div class="card"><h2>📁 Archivos generados</h2>'
+                      f'<ul class="files">{items}</ul></div>')
+
+    console_text = _html.escape("\n".join(_TRANSCRIPT))
+    html_doc = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evidencia — Pipeline CD Template {ts}</title>
+<style>{_EVIDENCE_CSS}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>📋 Reporte de Evidencia <span class="badge {badge_cls}">{_html.escape(mode.upper())}</span>{status_html}</h1>
+    <p class="muted">Salida completa de la ejecución de Pipeline CD Template</p>
+    <table class="meta">
+      {''.join(f'<tr><th>{_html.escape(k)}</th><td>{_html.escape(v)}</td></tr>' for k, v in meta_rows)}
+    </table>
+  </div>
+  {files_html}
+  <div class="card">
+    <h2>🖥️ Salida de consola</h2>
+    <pre class="console">{console_text}</pre>
+  </div>
+  <div class="footer">DevSecOps Toolbox — pipeline_cd_template v{__version__} — generado {ts}</div>
+</div>
+</body>
+</html>"""
+    path.write_text(html_doc, encoding="utf-8")
+    return path
 
 
 def get_args() -> argparse.Namespace:
@@ -1161,11 +1312,16 @@ def get_args() -> argparse.Namespace:
 def _ask(prompt: str, default: str = "") -> str:
     if console:
         from rich.prompt import Prompt
-        return Prompt.ask(prompt, default=default) if default \
+        v = Prompt.ask(prompt, default=default) if default \
             else Prompt.ask(prompt)
-    sfx = f" [{default}]" if default else ""
-    v = input(f"{prompt}{sfx}: ").strip()
-    return v or default
+    else:
+        sfx = f" [{default}]" if default else ""
+        v = input(f"{prompt}{sfx}: ").strip()
+        v = v or default
+    # Evidencia: la respuesta del usuario no queda en el transcript de
+    # _print — la registramos como pregunta→respuesta.
+    _record(f"{prompt} -> {v}")
+    return v
 
 
 def interactive(args) -> argparse.Namespace:
@@ -1174,6 +1330,7 @@ def interactive(args) -> argparse.Namespace:
         cfg_org, cfg_proj, _ = get_azdo_params(args)
     except SystemExit:
         pass
+    _REPORT_META["mode"] = "interactivo"
     _print("\nPipeline CD Template — interactivo", "bold cyan")
     args.source_id = int(_ask("  definitionId ORIGEN a extraer",
                               str(args.source_id) if args.source_id else ""))
@@ -1220,6 +1377,20 @@ def main() -> int:
     org, project, pat = get_azdo_params(args)
     client = AzdoClient(org, project, pat)
 
+    _REPORT_META.update({
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "mode": _REPORT_META.get("mode") or "cli",
+        "org": org, "project": project,
+        "source_id": args.source_id or None,
+        "target_id": args.target_id or None,
+        "template": args.template or None,
+        "strategy": args.strategy,
+        "preserve": args.preserve or ",".join(DEFAULT_PRESERVE_PATHS),
+        "overwrite_stages": args.overwrite_stages,
+        "update_vars": args.update_vars,
+        "dry_run": args.dry_run,
+    })
+
     out_dir = (Path(args.output_dir) if args.output_dir
                else resolve_outcome_dir() / "templates")
     backup_dir = (Path(args.backup_dir) if args.backup_dir
@@ -1241,6 +1412,7 @@ def main() -> int:
             resolve_names=not args.no_resolve_names, client=client)
         for p in written:
             _print(f"  Template: {p}", "green")
+        _record_files(("Template", p) for p in written)
         if not args.target_id:
             _print("\nÚsala con opción 41 (updater) o con esta misma "
                    "opción: --template <archivo> --target-id <id>", "dim")
@@ -1271,9 +1443,12 @@ def main() -> int:
         def _ask_stage(name: str) -> bool:
             if console:
                 from rich.prompt import Confirm
-                return Confirm.ask(
+                ans = Confirm.ask(
                     f"  Stage '{name}' existe en el destino — "
                     f"¿sobrescribir con la template?", default=False)
+                _record(f"  ¿Sobrescribir stage '{name}'? -> "
+                        f"{'s' if ans else 'n'}")
+                return ans
             ans = _ask(f"  ¿Sobrescribir stage '{name}'? (s/n)", "n")
             return ans.lower().startswith("s")
 
@@ -1301,15 +1476,18 @@ def main() -> int:
                 _print("\nArchivos generados:", "bold")
                 for label, p in files:
                     _print(f"  {label}: {p}", "dim")
+                _record_files(files)
 
         _print_files(res)
         if args.dry_run:
+            _REPORT_META["result"] = "dry-run"
             _print("\nDry-run — no se aplicó nada en AzDO "
                    "(los YAML de arriba sí se guardaron).", "yellow")
             return 0
         if not args.yes:
             ans = _ask("\n¿Confirmar PUT sobre el destino? (s/n)", "n")
             if not ans.lower().startswith("s"):
+                _REPORT_META["result"] = "cancelado"
                 _print("Cancelado.", "yellow")
                 return 0
         res = apply_template(client, args.target_id, tpl_def,
@@ -1320,11 +1498,35 @@ def main() -> int:
                              ask_fn=_ask_stage, decisions=decisions)
         _print_files(res)
         new_def = res["result"]
+        _REPORT_META["result"] = f"aplicado — definition {new_def.get('id')}"
         _print(f"\n✓ Aplicado — definition {new_def.get('id')} "
                f"'{new_def.get('name')}' rev {new_def.get('revision')}",
                "bold green")
     return 0
 
 
+def _run() -> int:
+    """main() + reporte de evidencia HTML al finalizar (éxito o error)."""
+    report_path: Optional[Path] = None
+    rc = 0
+    try:
+        rc = main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        _print(f"\nERROR: {e}", "bold red")
+        _REPORT_META["result"] = f"error: {e}"
+        rc = 1
+    finally:
+        try:
+            report_path = write_evidence_report(
+                resolve_outcome_dir() / "reports")
+        except Exception:
+            report_path = None
+    if report_path:
+        _print(f"\n  Evidencia HTML: {report_path}", "dim")
+    return rc
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_run())

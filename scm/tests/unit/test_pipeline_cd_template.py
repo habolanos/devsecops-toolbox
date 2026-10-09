@@ -933,3 +933,59 @@ class TestUpdaterArtifactAliasMap:
         assert inputs[0]["alias"] == "_DESTINO"
         assert any(c["type"] == "stage_artifact_alias_map"
                    for c in ue.changes)
+
+
+class TestEvidenceReport:
+    """El transcript de consola se vuelca a un HTML de evidencia."""
+
+    def test_print_and_ask_record_transcript(self, monkeypatch):
+        import scm.azdo.pipeline_cd_template as m
+        m._TRANSCRIPT.clear()
+        monkeypatch.setattr(m, "console", None)
+        m._print("hola mundo", "bold")
+        monkeypatch.setattr("builtins.input", lambda p: " 42 ")
+        assert m._ask("definitionId") == "42"
+        assert m._TRANSCRIPT == ["hola mundo", "definitionId -> 42"]
+
+    def test_show_definition_summary_records(self, monkeypatch):
+        import scm.azdo.pipeline_cd_template as m
+        m._TRANSCRIPT.clear()
+        monkeypatch.setattr(m, "console", None)
+        m._show_definition_summary(_defn())
+        assert "[Definición]" in m._TRANSCRIPT
+        assert any("Nombre:    CD-Origen" in l for l in m._TRANSCRIPT)
+
+    def test_write_evidence_report_html(self, tmp_path, monkeypatch):
+        import scm.azdo.pipeline_cd_template as m
+        m._TRANSCRIPT.clear()
+        m._REPORT_META.clear()
+        monkeypatch.setattr(m, "console", None)
+        m._print("linea <con> tags & amp")
+        m._REPORT_META.update({
+            "org": "Org", "project": "Proj", "mode": "interactivo",
+            "source_id": 905, "dry_run": True,
+            "result": "dry-run",
+            "files": [("Template", "/tmp/t.yaml")],
+        })
+        p = m.write_evidence_report(tmp_path)
+        assert p is not None and p.exists()
+        html = p.read_text(encoding="utf-8")
+        assert "linea &lt;con&gt; tags &amp; amp" in html  # escapado
+        assert "INTERACTIVO" in html
+        assert "Org" in html and "Proj" in html
+        assert "dry-run" in html
+        assert "/tmp/t.yaml" in html
+        assert "EVIDENCIA_pipe_cd_template" in p.name
+
+    def test_write_evidence_empty_transcript(self, tmp_path):
+        import scm.azdo.pipeline_cd_template as m
+        m._TRANSCRIPT.clear()
+        assert m.write_evidence_report(tmp_path) is None
+
+    def test_record_files_accumulates(self):
+        import scm.azdo.pipeline_cd_template as m
+        m._REPORT_META.clear()
+        m._record_files([("A", "/a"), ("B", "/b")])
+        m._record_files([("C", "/c")])
+        assert m._REPORT_META["files"] == [("A", "/a"), ("B", "/b"),
+                                           ("C", "/c")]
