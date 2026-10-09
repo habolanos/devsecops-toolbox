@@ -47,14 +47,14 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import yaml
 
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -224,8 +224,11 @@ def build_full_template(defn_clean: Dict, source_def: Dict, org: str,
                 "  - Las variables secretas vienen con value null — al "
                 "aplicar conservan el valor del destino si la variable ya "
                 "existe; si no, quedan vacías (rellenar antes de usar).\n"
-                "  - Los artifacts apuntan a los mismos orígenes (build/repo) "
-                "que el pipeline origen.\n"
+                "  - Los artifacts de esta template apuntan a los orígenes "
+                "(build/repo) del pipeline ORIGEN. Al aplicar, el destino "
+                "guarda primero un backup YAML y por defecto PRESERVA sus "
+                "propios artifacts y triggers (--preserve). Para sobrescribir "
+                "artifacts del origen use --preserve none.\n"
                 "  - resolved_names documenta a qué corresponde cada ID de "
                 "queue/variable-group/task-group.\n\n"
                 "Placeholders [[target.*]] (resueltos contra el DESTINO al "
@@ -431,12 +434,83 @@ def load_template_definition(path: Path) -> Dict:
                      "environments")
 
 
-def backup_definition(defn: Dict, backup_dir: Path) -> Path:
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRESERVE FROM TARGET — valores del destino que no se deben sobrescribir
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Rutas soportadas en --preserve:
+#   artifacts            lista de artifacts del destino (source/build artifact)
+#   triggers             triggers del destino (referencian los artifacts)
+#   releaseNameFormat    formato de nombre de release del destino
+#   variableGroups       grupos de variables del destino
+#   variables            todas las variables de release del destino
+#   var.<NOMBRE>         una variable de release concreta del destino
+#   env.<STAGE>.variables   variables de un stage del destino (si existe en payload)
+#   retentionPolicy / processParameters / description / badgeOptions  (top-level)
+DEFAULT_PRESERVE_PATHS = ["artifacts", "triggers"]
+
+
+def _preserve_get(target: Dict, path: str):
+    """Obtiene el valor de una ruta preserve desde la definición destino."""
+    m = re.fullmatch(r"var\.(.+)", path)
+    if m:
+        return (target.get("variables") or {}).get(m.group(1))
+    m = re.fullmatch(r"env\.(.+)\.(.+)", path)
+    if m:
+        stage, field = m.group(1), m.group(2)
+        for env in target.get("environments", []):
+            if (env.get("name") or "").lower() == stage.lower():
+                return env.get(field)
+        return None
+    return target.get(path)
+
+
+def _preserve_set(payload: Dict, path: str, value) -> bool:
+    """Escribe el valor preserve en el payload. False si la ruta no aplica
+    (p.ej. el stage no existe en la template)."""
+    m = re.fullmatch(r"var\.(.+)", path)
+    if m:
+        payload.setdefault("variables", {})[m.group(1)] = value
+        return True
+    m = re.fullmatch(r"env\.(.+)\.(.+)", path)
+    if m:
+        stage, field = m.group(1), m.group(2)
+        for env in payload.get("environments", []):
+            if (env.get("name") or "").lower() == stage.lower():
+                env[field] = value
+                return True
+        return False
+    payload[path] = value
+    return True
+
+
+def preserve_from_target(payload: Dict, target: Dict,
+                         paths: List[str]) -> Tuple[List[str], List[str]]:
+    """Copia valores del destino al payload para que el PUT no los planche.
+
+    Devuelve (paths_aplicados, paths_no_aplicados). Un path no aplica cuando
+    el destino no tiene el valor o el stage no existe en la template.
+    """
+    applied: List[str] = []
+    skipped: List[str] = []
+    for path in paths:
+        value = _preserve_get(target, path)
+        if value is None:
+            skipped.append(path)
+            continue
+        if _preserve_set(payload, path, copy.deepcopy(value)):
+            applied.append(path)
+        else:
+            skipped.append(path)
+    return applied, skipped
+
+
+def backup_definition(defn: Dict, backup_dir: Path) -> Dict:
+    """Backup del destino en JSON + YAML; devuelve {"json": p, "yaml": p}."""
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe = _safe_name(defn.get("name"))
-    p = backup_dir / f"backup_def_{defn.get('id')}_{safe}_{ts}.json"
-    p.write_text(json.dumps({
+    data = {
         "metadata": {"tool": "pipeline_cd_template",
                      "version": __version__,
                      "backupDate": datetime.now().isoformat(),
@@ -444,8 +518,23 @@ def backup_definition(defn: Dict, backup_dir: Path) -> Path:
                      "pipelineName": defn.get("name"),
                      "revision": defn.get("revision")},
         "definition": defn,
-    }, indent=2, ensure_ascii=False), encoding="utf-8")
-    return p
+    }
+    pj = backup_dir / f"backup_def_{defn.get('id')}_{safe}_{ts}.json"
+    pj.write_text(json.dumps(data, indent=2, ensure_ascii=False),
+                  encoding="utf-8")
+    py = backup_dir / f"backup_def_{defn.get('id')}_{safe}_{ts}.yaml"
+    py.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False,
+                                 default_flow_style=False),
+                  encoding="utf-8")
+    return {"json": pj, "yaml": py}
+
+
+def load_target_backup(path: Path) -> Dict:
+    """Relee el backup del destino (JSON o YAML) y devuelve la definición."""
+    text = path.read_text(encoding="utf-8")
+    data = (yaml.safe_load(text) if path.suffix.lower() in (".yaml", ".yml")
+            else json.loads(text))
+    return data.get("definition", data) if isinstance(data, dict) else {}
 
 
 def apply_diff_summary(target: Dict, tpl_def: Dict) -> List[str]:
@@ -475,12 +564,21 @@ def apply_diff_summary(target: Dict, tpl_def: Dict) -> List[str]:
 def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    new_name: str = "", new_path: str = "",
                    dry_run: bool = False,
-                   backup_dir: Optional[Path] = None) -> Dict:
+                   backup_dir: Optional[Path] = None,
+                   preserve: Optional[List[str]] = None) -> Dict:
     """PUT del template sobre la definición destino (con backup previo).
 
-    Devuelve {"backup": path|None, "result": respuesta|None,
-              "summary": [líneas]}.
+    Flujo no-dry-run: descarga el destino → lo guarda como backup
+    JSON+YAML → relee el YAML y aplica ``preserve`` (rutas cuyos valores
+    del destino no deben ser sobrescritos por la template: por defecto
+    ``artifacts`` y ``triggers``) → resuelve placeholders → PUT.
+
+    Devuelve {"backup": {json,yaml}|None, "result": respuesta|None,
+              "summary": [líneas], "preserve_applied": [...]}.
     """
+    if preserve is None:
+        preserve = list(DEFAULT_PRESERVE_PATHS)
+
     target = client.get(f"{client.base}/definitions/{target_id}",
                         params={"api-version": "7.1"})
     summary = apply_diff_summary(target, tpl_def)
@@ -493,23 +591,40 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     payload["name"] = new_name or target.get("name")
     payload["path"] = new_path or target.get("path", "\\")
 
+    backup_paths: Optional[Dict] = None
+    preserve_src = target
+    if not dry_run and backup_dir is not None:
+        backup_paths = backup_definition(target, backup_dir)
+        # Releer el YAML del destino original como fuente de preserve
+        try:
+            preserve_src = load_target_backup(backup_paths["yaml"]) or target
+        except Exception:
+            preserve_src = target
+        summary.append(f"backup destino: {backup_paths['yaml']}")
+
+    if preserve:
+        applied, skipped = preserve_from_target(payload, preserve_src,
+                                                preserve)
+        if applied:
+            summary.append("preservado del destino: " + ", ".join(applied))
+        if skipped:
+            summary.append("preserve sin valor en destino: "
+                           + ", ".join(skipped))
+
     unresolved: List[str] = []
-    payload = resolve_target_placeholders(payload, target, unresolved)
+    payload = resolve_target_placeholders(payload, preserve_src, unresolved)
     if unresolved:
         summary.append("⚠ placeholders sin resolver: "
                        + ", ".join(sorted(set(unresolved))))
 
     if dry_run:
         return {"backup": None, "result": None, "summary": summary,
-                "payload": payload}
-
-    backup_path = None
-    if backup_dir is not None:
-        backup_path = backup_definition(target, backup_dir)
+                "payload": payload, "preserve_applied": applied if preserve else []}
 
     result = client.put(f"{client.base}/definitions/{target_id}",
                         payload, params={"api-version": "7.1"})
-    return {"backup": backup_path, "result": result, "summary": summary}
+    return {"backup": backup_paths, "result": result, "summary": summary,
+            "preserve_applied": applied if preserve else []}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -570,6 +685,11 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--no-resolve-names", action="store_true",
                    help="no resolver IDs de queue/variable-group/task-group "
                         "a nombres")
+    p.add_argument("--preserve", default="",
+                   help="apply: rutas del destino que NO se sobrescriben, "
+                        "separadas por coma (default: artifacts,triggers; "
+                        "'none' desactiva). Soporta var.<NOMBRE> y "
+                        "env.<STAGE>.<campo>")
     p.add_argument("--dry-run", action="store_true",
                    help="apply: muestra el diff sin hacer PUT")
     p.add_argument("--yes", action="store_true",
@@ -607,9 +727,22 @@ def interactive(args) -> argparse.Namespace:
                              args.new_name)
         args.new_path = _ask("  Path destino (vacío = mantiene)",
                              args.new_path)
+        args.preserve = _ask(
+            "  Preservar del destino (coma, 'none' = nada)",
+            args.preserve or ",".join(DEFAULT_PRESERVE_PATHS))
         dr = _ask("  ¿Dry-run? (s/n)", "s" if args.dry_run else "n")
         args.dry_run = dr.lower().startswith("s")
     return args
+
+
+def _parse_preserve(raw: str) -> Optional[List[str]]:
+    """'none'/'no' → [] ; vacío → None (default); resto → lista de rutas."""
+    raw = (raw or "").strip()
+    if raw.lower() in ("none", "no", "nada"):
+        return []
+    if not raw:
+        return None
+    return [p.strip() for p in raw.split(",") if p.strip()]
 
 
 def main() -> int:
@@ -660,9 +793,10 @@ def main() -> int:
         # limpieza por si la template trae campos del servidor
         tpl_def = clean_definition_for_template(tpl_def)
 
+        preserve = _parse_preserve(args.preserve)
         res = apply_template(client, args.target_id, tpl_def,
                              new_name=args.new_name, new_path=args.new_path,
-                             dry_run=True)
+                             dry_run=True, preserve=preserve)
         _print("\nDiff destino ← template:", "bold")
         for l in res["summary"]:
             _print(f"  {l}")
@@ -676,9 +810,11 @@ def main() -> int:
                 return 0
         res = apply_template(client, args.target_id, tpl_def,
                              new_name=args.new_name, new_path=args.new_path,
-                             dry_run=False, backup_dir=backup_dir)
+                             dry_run=False, backup_dir=backup_dir,
+                             preserve=preserve)
         if res["backup"]:
-            _print(f"  Backup destino: {res['backup']}", "dim")
+            _print(f"  Backup destino (yaml): {res['backup']['yaml']}", "dim")
+            _print(f"  Backup destino (json): {res['backup']['json']}", "dim")
         new_def = res["result"]
         _print(f"\n✓ Aplicado — definition {new_def.get('id')} "
                f"'{new_def.get('name')}' rev {new_def.get('revision')}",

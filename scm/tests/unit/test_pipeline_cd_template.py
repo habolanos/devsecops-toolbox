@@ -207,8 +207,9 @@ class TestApplyTemplate:
         assert payload["id"] == 910 and payload["name"] == "CD-Nuevo"
         assert payload["path"] == "\\LAB"
         assert "id" not in payload["environments"][0]
-        assert res["backup"].exists()
-        assert "910" in res["backup"].name
+        assert res["backup"]["yaml"].exists()
+        assert res["backup"]["json"].exists()
+        assert "910" in res["backup"]["yaml"].name
         assert res["result"]["revision"] == 8
 
 
@@ -313,3 +314,119 @@ class TestApplyTemplatePlaceholders:
         tpl["variables"]["X"] = {"value": "[[target.var.Inexistente]]"}
         res = apply_template(c, 910, tpl, dry_run=True)
         assert any("sin resolver" in l for l in res["summary"])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Preserve — valores del destino que no se sobrescriben
+# ═══════════════════════════════════════════════════════════════════════════
+
+from scm.azdo.pipeline_cd_template import (
+    DEFAULT_PRESERVE_PATHS,
+    _parse_preserve,
+    load_target_backup,
+    preserve_from_target,
+)
+
+
+class TestPreserveFromTarget:
+    def test_artifacts_and_triggers_preserved(self):
+        payload = {"artifacts": [{"alias": "_origen"}],
+                   "triggers": [{"x": 1}], "name": "tpl"}
+        target = {"artifacts": [{"alias": "_destino"}],
+                  "triggers": [{"y": 2}]}
+        applied, skipped = preserve_from_target(payload, target,
+                                                ["artifacts", "triggers"])
+        assert applied == ["artifacts", "triggers"]
+        assert skipped == []
+        assert payload["artifacts"] == [{"alias": "_destino"}]
+        assert payload["triggers"] == [{"y": 2}]
+
+    def test_missing_in_target_skipped(self):
+        payload = {"artifacts": [{"alias": "_origen"}]}
+        applied, skipped = preserve_from_target(payload, {}, ["artifacts"])
+        assert applied == [] and skipped == ["artifacts"]
+        assert payload["artifacts"] == [{"alias": "_origen"}]
+
+    def test_var_path(self):
+        payload = {"variables": {}}
+        target = {"variables": {"Art": {"value": "v"}}}
+        applied, _ = preserve_from_target(payload, target, ["var.Art"])
+        assert applied == ["var.Art"]
+        assert payload["variables"]["Art"] == {"value": "v"}
+
+    def test_env_field_path(self):
+        payload = {"environments": [{"name": "Prod", "variables": {}}]}
+        target = {"environments": [{"name": "prod",
+                                    "variables": {"K": {"value": "1"}}}]}
+        applied, _ = preserve_from_target(payload, target,
+                                          ["env.Prod.variables"])
+        assert applied == ["env.Prod.variables"]
+        assert payload["environments"][0]["variables"]["K"]["value"] == "1"
+
+    def test_env_not_in_payload_skipped(self):
+        payload = {"environments": [{"name": "Dev"}]}
+        target = {"environments": [{"name": "Prod", "variables": {}}]}
+        applied, skipped = preserve_from_target(payload, target,
+                                                ["env.Prod.variables"])
+        assert applied == [] and skipped == ["env.Prod.variables"]
+
+    def test_deepcopy_no_aliasing(self):
+        target = {"artifacts": [{"alias": "_d"}]}
+        payload = {}
+        preserve_from_target(payload, target, ["artifacts"])
+        payload["artifacts"][0]["alias"] = "mutado"
+        assert target["artifacts"][0]["alias"] == "_d"
+
+
+class TestParsePreserve:
+    def test_empty_is_default(self):
+        assert _parse_preserve("") is None
+    def test_none_disables(self):
+        assert _parse_preserve("none") == []
+        assert _parse_preserve("NO") == []
+    def test_list(self):
+        assert _parse_preserve("artifacts, var.X ,env.Prod.variables") == \
+            ["artifacts", "var.X", "env.Prod.variables"]
+
+
+class TestApplyTemplatePreserve:
+    def test_default_preserves_target_artifacts(self):
+        tgt = _target()
+        tgt["triggers"] = [{"triggerType": "artifactSource"}]
+        c = _Client(tgt)
+        tpl = clean_definition_for_template(_defn())
+        tpl["artifacts"] = [{"alias": "_ORIGEN", "type": "Build"}]
+        res = apply_template(c, 910, tpl, dry_run=True)
+        assert res["payload"]["artifacts"] == tgt["artifacts"]
+        assert res["payload"]["triggers"] == tgt["triggers"]
+        assert res["preserve_applied"] == DEFAULT_PRESERVE_PATHS
+
+    def test_preserve_none_keeps_template_values(self):
+        c = _Client(_target())
+        tpl = clean_definition_for_template(_defn())
+        tpl["artifacts"] = [{"alias": "_ORIGEN"}]
+        res = apply_template(c, 910, tpl, dry_run=True, preserve=[])
+        assert res["payload"]["artifacts"] == [{"alias": "_ORIGEN"}]
+
+    def test_custom_preserve_path(self):
+        tgt = _target()
+        tgt["releaseNameFormat"] = "Rel-$(rev:r)-DEST"
+        c = _Client(tgt)
+        tpl = clean_definition_for_template(_defn())
+        tpl["releaseNameFormat"] = "Rel-$(rev:r)-ORIGEN"
+        res = apply_template(c, 910, tpl, dry_run=True,
+                             preserve=["releaseNameFormat"])
+        assert res["payload"]["releaseNameFormat"] == "Rel-$(rev:r)-DEST"
+
+    def test_backup_yaml_written_and_reread(self, tmp_path):
+        c = _Client(_target())
+        tpl = clean_definition_for_template(_defn())
+        res = apply_template(c, 910, tpl, backup_dir=tmp_path)
+        yml = res["backup"]["yaml"]
+        assert yml.suffix == ".yaml" and yml.exists()
+        reloaded = load_target_backup(yml)
+        assert reloaded["id"] == 910
+        assert reloaded["name"] == "CD-Destino"
+        # el payload conserva artifacts del destino leído del yaml
+        _, payload = c.put_calls[0]
+        assert payload["artifacts"] == _target()["artifacts"]

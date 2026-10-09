@@ -1058,6 +1058,32 @@ Flujo del rollback (`--mode rollback` o submenú interactivo opción **8**):
 > tasks, variables). Para re-desplegar un release anterior usar la opción 23
 > (Refresh Release); para rollback desde backup local la opción 22.
 
+### 12 · Pipeline CD Template Export/Apply — preserve del destino — opción 46
+
+`pipeline_cd_template.py` extrae un pipeline CD como template YAML y puede
+aplicarlo sobre otro `definitionId`. El apply hace **reemplazo total** (PUT),
+por lo que por defecto el destino conserva los valores que no deben venir del
+origen:
+
+```bash
+# Aplicar preservando artifacts+triggers del destino (default)
+python pipeline_cd_template.py --template pipe_cd_full_905_x.yaml --target-id 910
+
+# Preservar también variables o campos concretos
+python pipeline_cd_template.py --template t.yaml --target-id 910 \
+    --preserve "artifacts,triggers,var.sourcesArtifacts,env.Production.variables"
+
+# Sobrescribir TODO con la template (sin preserve)
+python pipeline_cd_template.py --template t.yaml --target-id 910 --preserve none
+```
+
+Flujo del apply: GET destino → **backup JSON+YAML** del destino original en
+`outcome/backups/template/` → relee el YAML → `preserve` copia del destino las
+rutas indicadas → resuelve `[[target.*]]` → PUT. Rutas preserve: cualquier
+campo top-level (`artifacts`, `triggers`, `releaseNameFormat`,
+`variableGroups`, `variables`…), `var.<NOMBRE>` (variable release),
+`env.<STAGE>.<campo>` (campo de un stage que exista en la template).
+
 ---
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
@@ -1168,6 +1194,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-09 | 1.8.51 | **Opción 46: backup YAML del destino + `--preserve` anti-overwrite** — el apply (PUT reemplazo total) "planchaba" los `artifacts`/`triggers` del origen sobre el destino (p.ej. cambiaba el build artifact al del pipeline origen). Nuevo flujo: GET destino → backup **JSON+YAML** del destino original en `outcome/backups/template/` → relee el YAML → `preserve_from_target` copia las rutas preservadas del destino al payload → placeholders `[[target.*]]` → PUT. `--preserve` default `artifacts,triggers`; rutas soportadas: campo top-level (`artifacts`, `triggers`, `releaseNameFormat`, `variableGroups`, `variables`…), `var.<NOMBRE>`, `env.<STAGE>.<campo>`; `none` desactiva. Prompt de preserve en modo interactivo. Tests: +13 (37 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.2), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md` |
 | 2026-10-09 | 1.8.50 | **Opción 27: outcome dir global** — `BACKUP_DIR` dejaba de ser relativo al cwd; `_resolve_outcome_dir()` aplica `DEVSECOPS_OUTPUT_DIR` > `config.json global.output_dir` > `scm/outcome`, alineado con el resto del toolbox. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.50) |
 | 2026-10-09 | 1.8.49 | **Fix opción 27: HTTP 400 en PUT de rollback** — el payload histórico incluía campos read-only (`url`, `_links`, `lastRelease`, `createdOn`, `modifiedBy`…) y `id` de environments inexistentes en la definición actual (stages recreados entre revisiones → AzDO rechaza IDs huérfanos). Se limpian campos de sistema y se conserva `id` de env solo si existe en la actual; si no se omite y AzDO lo recrea. `api_put`/`api_post` ahora propagan el **body del error HTTP** para diagnóstico real. Tests: +2. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.49), `scm/tests/unit/test_pipeline_cd_backup_restore.py` |
 | 2026-10-09 | 1.8.48 | **Fix opción 27: crash del backup previo al rollback con `variableGroups` int** — `resolve_names` llamaba `.get("id")` sobre refs de variable groups que AzDO devuelve como enteros → `'int' object has no attribute 'get'`; el rollback abortaba en el paso de backup sin modificar la definición. Acepta int o dict a nivel definición y environment. Test: +1. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.48), `scm/tests/unit/test_pipeline_cd_backup_restore.py` |
