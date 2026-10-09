@@ -206,7 +206,8 @@ class TestApplyTemplate:
         assert url.endswith("/definitions/910")
         assert payload["id"] == 910 and payload["name"] == "CD-Nuevo"
         assert payload["path"] == "\\LAB"
-        assert "id" not in payload["environments"][0]
+        # merge (default): stage existente en destino se conserva con su id
+        assert payload["environments"][0]["id"] == 100
         assert res["backup"]["yaml"].exists()
         assert res["backup"]["json"].exists()
         assert "910" in res["backup"]["yaml"].name
@@ -469,3 +470,121 @@ class TestApplyTemplatePreserve:
         # el payload conserva artifacts del destino leído del yaml
         _, payload = c.put_calls[0]
         assert payload["artifacts"] == _target()["artifacts"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Merge — upsert sin planchar el destino
+# ═══════════════════════════════════════════════════════════════════════════
+
+from scm.azdo.pipeline_cd_template import merge_definitions
+
+
+def _tpl_env(name, **kw):
+    e = {"name": name, "variables": {"TVar": {"value": "tpl"}},
+         "deployPhases": [{"workflowTasks": [{"name": "t"}]}]}
+    e.update(kw)
+    return e
+
+
+class TestMergeDefinitions:
+    def _target_def(self):
+        return {
+            "id": 910, "revision": 7, "name": "CD-Dest",
+            "variables": {"Keep": {"value": "dst"},
+                          "Shared": {"value": "dst-val"}},
+            "environments": [
+                {"id": 11, "name": "QA",
+                 "variables": {"QaVar": {"value": "dst"}}},
+                {"id": 12, "name": "Production",
+                 "variables": {"PVar": {"value": "dst"}}},
+            ],
+        }
+
+    def test_adds_only_new_stages_by_default(self):
+        tpl = {"environments": [_tpl_env("QA"), _tpl_env("NewStage")],
+               "variables": {"NewVar": {"value": "n"},
+                             "Shared": {"value": "tpl-val"}}}
+        merged, rep = merge_definitions(tpl, self._target_def(),
+                                        overwrite="none")
+        names = [e["name"] for e in merged["environments"]]
+        # QA del destino (conservado), NewStage agregado, Production intacto
+        assert names == ["QA", "NewStage", "Production"]
+        qa = merged["environments"][0]
+        assert qa["variables"]["QaVar"]["value"] == "dst"   # vars del destino
+        assert qa["id"] == 11                                # linkage destino
+        # variables release: nuevas agregadas, existentes preservadas
+        assert merged["variables"]["NewVar"]["value"] == "n"
+        assert merged["variables"]["Shared"]["value"] == "dst-val"
+
+    def test_overwrite_all_replaces_stages_but_keeps_vars(self):
+        tpl = {"environments": [_tpl_env("QA", rank=9)], "variables": {}}
+        merged, _ = merge_definitions(tpl, self._target_def(),
+                                      overwrite="all")
+        qa = merged["environments"][0]
+        assert qa["rank"] == 9                     # contenido de la template
+        assert qa["id"] == 11                      # id del destino
+        assert qa["variables"]["QaVar"]["value"] == "dst"  # vars preservadas
+
+    def test_update_vars_overlays_template_vars(self):
+        tpl = {"environments": [_tpl_env("QA")],
+               "variables": {"Shared": {"value": "tpl-val"}}}
+        merged, _ = merge_definitions(tpl, self._target_def(),
+                                      overwrite="all", update_vars=True)
+        qa = merged["environments"][0]
+        assert qa["variables"]["QaVar"]["value"] == "dst"   # extra del destino
+        assert qa["variables"]["TVar"]["value"] == "tpl"    # nueva de template
+        assert merged["variables"]["Shared"]["value"] == "tpl-val"
+
+    def test_ask_fn_decides_per_stage_and_caches(self):
+        tpl = {"environments": [_tpl_env("QA"), _tpl_env("Production")],
+               "variables": {}}
+        decisions = {}
+        asked = []
+
+        def ask(name):
+            asked.append(name)
+            return name == "QA"
+
+        merged, _ = merge_definitions(tpl, self._target_def(),
+                                      overwrite="ask", ask_fn=ask,
+                                      decisions=decisions)
+        qa, prod = merged["environments"][0], merged["environments"][1]
+        assert qa["deployPhases"]                      # sobrescrito (template)
+        assert prod.get("variables") == {"PVar": {"value": "dst"}}  # conservado
+        # segunda pasada (dry-run → real) no vuelve a preguntar
+        merge_definitions(tpl, self._target_def(), overwrite="ask",
+                          ask_fn=ask, decisions=decisions)
+        assert asked == ["QA", "Production"]
+
+    def test_ask_without_ask_fn_conserves(self):
+        tpl = {"environments": [_tpl_env("QA")], "variables": {}}
+        merged, _ = merge_definitions(tpl, self._target_def(),
+                                      overwrite="ask", ask_fn=None)
+        assert "deployPhases" not in merged["environments"][0]
+
+    def test_overwrite_csv_list(self):
+        tpl = {"environments": [_tpl_env("QA"), _tpl_env("Production")],
+               "variables": {}}
+        merged, _ = merge_definitions(tpl, self._target_def(),
+                                      overwrite="Production")
+        assert "deployPhases" not in merged["environments"][0]   # QA conservado
+        assert "deployPhases" in merged["environments"][1]       # Prod sobrescrito
+
+    def test_strategy_merge_in_apply(self):
+        tgt = self._target_def()
+        c = _Client(tgt)
+        tpl = {"environments": [_tpl_env("QA"), _tpl_env("Nuevo")],
+               "variables": {}}
+        res = apply_template(c, 910, tpl, dry_run=True,
+                             strategy="merge", overwrite="none")
+        names = [e["name"] for e in res["payload"]["environments"]]
+        assert names == ["QA", "Nuevo", "Production"]
+        assert any("stage conservado" in l for l in res["summary"])
+
+    def test_strategy_replace_keeps_old_behavior(self):
+        c = _Client(self._target_def())
+        tpl = {"environments": [_tpl_env("Solo")], "variables": {}}
+        res = apply_template(c, 910, tpl, dry_run=True,
+                             strategy="replace", preserve=[])
+        names = [e["name"] for e in res["payload"]["environments"]]
+        assert names == ["Solo"]

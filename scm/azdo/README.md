@@ -1098,6 +1098,35 @@ python pipeline_cd_template.py --template t.yaml --target-id 910 \
     --preserve "artifacts,triggers,env.*"
 ```
 
+#### Estrategia merge (default) vs replace
+
+El apply usa **`--strategy merge`** por defecto — solo agrega lo que el
+destino no tiene, sin plancharlo:
+
+| Caso | Comportamiento merge |
+|---|---|
+| Stage solo en template | Se **agrega** |
+| Stage en ambos | Se conserva el del destino; `--overwrite-stages ask` (default) pregunta por stage, `all`/`none`/CSV deciden sin preguntar. Al sobrescribir se conserva el `id` del env destino y sus **variables** (salvo `--update-vars`, que hace overlay) |
+| Stage solo en destino | Se **conserva intacto** (merge nunca borra) |
+| Variables release/env | Nuevas de la template se agregan; existentes conservan valor del destino salvo `--update-vars` |
+
+```bash
+# Merge interactivo: pregunta por cada stage compartido
+python pipeline_cd_template.py --template t.yaml --target-id 910
+
+# Merge no-interactivo: conservar todos los stages compartidos
+python pipeline_cd_template.py --template t.yaml --target-id 910 \
+    --overwrite-stages none --yes
+
+# Sobrescribir solo SCM Inspection y QA; actualizar sus variables también
+python pipeline_cd_template.py --template t.yaml --target-id 910 \
+    --overwrite-stages "SCM Inspection,QA" --update-vars --yes
+```
+
+`--strategy replace` vuelve al reemplazo total anterior. Las decisiones
+`ask` se cachean — se pregunta una vez en el dry-run de preview y se
+reutilizan en el PUT real.
+
 ---
 
 Todas las herramientas soportan el flag `--output` con tres formatos:
@@ -1208,6 +1237,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-09 | 1.8.53 | **Opción 46: estrategia merge como default del apply** — `merge_definitions`: stages nuevos de la template se agregan, compartidos se conservan salvo overwrite por stage (`--overwrite-stages ask/all/none/CSV`; `ask` pregunta una vez y cachea decisiones entre dry-run y PUT), stages solo en destino intactos, variables preservadas salvo `--update-vars`. Stage sobrescrito conserva `id` del destino. `--strategy replace` = reemplazo total anterior. Tests: +8 (49 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.4), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md` |
 | 2026-10-09 | 1.8.52 | **Opción 46: preserve de stages completos** — `--preserve env.<STAGE>` preserva el environment entero del destino (reemplaza mismo nombre en template o lo agrega si falta; conserva `id`, quita `releaseId`/`badgeUrl`/`queue`); `env.*` preserva todos los stages del destino. Tests: +4 (41 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.3), `scm/tests/unit/test_pipeline_cd_template.py` |
 | 2026-10-09 | 1.8.51 | **Opción 46: backup YAML del destino + `--preserve` anti-overwrite** — el apply (PUT reemplazo total) "planchaba" los `artifacts`/`triggers` del origen sobre el destino (p.ej. cambiaba el build artifact al del pipeline origen). Nuevo flujo: GET destino → backup **JSON+YAML** del destino original en `outcome/backups/template/` → relee el YAML → `preserve_from_target` copia las rutas preservadas del destino al payload → placeholders `[[target.*]]` → PUT. `--preserve` default `artifacts,triggers`; rutas soportadas: campo top-level (`artifacts`, `triggers`, `releaseNameFormat`, `variableGroups`, `variables`…), `var.<NOMBRE>`, `env.<STAGE>.<campo>`; `none` desactiva. Prompt de preserve en modo interactivo. Tests: +13 (37 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.2), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md` |
 | 2026-10-09 | 1.8.50 | **Opción 27: outcome dir global** — `BACKUP_DIR` dejaba de ser relativo al cwd; `_resolve_outcome_dir()` aplica `DEVSECOPS_OUTPUT_DIR` > `config.json global.output_dir` > `scm/outcome`, alineado con el resto del toolbox. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.50) |

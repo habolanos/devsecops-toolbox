@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.52`** — 2026-10-09
+**`1.8.53`** — 2026-10-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-09 | **1.8.53** | **feat(azdo): opción 46 — estrategia merge como default del apply** — `merge_definitions`: stages solo en template se agregan; stages compartidos se conservan del destino salvo overwrite (`--overwrite-stages ask/all/none/CSV`, `ask` pregunta por stage y cachea decisiones entre dry-run y PUT); stages solo en destino nunca se borran; variables release/env: nuevas se agregan, existentes preservan valor del destino salvo `--update-vars` (overlay). Stage sobrescrito conserva `id` del destino. `--strategy replace` mantiene el reemplazo total anterior. Tests: +8 (49 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.4), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.52** | **feat(azdo): opción 46 — preserve de stages completos** — `--preserve` ahora acepta `env.<STAGE>` (environment completo del destino: reemplaza el mismo nombre en la template o lo agrega si falta; conserva su `id`, quita `releaseId`/`badgeUrl`/`queue`) y `env.*` (todos los stages del destino). Útil para preservar stages como "SCM Inspection", Develop, QA, Validator, Staging, Production mientras la template actualiza el resto. Tests: +4 (41 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.3), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.51** | **feat(azdo): opción 46 — backup YAML del destino + preserve anti-overwrite** — el apply hacía reemplazo total y "planchaba" `artifacts`/`triggers` del origen sobre el destino. Nuevo flujo: GET destino → backup **JSON+YAML** en `outcome/backups/template/` → relee el YAML del destino original → `preserve_from_target` copia al payload las rutas `--preserve` (default `artifacts,triggers`; soporta `var.<NOMBRE>`, `env.<STAGE>.<campo>` y cualquier campo top-level; `none` desactiva) → placeholders → PUT. `--preserve` también en el modo interactivo. Tests: +13 (37 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.2), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | **1.8.50** | **fix(azdo): opción 27 — outcome dir global** — `BACKUP_DIR` estaba hardcodeado a `outcome/` relativo al cwd; ahora `_resolve_outcome_dir()` respeta la convención `DEVSECOPS_OUTPUT_DIR` > `config.json global.output_dir` > `scm/outcome` (igual que `resolve_outcome_dir` del remediator). Backups/exports de la opción 27 quedan en `scm/outcome/backups/definitions/` por defecto. | `scm/azdo/pipeline_cd_backup_restore.py` (v1.8.50), `README.version.md`, `VERSION` |

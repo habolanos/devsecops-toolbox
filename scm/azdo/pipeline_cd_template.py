@@ -54,7 +54,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -229,6 +229,10 @@ def build_full_template(defn_clean: Dict, source_def: Dict, org: str,
                 "guarda primero un backup YAML y por defecto PRESERVA sus "
                 "propios artifacts y triggers (--preserve). Para sobrescribir "
                 "artifacts del origen use --preserve none.\n"
+                "  - Estrategia por defecto: MERGE — solo agrega stages/"
+                "variables que el destino no tiene; los compartidos se "
+                "conservan (o se preguntan con --overwrite-stages ask). "
+                "--strategy replace = reemplazo total.\n"
                 "  - resolved_names documenta a qué corresponde cada ID de "
                 "queue/variable-group/task-group.\n\n"
                 "Placeholders [[target.*]] (resueltos contra el DESTINO al "
@@ -540,6 +544,127 @@ def preserve_from_target(payload: Dict, target: Dict,
     return applied, skipped
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MERGE — aplicar template sin planchar el destino
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Estrategia merge (default del apply):
+#   - Stage solo en template        → se AGREGA
+#   - Stage en ambos                → por defecto se conserva el del destino;
+#     si se decide sobrescribir (ask/all/lista), se usa el de la template pero
+#     conservando el `id` del env destino (linkage) y, salvo --update-vars,
+#     sus variables (merge de variables: nuevas de la template se agregan,
+#     las del destino no se tocan)
+#   - Stage solo en destino         → se conserva intacto (merge nunca borra)
+#   - Variables de release          → nuevas de la template se agregan; las
+#     existentes conservan el valor del destino salvo --update-vars
+def _merge_vars(target_vars: Dict, tpl_vars: Dict,
+                update_vars: bool) -> Dict:
+    """Overlay: base = destino; template agrega nuevas y (con update_vars)
+    actualiza las existentes."""
+    merged = copy.deepcopy(target_vars or {})
+    for name, val in (tpl_vars or {}).items():
+        if name not in merged or update_vars:
+            merged[name] = copy.deepcopy(val)
+    return merged
+
+
+def merge_definitions(tpl_def: Dict, target: Dict,
+                      overwrite: str = "ask",
+                      update_vars: bool = False,
+                      ask_fn=None,
+                      decisions: Optional[Dict[str, bool]] = None
+                      ) -> Tuple[Dict, List[str]]:
+    """Mergea la template sobre el destino. Devuelve (definición, reporte).
+
+    overwrite: "ask" (pregunta por stage vía ask_fn; sin ask_fn → conserva),
+               "all", "none" o lista CSV de nombres de stages.
+    decisions: dict compartido para reutilizar respuestas entre dry-run y PUT.
+    """
+    merged = copy.deepcopy(tpl_def)
+    report: List[str] = []
+    decisions = decisions if decisions is not None else {}
+
+    if isinstance(overwrite, str) and overwrite not in ("ask", "all", "none"):
+        overwrite_set = {s.strip().lower() for s in overwrite.split(",")
+                         if s.strip()}
+    elif isinstance(overwrite, (list, tuple, set)):
+        overwrite_set = {str(s).lower() for s in overwrite}
+    else:
+        overwrite_set = None
+
+    tgt_envs = {e.get("name", "").lower(): e
+                for e in target.get("environments", [])}
+    tpl_names = set()
+    new_envs: List[Dict] = []
+
+    for env in merged.get("environments", []):
+        name = env.get("name", "")
+        tpl_names.add(name.lower())
+        te = tgt_envs.get(name.lower())
+        if te is None:
+            new_envs.append(env)
+            report.append(f"+ stage nuevo (template): {name}")
+            continue
+
+        do_overwrite = False
+        if overwrite == "all":
+            do_overwrite = True
+        elif overwrite == "none":
+            do_overwrite = False
+        elif overwrite_set is not None:
+            do_overwrite = name.lower() in overwrite_set
+        else:  # ask
+            if name.lower() in decisions:
+                do_overwrite = decisions[name.lower()]
+            elif ask_fn is not None:
+                do_overwrite = bool(ask_fn(name))
+                decisions[name.lower()] = do_overwrite
+            else:
+                do_overwrite = False
+
+        if not do_overwrite:
+            new_envs.append(copy.deepcopy(te))
+            report.append(f"= stage conservado del destino: {name}")
+            continue
+
+        new_env = env
+        if te.get("id"):
+            new_env["id"] = te["id"]       # linkage del stage destino
+        if update_vars:
+            new_env["variables"] = _merge_vars(te.get("variables"),
+                                               env.get("variables"), True)
+        else:
+            new_env["variables"] = copy.deepcopy(te.get("variables") or {})
+        new_envs.append(new_env)
+        vnote = "variables mergeadas" if update_vars \
+            else "variables del destino preservadas"
+        report.append(f"~ stage sobrescrito por template ({vnote}): {name}")
+
+    kept = 0
+    for env in target.get("environments", []):
+        if env.get("name", "").lower() not in tpl_names:
+            new_envs.append(copy.deepcopy(env))
+            kept += 1
+    if kept:
+        report.append(f"= stages solo en destino conservados: {kept}")
+    merged["environments"] = new_envs
+
+    before = len(target.get("variables") or {})
+    merged["variables"] = _merge_vars(target.get("variables"),
+                                      merged.get("variables"), update_vars)
+    added = [k for k in merged["variables"]
+             if k not in (target.get("variables") or {})]
+    if added:
+        report.append(f"+ variables nuevas: {', '.join(added)}")
+    if update_vars:
+        report.append("~ variables existentes actualizadas por template")
+    else:
+        report.append(f"= variables del destino preservadas ({before})")
+
+    return merged, report
+
+
 def backup_definition(defn: Dict, backup_dir: Path) -> Dict:
     """Backup del destino en JSON + YAML; devuelve {"json": p, "yaml": p}."""
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -600,13 +725,22 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
                    new_name: str = "", new_path: str = "",
                    dry_run: bool = False,
                    backup_dir: Optional[Path] = None,
-                   preserve: Optional[List[str]] = None) -> Dict:
+                   preserve: Optional[List[str]] = None,
+                   strategy: str = "merge",
+                   overwrite: str = "ask",
+                   update_vars: bool = False,
+                   ask_fn=None,
+                   decisions: Optional[Dict[str, bool]] = None) -> Dict:
     """PUT del template sobre la definición destino (con backup previo).
 
+    strategy="merge" (default): solo agrega lo que el destino no tiene —
+    stages nuevos de la template se insertan, los existentes se conservan
+    salvo decisión de overwrite (ask/all/none/lista), variables del destino
+    preservadas salvo update_vars. strategy="replace": reemplazo total.
+
     Flujo no-dry-run: descarga el destino → lo guarda como backup
-    JSON+YAML → relee el YAML y aplica ``preserve`` (rutas cuyos valores
-    del destino no deben ser sobrescritos por la template: por defecto
-    ``artifacts`` y ``triggers``) → resuelve placeholders → PUT.
+    JSON+YAML → relee el YAML del destino original como fuente de
+    merge/preserve/placeholders → PUT.
 
     Devuelve {"backup": {json,yaml}|None, "result": respuesta|None,
               "summary": [líneas], "preserve_applied": [...]}.
@@ -619,23 +753,31 @@ def apply_template(client: AzdoClient, target_id: int, tpl_def: Dict,
     summary = apply_diff_summary(target, tpl_def)
     summary.append(f"target: id {target_id} '{target.get('name')}' "
                    f"rev {target.get('revision')}")
-
-    payload = copy.deepcopy(tpl_def)
-    payload["id"] = target_id
-    payload["revision"] = target.get("revision")
-    payload["name"] = new_name or target.get("name")
-    payload["path"] = new_path or target.get("path", "\\")
+    summary.append(f"strategy: {strategy}")
 
     backup_paths: Optional[Dict] = None
     preserve_src = target
     if not dry_run and backup_dir is not None:
         backup_paths = backup_definition(target, backup_dir)
-        # Releer el YAML del destino original como fuente de preserve
+        # Releer el YAML del destino original como fuente de merge/preserve
         try:
             preserve_src = load_target_backup(backup_paths["yaml"]) or target
         except Exception:
             preserve_src = target
         summary.append(f"backup destino: {backup_paths['yaml']}")
+
+    if strategy == "merge":
+        payload, merge_report = merge_definitions(
+            tpl_def, preserve_src, overwrite=overwrite,
+            update_vars=update_vars, ask_fn=ask_fn, decisions=decisions)
+        summary += merge_report
+    else:
+        payload = copy.deepcopy(tpl_def)
+
+    payload["id"] = target_id
+    payload["revision"] = preserve_src.get("revision")
+    payload["name"] = new_name or preserve_src.get("name")
+    payload["path"] = new_path or preserve_src.get("path", "\\")
 
     if preserve:
         applied, skipped = preserve_from_target(payload, preserve_src,
@@ -720,6 +862,16 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--no-resolve-names", action="store_true",
                    help="no resolver IDs de queue/variable-group/task-group "
                         "a nombres")
+    p.add_argument("--strategy", choices=["merge", "replace"],
+                   default="merge",
+                   help="apply: merge (default) agrega lo que falta y "
+                        "conserva el destino; replace = reemplazo total")
+    p.add_argument("--overwrite-stages", default="ask",
+                   help="merge: stages compartidos a sobrescribir — ask "
+                        "(default), all, none o lista CSV de nombres")
+    p.add_argument("--update-vars", action="store_true",
+                   help="merge: actualizar variables existentes con los "
+                        "valores de la template (default: preservar destino)")
     p.add_argument("--preserve", default="",
                    help="apply: rutas del destino que NO se sobrescriben, "
                         "separadas por coma (default: artifacts,triggers; "
@@ -765,6 +917,15 @@ def interactive(args) -> argparse.Namespace:
         args.preserve = _ask(
             "  Preservar del destino (coma, 'none' = nada)",
             args.preserve or ",".join(DEFAULT_PRESERVE_PATHS))
+        st = _ask("  Estrategia (merge/replace)", args.strategy)
+        args.strategy = st if st in ("merge", "replace") else "merge"
+        if args.strategy == "merge":
+            args.overwrite_stages = _ask(
+                "  Stages a sobrescribir (ask/all/none/o nombres CSV)",
+                args.overwrite_stages)
+            uv = _ask("  ¿Actualizar variables existentes del destino? (s/n)",
+                      "s" if args.update_vars else "n")
+            args.update_vars = uv.lower().startswith("s")
         dr = _ask("  ¿Dry-run? (s/n)", "s" if args.dry_run else "n")
         args.dry_run = dr.lower().startswith("s")
     return args
@@ -829,9 +990,27 @@ def main() -> int:
         tpl_def = clean_definition_for_template(tpl_def)
 
         preserve = _parse_preserve(args.preserve)
+        ow = args.overwrite_stages
+        overwrite: object = (ow if ow in ("ask", "all", "none")
+                             else [s.strip() for s in ow.split(",")
+                                   if s.strip()])
+        decisions: Dict[str, bool] = {}
+
+        def _ask_stage(name: str) -> bool:
+            if console:
+                from rich.prompt import Confirm
+                return Confirm.ask(
+                    f"  Stage '{name}' existe en el destino — "
+                    f"¿sobrescribir con la template?", default=False)
+            ans = _ask(f"  ¿Sobrescribir stage '{name}'? (s/n)", "n")
+            return ans.lower().startswith("s")
+
         res = apply_template(client, args.target_id, tpl_def,
                              new_name=args.new_name, new_path=args.new_path,
-                             dry_run=True, preserve=preserve)
+                             dry_run=True, preserve=preserve,
+                             strategy=args.strategy, overwrite=overwrite,
+                             update_vars=args.update_vars,
+                             ask_fn=_ask_stage, decisions=decisions)
         _print("\nDiff destino ← template:", "bold")
         for l in res["summary"]:
             _print(f"  {l}")
@@ -846,7 +1025,9 @@ def main() -> int:
         res = apply_template(client, args.target_id, tpl_def,
                              new_name=args.new_name, new_path=args.new_path,
                              dry_run=False, backup_dir=backup_dir,
-                             preserve=preserve)
+                             preserve=preserve, strategy=args.strategy,
+                             overwrite=overwrite, update_vars=args.update_vars,
+                             ask_fn=_ask_stage, decisions=decisions)
         if res["backup"]:
             _print(f"  Backup destino (yaml): {res['backup']['yaml']}", "dim")
             _print(f"  Backup destino (json): {res['backup']['json']}", "dim")
