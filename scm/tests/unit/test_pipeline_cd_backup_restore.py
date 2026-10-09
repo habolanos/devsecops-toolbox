@@ -90,6 +90,27 @@ def test_build_payload_comment_default(current_def, revision_def):
     assert "Rollback" in payload["comment"]
 
 
+def test_build_payload_strips_readonly_fields(current_def, revision_def):
+    revision_def.update({"url": "https://...", "_links": {"self": {}},
+                         "createdOn": "x", "modifiedBy": {"id": "a"},
+                         "lastRelease": {"id": 1}, "isDeleted": False})
+    payload = m.build_rollback_payload(revision_def, current_def)
+    for f in ("url", "_links", "createdOn", "modifiedBy", "lastRelease", "isDeleted"):
+        assert f not in payload
+
+
+def test_build_payload_drops_stale_env_ids(current_def):
+    """Un env id que ya no existe en la def actual produce 400 en el PUT."""
+    rev = {"id": 905, "revision": 3, "environments": [
+        {"name": "Production", "id": 5, "releaseId": 1},   # existe en actual -> conservar
+        {"name": "OldStage", "id": 99, "releaseId": 2},     # ya no existe -> quitar id
+    ]}
+    payload = m.build_rollback_payload(rev, current_def)
+    assert payload["environments"][0]["id"] == 5
+    assert "id" not in payload["environments"][1]
+    assert "releaseId" not in payload["environments"][0]
+
+
 def test_build_payload_keeps_secret_null(current_def):
     rev = {"id": 905, "name": "p", "revision": 3,
            "variables": {"Sec": {"value": None, "isSecret": True}},

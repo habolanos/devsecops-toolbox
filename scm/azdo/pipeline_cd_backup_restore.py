@@ -88,7 +88,7 @@ except ImportError:
 
 console = Console()
 
-__version__ = "1.8.48"
+__version__ = "1.8.49"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.0"
@@ -183,6 +183,14 @@ def api_get(url: str, pat: str) -> Dict:
         return json.loads(response.read().decode('utf-8'))
 
 
+def _raise_with_body(e: urllib.error.HTTPError) -> None:
+    try:
+        detail = e.read().decode('utf-8')[:2000]
+    except Exception:
+        detail = e.reason or ""
+    raise RuntimeError(f"HTTP {e.code} {e.reason}: {detail}") from e
+
+
 def api_put(url: str, pat: str, body: Dict) -> Dict:
     headers = {
         'Authorization': create_auth_header(pat),
@@ -190,8 +198,11 @@ def api_put(url: str, pat: str, body: Dict) -> Dict:
     }
     data = json.dumps(body).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers=headers, method='PUT')
-    with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode('utf-8'))
+    try:
+        with urllib.request.urlopen(req) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        _raise_with_body(e)
 
 
 def api_post(url: str, pat: str, body: Dict) -> Dict:
@@ -201,8 +212,11 @@ def api_post(url: str, pat: str, body: Dict) -> Dict:
     }
     data = json.dumps(body).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers=headers, method='POST')
-    with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode('utf-8'))
+    try:
+        with urllib.request.urlopen(req) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        _raise_with_body(e)
 
 
 def get_release_definition(org: str, project: str, def_id: int, pat: str) -> Dict:
@@ -862,8 +876,18 @@ def build_rollback_payload(revision_def: Dict, current_def: Dict, comment: str =
     payload["name"] = current_def.get("name", payload.get("name"))
     payload["path"] = current_def.get("path", payload.get("path", "\\"))
     payload["comment"] = comment or f"[Rollback] Restaurado a revision {revision_def.get('revision', '?')}"
+    for field in SYSTEM_FIELDS_TO_CLEAN + ["url", "lastRelease", "isDeleted",
+                                            "deletedBy", "deletedDate"]:
+        payload.pop(field, None)
+    # Un env id que ya no existe en la definicion actual produce HTTP 400 en el PUT.
+    # Se conserva el id si el env sigue existiendo (mantiene el historial del stage);
+    # si no, se quita para que AzDO lo recree.
+    current_env_ids = {e.get("id") for e in current_def.get("environments", []) if e.get("id")}
     for env in payload.get("environments", []):
         env.pop("releaseId", None)
+        env.pop("badgeUrl", None)
+        if env.get("id") and env["id"] not in current_env_ids:
+            env.pop("id", None)
     return payload
 
 
