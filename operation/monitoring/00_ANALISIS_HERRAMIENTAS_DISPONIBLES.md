@@ -1,7 +1,7 @@
 # 📊 Análisis de Herramientas DevSecOps Toolbox
 
 **Fecha:** 11 de Septiembre de 2026  
-**Versión:** 1.2.1  
+**Versión:** 1.2.2  
 **Objetivo:** Extraer máximo valor de las herramientas GCP, Azure, AWS y AZDO para monitoreo de ambientes
 
 ---
@@ -81,7 +81,7 @@ El DevSecOps Toolbox contiene **40+ herramientas GCP**, **25 herramientas Azure*
 
 | ID | Herramienta | Descripción | Valor DevSecOps |
 |----|-------------|-------------|-----------------|
-| **1** | Monitoreo de Recursos GCP | **AMPLIADO**: GKE enrichment (pods, nodos CPU/mem, deployments+restarts, red, versiones), Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML (10 tabs) | ⭐⭐⭐⭐⭐ Baseline + Dashboard |
+| **1** | Monitoreo de Recursos GCP | **AMPLIADO**: GKE enrichment (pods, nodos CPU/mem, deployments+restarts, red, versiones), Cloud SQL DBs, Cloud Run VPC/Estado, Compute Engine, multi-proyecto, dashboard HTML (10 tabs), consolidados en matriz por proyecto, **Salud GKE consolidada**, **Plan de Trabajo** (hallazgos→acciones por severidad, exportado a `gcp_work_planning_<ts>.html`) | ⭐⭐⭐⭐⭐ Baseline + Dashboard |
 | **24** | GKE Node Resources Monitor | CPU/memoria por nodo, **multi-proyecto consolidado + dashboard HTML** | ⭐⭐⭐⭐ Capacity planning |
 | **25** | GKE Pod Resources Monitor | CPU/memoria por pod | ⭐⭐⭐⭐⭐ Troubleshooting |
 | **2** | Reporte de Despliegues GKE | Detalle de despliegues, **multi-proyecto consolidado, restarts resaltados (>10/>4), reporte HTML, clusters inaccesibles reportados** | ⭐⭐⭐⭐ Auditoría |
@@ -514,7 +514,13 @@ DESPUÉS DE DEPLOY:
 
 ---
 
-**Documento de Análisis v1.2.1**  
+**Documento de Análisis v1.2.2**  
+**Cambios en v1.2.2:**
+- ✅ Tool 1 (GCP Monitor): tablas consolidadas renovadas — "Resumen de Recursos" y "Salud General" ahora son matrices una-fila-por-proyecto (conteos por recurso + columna ⚠ Alertas + fila TOTAL; salud con señales reales: VMs detenidas, SQL no-RUNNABLE, APIs off, Run público)
+- ✅ Tool 1: nueva tabla "🩺 Salud GKE Consolidada" por proyecto (pods run/no-run, deploys atención, nodos saturados, peor % IPs, peor salud)
+- ✅ Tool 1: nueva tabla "📋 Plan de Trabajo (Work Planning)" — hallazgos de todas las tablas → acciones por severidad (🔴 CRÍTICO → 🟠 ALTO → 🟡 MEDIO → ⚪ INFO) con acción sugerida por recurso; exportada a `outcome/gcp_work_planning_<ts>.html` y presente en TXT/JSON (`work_planning`)
+- ✅ Fila de Tool 1 actualizada en la tabla de herramientas
+
 **Cambios en v1.2.1:**
 - ✅ Tool 1 (GCP Monitor): agrega recursos por nodo (eq. Tool 24) y deployments+restarts (eq. Tool 2) al enriquecimiento por cluster; dashboard 10 tabs (Nodos GKE, Deployments GKE); ESTADO ADVERTENCIA si pods not running > running
 - ✅ Tool 2 (Reporte Despliegues): multi-proyecto consolidado (equipo/ALL), restarts resaltados >10 (blanco/rojo) y >4 (negro/amarillo), reporte HTML, clusters inaccesibles sin abortar

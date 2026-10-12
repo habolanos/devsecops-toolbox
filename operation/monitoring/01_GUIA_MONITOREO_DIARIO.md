@@ -1,6 +1,6 @@
 # 📅 Guía de Monitoreo Diario DevSecOps
 
-**Versión:** 1.2.1  
+**Versión:** 1.2.2  
 **Objetivo:** Ejecutar monitoreo diario de ambientes GCP, Azure, AWS y AZDO con interpretación DevSecOps
 
 ---
@@ -102,6 +102,16 @@ El monitoreo matutino es el punto de partida del día. Se ejecuta a primera hora
 #     (restarts >10 blanco/rojo, >4 negro/amarillo) + tab dashboard
 #   - ESTADO del cluster = ADVERTENCIA si pods not running > running
 #   - Clusters inaccesibles se reportan sin abortar el monitoreo
+#
+# 🆕 v1.8.75–77 (toolbox): tablas consolidadas renovadas + Plan de Trabajo:
+#   - "Resumen de Recursos" y "Salud General" → matriz una-fila-por-proyecto
+#     (conteos por recurso + columna ⚠ Alertas + fila TOTAL; señales reales:
+#     VMs detenidas, SQL no-RUNNABLE, APIs off, Cloud Run público)
+#   - Nueva tabla "🩺 Salud GKE Consolidada" por proyecto
+#   - Nueva tabla "📋 Plan de Trabajo (Work Planning)": hallazgos de TODAS
+#     las tablas → acciones por severidad (🔴>🟠>🟡>⚪) con acción sugerida
+#   - El plan se exporta a outcome/gcp_work_planning_<ts>.html (standalone)
+#     y queda en el TXT y el JSON (bloque "work_planning")
 ```
 
 **Qué buscar:**
@@ -1197,12 +1207,16 @@ Reporte guardado: outcome/daily_night_report_20260708.json
 - [ ] Ejecutar GCP Tool 1 (Monitoreo de Recursos GCP)
 - [ ] Verificar: CPU < 70%, Memoria < 80%, Disco > 20%
 - [ ] Alertar si alguno > 85%
+- [ ] Revisar tabla "Salud General" — proyectos marcados 🔴 ATENCIÓN
+- [ ] Revisar "📋 Plan de Trabajo" (o `outcome/gcp_work_planning_<ts>.html`):
+      priorizar ítems 🔴 CRÍTICO y 🟠 ALTO del día
 
 **Paso 2: Clusters GKE**
 - [ ] Ejecutar GCP Tool 14 (GKE Cluster Checker)
 - [ ] Verificar: Nodos Ready, Versión actualizada, Pods > 95%
 - [ ] Alertar si hay nodos NotReady
 - [ ] Alertar si Tool 1 reporta cluster en ADVERTENCIA por pods not running > running
+- [ ] Revisar "🩺 Salud GKE Consolidada" — peor salud por proyecto
 
 **Paso 3: Certificados SSL/TLS**
 - [ ] Ejecutar GCP Tool 5 (Certificate Manager Checker)
@@ -1421,7 +1435,12 @@ ACCIÓN:
 
 ---
 
-**Guía de Monitoreo Diario v1.2.1**  
+**Guía de Monitoreo Diario v1.2.2**  
+**Cambios en v1.2.2:**
+- ✅ Tool 1: tablas consolidadas en matriz una-fila-por-proyecto (Resumen + Salud General accionable) y nueva tabla "🩺 Salud GKE Consolidada"
+- ✅ Tool 1: nueva tabla "📋 Plan de Trabajo" — hallazgos → acciones por severidad con acción sugerida; exportada a `outcome/gcp_work_planning_<ts>.html` (además de TXT/JSON)
+- ✅ Checklist actualizado: revisión de Salud General, Salud GKE Consolidada y Plan de Trabajo en el monitoreo matutino
+
 **Cambios en v1.2.1:**
 - ✅ Tool 1 (GCP Monitor): enriquecimiento GKE ahora incluye recursos por nodo (eq. Tool 24) y deployments+restarts (eq. Tool 2); nuevas tablas consola y tabs del dashboard; ESTADO ADVERTENCIA si pods not running > running
 - ✅ Tool 2 (Reporte Despliegues GKE): multi-proyecto consolidado, restarts resaltados >10/>4, reporte HTML — recomendado como detalle en el paso de deployments

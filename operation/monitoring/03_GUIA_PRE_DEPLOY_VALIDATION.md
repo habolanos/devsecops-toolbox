@@ -1,6 +1,6 @@
 # 🚀 Guía de Pre-Deploy Validation DevSecOps
 
-**Versión:** 1.2.1  
+**Versión:** 1.2.2  
 **Objetivo:** Validar que un deployment es seguro antes de ejecutarlo
 
 ---
@@ -733,7 +733,11 @@ EOF
 
 ---
 
-**Guía de Pre-Deploy Validation v1.2.1**  
+**Guía de Pre-Deploy Validation v1.2.2**  
+**Cambios en v1.2.2:**
+- ✅ Tool 1 (GCP Monitor): nuevo **"📋 Plan de Trabajo"** — antes del deploy verificar que no haya ítems 🔴 CRÍTICO ni 🟠 ALTO en el proyecto/cluster destino (pods no-running, nodos saturados, IPs agotándose); el HTML `outcome/gcp_work_planning_<ts>.html` sirve como evidencia de gate pre-deploy
+- ✅ Tool 1: tabla "🩺 Salud GKE Consolidada" — peor salud del cluster y % IPs por proyecto para validar capacidad antes de desplegar
+
 **Cambios en v1.2.1:**
 - ✅ Paso "Monitorear Deployment" incluye GCP Tool 2 (Reporte Despliegues GKE) para verificar restarts post-deploy (>10 crítico, >4 advertencia)
 - ✅ Tool 1 (GCP Monitor) ahora muestra nodos y deployments+restarts por cluster en consola y dashboard — sirve como verificación post-deploy de un vistazo

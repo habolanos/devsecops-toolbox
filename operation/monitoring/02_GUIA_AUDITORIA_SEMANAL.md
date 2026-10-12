@@ -1,6 +1,6 @@
 # 📅 Guía de Auditoría Semanal DevSecOps
 
-**Versión:** 1.2.1  
+**Versión:** 1.2.2  
 **Objetivo:** Auditoría completa de seguridad, compliance y governance
 
 ---
@@ -766,7 +766,11 @@ PRESENTACIÓN VIERNES 15:00:
 
 ---
 
-**Guía de Auditoría Semanal v1.2.1**  
+**Guía de Auditoría Semanal v1.2.2**  
+**Cambios en v1.2.2:**
+- ✅ Tool 1 (GCP Monitor): nuevo **"📋 Plan de Trabajo (Work Planning)"** — hallazgos de todas las tablas convertidos en acciones ordenadas por severidad (🔴 CRÍTICO → 🟠 ALTO → 🟡 MEDIO → ⚪ INFO) con acción sugerida por recurso. Exportado a **`outcome/gcp_work_planning_<ts>.html`** — ideal como evidencia semanal adjunta del estado de la infraestructura
+- ✅ Tool 1: tablas consolidadas renovadas en matriz una-fila-por-proyecto (Resumen de Recursos + Salud General con señales reales) y nueva tabla "🩺 Salud GKE Consolidada" por proyecto — facilitan la revisión cross-proyecto en auditoría
+
 **Cambios en v1.2.1:**
 - ✅ GCP Tool 2 (Reporte Despliegues GKE): multi-proyecto consolidado, restarts resaltados >10/>4 y reporte HTML — agregado al checklist de compliance como evidencia de salud de workloads GKE
 - ✅ Tool 1 (GCP Monitor) ahora cubre nodos y deployments+restarts por cluster (dashboard 10 tabs), útil para auditoría de capacidad y salud

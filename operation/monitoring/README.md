@@ -1,8 +1,8 @@
 # 📊 Guía de Monitoreo DevSecOps - Índice
 
-**Versión:** 1.3.1  
+**Versión:** 1.3.2  
 **Fecha:** 11 de Septiembre de 2026  
-**Última actualización:** 4 de Octubre de 2026 (v1.3.1)  
+**Última actualización:** 12 de Octubre de 2026 (v1.3.2)  
 **Objetivo:** Guía completa de monitoreo multi-cloud (GCP, Azure, AWS, AZDO) con herramientas integradas
 
 ---
@@ -85,6 +85,12 @@ python scm/main.py
 > - **Tool 2 (Reporte de Despliegues GKE)** es **multi-proyecto consolidado** (selección por equipo/ALL igual que Tool 1), con restarts resaltados (`>10` blanco/rojo, `>4` negro/amarillo) y **reporte HTML** tipo dashboard. Clusters inaccesibles se reportan aparte sin abortar el reporte.
 > - **Tool 24 (Node Resources Monitor)** soporta **multi-proyecto** con tabla consolidada (columna Project) y **dashboard HTML** propio.
 > - Transversal: todos los reportes escriben en `outcome/` resuelto (`DEVSECOPS_OUTPUT_DIR`/`global.output_dir`), kubeconfig aislado por proyecto+cluster, spinners animados vía launcher.
+>
+> **🆕 Nota v1.3.2 (v1.8.75–77 toolbox):** Tablas consolidadas renovadas y nuevo **Plan de Trabajo** en Tool 1:
+> - **"Resumen de Recursos"** ahora es una **matriz una-fila-por-proyecto** (columnas Servicios/GKE/Cloud SQL/Compute/Cloud Run/Pub/Sub + columna **⚠ Alertas** + fila TOTAL) — antes eran 6 filas por proyecto.
+> - **"Salud General"** muestra señales reales ya recopiladas (VM detenidas, SQL no-RUNNABLE, APIs no habilitadas, Cloud Run `ingress=all`) → valoración 🟢 OK / 🔴 ATENCIÓN.
+> - Nueva tabla **"🩺 Salud GKE Consolidada"** por proyecto: pods run/no-run (🟡 ADVERTENCIA si `not_running > running`), deploys con atención, nodos con CPU/MEM >80%, peor % IPs y peor salud del cluster.
+> - Nueva tabla **"📋 Plan de Trabajo (Work Planning)"**: hallazgos de todas las tablas convertidos en acciones ordenadas por severidad (🔴 CRÍTICO → 🟠 ALTO → 🟡 MEDIO → ⚪ INFO) con acción sugerida por recurso. Se exporta también a **`outcome/gcp_work_planning_<ts>.html`** (standalone, sin dependencias) y queda en el reporte TXT y en el JSON (`work_planning`).
 
 > **💡 Tip:** También puedes ejecutar directamente el launcher de cada plataforma:
 > - `python scm/gcp/tools.py` — Herramientas GCP
@@ -582,8 +588,14 @@ Para preguntas o sugerencias sobre esta guía:
 
 ---
 
-**Guía de Monitoreo DevSecOps v1.3.1**  
-**Última actualización:** 4 de Octubre de 2026  
+**Guía de Monitoreo DevSecOps v1.3.2**  
+**Última actualización:** 12 de Octubre de 2026  
+**Cambios en v1.3.2:**
+- ✅ Tool 1 (GCP Monitor): tablas consolidadas en **matriz una-fila-por-proyecto** — "Resumen de Recursos" con columna ⚠ Alertas + fila TOTAL, "Salud General" con señales reales (VM detenidas, SQL no-RUNNABLE, APIs off, Run público)
+- ✅ Tool 1: nueva tabla **"🩺 Salud GKE Consolidada"** por proyecto — pods run/no-run (ADVERTENCIA si not_running > running), deploys atención, nodos saturados, peor % IPs, peor salud
+- ✅ Tool 1: nueva tabla **"📋 Plan de Trabajo (Work Planning)"** — hallazgos → acciones ordenadas por severidad (CRÍTICO/ALTO/MEDIO/INFO) con acción sugerida por recurso
+- ✅ Tool 1: el plan se exporta a **`outcome/gcp_work_planning_<ts>.html`** (standalone) y queda en TXT/JSON (`work_planning`)
+
 **Cambios en v1.3.1:**
 - ✅ Tool 1 (GCP Monitor) incorpora **nodos GKE** (CPU/mem por nodo, eq. Tool 24) y **deployments + restarts** (eq. Tool 2) en el enriquecimiento por cluster — consola con tablas "Nodos GKE" y "Deployments — atención requerida", dashboard con 10 tabs (nuevas: Nodos GKE, Deployments GKE)
 - ✅ Tool 2 (Reporte Despliegues GKE): **multi-proyecto consolidado** (equipo/ALL como Tool 1), restarts resaltados `>10`/`>4`, **reporte HTML** tipo dashboard, clusters inaccesibles reportados sin abortar
