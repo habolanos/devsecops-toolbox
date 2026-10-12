@@ -33,7 +33,7 @@ import warnings
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 # Suprimir warning de Google Cloud SDK sobre quota project
 warnings.filterwarnings('ignore', message='.*quota project.*')
@@ -149,7 +149,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAPEO DE TIPOS DE MÁQUINA A ESPECIFICACIONES
@@ -1123,6 +1123,8 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     all_deploy_attention = []
     total_deployments = 0
     gke_metrics_all = {}
+    # (gke_extra, health_status) por proyecto → tabla '🩺 Salud GKE'
+    project_gke_rows: Dict[str, List] = {}
     
     # Obtener métricas de uso para todos los clusters en paralelo (Fase 2)
     if MONITORING_AVAILABLE:
@@ -1212,6 +1214,8 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                 pods_running=gke_extra.get('pods_running'),
                 pods_not_running=gke_extra.get('pods_not_running')
             )
+            project_gke_rows.setdefault(project_id, []).append(
+                (gke_extra, health_status))
             
             # Formatear Version Status con color
             version_status = gke_extra['version_status']
@@ -1654,6 +1658,16 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         console.print(table)
         console.print()
 
+    # Tabla consolidada de salud GKE por proyecto — agrega los datos
+    # enriquecidos de los clusters (pods, deploys atención, nodos altos,
+    # peor % IPs, salud peor) sin llamadas API adicionales.
+    if project_gke_rows:
+        project_health = {
+            pid: aggregate_gke_project_health(rows)
+            for pid, rows in project_gke_rows.items()}
+        console.print(create_consolidated_gke_health_table(project_health))
+        console.print()
+
 
 def print_consolidated_report(all_data: Dict[str, Dict[str, Any]], console, skipped_projects: Optional[List[str]] = None) -> None:
     """Imprime el reporte consolidado usando Rich Tables cuando está disponible."""
@@ -1920,53 +1934,203 @@ def get_status_semaphore(count: int, resource_type: str) -> str:
         return "🔴"  # Rojo: crítico
 
 
+_RESOURCE_KEYS = [
+    ('services', "Servicios"),
+    ('gke_clusters', "GKE"),
+    ('sql_instances', "Cloud SQL"),
+    ('compute_instances', "Compute"),
+    ('cloud_run', "Cloud Run"),
+    ('pubsub_topics', "Pub/Sub"),
+]
+
+
+def project_issue_counts(data: Dict[str, Any]) -> Dict[str, int]:
+    """Alertas de salud derivables de las listas ya recolectadas (sin
+    llamadas API extra): VMs detenidas, SQL no-RUNNABLE, servicios no
+    habilitados y servicios Cloud Run con URL pública (ingress=all)."""
+    compute_down = sum(
+        1 for vm in data.get('compute_instances', [])
+        if str(vm.get('status', 'RUNNING')).upper() not in
+        ('RUNNING', 'PROVISIONING', 'STAGING'))
+    sql_bad = sum(
+        1 for i in data.get('sql_instances', [])
+        if str(i.get('state', 'RUNNABLE')).upper() != 'RUNNABLE')
+    svc_off = sum(
+        1 for s in data.get('services', [])
+        if s.get('state', 'ENABLED') != 'ENABLED')
+    run_public = sum(
+        1 for s in data.get('cloud_run', [])
+        if (s.get('metadata', {}).get('annotations', {})
+            .get('run.googleapis.com/ingress') == 'all'))
+    return {'compute_down': compute_down, 'sql_bad': sql_bad,
+            'svc_off': svc_off, 'run_public': run_public,
+            'total': compute_down + sql_bad + svc_off + run_public}
+
+
 def create_consolidated_summary_table(all_data: Dict[str, Dict[str, Any]], console) -> Table:
-    """Crea tabla consolidada de resumen de recursos para múltiples proyectos."""
+    """Tabla consolidada matriz: una fila por proyecto con conteos por
+    recurso, columna de alertas y fila TOTAL (reemplaza las 6 filas por
+    proyecto del formato anterior)."""
     table = Table(title="📊 Resumen de Recursos GCP (CONSOLIDADO)", box=box.ROUNDED)
     table.add_column("Proyecto", style="magenta")
-    table.add_column("Recurso", style="cyan")
-    table.add_column("Cantidad", style="green", justify="right")
-    table.add_column("Estado", style="yellow")
-    
-    # Datos de recursos
-    resources = [
-        ("Servicios habilitados", 'services', "Servicios activos"),
-        ("Clusters GKE", 'gke_clusters', "Orquestación"),
-        ("Instancias Cloud SQL", 'sql_instances', "Bases de datos"),
-        ("Instancias Compute", 'compute_instances', "Máquinas virtuales"),
-        ("Servicios Cloud Run", 'cloud_run', "Serverless"),
-        ("Topics Pub/Sub", 'pubsub_topics', "Mensajería"),
-    ]
-    
+    for _key, label in _RESOURCE_KEYS:
+        table.add_column(label, style="cyan", justify="right")
+    table.add_column("⚠ Alertas", style="yellow", justify="center")
+    table.add_column("Total", style="bold green", justify="right")
+
+    totals = {k: 0 for k, _ in _RESOURCE_KEYS}
+    tot_alerts = 0
     for project_id, data in all_data.items():
-        for label, key, description in resources:
-            count = len(data.get(key, []))
-            status = "✅ Activo" if count > 0 else "⚠️ Inactivo"
-            table.add_row(project_id, label, str(count), status)
-    
+        counts = [len(data.get(k, [])) for k, _ in _RESOURCE_KEYS]
+        issues = project_issue_counts(data)['total']
+        row = [project_id]
+        for (k, _l), c in zip(_RESOURCE_KEYS, counts):
+            totals[k] += c
+            row.append(f"[green]{c}[/]" if c else "[dim]0[/]")
+        row.append(f"[yellow]{issues}[/]" if issues else "[green]0[/]")
+        row.append(f"[bold]{sum(counts)}[/]")
+        table.add_row(*row)
+        tot_alerts += issues
+
+    table.add_row(
+        "[bold]TOTAL[/]",
+        *[f"[bold]{totals[k]}[/]" for k, _ in _RESOURCE_KEYS],
+        f"[bold]{tot_alerts}[/]",
+        f"[bold]{sum(totals.values())}[/]")
     return table
 
 
 def create_consolidated_health_table(all_data: Dict[str, Dict[str, Any]], console) -> Table:
-    """Crea tabla consolidada de salud general para múltiples proyectos."""
+    """Tabla consolidada de salud: una fila por proyecto con señales
+    accionables tomadas de los datos ya recolectados (sin llamadas API)."""
     table = Table(title="🏥 Salud General del Proyecto (CONSOLIDADO)", box=box.ROUNDED)
     table.add_column("Proyecto", style="magenta")
-    table.add_column("Aspecto", style="cyan")
-    table.add_column("Valor", style="green", justify="right")
-    
+    table.add_column("Recursos", style="cyan", justify="right")
+    table.add_column("Infraestructura", style="cyan")
+    table.add_column("VM detenidas", style="yellow", justify="right")
+    table.add_column("SQL no-RUNNABLE", style="yellow", justify="right")
+    table.add_column("Svc no habilitados", style="yellow", justify="right")
+    table.add_column("Run URL pública", style="yellow", justify="right")
+    table.add_column("Valoración", style="white", justify="center")
+
     for project_id, data in all_data.items():
-        # Calcular métricas de salud
-        total_resources = sum(len(v) for v in data.values() if isinstance(v, list))
-        services_count = len(data.get('services', []))
-        clusters_count = len(data.get('gke_clusters', []))
-        sql_count = len(data.get('sql_instances', []))
-        compute_count = len(data.get('compute_instances', []))
-        
-        table.add_row(project_id, "Recursos Totales", str(total_resources))
-        table.add_row(project_id, "Infraestructura", f"{clusters_count} clusters + {compute_count} máquinas")
-        table.add_row(project_id, "Datos", f"{sql_count} instancias SQL")
-        table.add_row(project_id, "Servicios Activos", str(services_count))
-    
+        total = sum(len(data.get(k, [])) for k, _ in _RESOURCE_KEYS)
+        clusters = len(data.get('gke_clusters', []))
+        compute = len(data.get('compute_instances', []))
+        sql = len(data.get('sql_instances', []))
+        issues = project_issue_counts(data)
+        val = ("🔴 ATENCIÓN" if issues['total'] > 0 else "🟢 OK")
+        table.add_row(
+            project_id, str(total),
+            f"{clusters} GKE + {compute} VM + {sql} SQL",
+            f"[red]{issues['compute_down']}[/]" if issues['compute_down'] else "0",
+            f"[red]{issues['sql_bad']}[/]" if issues['sql_bad'] else "0",
+            f"[yellow]{issues['svc_off']}[/]" if issues['svc_off'] else "0",
+            f"[red]{issues['run_public']}[/]" if issues['run_public'] else "0",
+            val)
+    return table
+
+
+def _to_int(v) -> Optional[int]:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+_HEALTH_RANK = {"🔴": 3, "🟡": 2, "🟢": 1, "⚪": 0}
+
+
+def aggregate_gke_project_health(rows: List[Tuple[Dict[str, Any], str]]) -> Dict[str, Any]:
+    """Agrega la salud GKE de un proyecto a partir de sus clusters.
+
+    `rows` = lista de (gke_extra, health_status) — los mismos dicts de
+    `build_gke_cluster_enrichment` usados en la tabla de clusters.
+    Regla de pods (consistente con get_health_status): si los pods
+    no-running superan a los running → '🟡 ADVERTENCIA'.
+    """
+    pods_r = pods_nr = 0
+    pods_known = False
+    dep_total = dep_attn = nodes_high = 0
+    worst_ip = 0.0
+    worst_rank, worst_health = -1, "⚪ SIN DATOS"
+
+    for extra, health in rows:
+        pr, pnr = _to_int(extra.get('pods_running')), _to_int(extra.get('pods_not_running'))
+        if pr is not None or pnr is not None:
+            pods_known = True
+            pods_r += pr or 0
+            pods_nr += pnr or 0
+        dep_total += extra.get('deploy_total') or 0
+        for d in extra.get('deployments') or []:
+            if not ((d.get('restarts') or 0) == 0
+                    and d.get('status') == 'Running'):
+                dep_attn += 1
+        nodes_high += ((extra.get('nodes_cpu_high') or 0)
+                       + (extra.get('nodes_mem_high') or 0))
+        worst_ip = max(worst_ip, extra.get('pods_pct') or 0,
+                       extra.get('services_pct') or 0)
+        r = _HEALTH_RANK.get((health or "⚪")[:1], 0)
+        if r > worst_rank:
+            worst_rank, worst_health = r, health
+
+    if not pods_known:
+        pods_state = "⚪ S/D"
+    elif pods_nr > pods_r:
+        pods_state = "🟡 ADVERTENCIA"
+    elif pods_nr > 0:
+        pods_state = "⚠️ ATENCIÓN"
+    else:
+        pods_state = "🟢 OK"
+
+    return {
+        'clusters': len(rows), 'pods_running': pods_r,
+        'pods_not_running': pods_nr, 'pods_known': pods_known,
+        'pods_state': pods_state, 'deploy_total': dep_total,
+        'deploy_attention': dep_attn, 'nodes_high': nodes_high,
+        'worst_ip_pct': worst_ip,
+        'worst_health': worst_health if rows else "⚪ SIN DATOS",
+    }
+
+
+def create_consolidated_gke_health_table(
+        project_health: Dict[str, Dict[str, Any]]) -> Table:
+    """Tabla '🩺 Salud GKE Consolidada': una fila por proyecto con el
+    agregado de sus clusters (pods, deploys con atención, nodos altos,
+    peor % IPs y salud peor)."""
+    table = Table(title="🩺 Salud GKE (CONSOLIDADA POR PROYECTO)", box=box.ROUNDED)
+    table.add_column("PROYECTO", style="magenta")
+    table.add_column("CLUSTERS", style="cyan", justify="right")
+    table.add_column("PODS RUN", style="green", justify="right")
+    table.add_column("NO RUN", style="red", justify="right")
+    table.add_column("ESTADO PODS", justify="center")
+    table.add_column("DEPLOYS ATENCIÓN", style="yellow", justify="right")
+    table.add_column("NODOS CPU/MEM ALTOS", style="yellow", justify="right")
+    table.add_column("IP % PEOR", style="blue", justify="right")
+    table.add_column("SALUD PEOR", justify="center")
+
+    tot = {'clusters': 0, 'pods_running': 0, 'pods_not_running': 0,
+           'deploy_attention': 0, 'nodes_high': 0}
+    for project_id, h in project_health.items():
+        for k in tot:
+            tot[k] += h[k]
+        nr = h['pods_not_running']
+        table.add_row(
+            project_id, str(h['clusters']),
+            str(h['pods_running']) if h['pods_known'] else 'N/A',
+            f"[red]{nr}[/]" if nr else ("0" if h['pods_known'] else 'N/A'),
+            h['pods_state'],
+            str(h['deploy_attention']),
+            f"[red]{h['nodes_high']}[/]" if h['nodes_high'] else "0",
+            f"{h['worst_ip_pct']:.1f}%",
+            h['worst_health'])
+    if len(project_health) > 1:
+        table.add_row(
+            "[bold]TOTAL[/]", f"[bold]{tot['clusters']}[/]",
+            f"[bold]{tot['pods_running']}[/]",
+            f"[bold]{tot['pods_not_running']}[/]", "",
+            f"[bold]{tot['deploy_attention']}[/]",
+            f"[bold]{tot['nodes_high']}[/]", "", "")
     return table
 
 

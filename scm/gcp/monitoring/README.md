@@ -33,7 +33,10 @@ Script de monitoreo de recursos GCP que genera reportes de estatus, consumo y us
 - **Formato legible de tiempo**: `format_duration()` convierte segundos a `Xs`, `Xm Ys`, `Xh Ym Zs` automáticamente
 - **Paralelización**: `get_gke_metrics_parallel`, `build_gke_cluster_enrichment` y `_ensure_cluster_credentials` (con cache) ejecutan en paralelo con `ThreadPoolExecutor`
 - **Timeouts**: kubectl (30s) y gcloud (60-120s) con captura de `subprocess.TimeoutExpired` para evitar cuelgues
-- **Reporte consolidado multi-proyecto** con tablas Rich
+- **Reporte consolidado multi-proyecto** con tablas Rich en formato matriz:
+  - **Resumen de Recursos**: una fila por proyecto con conteos por recurso (Servicios, GKE, Cloud SQL, Compute, Cloud Run, Pub/Sub), columna **⚠ Alertas** (VM detenidas + SQL no-RUNNABLE + servicios no habilitados) y fila TOTAL
+  - **Salud General**: una fila por proyecto con señales reales ya recopiladas — VM detenidas, SQL no-RUNNABLE, servicios no habilitados y Cloud Run con URL pública (`ingress=all`) → valoración 🟢 OK / 🔴 ATENCIÓN
+  - **🩺 Salud GKE Consolidada**: una fila por proyecto agregando el enriquecimiento de clusters — pods running/no-running (🟡 ADVERTENCIA cuando `not_running > running`), deployments con atención, nodos con CPU/MEM altos, peor % de IPs y peor salud del cluster
 
 ### Uso
 
@@ -576,6 +579,7 @@ Desarrollado para monitoreo y auditoría de recursos en clusters GKE.
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-10-09 | 1.8.33 | gcp_monitor.py: tablas consolidadas renovadas — "Resumen de Recursos" y "Salud General" ahora son matrices una-fila-por-proyecto (antes 6+4 filas por proyecto), con columna ⚠ Alertas y fila TOTAL. Nueva tabla "🩺 Salud GKE (CONSOLIDADA POR PROYECTO)": agrega por proyecto pods run/no-run (🟡 ADVERTENCIA cuando not_running > running), deploys con atención, nodos con CPU/MEM altos, peor % IPs y peor salud del cluster. Helpers puros `project_issue_counts`/`aggregate_gke_project_health`; sin llamadas API nuevas. Tests: +11 en `test_gcp_monitor_consolidated.py` |
 | 2026-09-10 | 1.7.75 | generate_gcp_dashboard.py: Fix _sql_database_count no parseaba strings numéricos ('16','63') del campo databases. KPI Bases de Datos ahora muestra 326 (antes 0) y columna BDs muestra conteos reales |
 | 2026-09-10 | 1.7.74 | generate_gcp_dashboard.py: Fix TypeError en _build_network_row que impedía generar HTML cuando pods_running o services_used venían como string ("N/A"). Sanitización con _safe_int() |
 | 2026-09-10 | 1.7.72 | gcp_monitor.py: _enrich_data_with_metrics ahora persiste pods_running, pods_not_running, CIDRs, subnet, ip_status, version_status y databases en el JSON exportado para que el dashboard HTML muestre todos los datos |
