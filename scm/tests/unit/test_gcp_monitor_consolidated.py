@@ -144,3 +144,111 @@ class TestGkeHealthTable:
         assert "proj-x" in out
         assert "ADVERTENCIA" in out
         assert "91.0%" in out
+
+
+def _gke_rows():
+    return {"p1": [
+        ({'cluster_name': 'c1',
+          'pods_running': 2, 'pods_not_running': 10,
+          'ip_status': 'WARNING', 'version_status': 'OUTDATED',
+          'nodes': [{'name': 'n1', 'cpu_pct': '85%', 'mem_pct': '30%'}],
+          'deployments': [
+              {'namespace': 'oms', 'deployment': 'api', 'restarts': 12,
+               'status': 'Degraded'},
+              {'namespace': 'oms', 'deployment': 'batch', 'restarts': 0,
+               'status': 'ScaledToZero'},
+              {'namespace': 'oms', 'deployment': 'ok', 'restarts': 0,
+               'status': 'Running'}]},
+         '🔴 CRÍTICO'),
+    ]}
+
+
+class TestCollectWorkItems:
+    def test_infra_findings(self):
+        data = {
+            "p1": {
+                "compute_instances": [{"name": "vm1", "status": "TERMINATED"},
+                                      {"name": "vm2", "status": "RUNNING"}],
+                "sql_instances": [{"name": "db1", "state": "SUSPENDED"},
+                                  {"name": "db2", "state": "RUNNABLE"}],
+                "cloud_run": [{"metadata": {"name": "svc1",
+                    "annotations": {"run.googleapis.com/ingress": "all"}},
+                    "status": {"url": "https://x.run.app"}}],
+                "services": [{"name": "api1", "state": "DISABLED"}],
+            }}
+        items = mon.collect_work_items(data)
+        sev = {i['resource']: i['severity'] for i in items}
+        assert sev['vm1'] == 'MEDIO'
+        assert sev['db1'] == 'ALTO'
+        assert sev['svc1'] == 'MEDIO'
+        assert sev['api1'] == 'INFO'
+        assert 'vm2' not in sev and 'db2' not in sev
+
+    def test_run_internal_not_flagged(self):
+        data = {"p": {"cloud_run": [{"metadata": {"name": "s",
+            "annotations": {"run.googleapis.com/ingress": "internal"}},
+            "status": {"url": "https://x.run.app"}}]}}
+        assert mon.collect_work_items(data) == []
+
+    def test_gke_findings(self):
+        items = mon.collect_work_items({"p1": {}}, _gke_rows())
+        by_res = {i['resource']: i for i in items}
+        c1 = [i for i in items if i['resource'] == 'c1']
+        sevs = {i['severity'] for i in c1}
+        # pods nr>run (ALTO), salud crítica (CRÍTICO), IP warning (MEDIO),
+        # versión OUTDATED (MEDIO)
+        assert 'CRÍTICO' in sevs and 'ALTO' in sevs and 'MEDIO' in sevs
+        assert by_res['c1/n1']['severity'] == 'ALTO'          # nodo CPU 85%
+        assert by_res['oms/api']['severity'] == 'ALTO'        # Degraded+12r
+        assert by_res['oms/batch']['severity'] == 'INFO'      # ScaledToZero
+        assert 'oms/ok' not in by_res                         # Running sano
+
+    def test_sorted_by_severity(self):
+        items = mon.collect_work_items({"p1": {
+            "compute_instances": [{"name": "vm", "status": "STOPPED"}],
+            "sql_instances": [{"name": "db", "state": "FAILED"}]}},
+            _gke_rows())
+        order = [i['severity'] for i in items]
+        assert order == sorted(
+            order, key=lambda s: mon._SEVERITY_ORDER[s])
+        assert order[0] == 'CRÍTICO'
+
+    def test_empty(self):
+        assert mon.collect_work_items({}) == []
+        assert mon.collect_work_items({"p": {}}) == []
+
+    def test_summary_counts(self):
+        items = mon.collect_work_items({"p1": {}}, _gke_rows())
+        s = mon.work_items_summary(items)
+        assert s['CRÍTICO'] >= 1 and s['ALTO'] >= 2 and s['INFO'] >= 1
+        assert sum(s.values()) == len(items)
+
+
+@pytest.mark.skipif(not RICH, reason="rich no instalado")
+class TestWorkPlanningTable:
+    def test_render(self):
+        items = mon.collect_work_items({"p1": {
+            "compute_instances": [{"name": "vm-x", "status": "STOPPED"}]}},
+            _gke_rows())
+        out = _render(mon.create_work_planning_table(items))
+        assert "PLAN DE TRABAJO" in out
+        assert "CRÍTICO" in out and "vm-x" in out
+        assert "ACCIÓN" in out
+
+
+class TestReportWorkPlanning:
+    def test_report_includes_plan(self):
+        items = mon.collect_work_items({"p1": {
+            "compute_instances": [{"name": "vm1", "status": "STOPPED"}]}})
+        rep = mon.generate_consolidated_report(
+            {"p1": {}}, work_items=items)
+        assert "PLAN DE TRABAJO" in rep
+        assert "vm1" in rep and "STOPPED" in rep
+
+    def test_report_no_findings(self):
+        rep = mon.generate_consolidated_report({"p1": {}}, work_items=[])
+        assert "Sin hallazgos" in rep
+
+    def test_report_none_keeps_old_format(self):
+        rep = mon.generate_consolidated_report({"p1": {}})
+        assert "PLAN DE TRABAJO" not in rep

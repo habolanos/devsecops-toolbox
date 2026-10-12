@@ -149,7 +149,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.8.33"
+__version__ = "1.8.34"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAPEO DE TIPOS DE MÁQUINA A ESPECIFICACIONES
@@ -1085,10 +1085,12 @@ def build_gke_cluster_enrichment(project_id: str, cluster: Dict[str, Any], debug
     }
 
 
-def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], console, logger=None) -> None:
-    """Crea y muestra tablas detalladas consolidadas de múltiples proyectos con columna de proyecto."""
+def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], console, logger=None) -> Optional[List[Dict[str, str]]]:
+    """Crea y muestra tablas detalladas consolidadas de múltiples proyectos
+    con columna de proyecto. Devuelve los work items del plan de trabajo
+    (None si no se ejecutó el renderizado detallado)."""
     if not RICH_AVAILABLE or not console:
-        return
+        return None
     
     # Tabla resumen de Servicios Habilitados por proyecto
     service_summary = []
@@ -1668,6 +1670,21 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
         console.print(create_consolidated_gke_health_table(project_health))
         console.print()
 
+    # 📋 Plan de Trabajo — consolida los hallazgos accionables de todas
+    # las tablas (NOT RUNNING, PUBLIC, STOPPED, advertencias GKE).
+    work_items = collect_work_items(all_data, project_gke_rows)
+    if work_items:
+        counts = work_items_summary(work_items)
+        console.print(create_work_planning_table(work_items))
+        resumen = " | ".join(
+            f"{_SEVERITY_LABEL[s]}: {n}" for s, n in counts.items() if n)
+        console.print(f"[dim]   Total hallazgos: {len(work_items)} — {resumen}[/]")
+    else:
+        console.print("[green]📋 PLAN DE TRABAJO: ✅ Sin hallazgos — "
+                      "todos los recursos saludables.[/]")
+    console.print()
+    return work_items
+
 
 def print_consolidated_report(all_data: Dict[str, Dict[str, Any]], console, skipped_projects: Optional[List[str]] = None) -> None:
     """Imprime el reporte consolidado usando Rich Tables cuando está disponible."""
@@ -1730,7 +1747,7 @@ def print_consolidated_report(all_data: Dict[str, Dict[str, Any]], console, skip
         print(generate_consolidated_report(all_data, skipped_projects))
 
 
-def generate_consolidated_report(all_data: Dict[str, Dict[str, Any]], skipped_projects: Optional[List[str]] = None) -> str:
+def generate_consolidated_report(all_data: Dict[str, Dict[str, Any]], skipped_projects: Optional[List[str]] = None, work_items: Optional[List[Dict[str, str]]] = None) -> str:
     """Genera un reporte consolidado simplificado para todos los proyectos."""
     lines = []
     now_local = datetime.now()
@@ -1788,6 +1805,26 @@ def generate_consolidated_report(all_data: Dict[str, Dict[str, Any]], skipped_pr
     lines.append(f"  ─────────────────────────")
     lines.append(f"  TOTAL recursos: {grand_total}")
     lines.append("")
+
+    # Plan de trabajo — hallazgos accionables ordenados por severidad
+    if work_items is not None:
+        lines.append("📋 PLAN DE TRABAJO (WORK PLANNING):")
+        lines.append("-" * 80)
+        if work_items:
+            counts = work_items_summary(work_items)
+            resumen = " | ".join(
+                f"{_SEVERITY_LABEL[s]} {n}" for s, n in counts.items() if n)
+            lines.append(f"  Hallazgos: {len(work_items)} — {resumen}")
+            lines.append("")
+            for n, i in enumerate(work_items, 1):
+                lines.append(
+                    f"  {n:>2}. {_SEVERITY_LABEL.get(i['severity'], i['severity'])}"
+                    f" | {i['project']} | {i['area']} | {i['resource']}")
+                lines.append(f"      Hallazgo: {i['finding']}")
+                lines.append(f"      Acción:   {i['action']}")
+        else:
+            lines.append("  ✅ Sin hallazgos — todos los recursos saludables.")
+        lines.append("")
 
     lines.append("=" * 80)
     return "\n".join(lines)
@@ -2134,6 +2171,183 @@ def create_consolidated_gke_health_table(
     return table
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PLAN DE TRABAJO (work planning) — hallazgos accionables
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_SEVERITY_ORDER = {"CRÍTICO": 0, "ALTO": 1, "MEDIO": 2, "INFO": 3}
+_SEVERITY_LABEL = {
+    "CRÍTICO": "🔴 CRÍTICO", "ALTO": "🟠 ALTO",
+    "MEDIO": "🟡 MEDIO", "INFO": "⚪ INFO"}
+
+
+def _work_item(severity: str, area: str, project: str, resource: str,
+               finding: str, action: str) -> Dict[str, str]:
+    return {'severity': severity, 'area': area, 'project': project,
+            'resource': str(resource)[:60], 'finding': finding,
+            'action': action}
+
+
+def collect_work_items(all_data: Dict[str, Dict[str, Any]],
+                       project_gke_rows: Optional[Dict[str, List]] = None
+                       ) -> List[Dict[str, str]]:
+    """Genera el plan de trabajo a partir de los hallazgos ya recolectados.
+
+    Cubre: VMs detenidas/STOPPED, Cloud SQL no-RUNNABLE, Cloud Run con URL
+    pública (ingress=all), servicios no habilitados y, por cluster GKE
+    (cuando `project_gke_rows` está disponible — lista de
+    (gke_extra, health_status) por proyecto): pods no-running, deployments
+    con atención, nodos con CPU/MEM >80%, IPs agotándose, versiones
+    desactualizadas y salud crítica.
+    """
+    items: List[Dict[str, str]] = []
+    for project_id, data in (all_data or {}).items():
+        # Compute Engine — VMs no running
+        for vm in data.get('compute_instances', []):
+            st = str(vm.get('status', 'RUNNING')).upper()
+            if st not in ('RUNNING', 'PROVISIONING', 'STAGING'):
+                items.append(_work_item(
+                    "MEDIO", "Compute", project_id,
+                    vm.get('name', 'N/A'),
+                    f"VM en estado {st}",
+                    "Verificar si debe encenderse o eliminarse (costo)"))
+
+        # Cloud SQL — instancias no operativas
+        for inst in data.get('sql_instances', []):
+            st = str(inst.get('state', 'RUNNABLE')).upper()
+            if st != 'RUNNABLE':
+                items.append(_work_item(
+                    "ALTO", "Cloud SQL", project_id,
+                    inst.get('name', 'N/A'),
+                    f"Instancia en estado {st}",
+                    "Revisar estado y reiniciar/depurar la instancia"))
+
+        # Cloud Run — URL pública expuesta
+        for svc in data.get('cloud_run', []):
+            md = svc.get('metadata') or {}
+            ann = md.get('annotations') or {}
+            url = (svc.get('status') or {}).get('url')
+            if ann.get('run.googleapis.com/ingress') == 'all' and url:
+                items.append(_work_item(
+                    "MEDIO", "Cloud Run", project_id,
+                    md.get('name', 'N/A'),
+                    "URL pública expuesta (ingress=all)",
+                    "Evaluar ingress internal / IAM invoker"))
+
+        # Servicios — APIs no habilitadas
+        for svc in data.get('services', []):
+            if svc.get('state', 'ENABLED') != 'ENABLED':
+                name = ((svc.get('config') or {}).get('title')
+                        or svc.get('name', 'N/A'))
+                items.append(_work_item(
+                    "INFO", "Servicios", project_id, name,
+                    f"Servicio en estado {svc.get('state', '?')}",
+                    "Revisar si la API debe estar habilitada"))
+
+        # GKE — hallazgos por cluster (enriquecimiento ya calculado)
+        for extra, health in (project_gke_rows or {}).get(project_id, []):
+            cname = extra.get('cluster_name', 'N/A')
+            pr = _to_int(extra.get('pods_running'))
+            pnr = _to_int(extra.get('pods_not_running'))
+            if pr is not None and pnr is not None:
+                if pnr > pr:
+                    items.append(_work_item(
+                        "ALTO", "GKE", project_id, cname,
+                        f"{pnr} pods no-running superan a {pr} running",
+                        "Revisar pods stuck/CrashLoopBackOff y eventos"))
+                elif pnr > 0:
+                    items.append(_work_item(
+                        "MEDIO", "GKE", project_id, cname,
+                        f"{pnr} pods no-running",
+                        "Revisar pods fuera de estado Running"))
+            if (health or '').startswith('🔴'):
+                items.append(_work_item(
+                    "CRÍTICO", "GKE", project_id, cname,
+                    "Cluster en salud CRÍTICA",
+                    "Revisar CPU/memoria, nodos y estado del cluster"))
+            ipst = extra.get('ip_status')
+            if ipst == 'CRITICAL':
+                items.append(_work_item(
+                    "CRÍTICO", "GKE Red", project_id, cname,
+                    "IPs de Services agotadas (>90%)",
+                    "Ampliar CIDR de services — no se pueden desplegar apps"))
+            elif ipst == 'WARNING':
+                items.append(_work_item(
+                    "MEDIO", "GKE Red", project_id, cname,
+                    "IPs de Pods cerca del límite (>80%)",
+                    "Planear ampliación de rango CIDR de pods"))
+            vs = extra.get('version_status')
+            if vs == 'OUTDATED':
+                items.append(_work_item(
+                    "MEDIO", "GKE", project_id, cname,
+                    "Master version desactualizada (OUTDATED)",
+                    "Programar upgrade del control plane"))
+            elif vs == 'UPDATE_AVAILABLE':
+                items.append(_work_item(
+                    "INFO", "GKE", project_id, cname,
+                    "Actualización de versión disponible",
+                    "Agendar upgrade del cluster"))
+            for n in extra.get('nodes') or []:
+                cpu = _pct_to_float(n.get('cpu_pct'))
+                mem = _pct_to_float(n.get('mem_pct'))
+                if cpu > 80 or mem > 80:
+                    items.append(_work_item(
+                        "ALTO", "GKE Nodos", project_id,
+                        f"{cname}/{n.get('name', '?')}",
+                        f"Nodo saturado: CPU {cpu:.0f}% / MEM {mem:.0f}%",
+                        "Escalar node pool o redistribuir carga"))
+            for d in extra.get('deployments') or []:
+                r = d.get('restarts') or 0
+                st = d.get('status', 'Unknown')
+                ref = f"{d.get('namespace', 'default')}/{d.get('deployment', '?')}"
+                if st in ('Degraded', 'Unknown') or r > 10:
+                    items.append(_work_item(
+                        "ALTO", "GKE Deploy", project_id, ref,
+                        f"Estado {st}, {r} restarts",
+                        "Revisar logs y liveness/readiness probes"))
+                elif st == 'Progressing' or r > 4:
+                    items.append(_work_item(
+                        "MEDIO", "GKE Deploy", project_id, ref,
+                        f"Estado {st}, {r} restarts",
+                        "Monitorear rollout y restarts"))
+                elif st == 'ScaledToZero':
+                    items.append(_work_item(
+                        "INFO", "GKE Deploy", project_id, ref,
+                        "Escalado a 0 réplicas",
+                        "Verificar si el scale-down es intencional"))
+
+    items.sort(key=lambda i: (_SEVERITY_ORDER.get(i['severity'], 9),
+                              i['project'], i['area'], i['resource']))
+    return items
+
+
+def work_items_summary(items: List[Dict[str, str]]) -> Dict[str, int]:
+    """Conteo de work items por severidad."""
+    counts = {k: 0 for k in _SEVERITY_ORDER}
+    for i in items:
+        counts[i['severity']] = counts.get(i['severity'], 0) + 1
+    return counts
+
+
+def create_work_planning_table(items: List[Dict[str, str]]) -> Table:
+    """Tabla '📋 Plan de Trabajo': hallazgos ordenados por severidad con
+    la acción sugerida para cada recurso afectado."""
+    table = Table(title="📋 PLAN DE TRABAJO (Work Planning)", box=box.ROUNDED)
+    table.add_column("#", style="dim", justify="right")
+    table.add_column("SEVERIDAD", justify="center")
+    table.add_column("PROYECTO", style="magenta")
+    table.add_column("ÁREA", style="cyan")
+    table.add_column("RECURSO", style="white")
+    table.add_column("HALLAZGO", style="yellow")
+    table.add_column("ACCIÓN SUGERIDA", style="green")
+
+    for n, i in enumerate(items, 1):
+        table.add_row(str(n), _SEVERITY_LABEL.get(i['severity'], i['severity']),
+                      i['project'], i['area'], i['resource'],
+                      i['finding'], i['action'])
+    return table
+
+
 def create_summary_table(data: Dict[str, Any], console, project_id: str = None) -> Table:
     """Crea tabla resumen de recursos."""
     table = Table(title="📊 Resumen de Recursos GCP", box=box.ROUNDED)
@@ -2431,7 +2645,7 @@ def _enrich_data_with_metrics(all_data: Dict[str, Dict[str, Any]], logger=None) 
     return enriched_data
 
 
-def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan", all_data: Dict[str, Dict[str, Any]] = None, logger=None) -> str:
+def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_name: str = "America/Mazatlan", all_data: Dict[str, Dict[str, Any]] = None, logger=None, work_items: Optional[List[Dict[str, str]]] = None) -> str:
     """Exporta datos a archivo JSON con metadatos completos y métricas de uso.
     
     Si all_data es proporcionado, exporta todos los proyectos consolidados.
@@ -2493,6 +2707,11 @@ def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_na
                 "timestamp_utc": datetime.now(timezone.utc).isoformat()
             },
             "summary": consolidated_summary,
+            "work_planning": {
+                "total": len(work_items or []),
+                "by_severity": work_items_summary(work_items or []),
+                "items": work_items or []
+            },
             "data": enriched_all_data
         }
     else:
@@ -2517,6 +2736,11 @@ def export_to_json(data: Dict[str, Any], project_id: str, output_dir: str, tz_na
                 "total_compute_instances": len(enriched_data.get('compute_instances', [])),
                 "total_cloud_run_services": len(enriched_data.get('cloud_run', [])),
                 "total_pubsub_topics": len(enriched_data.get('pubsub_topics', []))
+            },
+            "work_planning": {
+                "total": len(work_items or []),
+                "by_severity": work_items_summary(work_items or []),
+                "items": work_items or []
             },
             "data": {project_id: enriched_data}
         }
@@ -2857,13 +3081,18 @@ def main() -> int:
             # se muestra un spinner para que la consola no parezca colgada.
             if is_live_terminal():
                 with _defer_console_prints(), console.status("[bold cyan]Generando detalles consolidados (contando bases de datos Cloud SQL)...[/]"):
-                    create_consolidated_detailed_tables(all_data, console, logger)
+                    work_items = create_consolidated_detailed_tables(all_data, console, logger)
             else:
-                create_consolidated_detailed_tables(all_data, console, logger)
-        
+                work_items = create_consolidated_detailed_tables(all_data, console, logger)
+        else:
+            # Sin Rich no hay tablas detalladas ni enriquecimiento GKE;
+            # el plan de trabajo cubre igual los hallazgos de all_data.
+            work_items = collect_work_items(all_data)
+
         # Generar reporte consolidado para todos los proyectos
         print_consolidated_report(all_data, console, skipped_projects)
-        report = generate_consolidated_report(all_data, skipped_projects)
+        report = generate_consolidated_report(all_data, skipped_projects,
+                                              work_items)
 
         # Guardar en archivo
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2879,7 +3108,8 @@ def main() -> int:
             outcome_dir,
             "America/Mazatlan",
             all_data,
-            logger
+            logger,
+            work_items
         )
         filepaths.append(json_filepath)
         
