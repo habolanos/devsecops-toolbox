@@ -252,3 +252,21 @@ class TestReportWorkPlanning:
     def test_report_none_keeps_old_format(self):
         rep = mon.generate_consolidated_report({"p1": {}})
         assert "PLAN DE TRABAJO" not in rep
+
+
+class TestWorkPlanningHtml:
+    def test_export_html(self, tmp_path):
+        items = mon.collect_work_items({"p1": {
+            "compute_instances": [{"name": "vm<x>", "status": "STOPPED"}]}},
+            _gke_rows())
+        fp = mon.export_work_planning_html(items, str(tmp_path), ["p1"])
+        doc = open(fp, encoding="utf-8").read()
+        assert "PLAN DE TRABAJO" in doc.upper()
+        assert "vm&lt;x&gt;" in doc            # HTML escapado
+        assert "CRÍTICO" in doc and "oms/api" in doc
+        assert "gcp_work_planning_" in fp and fp.endswith(".html")
+
+    def test_export_html_empty(self, tmp_path):
+        fp = mon.export_work_planning_html([], str(tmp_path), ["p1"])
+        doc = open(fp, encoding="utf-8").read()
+        assert "Sin hallazgos" in doc

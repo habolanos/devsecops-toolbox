@@ -22,6 +22,7 @@ Autor: Harold Adrian
 
 import argparse
 import csv
+import html as _html
 import json
 import os
 from contextlib import contextmanager
@@ -149,7 +150,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.8.34"
+__version__ = "1.8.35"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAPEO DE TIPOS DE MÁQUINA A ESPECIFICACIONES
@@ -2348,6 +2349,98 @@ def create_work_planning_table(items: List[Dict[str, str]]) -> Table:
     return table
 
 
+_SEV_CSS = {
+    "CRÍTICO": ("#ff6b6b", "rgba(255,107,107,.15)"),
+    "ALTO": ("#ff9f43", "rgba(255,159,67,.15)"),
+    "MEDIO": ("#f9ca24", "rgba(249,202,36,.15)"),
+    "INFO": ("#95a5a6", "rgba(149,165,166,.15)")}
+
+
+def export_work_planning_html(items: List[Dict[str, str]],
+                              output_dir: str,
+                              projects: Optional[List[str]] = None,
+                              tz_name: str = "America/Mazatlan") -> str:
+    """Genera el HTML standalone del Plan de Trabajo (self-contained, sin
+    dependencias) con badges por severidad y tabla de hallazgos."""
+    e = _html.escape
+    ts = datetime.now(ZoneInfo(tz_name))
+    counts = work_items_summary(items)
+    badge = lambda s: (  # noqa: E731
+        f'<span class="sev" style="color:{_SEV_CSS[s][0]};'
+        f'background:{_SEV_CSS[s][1]}">'
+        f'{e(_SEVERITY_LABEL.get(s, s))}</span>')
+    chips = " ".join(
+        f'<span class="chip" style="border-color:{_SEV_CSS[s][0]}">'
+        f'{e(_SEVERITY_LABEL[s])} <b>{n}</b></span>'
+        for s, n in counts.items() if n)
+
+    if items:
+        rows = "".join(
+            "<tr>"
+            f"<td class='num'>{n}</td>"
+            f"<td>{badge(i['severity'])}</td>"
+            f"<td class='proj'>{e(i['project'])}</td>"
+            f"<td class='area'>{e(i['area'])}</td>"
+            f"<td class='res'>{e(i['resource'])}</td>"
+            f"<td>{e(i['finding'])}</td>"
+            f"<td class='act'>{e(i['action'])}</td>"
+            "</tr>"
+            for n, i in enumerate(items, 1))
+        body = (
+            "<table><thead><tr>"
+            "<th>#</th><th>Severidad</th><th>Proyecto</th><th>Área</th>"
+            "<th>Recurso</th><th>Hallazgo</th><th>Acción sugerida</th>"
+            f"</tr></thead><tbody>{rows}</tbody></table>")
+    else:
+        body = ('<div class="ok">✅ Sin hallazgos — todos los recursos '
+                "saludables.</div>")
+
+    projs = ", ".join(e(p) for p in (projects or [])) or "—"
+    doc = f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Plan de Trabajo — GCP Monitor v{__version__}</title>
+<style>
+body{{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',Consolas,
+monospace;margin:0;padding:28px}}
+h1{{color:#58d1eb;margin:0 0 4px;font-size:22px}}
+.meta{{color:#8b949e;font-size:12px;margin-bottom:18px}}
+.chips{{margin-bottom:18px}}
+.chip{{display:inline-block;border:1px solid;border-radius:14px;
+padding:3px 12px;margin-right:8px;font-size:13px}}
+.sev{{border-radius:10px;padding:2px 8px;font-weight:700;font-size:12px;
+white-space:nowrap}}
+table{{border-collapse:collapse;width:100%;font-size:13px}}
+th{{background:#161b22;color:#58d1eb;text-align:left;padding:9px 10px;
+border:1px solid #30363d;position:sticky;top:0}}
+td{{padding:8px 10px;border:1px solid #30363d;vertical-align:top}}
+tr:nth-child(even){{background:#141920}}
+.num{{text-align:right;color:#8b949e}}
+.proj{{color:#d2a8ff;white-space:nowrap}}
+.area{{color:#58d1eb;white-space:nowrap}}
+.res{{color:#e6edf3;word-break:break-all}}
+.act{{color:#7ee787}}
+.ok{{background:rgba(126,231,135,.12);border:1px solid #3fb950;
+color:#7ee787;border-radius:8px;padding:18px;font-size:15px}}
+.foot{{margin-top:18px;color:#8b949e;font-size:11px}}
+</style></head><body>
+<h1>📋 Plan de Trabajo (Work Planning)</h1>
+<div class="meta">GCP Monitor v{__version__} · Generado:
+{ts.strftime('%Y-%m-%d %H:%M:%S')} ({tz_name}) ·
+Hallazgos: <b>{len(items)}</b> · Proyectos: {projs}</div>
+<div class="chips">{chips}</div>
+{body}
+<div class="foot">Ordenado por severidad: 🔴 CRÍTICO → 🟠 ALTO →
+🟡 MEDIO → ⚪ INFO. Generado por devsecops-toolbox (opción 1 GCP).</div>
+</body></html>"""
+
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(
+        output_dir, f"gcp_work_planning_{ts.strftime('%Y%m%d_%H%M%S')}.html")
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(doc)
+    return filepath
+
+
 def create_summary_table(data: Dict[str, Any], console, project_id: str = None) -> Table:
     """Crea tabla resumen de recursos."""
     table = Table(title="📊 Resumen de Recursos GCP", box=box.ROUNDED)
@@ -3112,7 +3205,16 @@ def main() -> int:
             work_items
         )
         filepaths.append(json_filepath)
-        
+
+        # HTML standalone del Plan de Trabajo (siempre)
+        try:
+            wp_filepath = export_work_planning_html(
+                work_items or [], outcome_dir, list(all_data.keys()))
+            filepaths.append(wp_filepath)
+        except Exception as e:
+            if logger:
+                logger.warning(f"No se pudo generar HTML del plan de trabajo: {e}")
+
         # Generar formato adicional si se especifica
         if args.output == "csv":
             csv_filepath = export_to_csv(all_data.get(project_ids[0], {}), project_ids[0], outcome_dir)
