@@ -783,8 +783,15 @@ Tabla con columnas: `organization`, `project`, `repository`, `branch`, `package_
 Descubre las violaciones del stage **SCM Inspection** de un pipeline CD y genera
 un template `pipe_cd_inspection_fix_<definitionId>_<ts>.yaml` en `outcome/` con las
 correcciones (secrets sin marcar, paridad de variables entre stages, valores vacíos,
-variables a nivel pipeline). El template se aplica con el Pipeline Updater (opción 41),
-en modo solo-template, dry-run o aplicación real.
+variables a nivel pipeline, **override de variables**). El template se aplica con el
+Pipeline Updater (opción 41), en modo solo-template, dry-run o aplicación real.
+
+**Reglas con corrección automática**: `RULE_1_SECRET` (marcar `isSecret`),
+`RULE_5_OVERRIDE` (update con `allowOverride: false` — bloquea "settable at
+release time" conservando valor e `isSecret`), `STAGE_VARIABLES` (paridad /
+contenido / nivel pipeline). Cualquier otra regla del inspector (p. ej.
+`SECURITY_SCAN` → mover script inline a archivo) se lista como **pendiente
+manual** en vez de descartarse en silencio.
 
 Ambos templates (`pipe_cd_*` y `release_*`) llevan al inicio un **comentario `#`
 simplificado** con todos los cambios, y el mismo resumen en `metadata.comment` —
@@ -1270,6 +1277,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-13 | 1.8.79 | **Opción 44: `RULE_5_OVERRIDE` ahora es accionable + reglas desconocidas ya no se descartan** — Bug: solo `RULE_1_SECRET`/`STAGE_VARIABLES` producían ajustes; `RULE_5_OVERRIDE` y `SECURITY_SCAN` caían en `continue` → `rules`/`manual` vacíos → el flujo salía tras el descubrimiento sin ofrecer template ni aplicación. `RULE_5_OVERRIDE` genera `update` con `allowOverride: false` (bloquea "settable at release time", conserva valor e `isSecret`) verificando el flag en definición y snapshot del release. Reglas sin accionable → pendientes manuales visibles. Nuevo flag `force` en `add_rule`. Tests: +9 (`TestRule5Override`, `TestUnknownRulesManual`), 112/112 módulo. | `scm/azdo/scm_inspection_remediator.py`, `scm/tests/unit/test_scm_inspection_remediator.py`, `scm/azdo/README.md` |
 | 2026-10-09 | 1.8.74 | **Fix opción 46: "Archivos generados" impreso dos veces** — el flujo corría `apply_template` dos veces (preview dry-run + PUT real) y **cada una escribía** su propio BACKUP_DESTINO/ORIGEN/UPDATER con timestamps distintos → bloque duplicado en consola y archivos dobles en disco. Nuevo parámetro `write_files`: el preview previo a un PUT real es solo de cómputo (`write_files=False`); el apply definitivo escribe e imprime una sola vez. En modo dry-run el preview sigue escribiendo los archivos (es la corrida final). Tests: +1 (100 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.18), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.73 | **Opción 46: nombres de archivo con `<srcId>-to-<dstId>`** — los archivos del apply (`ORIGEN_`, `BACKUP_DESTINO_`, `UPDATER_`) y el reporte `EVIDENCIA_` ahora llevan ambos definitionIds (ej. `UPDATER_3687-to-1899_LAB-X_<ts>.yaml`). El srcId se resuelve de `--source-id` → `metadata.source.definition_id` de la template → dígito del nombre `pipe_cd_(full|updater)_<id>_*.yaml`; fallback `src`. Nuevo helper `_ids_tag`, parámetros `source_id` en `apply_template` e `ids_tag` en `backup_definition`. Tests: +4 (99 módulo). | `scm/azdo/pipeline_cd_template.py` (v1.0.17), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-09 | 1.8.72 | **Opción 46: comentario del PUT = resumen de todo lo actualizado** — el `comment` de revisión (historial AzDO) se construye al final del apply con el summary completo: diff de stages/variables, target, estrategia, stages conservados/nuevos/sobrescritos, variables, preserve aplicado/sin valor, alias remapeados, placeholders sin resolver. Encabezado: `--comment` → `metadata.comment`/`description` de la template → autogenerado (antes era un texto estático fijado antes de calcular los cambios). Nuevo parámetro `template_comment` separado de `comment` (override). Se excluyen rutas de archivos locales (backup/yaml). Tests: +2, 95 módulo. | `scm/azdo/pipeline_cd_template.py` (v1.0.16), `scm/tests/unit/test_pipeline_cd_template.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

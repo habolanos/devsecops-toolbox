@@ -20,10 +20,15 @@ stage inspeccionado (--redeploy).
 
 Accionables soportados:
   - RULE_1_SECRET            → isSecret: true en el stage afectado
+  - RULE_5_OVERRIDE          → update con allowOverride: false (bloquear
+                               'settable at release time', conserva valor
+                               e isSecret) en el stage/pipeline afectado
   - STAGE_VARIABLES pipeline → valor a nivel release (pide valor / TBD / remove)
   - STAGE_VARIABLES paridad  → add con el valor copiado del stage origen
   - STAGE_VARIABLES contenido→ update con el valor hallado en otro stage
   - Pendientes               → valor | 'TBD' | eliminar (e) | ignorar (i)
+  - Otras reglas             → se listan como pendientes manuales (p.ej.
+                               SECURITY_SCAN: mover script inline a archivo)
 
 Uso:
     python scm_inspection_remediator.py --interactive
@@ -384,7 +389,8 @@ def build_actionables(definition: dict, violations: list,
             return (rel_envs.get(stage, {}).get("variables") or {}).get(var)
         return rel_vars.get(var)
 
-    def add_rule(var, stage, scope, action, value=None, secret=False, note=""):
+    def add_rule(var, stage, scope, action, value=None, secret=False,
+                 note="", force=False):
         # Ajustar la acción a lo que el updater realmente hará
         vars_map = env_vars(stage) if scope == "environment" \
             else (definition.get("variables") or {})
@@ -423,6 +429,7 @@ def build_actionables(definition: dict, violations: list,
                               f"— omitida")
                 return
         if action == "update" and exists and cur.get("value") == value \
+                and not force \
                 and not (secret and not cur.get("isSecret")) \
                 and not (secret and in_release
                          and not (rel_cur or {}).get("isSecret")):
@@ -475,7 +482,57 @@ def build_actionables(definition: dict, violations: list,
                      secret=True, note="marcar secreta")
             continue
 
+        if rule_name == "RULE_5_OVERRIDE":
+            # Variable 'settable at release time' (allowOverride=true en la
+            # definición y/o en la instancia del release). El fix es un
+            # update que la bloquea (allowOverride=false) conservando el
+            # valor y el flag isSecret actuales.
+            var = var_field.split(",")[0].strip()
+            if not var:
+                manual.append(f"RULE_5_OVERRIDE @ {env_name or 'pipeline'}: "
+                              f"sin variable — revisar a mano")
+                continue
+            if env_name and env_name != "(nivel pipeline)":
+                scope, stage = "environment", env_name
+            else:
+                scope, stage = "release", ""
+            cur = (env_vars(stage) if stage
+                   else (definition.get("variables") or {})).get(var)
+            rel_cur = rel_var(stage, scope, var)
+            if cur is None and rel_cur is None:
+                manual.append(f"{var} @ {stage or 'pipeline'}: no está en "
+                              f"la definición ni en el release — omitida")
+                continue
+            # AzDO trata allowOverride ausente como 'true' (settable).
+            def_ovr = (cur or {}).get("allowOverride", True)
+            rel_ovr = (rel_cur or {}).get("allowOverride", True)
+            if cur is not None and not def_ovr and \
+                    (rel_cur is None or not rel_ovr):
+                manual.append(f"{var} @ {stage or 'pipeline'}: override ya "
+                              f"deshabilitado — sin cambio")
+                continue
+            base = cur if cur is not None else (rel_cur or {})
+            locs = []
+            if cur is not None and def_ovr:
+                locs.append("definición")
+            if rel_cur is not None and rel_ovr:
+                locs.append("release")
+            add_rule(var, stage, scope, "update", base.get("value"),
+                     secret=bool(base.get("isSecret")),
+                     note="bloquear 'settable at release time'"
+                          + (f" ({' + '.join(locs)})" if locs else ""),
+                     force=True)
+            continue
+
         if rule_name != "STAGE_VARIABLES":
+            # Reglas sin accionable automático (p.ej. SECURITY_SCAN → mover
+            # script inline a archivo) — se reportan como manuales para
+            # que no se descarten en silencio.
+            manual.append(
+                f"{rule_name} @ {env_name or 'pipeline'}"
+                + (f" [{var_field}]" if var_field else "")
+                + (f": {detail or reason}" if (detail or reason) else "")
+                + " — sin corrección automática, revisar a mano")
             continue
 
         if env_name in ("", "(nivel pipeline)"):

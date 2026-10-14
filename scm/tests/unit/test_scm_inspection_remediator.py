@@ -1191,3 +1191,101 @@ class TestCsvActionColumn:
         assert "mark-secret" in content
         assert "add-missing" in content
         assert "define-or-remove" in content
+
+
+class TestRule5Override:
+    def test_genera_update_con_allowOverride_false(self):
+        """RULE_5_OVERRIDE → update que bloquea 'settable at release time'."""
+        definition = {"environments": [
+            {"name": "Staging", "variables": {
+                "DB_PWD": {"value": None, "isSecret": True,
+                           "allowOverride": True}}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_5_OVERRIDE", "Staging", "DB_PWD",
+               detail="variable settable at release time")])
+        assert len(a["rules"]) == 1
+        r = a["rules"][0]
+        assert r["action"] == "update"
+        assert r["scope"] == "environment" and r["stage"] == "Staging"
+        assert r["allowOverride"] is False
+        assert r["isSecret"] is True            # conserva flag
+        assert r["value"] is None               # conserva valor (secreto)
+        assert "settable" in r["note"]
+
+    def test_valor_no_secreto_se_preserva(self):
+        definition = {"environments": [
+            {"name": "QA", "variables": {
+                "region": {"value": "us", "allowOverride": True}}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_5_OVERRIDE", "QA", "region")])
+        r = a["rules"][0]
+        assert r["value"] == "us" and r["allowOverride"] is False
+
+    def test_ausente_en_def_pero_en_release(self):
+        """Solo existe en el release → la regla aplica a la instancia."""
+        definition = {"environments": [{"name": "Staging", "variables": {}}]}
+        release = {"environments": [
+            {"name": "Staging", "variables": {
+                "DB_PWD": {"value": "x", "allowOverride": True}}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_5_OVERRIDE", "Staging", "DB_PWD")],
+            release=release)
+        assert len(a["rules"]) == 1
+        assert a["rules"][0]["allowOverride"] is False
+        assert "release" in a["rules"][0]["note"]
+
+    def test_ya_bloqueada_va_a_manual(self):
+        definition = {"environments": [
+            {"name": "Staging", "variables": {
+                "DB_PWD": {"value": "x", "allowOverride": False}}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_5_OVERRIDE", "Staging", "DB_PWD")])
+        assert a["rules"] == []
+        assert len(a["manual"]) == 1
+
+    def test_sin_variable_no_crash(self):
+        a = rem.build_actionables({"environments": []}, [
+            _v("RULE_5_OVERRIDE", "Staging", "")])
+        assert a["rules"] == [] and len(a["manual"]) == 1
+
+    def test_scope_pipeline(self):
+        definition = {"variables": {
+            "DB_PWD": {"value": "x", "allowOverride": True}},
+            "environments": []}
+        a = rem.build_actionables(definition, [
+            _v("RULE_5_OVERRIDE", "", "DB_PWD")])
+        r = a["rules"][0]
+        assert r["scope"] == "release" and "stage" not in r
+
+
+class TestUnknownRulesManual:
+    def test_security_scan_va_a_manual(self):
+        """SECURITY_SCAN y reglas desconocidas ya no se descartan en
+        silencio — quedan como pendientes manuales."""
+        a = rem.build_actionables({"environments": []}, [
+            _v("SECURITY_SCAN", "Develop", "",
+               detail="move inline script to file", sev="LOW")])
+        assert a["rules"] == []
+        assert len(a["manual"]) == 1
+        assert "SECURITY_SCAN" in a["manual"][0]
+        assert "Develop" in a["manual"][0]
+
+    def test_regla_desconocida_con_variable(self):
+        a = rem.build_actionables({"environments": []}, [
+            _v("RULE_9_OTRA", "QA", "foo")])
+        assert "RULE_9_OTRA" in a["manual"][0] and "foo" in a["manual"][0]
+
+    def test_mix_override_y_scan_flujo_completo(self):
+        """Escenario del usuario: RULE_5 + SECURITY_SCAN → hay regla Y
+        manuales → el flujo ya no sale sin ofrecer acciones."""
+        definition = {"environments": [
+            {"name": "Staging", "variables": {
+                "DB_PWD": {"value": None, "isSecret": True,
+                           "allowOverride": True}}}]}
+        a = rem.build_actionables(definition, [
+            _v("RULE_5_OVERRIDE", "Staging", "DB_PWD"),
+            _v("SECURITY_SCAN", "Develop", "", sev="LOW")])
+        assert len(a["rules"]) == 1          # RULE_5 → ajuste real
+        assert len(a["manual"]) == 1         # SECURITY_SCAN → manual
+        # antes: rules=[] y manual=[] → return 0 silencioso
+        assert not (not a["rules"] and not a["manual"])
