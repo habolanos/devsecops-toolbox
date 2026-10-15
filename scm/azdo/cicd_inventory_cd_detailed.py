@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CD Pipeline Detailed Inventory v1.0.3
+CD Pipeline Detailed Inventory v1.0.4
 Inventario detallado de pipelines CD (Release Definitions) con ambientes, estados y obsolescencia.
 
 Uso:
@@ -417,8 +417,8 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100):
         "url": definition.get("url", ""),
         "createdOn": definition.get("createdOn", ""),
         "modifiedOn": definition.get("modifiedOn", ""),
-        "environmentsCount": len(envs),
-        "environments": " / ".join(env_names),
+        "stagesCount": len(envs),
+        "stages": " / ".join(env_names),
         "totalTasks": total_tasks,
         "totalReleasesAnalyzed": len(releases),
         "lastReleaseDate": last_rel_date,
@@ -477,7 +477,7 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
         return excel_path, csv_path
     
     # Usar ExportManager
-    manager = ExportManager(script_name, "1.0.3")
+    manager = ExportManager(script_name, "1.0.4")
     
     summary = {
         "total_pipelines": len(rows),

@@ -308,8 +308,8 @@ class TestFetchCdPipelineTasks(unittest.TestCase):
         self.assertEqual(row["tasksPerStage_QA"], 3)
         self.assertEqual(row["tasksPerStage_Prod"], 0)
         self.assertNotIn("tasksPerStage", row)
-        self.assertEqual(row["environmentsCount"], 3)
-        self.assertEqual(row["environments"], "Develop / QA / Prod")
+        self.assertEqual(row["stagesCount"], 3)
+        self.assertEqual(row["stages"], "Develop / QA / Prod")
 
     def test_fallback_definition_without_detail(self):
         """Si falla el GET del detalle, usa definition basico → 0 tareas."""

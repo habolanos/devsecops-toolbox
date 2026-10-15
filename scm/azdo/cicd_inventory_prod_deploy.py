@@ -337,7 +337,9 @@ def _fetch_prod_deploy(cd_row, headers, org, project, deadline_date):
     env_names = []
     if isinstance(def_data, dict) and def_data.get("environments"):
         env_names = [e.get("name", "") for e in def_data["environments"]]
-    result["environments"] = " / ".join(env_names) if env_names else (cd_row.get("environments", "") or "")
+    # cd_detailed >=1.0.4 renombró environments→stages; leer ambas por compatibilidad
+    result["environments"] = (" / ".join(env_names) if env_names
+                              else (cd_row.get("stages") or cd_row.get("environments") or ""))
 
     # ── PASO B: Último release global ───────────────────────────────
     releases_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
