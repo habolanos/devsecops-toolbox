@@ -420,5 +420,53 @@ class TestFetchCdPipelineStageStats(unittest.TestCase):
         self.assertEqual(row["avgHrsFromPrev_Prod"], 48.0)
 
 
+class TestChartsHelpers(unittest.TestCase):
+    """Tests para _hist_bins / _stage_metric_agg / _add_charts_sheet (v1.0.5)."""
+
+    def test_hist_bins_basic(self):
+        bins = mod._hist_bins([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], bin_count=5)
+        self.assertTrue(all(isinstance(c, int) for _lbl, c in bins))
+        self.assertEqual(sum(c for _lbl, c in bins), 10)
+
+    def test_hist_bins_constant_and_empty(self):
+        self.assertEqual(mod._hist_bins([5, 5, 5]), [("5", 3)])
+        self.assertEqual(mod._hist_bins([]), [])
+        self.assertEqual(mod._hist_bins(["x", None]), [])
+
+    def test_stage_metric_agg(self):
+        rows = [
+            {"releasesPerStage_QA": 2, "releasesPerStage_Prod": 1, "x": 9},
+            {"releasesPerStage_QA": 4},
+        ]
+        agg = dict((s, (avg, tot, n))
+                   for s, avg, tot, n in mod._stage_metric_agg(
+                       rows, "releasesPerStage_"))
+        self.assertEqual(agg["QA"], (3.0, 6, 2))
+        self.assertEqual(agg["Prod"], (1.0, 1, 1))
+        self.assertNotIn("x", agg)
+
+    def test_add_charts_sheet_creates_charts(self):
+        """La hoja Charts existe con gráficos y las _data_* quedan ocultas."""
+        import tempfile, pandas as pd
+        from openpyxl import load_workbook
+        rows = [{"stagesCount": 3, "totalTasks": 9,
+                 "lastReleaseStatus": "succeeded", "isObsolete": "No",
+                 "releasesPerStage_QA": 4, "avgHrsFromPrev_QA": 2.5,
+                 "avgDaysPerStage_QA": 7.0},
+                {"stagesCount": 1, "totalTasks": 2,
+                 "lastReleaseStatus": "failed", "isObsolete": "Sí",
+                 "releasesPerStage_Prod": 1}]
+        with tempfile.TemporaryDirectory() as td:
+            xlsx = Path(td) / "r.xlsx"
+            pd.DataFrame(rows).to_excel(xlsx, index=False)
+            mod._add_charts_sheet(str(xlsx), rows)
+            wb = load_workbook(str(xlsx))
+            self.assertIn("Charts", wb.sheetnames)
+            self.assertGreater(len(wb["Charts"]._charts), 0)
+            hidden = [ws.title for ws in wb
+                      if ws.sheet_state == "hidden"]
+            self.assertTrue(hidden)  # hay hojas _data_* ocultas
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

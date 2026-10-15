@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CD Pipeline Detailed Inventory v1.0.4
+CD Pipeline Detailed Inventory v1.0.5
 Inventario detallado de pipelines CD (Release Definitions) con ambientes, estados y obsolescencia.
 
 Uso:
@@ -457,6 +457,186 @@ def get_cd_definitions(headers, org, project):
 
 
 # ==========================================================
+# GRÁFICOS EXCEL — pestaña Charts (openpyxl nativo)
+# ==========================================================
+
+def _hist_bins(values, bin_count=12):
+    """Histograma de una serie numérica → [(etiqueta_rango, count)]."""
+    vals = [v for v in values if isinstance(v, (int, float))]
+    if not vals:
+        return []
+    lo, hi = min(vals), max(vals)
+    if lo == hi:
+        return [(f"{lo}", len(vals))]
+    step = (hi - lo) / bin_count
+    bins = [0] * bin_count
+    for v in vals:
+        bins[min(int((v - lo) / step), bin_count - 1)] += 1
+    return [(f"{lo + i * step:g}–{lo + (i + 1) * step:g}", bins[i])
+            for i in range(bin_count) if bins[i]]
+
+
+def _stage_metric_agg(rows, prefix):
+    """Agrega columnas dinámicas prefix_<stage> → [(stage, promedio, suma, n)]."""
+    acc = {}
+    for row in rows:
+        for key, val in row.items():
+            if key.startswith(prefix) and isinstance(val, (int, float)):
+                stage = key[len(prefix):]
+                tot, n = acc.get(stage, (0.0, 0))
+                acc[stage] = (tot + val, n + 1)
+    return [(s, round(t / n, 1), t, n) for s, (t, n) in acc.items()]
+
+
+def _add_charts_sheet(excel_path, rows):
+    """Post-procesa el xlsx: hoja 'Charts' con gráficos nativos + hojas _data_* ocultas."""
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.chart import BarChart, LineChart, PieChart, Reference, ScatterChart, Series
+        from openpyxl.chart.label import DataLabelList
+    except ImportError:
+        print("⚠️  openpyxl no disponible — pestaña Charts omitida")
+        return
+    if not rows:
+        return
+
+    wb = load_workbook(excel_path)
+
+    def _ds(name, header, data_rows):
+        if not data_rows:
+            return None, 0
+        ws = wb.create_sheet(name)
+        ws.sheet_state = "hidden"
+        ws.append(header)
+        for r in data_rows:
+            ws.append(list(r))
+        return ws, len(data_rows)
+
+    def _bar(ws, n, title, cat_title, val_title, horizontal=False):
+        c = BarChart()
+        c.type = "bar" if horizontal else "col"
+        c.title = title
+        c.style = 10
+        c.add_data(Reference(ws, min_col=2, min_row=1, max_row=1 + n),
+                   titles_from_data=True)
+        c.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        (c.y_axis if horizontal else c.x_axis).title = cat_title
+        (c.x_axis if horizontal else c.y_axis).title = val_title
+        c.legend = None
+        c.width, c.height = 22, 11
+        return c
+
+    def _donut(ws, n, title):
+        c = PieChart()
+        c.title = title
+        c.style = 10
+        c.add_data(Reference(ws, min_col=2, min_row=1, max_row=1 + n),
+                   titles_from_data=True)
+        c.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        c.dataLabels = DataLabelList()
+        c.dataLabels.showPercent = True
+        c.width, c.height = 16, 11
+        return c
+
+    charts = []
+
+    # G1 Histograma: stages por pipeline
+    ws, n = _ds("_data_hist_stages", ["Rango stages", "Pipelines"],
+                _hist_bins([r.get("stagesCount") for r in rows]))
+    if n:
+        charts.append(_bar(ws, n, "P1 — Distribución de stages por pipeline",
+                           "Stages", "Pipelines"))
+    # G2 Histograma: tasks por pipeline
+    ws, n = _ds("_data_hist_tasks", ["Rango tasks", "Pipelines"],
+                _hist_bins([r.get("totalTasks") for r in rows]))
+    if n:
+        charts.append(_bar(ws, n, "P2 — Distribución de tasks por pipeline",
+                           "Tasks", "Pipelines"))
+    # G3 Scatter: stages vs tasks (complejidad vs alcance)
+    scatter_rows = [(r["stagesCount"], r["totalTasks"]) for r in rows
+                    if isinstance(r.get("stagesCount"), (int, float))
+                    and isinstance(r.get("totalTasks"), (int, float))]
+    ws, n = _ds("_data_scatter", ["Stages", "Tasks"], scatter_rows)
+    if n:
+        c = ScatterChart()
+        c.title = "P3 — Stages vs Tasks (complejidad)"
+        c.style = 13
+        c.x_axis.title, c.y_axis.title = "Stages", "Tasks"
+        c.x_axis.delete = c.y_axis.delete = False
+        c.add_data(Reference(ws, min_col=1, min_row=1, max_col=2,
+                             max_row=1 + n), titles_from_data=True)
+        c.legend = None
+        c.width, c.height = 22, 11
+        charts.append(c)
+    # G4 Pareto: releases por stage (top 20, barra + % acumulado)
+    rel_stats = sorted(_stage_metric_agg(rows, "releasesPerStage_"),
+                       key=lambda t: -t[2])[:20]
+    total_rel = sum(t[2] for t in rel_stats) or 1
+    cum = 0.0
+    pareto = []
+    for s, _avg, tot, _n in rel_stats:
+        cum += tot
+        pareto.append((s, tot, round(cum / total_rel * 100, 1)))
+    ws, n = _ds("_data_pareto", ["Stage", "Releases", "% Acumulado"], pareto)
+    if n:
+        c = _bar(ws, n, "P4 — Pareto: releases por stage (top 20)",
+                 "Stage", "Releases")
+        c.y_axis.majorGridlines = None
+        line = LineChart()
+        line.add_data(Reference(ws, min_col=3, min_row=1, max_row=1 + n),
+                      titles_from_data=True)
+        line.y_axis.axId = 200
+        line.y_axis.title = "% acumulado"
+        line.y_axis.crosses = "max"
+        line.y_axis.scaling.max = 100
+        c += line
+        charts.append(c)
+    # G5 Cuellos de botella: horas promedio de tránsito por stage (top 15)
+    transit = sorted(_stage_metric_agg(rows, "avgHrsFromPrev_"),
+                     key=lambda t: -t[1])[:15]
+    ws, n = _ds("_data_bottleneck", ["Stage", "Hrs prom. desde stage previo"],
+                [(s, avg) for s, avg, _t, _n in transit])
+    if n:
+        charts.append(_bar(ws, n, "P5 — Cuellos de botella: tránsito "
+                                  "promedio por stage (hrs)",
+                           "Hrs", "Stage", horizontal=True))
+    # G6 Donut: estado del último release
+    status = {}
+    for r in rows:
+        s = str(r.get("lastReleaseStatus") or "Sin releases")
+        status[s] = status.get(s, 0) + 1
+    ws, n = _ds("_data_status", ["Estado", "Pipelines"],
+                sorted(status.items(), key=lambda kv: -kv[1]))
+    if n:
+        charts.append(_donut(ws, n, "P6 — Estado del último release"))
+    # G7 Donut: obsoletos vs activos
+    obs = {}
+    for r in rows:
+        k = "Obsoleto" if r.get("isObsolete") == "Sí" else "Activo"
+        obs[k] = obs.get(k, 0) + 1
+    ws, n = _ds("_data_obsolete", ["Estado", "Pipelines"], sorted(obs.items()))
+    if n:
+        charts.append(_donut(ws, n, "P7 — Pipelines obsoletos vs activos"))
+    # G8 Cadencia: días promedio entre deploys por stage (top 20 más usados)
+    cad = sorted(_stage_metric_agg(rows, "avgDaysPerStage_"),
+                 key=lambda t: -t[3])[:20]
+    ws, n = _ds("_data_cadence", ["Stage", "Días prom. entre deploys"],
+                [(s, avg) for s, avg, _t, _n in cad])
+    if n:
+        charts.append(_bar(ws, n, "P8 — Cadencia de deploy por stage "
+                                  "(días prom., top 20 por volumen)",
+                           "Stage", "Días"))
+
+    if not charts:
+        return
+    cs = wb.create_sheet("Charts", 0)
+    for i, ch in enumerate(charts):
+        cs.add_chart(ch, f"{'A' if i % 2 == 0 else 'N'}{1 + (i // 2) * 24}")
+    wb.save(excel_path)
+    print(f"   📊 Hoja Charts: {len(charts)} gráficos nativos Excel")
+
+
+# ==========================================================
 # EXPORT
 # ==========================================================
 
@@ -471,13 +651,14 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
         excel_path = output_dir / f"{script_name}_{ts}.xlsx"
         df.to_excel(excel_path, index=False, engine="openpyxl")
         print(f"📊 Excel: {excel_path.resolve()}")
+        _add_charts_sheet(str(excel_path), rows)
         csv_path = output_dir / f"{script_name}_{ts}.csv"
         df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         print(f"📄 CSV:  {csv_path.resolve()}")
         return excel_path, csv_path
     
     # Usar ExportManager
-    manager = ExportManager(script_name, "1.0.4")
+    manager = ExportManager(script_name, "1.0.5")
     
     summary = {
         "total_pipelines": len(rows),
@@ -496,8 +677,9 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
     # Exportar a Excel
     excel_path = manager.export_excel(rows, sheet_name="CD Pipelines", summary=summary)
     if excel_path:
+        _add_charts_sheet(str(excel_path), rows)
         print(f"📊 Excel: {excel_path}")
-    
+
     return excel_path, csv_path
 
 

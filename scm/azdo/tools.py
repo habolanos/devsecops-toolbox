@@ -272,7 +272,7 @@ TOOLS: Dict = {
     },
     "15": {
         "name":        "CD Detailed Inventory",
-        "description": "[Flujo] Inventario detallado de Release Definitions CD: nº y nombres de stages, tareas por stage (tasksPerStage_<stage>), releases por stage (releasesPerStage_<stage>), frecuencia promedio de deploys (avgDaysPerStage_<stage>) y tiempo entre stages (avgHrsFromPrev_<stage>, últimas N releases vía --max-releases). Variables (conteo + var_<name>), último release, obsolescencia. Cache <24h, filtro --var-name/--var-value. Insumo de 16 y 17.",
+        "description": "[Flujo] Inventario detallado de Release Definitions CD: nº y nombres de stages, tareas por stage (tasksPerStage_<stage>), releases por stage (releasesPerStage_<stage>), frecuencia promedio de deploys (avgDaysPerStage_<stage>) y tiempo entre stages (avgHrsFromPrev_<stage>, últimas N releases vía --max-releases). Variables (conteo + var_<name>), último release, obsolescencia. Excel con pestaña Charts (8 gráficos nativos: histogramas, Pareto, cuellos de botella). Cache <24h, filtro --var-name/--var-value. Insumo de 16 y 17.",
         "path":        "cicd_inventory_cd_detailed.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--output", "--var-name", "--var-value", "--max-releases", "--force-refresh", "--use-cache-only"],
         "group":       "inventory",
