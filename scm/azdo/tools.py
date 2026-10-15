@@ -272,7 +272,7 @@ TOOLS: Dict = {
     },
     "15": {
         "name":        "CD Detailed Inventory",
-        "description": "[Flujo] Inventario detallado de Release Definitions CD: nº y nombres de stages, nº de tareas por stage, variables (conteo + columnas var_<name>), último release y obsolescencia. Cache < 24h (--force-refresh), filtro --var-name/--var-value. Insumo de Health Score (16) y Prod Deploy (17).",
+        "description": "[Flujo] Inventario detallado de Release Definitions CD: nº y nombres de stages, tareas por stage (columnas tasksPerStage_<stage>), variables (conteo + columnas var_<name>), último release y obsolescencia. Cache < 24h (--force-refresh), filtro --var-name/--var-value. Insumo de Health Score (16) y Prod Deploy (17).",
         "path":        "cicd_inventory_cd_detailed.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--output", "--var-name", "--var-value", "--force-refresh", "--use-cache-only"],
         "group":       "inventory",

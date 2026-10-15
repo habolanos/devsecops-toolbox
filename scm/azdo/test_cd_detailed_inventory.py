@@ -273,7 +273,7 @@ class TestCountStageTasks(unittest.TestCase):
     def test_counts_workflow_tasks_per_stage(self):
         """Suma workflowTasks de todas las fases de cada stage."""
         per_stage, total = mod._count_stage_tasks(self.ENVS)
-        self.assertEqual(per_stage, ["Develop: 2", "QA: 3", "Prod: 0"])
+        self.assertEqual(per_stage, [("Develop", 2), ("QA", 3), ("Prod", 0)])
         self.assertEqual(total, 5)
 
     def test_empty_and_none_envs(self):
@@ -285,7 +285,7 @@ class TestCountStageTasks(unittest.TestCase):
         """deployPhase sin workflowTasks cuenta 0."""
         envs = [{"name": "S", "deployPhases": [{"rank": 1}]}]
         per_stage, total = mod._count_stage_tasks(envs)
-        self.assertEqual(per_stage, ["S: 0"])
+        self.assertEqual(per_stage, [("S", 0)])
         self.assertEqual(total, 0)
 
 
@@ -298,13 +298,16 @@ class TestFetchCdPipelineTasks(unittest.TestCase):
     }
 
     def test_task_columns_present(self):
-        """totalTasks/tasksPerStage se agregan al row exportado."""
+        """totalTasks + columna tasksPerStage_<stage> por cada stage."""
         with patch.object(mod, "safe_az_get",
                           side_effect=[self.DETAIL, {"value": []}]):
             row = mod._fetch_cd_pipeline(
                 {"id": 42, "name": "demo-CD"}, {}, "org", "proj")
         self.assertEqual(row["totalTasks"], 5)
-        self.assertEqual(row["tasksPerStage"], "Develop: 2 / QA: 3 / Prod: 0")
+        self.assertEqual(row["tasksPerStage_Develop"], 2)
+        self.assertEqual(row["tasksPerStage_QA"], 3)
+        self.assertEqual(row["tasksPerStage_Prod"], 0)
+        self.assertNotIn("tasksPerStage", row)
         self.assertEqual(row["environmentsCount"], 3)
         self.assertEqual(row["environments"], "Develop / QA / Prod")
 
@@ -315,7 +318,7 @@ class TestFetchCdPipelineTasks(unittest.TestCase):
             row = mod._fetch_cd_pipeline(
                 {"id": 7, "name": "x-CD", "environments": []}, {}, "org", "proj")
         self.assertEqual(row["totalTasks"], 0)
-        self.assertEqual(row["tasksPerStage"], "")
+        self.assertFalse(any(k.startswith("tasksPerStage_") for k in row))
 
 
 if __name__ == "__main__":
