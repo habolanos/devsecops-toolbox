@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.47"
+__version__ = "1.8.48"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -134,7 +134,7 @@ GROUP_ORDER = ["pr", "policy", "release", "updatepipe", "drift", "validation", "
 TOOLS: Dict = {
     "1": {
         "name":        "PR Master Checker",
-        "description": "Lista PRs hacia master/main con pipeline CD asociado y stage 'validador'",
+        "description": "Lista todos los PRs hacia master/main (o --branch) en todos los repos del proyecto. Por cada PR: repositorio, fecha (merge o creación), link directo, pipeline CD asociado y si ese CD tiene stage 'validador' (✅/⛔). Detecta merges que aterrizarán en un CD sin gate de validación.",
         "path":        "azdo_pr_master_checker.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--branch",
                         "--status", "--stage-name", "--output"],
@@ -143,7 +143,7 @@ TOOLS: Dict = {
     },
     "1b": {
         "name":        "PR Pipeline Analyzer",
-        "description": "Analiza PRs de múltiples ramas y cruza con CD pipelines y releases",
+        "description": "Cruza PRs de múltiples ramas destino (dev, QA, master, release*) con pipelines CD y el último release por repo. Tabla por fecha descendente, agrupación por repo, listado de CDs (--list-cds) y tiempos por etapa. Responde: ¿qué PRs pendientes alimentarán cada CD?",
         "path":        "azdo_pr_pipeline_analyzer.py",
         "args":        ["--pat", "--org", "--project", "--branches", "--status",
                         "--threads", "--output", "--list-cds", "--debug"],
@@ -152,7 +152,7 @@ TOOLS: Dict = {
     },
     "2": {
         "name":        "Branch Policy Checker",
-        "description": "Audita políticas de rama (master/main, QA, develop) por repositorio",
+        "description": "Audita políticas de rama configuradas en master/main, QA y develop por repositorio (build validation, reviewers, resolución de comentarios, WI vinculados). Estado por repo: ✅ las 3 protegidas / 🟡 parcial / 🔴 ninguna. Filtrable por --repo.",
         "path":        "azdo_branch_policy_checker.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--output"],
         "group":       "policy",
@@ -160,7 +160,7 @@ TOOLS: Dict = {
     },
     "2b": {
         "name":        "Branch Lock Checker",
-        "description": "Lista todas las ramas con lock (isLocked) por repositorio — Repo | Rama | Bloqueado por",
+        "description": "Lista ramas con isLocked=true en todos los repos: # | Repo | Rama | Bloqueado por. Detecta locks olvidados que bloquean merges y deploys. Concurrencia (--workers) y filtro por --repo.",
         "path":        "azdo_branch_lock_checker.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--workers", "--output"],
         "group":       "policy",
@@ -168,7 +168,7 @@ TOOLS: Dict = {
     },
     "3": {
         "name":        "Release CD Health",
-        "description": "Score de salud de Release Pipelines CD: recencia + estabilidad + consistencia",
+        "description": "Score 0-100 de salud por Release Pipeline CD: Recencia del último deploy a prod (0-70 pts), Estabilidad de intentos del último release (0-20) y Estabilidad de la definición (0-10). Lista stages por rank, verifica consistencia entre pipelines y detecta el stage de producción. Ordenable (--sort) y con diagrama (--diagram).",
         "path":        "azdo_release_cd_health.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--sort", "--diagram", "--output"],
         "group":       "release",
@@ -176,7 +176,7 @@ TOOLS: Dict = {
     },
     "4": {
         "name":        "Pipeline Drift Analyzer",
-        "description": "Detecta drift entre pipeline actual y snapshot del último release (stages/vars/approvals/tasks)",
+        "description": "Compara la definición actual de cada pipeline CD contra el snapshot del último release: stages añadidos/eliminados/renombrados, variables nuevas/quitadas/modificadas, approvers y tasks. Severidad por hallazgo (--severity) y ordenamiento (--sort). Detecta cambios aplicados a la definición que aún no corren en un release.",
         "path":        "azdo_pipeline_drift.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--severity", "--sort", "--output"],
         "group":       "drift",
@@ -184,7 +184,7 @@ TOOLS: Dict = {
     },
     "5": {
         "name":        "Release Deep Dive",
-        "description": "Análisis profundo de un Release Definition por ID: PRs + Políticas + CD Health + Drift",
+        "description": "Análisis 360° de un Release Definition por --definition-id: identifica el repo Git en sus artefactos y corre los 4 análisis sobre esa combinación pipeline+repo — PRs activos al target branch (--branch), políticas de rama, CD Health y drift vs snapshot del último release. Reporte consolidado de un solo pipeline.",
         "path":        "azdo_release_deep_dive.py",
         "args":        ["--pat", "--org", "--project", "--definition-id", "--branch", "--stage-name", "--output"],
         "group":       "release",
@@ -192,7 +192,7 @@ TOOLS: Dict = {
     },
     "6": {
         "name":        "Task Validator",
-        "description": "Validación DevSecOps: imágenes Docker, rollback, credenciales GIT, ConfigMap vs Repo",
+        "description": "Gate de validación DevSecOps sobre un release: existencia de imágenes Docker (--image-actual/--image-nueva) en Harbor/Artifact Registry (--gcp-project), búsqueda de release rollback por TAG, vigencia de credenciales GIT (--group-id) y comparación ConfigMap vs Repositorio (--namespace).",
         "path":        "azdo_task_validator.py",
         "args":        ["--pat", "--org", "--project", "--release-id",
                         "--image-actual", "--image-nueva", "--gcp-project",
@@ -202,7 +202,7 @@ TOOLS: Dict = {
     },
     "7": {
         "name":        "Pipeline Logs Scanner",
-        "description": "Escanea logs de pipelines CI buscando términos de vulnerabilidades (axios, plain-crypto-js)",
+        "description": "Descarga y escanea logs de los últimos N runs de pipelines CI (--top-runs) buscando términos de dependencias vulnerables (default axios, plain-crypto-js; configurable --search-terms). Reporta pipeline, build y match por hallazgo para remediación. Concurrencia --threads.",
         "path":        "azdo_scan_pipeline_logs.py",
         "args":        ["--pat", "--org", "--project", "--search-terms", "--top-runs",
                         "--threads", "--output"],
@@ -211,7 +211,7 @@ TOOLS: Dict = {
     },
     "8": {
         "name":        "Repo Vulnerabilities Scanner",
-        "description": "Escanea package.json en repositorios buscando dependencias vulnerables",
+        "description": "Escanea package.json en las ramas críticas (develop, QA, master, main — configurable --branches) de todos los repos buscando paquetes en versiones vulnerables (--targets 'pkg:version'). Detecta dependencias comprometidas en el código sin ejecutar builds. Filtro por --repo.",
         "path":        "azdo_scan_repos_vulnerabilities.py",
         "args":        ["--pat", "--org", "--project", "--branches", "--targets",
                         "--repo", "--output"],
@@ -220,7 +220,7 @@ TOOLS: Dict = {
     },
     "9": {
         "name":        "CICD Inventory",
-        "description": "Inventario completo de repos, CI pipelines (YAML) y CD pipelines (classic releases) con relación Repo ↔ CI ↔ CD",
+        "description": "Inventario completo del proyecto: repositorios, pipelines CI (YAML builds) y CD (classic releases) con la relación Repo ↔ CI ↔ CD resuelta por artefactos y triggers. Base de auditorías de trazabilidad; --limit para corridas parciales.",
         "path":        "cicd_inventory.py",
         "args":        ["--pat", "--org", "--project", "--limit", "--output"],
         "json_output": True,
@@ -229,7 +229,7 @@ TOOLS: Dict = {
     },
     "10": {
         "name":        "GKE Pipelines Inventory",
-        "description": "Inventario de Release Definitions CD que contienen 'GKE' con detalle de stages y último estado",
+        "description": "Inventario de Release Definitions CD filtrados por keyword (default 'GKE', cualquier stack via --keyword). Detalle de stages por pipeline y último estado de ejecución. Localiza rápido los pipelines de una tecnología.",
         "path":        "cicd_inventory_gke_pipelines.py",
         "args":        ["--pat", "--org", "--project", "--keyword", "--output"],
         "json_output": True,
@@ -238,7 +238,7 @@ TOOLS: Dict = {
     },
     "11": {
         "name":        "Pending Approvals",
-        "description": "Releases con aprobaciones pendientes + estado del stage 'Validador'",
+        "description": "Cola de releases detenidos esperando aprobación pre/post-deployment: aprobadores requeridos, tiempo en espera y estado del stage 'Validador'. Vista operativa de lo que está bloqueado por un humano.",
         "path":        "cicd_inventory_pending_approvals.py",
         "args":        ["--pat", "--org", "--project", "--output"],
         "json_output": True,
@@ -247,7 +247,7 @@ TOOLS: Dict = {
     },
     "12": {
         "name":        "Branches Created",
-        "description": "Ramas creadas desde fecha específica usando Pushes API (concurrente)",
+        "description": "Ramas creadas desde una fecha (--since) en todos los repos vía Pushes API con filtro de fecha. Concurrente (--workers). Auditoría de feature branches nuevas, ramas huérfanas y actividad por periodo.",
         "path":        "cicd_inventory_branches_created.py",
         "args":        ["--pat", "--org", "--project", "--since", "--workers", "--output"],
         "group":       "inventory",
@@ -255,7 +255,7 @@ TOOLS: Dict = {
     },
     "13": {
         "name":        "Hotfix Branches Inventory",
-        "description": "Inventario de ramas hotfix con creador, fecha de creación y actividad del repo",
+        "description": "Inventario de ramas hotfix (patrón configurable --pattern, default hotfix/*): creador, fecha de creación y última actividad del repo. Controla el ciclo de vida de hotfixes abiertos.",
         "path":        "cicd_inventory_hotfix_branches.py",
         "args":        ["--pat", "--org", "--project", "--pattern", "--workers", "--output"],
         "json_output": True,
@@ -264,7 +264,7 @@ TOOLS: Dict = {
     },
     "14": {
         "name":        "CI Detailed Inventory",
-        "description": "[Flujo] Inventario detallado de pipelines CI. Verifica cache previo (ci_raw.json < 24h) para skip APIs. Genera Excel + CSV + JSON cache.",
+        "description": "[Flujo] Inventario detallado de pipelines CI: metadatos, últimas ejecuciones, tecnología detectada y breakers. Cache-first: si existe cache < 24h salta las APIs (--force-refresh / --use-cache-only). Genera Excel + CSV + JSON cache — insumo del Health Score (16).",
         "path":        "cicd_inventory_ci_detailed.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--use-cache-only"],
         "group":       "inventory",
@@ -272,7 +272,7 @@ TOOLS: Dict = {
     },
     "15": {
         "name":        "CD Detailed Inventory",
-        "description": "[Flujo] Inventario detallado de pipelines CD (Release Definitions). Extrae variables, filtra por var-name/var-value. Verifica cache previo (cd_raw.json < 24h) para skip APIs. Genera Excel + CSV + JSON cache.",
+        "description": "[Flujo] Inventario detallado de Release Definitions CD: nº y nombres de stages, nº de tareas por stage, variables (conteo + columnas var_<name>), último release y obsolescencia. Cache < 24h (--force-refresh), filtro --var-name/--var-value. Insumo de Health Score (16) y Prod Deploy (17).",
         "path":        "cicd_inventory_cd_detailed.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--output", "--var-name", "--var-value", "--force-refresh", "--use-cache-only"],
         "group":       "inventory",
@@ -280,7 +280,7 @@ TOOLS: Dict = {
     },
     "16": {
         "name":        "Pipeline Health Score",
-        "description": "[Flujo / Orquestador] Reporte de salud con scoring DORA/SRE en 5 dimensiones. Genera 1 Excel con 3 pestañas (CI + CD + Health). Lee cache CI/CD si existe < 24h, consulta APIs solo si es necesario.",
+        "description": "[Flujo / Orquestador] Score DORA/SRE en 5 dimensiones sobre CI+CD del proyecto. Un Excel con 3 pestañas (CI, CD, Health) + 13 gráficos nativos (Pareto, Sankey, radar DORA, heatmaps, tendencias). Relee caches de 14/15 < 24h; --offline solo cache, --run-inventory corre los inventarios antes.",
         "path":        "cicd_inventory_health_score.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--offline", "--skip-incremental", "--run-inventory"],
         "group":       "health",
@@ -288,7 +288,7 @@ TOOLS: Dict = {
     },
     "17": {
         "name":        "Prod Deploy Credenciales Git",
-        "description": "[Flujo] Rastrea último despliegue exitoso a Producción por pipeline CD. Requiere cache CD previo. Genera Excel + CSV + JSON cache con deadline de vigencia, commit SHA y build ID.",
+        "description": "[Flujo] Último despliegue exitoso a Producción por pipeline CD con deadline de vigencia de credenciales Git (--deadline), commit SHA y build ID. Requiere cache CD previo (correr 15 antes o --force-refresh). Genera Excel + CSV + JSON cache.",
         "path":        "cicd_inventory_prod_deploy.py",
         "args":        ["--pat", "--org", "--project", "--deadline", "--workers", "--output", "--force-refresh"],
         "group":       "health",
@@ -296,7 +296,7 @@ TOOLS: Dict = {
     },
     "18": {
         "name":        "Pipeline Status",
-        "description": "Reporte consolidado CI+CD: totales, deprecados, última actualización, estado (enabled/disabled/paused/inactivo)",
+        "description": "Estado consolidado CI+CD del proyecto: totales, deprecados/obsoletos, última actualización y estado funcional (enabled/disabled/paused/inactivo — umbral --inactive-days). Filtros --type y --only-deprecated. Panorama ejecutivo del parque de pipelines.",
         "path":        "cicd_pipeline_status.py",
         "args":        ["--pat", "--org", "--project", "--workers", "--inactive-days", "--type", "--only-deprecated", "--output", "--force-refresh"],
         "group":       "health",
@@ -304,7 +304,7 @@ TOOLS: Dict = {
     },
     "19": {
         "name":        "Properties Branch Diff",
-        "description": "Compara la configuración de un componente (carpeta) entre dos ramas de un repositorio de propiedades. Detecta diferencias de configuración que puedan impactar un despliegue productivo. Exit 0=OK / 1=HIGH / 2=CRITICAL.",
+        "description": "Diff de la configuración de un componente (--component, carpeta) entre dos ramas de un repo de propiedades. Contexto de líneas (--context), filtro de severidad (--severity), solo diffs (--only-diff). Detecta drift de configuración que impacta el deploy productivo. Exit 0=OK / 1=HIGH / 2=CRITICAL — usable en gates.",
         "path":        "azdo_repo_properties_branch_diff.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--component",
                         "--source", "--target", "--context", "--severity",
@@ -314,7 +314,7 @@ TOOLS: Dict = {
     },
     "20": {
         "name":        "Repo Branch Diff",
-        "description": "[Informe Ejecutivo] Analiza el impacto de cambios entre dos ramas de cualquier repositorio. Clasifica archivos por riesgo (CRITICAL/HIGH/MEDIUM/LOW): CI/CD, seguridad, K8s, build, BD, código, tests. Score 0-100, commits, autores y recomendaciones automáticas. Exit 0=OK / 1=HIGH / 2=CRITICAL.",
+        "description": "[Informe Ejecutivo] Impacto del diff entre dos ramas (--source/--target) de cualquier repo: clasifica archivos por riesgo (CI/CD, seguridad, K8s, build, BD, código, tests), score 0-100, top commits (--top-commits) y autores con recomendaciones automáticas. Exit 0=OK / 1=HIGH / 2=CRITICAL — usable en gates.",
         "path":        "azdo_repo_branch_diff.py",
         "args":        ["--pat", "--org", "--project", "--repo",
                         "--source", "--target", "--top-files", "--top-commits",
@@ -324,7 +324,7 @@ TOOLS: Dict = {
     },
     "22": {
         "name":        "Pipeline Rollback",
-        "description": "Revierte cambios en Release Pipelines con 3 métodos: (1) Full Backup Restore (máxima seguridad), (2) Hybrid Rollback (revisión del backup desde Azure DevOps), (3) Manual Revision (rollback a revisión específica). Incluye listado de backups/revisiones, validación y dry-run.",
+        "description": "Revierte Release Pipelines con 3 métodos: (1) Full Backup Restore desde outcome/backups (máxima seguridad), (2) Hybrid Rollback usando la revisión guardada en AzDO, (3) Manual a revisión específica (--to-revision). Lista backups (--list-backups) y revisiones (--list-revisions), valida antes de aplicar, --dry-run y log detallado por corrida.",
         "path":        "pipeline-cd-rollback-pipeline.py",
         "args":        ["--list-backups", "--list-revisions", "--backup-file", "--hybrid", "--pipeline-id", "--to-revision", "--pat", "--dry-run"],
         "group":       "updatepipe",
@@ -332,7 +332,7 @@ TOOLS: Dict = {
     },
     "23": {
         "name":        "Refresh Release",
-        "description": "Crea Nuevo Release desde uno existente con backup automático versionado. Renueva variables de grupo, ideal para actualizar Credenciales Git.",
+        "description": "Crea un nuevo Release a partir de uno existente (--source-release-id) con backup automático versionado del original. Refresca variables de grupo — el flujo estándar para renovar Credenciales Git sin editar el release a mano. Comentario configurable (--release-comment).",
         "path":        "pipeline_cd_new_re_release.py",
         "args":        ["--org", "--project", "--source-release-id", "--release-comment", "--pat", "--backup-path"],
         "defaults":    {
@@ -345,7 +345,7 @@ TOOLS: Dict = {
     },
     "24": {
         "name":        "Pipeline Restore Release",
-        "description": "Restaura un Release desde un backup versionado. Permite rollback completo con trazabilidad y confirmación interactiva.",
+        "description": "Restaura un Release desde un backup versionado (--backup-file) con trazabilidad completa: backup del estado actual, confirmación interactiva y reporte JSON del resultado. Rollback seguro de un release puntual.",
         "path":        "pipeline_cd_restore_release.py",
         "args":        ["--org", "--project", "--backup-file", "--restore-comment", "--pat", "--backup-path"],
         "defaults":    {
@@ -358,7 +358,7 @@ TOOLS: Dict = {
     },
     "25": {
         "name":        "Release Explorer",
-        "description": "Explorador interactivo de Release Pipelines con búsqueda, filtros, detalles y comparación (diff) lado a lado",
+        "description": "Explorador interactivo de Release Pipelines: búsqueda full-text (--search), filtros por stage/estado/activos (--stage-filter/--status-filter/--active-only), detalle por release (--release-id) y comparación lado a lado entre releases (--diff). Exporta --json.",
         "path":        "azdo_release_explorer_rich.py",
         "args":        ["--org", "--project", "--pat", "--search", "--definition-id", "--release-id", 
                         "--stage-filter", "--status-filter", "--active-only", "--top", "--diff", "--interactive", "--json"],
@@ -367,7 +367,7 @@ TOOLS: Dict = {
     },
     "26": {
         "name":        "Pipeline History",
-        "description": "Evolución histórica de un Pipeline CD: revisiones, releases, diff exacto entre versiones y timeline interactiva HTML",
+        "description": "Línea de vida de un Pipeline CD por --definition-id: revisiones de la definición, releases ejecutados y diff exacto entre versiones. Genera timeline HTML interactiva (--output) con ventana de meses (--months) y zona horaria (--timezone).",
         "path":        "azdo_pipeline_history.py",
         "args":        ["--pat", "--org", "--project", "--definition-id", "--months", "--timezone", "--output", "--debug"],
         "group":       "release",
@@ -375,7 +375,7 @@ TOOLS: Dict = {
     },
     "40": {
         "name":        "Health Probe Masivo Validator",
-        "description": "Validación masiva de health probes en K8s desde AZDO - Mapeo de stages, pruebas de conectividad, reportería ejecutiva",
+        "description": "Validación masiva de health probes K8s mapeados desde AZDO: resuelve stage→endpoint por pipeline (-i input), prueba conectividad en paralelo (--workers/--timeout) y genera reportería ejecutiva en formato configurable (--format).",
         "path":        "health-probe-masive/health_probe_validator.py",
         "args":        ["-i", "-o", "--workers", "--timeout", "--format", "--verbose"],
         "group":       "health",
@@ -383,7 +383,7 @@ TOOLS: Dict = {
     },
     "27": {
         "name":        "Pipeline CD Backup & Restore",
-        "description": "Backup/restore completo de definiciones de Pipeline CD. Individual (max 500 IDs), masivo, restore, crear desde backup, diff, conversion JSON→YAML y rollback a revision historica por definitionId (ultimas 5 revisiones). Submenú interactivo.",
+        "description": "Gestión completa de definiciones CD: backup individual (--pipeline-ids, máx 500) o masivo, restore, crear definición nueva desde backup (--new-name), diff entre versiones, conversión JSON→YAML y rollback a revisión histórica (últimas 5) por definitionId. Submenú interactivo.",
         "path":        "pipeline_cd_backup_restore.py",
         "args":        ["--org", "--project", "--pat", "--mode", "--pipeline-ids",
                         "--pipeline-id", "--to-revision", "--top-revisions", "--yes",
@@ -394,7 +394,7 @@ TOOLS: Dict = {
     },
     "41": {
         "name":        "Pipeline Updater Template",
-        "description": "Actualización masiva de pipelines CD usando templates YAML. Define búsquedas y cambios de forma declarativa. Soporta ejecución paralela, snapshots automáticos y rollback.",
+        "description": "Motor de actualización masiva de pipelines CD desde templates YAML declarativos: selecciona destinos por búsqueda, aplica cambios (variables, stages, artifacts) con diff, snapshots automáticos pre-cambio, ejecución paralela (--workers), rollback y --dry-run.",
         "path":        "pipeline_updater/pipeline_updater.py",
         "args":        ["--definition-ids", "--template", "--dry-run", "--workers"],
         "group":       "updatepipe",
@@ -402,7 +402,7 @@ TOOLS: Dict = {
     },
     "42": {
         "name":        "Release Updater Template",
-        "description": "Actualiza un Release existente por releaseId via PATCH API usando templates YAML. Modifica variables globales, variables por environment, status (abandonar) y descripcion. Incluye backup automatico, dry-run y soporte multi-release.",
+        "description": "PATCH sobre un Release existente por --release-id vía templates YAML o flags: variables globales (--set-var), variables por environment (--set-env-var), status abandonar (--abandon) y descripción. Backup automático pre-PATCH, --dry-run, interactivo y multi-release.",
         "path":        "pipeline_cd_update_release/pipeline_cd_update_release.py",
         "args":        ["--org", "--project", "--release-id", "--set-var", "--set-env-var",
                         "--abandon", "--description", "--pat", "--backup-path", "--dry-run",
@@ -416,7 +416,7 @@ TOOLS: Dict = {
     },
     "43": {
         "name":        "Pipeline CD Clone",
-        "description": "Clona un Pipeline CD completo a partir de un definition ID existente. Pregunta nombre del nuevo pipeline (default: LAB-{nombre_actual}) y path (default: mismo que origen). Crea nueva definicion con limpieza de campos del sistema, backup previo, deteccion de secrets y dry-run.",
+        "description": "Clona un Release Definition completo (stages, tasks, variables, triggers) desde --source-id. Limpia campos de sistema (ids/revision/urls), detecta secrets para redactarlos, backup previo (--backup), nuevo nombre (default LAB-<origen>) y path. --dry-run e interactivo.",
         "path":        "pipeline_cd_clone/pipeline_cd_clone.py",
         "args":        ["--org", "--project", "--source-id", "--new-name", "--new-path",
                         "--pat", "--dry-run", "--backup", "--backup-path", "--interactive"],
@@ -431,7 +431,7 @@ TOOLS: Dict = {
     },
     "44": {
         "name":        "SCM Inspection Remediator",
-        "description": "Descubre violaciones del stage 'SCM Inspection' del pipeline CD y genera templates pipe_cd_inspection_fix_<id>.yaml (definición, opción 41) y/o release_inspection_fix_<relId>.yaml (release, engine Update Release opción 42) en outcome/ con las correcciones (secrets, paridad de variables, valores vacíos).",
+        "description": "Audita el stage 'SCM Inspection' de un pipeline CD y su release: descubre violaciones (secrets sin marcar, paridad de variables entre stages, valores vacíos, allowOverride) y genera templates de fix — pipe_cd_inspection_fix_<id>.yaml para la opción 41 y/o release_inspection_fix_<relId>.yaml para la 42 — con plan, dry-run y aplicación guiada.",
         "path":        "scm_inspection_remediator.py",
         "args":        ["--interactive"],
         "group":       "updatepipe",
@@ -439,7 +439,7 @@ TOOLS: Dict = {
     },
     "45": {
         "name":        "Release Manifest Drift",
-        "description": "Audita consistencia del stage Production de pipelines CD: definición vs snapshot del último release efectivo + logs de tasks de manifiesto (get k8-manifest, show manifest, kubectl apply). Detecta recursos creados/editados fuera del pipeline (anotación last-applied ausente, 'configured' con YAML idéntico al release previo via --prev-release).",
+        "description": "Audita consistencia del stage Production de pipelines CD: definición vs snapshot del último release efectivo + logs de tasks de manifiesto (get k8-manifest, show manifest, kubectl apply). Detecta recursos creados/editados fuera del pipeline (anotación last-applied ausente, 'configured' con YAML idéntico al release previo via --prev-release). Severidades --severity, export --output, paralelo --threads.",
         "path":        "azdo_release_manifest_drift.py",
         "args":        ["--pat", "--org", "--project", "--definition-ids",
                         "--stage-name", "--task-patterns", "--prev-release",
@@ -450,7 +450,7 @@ TOOLS: Dict = {
     },
     "46": {
         "name":        "Pipeline CD Template Export/Apply",
-        "description": "Extrae la definición completa de un pipeline CD como template YAML reusable (definición full normalizada + template DSL para la opción 41) y puede aplicarla sobre otro definitionId via PUT con backup y dry-run. Los secretos se redactan (value null) y los IDs de queue/variable-group/task-group se resuelven a nombres.",
+        "description": "Extrae la definición completa de un pipeline CD como template YAML reusable (definición full normalizada + template DSL para la opción 41) y la aplica sobre otro definitionId via PUT con merge por estrategias, backup y dry-run. Secretos redactados (value null), IDs de queue/variable-group/task-group resueltos a nombres. Flujo interactivo con evidencia HTML en outcome/reports y comentario PUT = resumen de cambios.",
         "path":        "pipeline_cd_template.py",
         "args":        ["--org", "--project", "--source-id", "--template",
                         "--target-id", "--new-name", "--new-path", "--format",
@@ -463,14 +463,14 @@ TOOLS: Dict = {
     "_system_options": {
         "A": {
             "name": "Ejecutar Todos",
-            "description": "Ejecuta todas las herramientas con la misma configuración (sin Deep Dive)",
+            "description": "Ejecuta todas las herramientas en secuencia con la misma configuración. Excluye las que requieren input puntual (1b, 5, 6, 7).",
             "type": "auto_run",
             "exclude": ["1b", "5", "6", "7"],
             "reason": "Excluye: PR Pipeline Analyzer, Release Deep Dive, Task Validator, Pipeline Logs Scanner"
         },
         "B": {
             "name": "Ejecutar Todo + JSON",
-            "description": "Ejecuta TODAS las herramientas en secuencia forzando salida JSON en outcome/. Ideal para alimentar el dashboard.",
+            "description": "Ejecuta TODAS las herramientas en secuencia forzando --output json hacia outcome/ — insumo del dashboard consolidado. Excluye 1b, 5, 6, 7.",
             "type": "auto_run_json",
             "exclude": ["1b", "5", "6", "7"],
             "reason": "Excluye: PR Pipeline Analyzer, Release Deep Dive, Task Validator, Pipeline Logs Scanner"
