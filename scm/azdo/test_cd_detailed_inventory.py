@@ -7,6 +7,7 @@ Cobertura:
 - _extract_variables: extraccion de variables del definition detail
 - _variables_to_string: conversion a string legible
 - _fetch_cd_pipeline: integracion de variables en el resultado
+- _count_stage_tasks: conteo de workflowTasks por stage (deployPhases)
 - Filtrado por --var-name y --var-value
 """
 
@@ -253,6 +254,68 @@ class TestVariableFiltering(unittest.TestCase):
         var_value = "noExiste"
         filtered = [r for r in rows if r.get(var_key) is not None and str(r.get(var_key)) == var_value]
         self.assertEqual(len(filtered), 0)
+
+
+class TestCountStageTasks(unittest.TestCase):
+    """Tests para _count_stage_tasks (v1.0.1)."""
+
+    ENVS = [
+        {"name": "Develop", "deployPhases": [
+            {"workflowTasks": [{"taskId": "t1"}, {"taskId": "t2"}]},
+        ]},
+        {"name": "QA", "deployPhases": [
+            {"workflowTasks": [{"taskId": "t3"}]},
+            {"workflowTasks": [{"taskId": "t4"}, {"taskId": "t5"}]},
+        ]},
+        {"name": "Prod"},  # sin deployPhases
+    ]
+
+    def test_counts_workflow_tasks_per_stage(self):
+        """Suma workflowTasks de todas las fases de cada stage."""
+        per_stage, total = mod._count_stage_tasks(self.ENVS)
+        self.assertEqual(per_stage, ["Develop: 2", "QA: 3", "Prod: 0"])
+        self.assertEqual(total, 5)
+
+    def test_empty_and_none_envs(self):
+        """Env vacio o None → cero tareas sin error."""
+        self.assertEqual(mod._count_stage_tasks([]), ([], 0))
+        self.assertEqual(mod._count_stage_tasks(None), ([], 0))
+
+    def test_phase_without_workflow_tasks(self):
+        """deployPhase sin workflowTasks cuenta 0."""
+        envs = [{"name": "S", "deployPhases": [{"rank": 1}]}]
+        per_stage, total = mod._count_stage_tasks(envs)
+        self.assertEqual(per_stage, ["S: 0"])
+        self.assertEqual(total, 0)
+
+
+class TestFetchCdPipelineTasks(unittest.TestCase):
+    """Integracion de columnas de tareas en _fetch_cd_pipeline."""
+
+    DETAIL = {
+        "environments": TestCountStageTasks.ENVS,
+        "variables": {"branchConfig": {"value": "main"}},
+    }
+
+    def test_task_columns_present(self):
+        """totalTasks/tasksPerStage se agregan al row exportado."""
+        with patch.object(mod, "safe_az_get",
+                          side_effect=[self.DETAIL, {"value": []}]):
+            row = mod._fetch_cd_pipeline(
+                {"id": 42, "name": "demo-CD"}, {}, "org", "proj")
+        self.assertEqual(row["totalTasks"], 5)
+        self.assertEqual(row["tasksPerStage"], "Develop: 2 / QA: 3 / Prod: 0")
+        self.assertEqual(row["environmentsCount"], 3)
+        self.assertEqual(row["environments"], "Develop / QA / Prod")
+
+    def test_fallback_definition_without_detail(self):
+        """Si falla el GET del detalle, usa definition basico → 0 tareas."""
+        with patch.object(mod, "safe_az_get",
+                          side_effect=[{}, {"value": []}]):
+            row = mod._fetch_cd_pipeline(
+                {"id": 7, "name": "x-CD", "environments": []}, {}, "org", "proj")
+        self.assertEqual(row["totalTasks"], 0)
+        self.assertEqual(row["tasksPerStage"], "")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CD Pipeline Detailed Inventory v1.0.0
+CD Pipeline Detailed Inventory v1.0.1
 Inventario detallado de pipelines CD (Release Definitions) con ambientes, estados y obsolescencia.
 
 Uso:
@@ -272,6 +272,23 @@ def _variables_to_string(var_list):
     return "; ".join(f"{v['name']}={v['value']}" for v in var_list)
 
 
+def _count_stage_tasks(envs):
+    """Cuenta tareas por stage: environments[].deployPhases[].workflowTasks[].
+
+    Retorna (lista "Stage: N", total). Cubre todas las fases del stage
+    (agent job, agentless, deployment group) pues cada una es un deployPhase
+    con sus propias workflowTasks.
+    """
+    per_stage = []
+    total = 0
+    for env in envs or []:
+        phases = env.get("deployPhases") or []
+        n = sum(len(p.get("workflowTasks") or []) for p in phases)
+        per_stage.append(f"{env.get('name', '?')}: {n}")
+        total += n
+    return per_stage, total
+
+
 def _fetch_cd_pipeline(definition, headers, org, project):
     """Fetch detalles de un pipeline CD: ambientes, último release, variables."""
     def_id = definition.get("id")
@@ -299,7 +316,9 @@ def _fetch_cd_pipeline(definition, headers, org, project):
     var_list = _extract_variables(source)
     var_names = [v["name"] for v in var_list]
     var_string = _variables_to_string(var_list)
-    
+
+    stage_tasks, total_tasks = _count_stage_tasks(envs)
+
     result = {
         "id": def_id,
         "name": name,
@@ -309,6 +328,8 @@ def _fetch_cd_pipeline(definition, headers, org, project):
         "modifiedOn": definition.get("modifiedOn", ""),
         "environmentsCount": len(envs),
         "environments": " / ".join(env_names),
+        "totalTasks": total_tasks,
+        "tasksPerStage": " / ".join(stage_tasks),
         "lastReleaseDate": last_rel_date,
         "lastReleaseStatus": last_rel_status,
         "isObsolete": detect_obsolete(name),
@@ -352,7 +373,7 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
         return excel_path, csv_path
     
     # Usar ExportManager
-    manager = ExportManager(script_name, "1.0.0")
+    manager = ExportManager(script_name, "1.0.1")
     
     summary = {
         "total_pipelines": len(rows),
