@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 from zoneinfo import ZoneInfo
 
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
@@ -136,9 +136,12 @@ class ExportManager:
         
         filepath = self.output_dir / f"{self.tool_name}_{self.timestamp}.csv"
         
-        # Determinar fieldnames
+        # Determinar fieldnames: union de keys de TODAS las filas (orden de
+        # primera aparición) — las columnas dinámicas (var_*, tasksPerStage_*)
+        # varían entre filas; usar solo data[0] descarta las que faltan ahí.
         if fieldnames is None:
-            fieldnames = list(data[0].keys())
+            fieldnames = list(dict.fromkeys(
+                k for row in data for k in row.keys()))
         
         # Escribir archivo
         with open(filepath, "w", newline="", encoding="utf-8") as f:
