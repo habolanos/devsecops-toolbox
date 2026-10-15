@@ -260,14 +260,14 @@ class TestCountStageTasks(unittest.TestCase):
     """Tests para _count_stage_tasks (v1.0.1)."""
 
     ENVS = [
-        {"name": "Develop", "deployPhases": [
+        {"id": 11, "name": "Develop", "deployPhases": [
             {"workflowTasks": [{"taskId": "t1"}, {"taskId": "t2"}]},
         ]},
-        {"name": "QA", "deployPhases": [
+        {"id": 22, "name": "QA", "deployPhases": [
             {"workflowTasks": [{"taskId": "t3"}]},
             {"workflowTasks": [{"taskId": "t4"}, {"taskId": "t5"}]},
         ]},
-        {"name": "Prod"},  # sin deployPhases
+        {"id": 33, "name": "Prod"},  # sin deployPhases
     ]
 
     def test_counts_workflow_tasks_per_stage(self):
@@ -319,6 +319,105 @@ class TestFetchCdPipelineTasks(unittest.TestCase):
                 {"id": 7, "name": "x-CD", "environments": []}, {}, "org", "proj")
         self.assertEqual(row["totalTasks"], 0)
         self.assertFalse(any(k.startswith("tasksPerStage_") for k in row))
+
+
+class TestReleaseStageStats(unittest.TestCase):
+    """Tests para _release_stage_stats (v1.0.3): conteo, frecuencia y gaps."""
+
+    def _env_step(self, ts, status="succeeded"):
+        return {"status": status, "lastModifiedOn": ts}
+
+    RELEASES = [
+        # Release 1: Develop y QA desplegaron (QA 2h después), Prod no llegó
+        {"environments": [
+            {"definitionEnvironmentId": 11, "name": "Develop",
+             "deploySteps": [{"status": "succeeded",
+                              "lastModifiedOn": "2026-10-01T10:00:00Z"}]},
+            {"definitionEnvironmentId": 22, "name": "QA",
+             "deploySteps": [{"status": "succeeded",
+                              "lastModifiedOn": "2026-10-01T12:00:00Z"}]},
+        ]},
+        # Release 2: Develop, QA (gap 4h) y Prod (gap 48h desde QA)
+        {"environments": [
+            {"definitionEnvironmentId": 11, "name": "Develop",
+             "deploySteps": [{"status": "succeeded",
+                              "lastModifiedOn": "2026-10-05T08:00:00Z"}]},
+            {"definitionEnvironmentId": 22, "name": "QA",
+             "deploySteps": [{"status": "succeeded",
+                              "lastModifiedOn": "2026-10-05T12:00:00Z"}]},
+            {"definitionEnvironmentId": 33, "name": "Prod",
+             "deploySteps": [{"status": "succeeded",
+                              "lastModifiedOn": "2026-10-07T12:00:00Z"}]},
+        ]},
+        # Release 3: solo Develop (falló QA)
+        {"environments": [
+            {"definitionEnvironmentId": 11, "name": "Develop",
+             "deploySteps": [{"status": "succeeded",
+                              "lastModifiedOn": "2026-10-09T10:00:00Z"}]},
+            {"definitionEnvironmentId": 22, "name": "QA",
+             "deploySteps": [{"status": "failed",
+                              "lastModifiedOn": "2026-10-09T11:00:00Z"}]},
+        ]},
+    ]
+
+    def test_counts_and_averages(self):
+        stats = mod._release_stage_stats(TestCountStageTasks.ENVS,
+                                         self.RELEASES)
+        dev, qa, prod = {s["stage"]: s for s in stats}.values()
+        # Develop llegó en los 3 releases
+        self.assertEqual(dev["releases"], 3)
+        # avg días entre deploys a Develop: (oct1 → oct9) / 2 = 4.0
+        self.assertEqual(dev["avg_days"], 4.0)
+        # QA: 2 llegadas, oct1→oct5 = 4.0 días
+        self.assertEqual(qa["releases"], 2)
+        self.assertEqual(qa["avg_days"], 4.0)
+        # gap Develop→QA: (2h + 4h)/2 = 3.0
+        self.assertEqual(qa["avg_gap_hours"], 3.0)
+        # Prod llegó 1 vez → avg_days None; gap QA→Prod = 48h
+        self.assertEqual(prod["releases"], 1)
+        self.assertIsNone(prod["avg_days"])
+        self.assertEqual(prod["avg_gap_hours"], 48.0)
+        # Develop es primer stage → sin gap previo
+        self.assertIsNone(dev["avg_gap_hours"])
+
+    def test_no_releases(self):
+        stats = mod._release_stage_stats(TestCountStageTasks.ENVS, [])
+        for s in stats:
+            self.assertEqual(s["releases"], 0)
+            self.assertIsNone(s["avg_days"])
+            self.assertIsNone(s["avg_gap_hours"])
+
+    def test_survives_stage_rename(self):
+        """Matcheo por definitionEnvironmentId aunque el nombre cambió."""
+        envs = [{"id": 11, "name": "Dev-Nuevo"}]
+        releases = [{"environments": [
+            {"definitionEnvironmentId": 11, "name": "Develop",
+             "deploySteps": [{"status": "succeeded",
+                              "lastModifiedOn": "2026-10-01T10:00:00Z"}]},
+        ]}]
+        stats = mod._release_stage_stats(envs, releases)
+        self.assertEqual(stats[0]["stage"], "Dev-Nuevo")
+        self.assertEqual(stats[0]["releases"], 1)
+
+
+class TestFetchCdPipelineStageStats(unittest.TestCase):
+    """Integración de columnas releasesPerStage_/avgDaysPerStage_/avgHrsFromPrev_."""
+
+    def test_release_stat_columns(self):
+        with patch.object(mod, "safe_az_get", side_effect=[
+                TestFetchCdPipelineTasks.DETAIL,
+                {"value": TestReleaseStageStats.RELEASES}]):
+            row = mod._fetch_cd_pipeline(
+                {"id": 42, "name": "demo-CD"}, {}, "org", "proj")
+        self.assertEqual(row["totalReleasesAnalyzed"], 3)
+        self.assertEqual(row["releasesPerStage_Develop"], 3)
+        self.assertEqual(row["releasesPerStage_QA"], 2)
+        self.assertEqual(row["releasesPerStage_Prod"], 1)
+        self.assertEqual(row["avgDaysPerStage_Develop"], 4.0)
+        self.assertEqual(row["avgDaysPerStage_Prod"], "")
+        self.assertEqual(row["avgHrsFromPrev_Develop"], "")
+        self.assertEqual(row["avgHrsFromPrev_QA"], 3.0)
+        self.assertEqual(row["avgHrsFromPrev_Prod"], 48.0)
 
 
 if __name__ == "__main__":

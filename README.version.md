@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.82`** — 2026-10-15
+**`1.8.83`** — 2026-10-15
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-15 | **1.8.83** | **feat(azdo): Tool 15 — stats de releases por stage + tiempo entre stages** — El fetch de releases cambia de `$top=1` a `$top=--max-releases` (default 100) con `$expand=environments` (misma 1 llamada por pipeline). Nuevo helper puro `_release_stage_stats(def_envs, releases)` que matchea por `definitionEnvironmentId` (sobrevive renombres) y calcula por stage: `releasesPerStage_<stage>` (nº de releases que llegaron con deployStep succeeded/partiallySucceeded), `avgDaysPerStage_<stage>` (días promedio entre deploys al stage) y `avgHrsFromPrev_<stage>` (horas promedio desde el deploy del stage anterior dentro del mismo release — tiempo de tránsito entre stages). Columna extra `totalReleasesAnalyzed`. Script v1.0.2 → v1.0.3. Tests: +4 (`TestReleaseStageStats`, integración), 24/24. | `scm/azdo/cicd_inventory_cd_detailed.py` (v1.0.3), `scm/azdo/test_cd_detailed_inventory.py`, `scm/azdo/tools.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-15 | **1.8.82** | **feat(azdo): Tool 15 — `tasksPerStage` ahora es una columna por stage** — La columna combinada `tasksPerStage` (`"Develop: 2 / QA: 3"`) se reemplaza por columnas dinámicas `tasksPerStage_<stage>` (mismo patrón que `var_<name>`): `tasksPerStage_Develop`, `tasksPerStage_QA`, etc. — filtrables/ordenables en Excel/CSV/JSON. `_count_stage_tasks` ahora retorna `[(stage, n)]`; `totalTasks` se conserva. Script v1.0.1 → v1.0.2. Tests actualizados (20/20). | `scm/azdo/cicd_inventory_cd_detailed.py` (v1.0.2), `scm/azdo/test_cd_detailed_inventory.py`, `scm/azdo/tools.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-15 | **1.8.81** | **docs(azdo): menú enriquecido — descripciones detalladas de las 35 herramientas** — Cada entrada del menú `tools.py` ahora documenta qué hace la herramienta, qué detecta/reporta, flags clave entre paréntesis, salidas generadas (Excel/CSV/JSON/HTML/evidencia), exit codes para gates (19, 20) y relaciones entre flujos (14/15 → 16, 15 → 17, 44 → 41/42). Incluye las opciones de sistema A/B. `tools.py` v1.8.47 → v1.8.48. Sin cambios funcionales — solo textos. | `scm/azdo/tools.py` (v1.8.48), `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-15 | **1.8.80** | **feat(azdo): Tool 15 (`cicd_inventory_cd_detailed`) — conteo de tareas por stage** — El inventario CD detallado solo exportaba `environmentsCount`/nombres; ahora cuenta las `workflowTasks` de cada `deployPhase` por stage (cubre agent job, agentless y deployment group). Nuevo helper puro `_count_stage_tasks(envs)` → `(["Stage: N", ...], total)` y dos columnas nuevas en el reporte/exports: `totalTasks` (total del pipeline) y `tasksPerStage` (`"Develop: 2 / QA: 3 / Prod: 0"`). Script v1.0.0 → v1.0.1 (header + ExportManager). Tests: +5 en `TestCountStageTasks`/`TestFetchCdPipelineTasks` del `test_cd_detailed_inventory.py` existente (20/20). | `scm/azdo/cicd_inventory_cd_detailed.py` (v1.0.1), `scm/azdo/test_cd_detailed_inventory.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

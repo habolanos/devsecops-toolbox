@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CD Pipeline Detailed Inventory v1.0.2
+CD Pipeline Detailed Inventory v1.0.3
 Inventario detallado de pipelines CD (Release Definitions) con ambientes, estados y obsolescencia.
 
 Uso:
@@ -289,18 +289,108 @@ def _count_stage_tasks(envs):
     return per_stage, total
 
 
-def _fetch_cd_pipeline(definition, headers, org, project):
-    """Fetch detalles de un pipeline CD: ambientes, último release, variables."""
+# ==========================================================
+# RELEASE STATS POR STAGE (conteo, frecuencia, tiempo entre stages)
+# ==========================================================
+
+_RELEASE_OK = {"succeeded", "partiallysucceeded"}
+
+
+def _parse_dt(value):
+    """Parsea timestamp ISO 8601 de Azure DevOps ('Z' u offset) a datetime."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _env_key(env):
+    """Clave estable de un environment: definitionEnvironmentId > id > nombre."""
+    return (env.get("definitionEnvironmentId") or env.get("id")
+            or (env.get("name") or "").strip().lower())
+
+
+def _first_deploy_ts(release_env):
+    """Primer deploy exitoso del env dentro del release (deploySteps status ok)."""
+    times = []
+    for step in release_env.get("deploySteps") or []:
+        if (step.get("status") or "").lower() in _RELEASE_OK:
+            dt = _parse_dt(step.get("lastDeployedOn") or step.get("completedOn")
+                           or step.get("lastModifiedOn") or step.get("requestedOn"))
+            if dt:
+                times.append(dt)
+    return min(times) if times else None
+
+
+def _release_stage_stats(def_envs, releases):
+    """Estadísticas por stage desde el historial de releases.
+
+    Retorna lista por stage (orden de la definición, por rank):
+      {stage, releases, avg_days, avg_gap_hours}
+    - releases: nº de releases que llegaron exitosamente al stage.
+    - avg_days: días promedio entre deploys exitosos al stage (None si <2).
+    - avg_gap_hours: horas promedio desde el deploy del stage anterior dentro
+      del mismo release (None si el stage es el primero o sin pares medibles).
+    Matcheo por definitionEnvironmentId (sobrevive renombres de stage).
+    """
+    envs_sorted = sorted(def_envs or [],
+                         key=lambda e: e.get("rank", 10 ** 9))
+    rel_env_times = []
+    for rel in releases or []:
+        times_map = {}
+        for rel_env in rel.get("environments") or []:
+            t = _first_deploy_ts(rel_env)
+            if t is not None:
+                times_map[_env_key(rel_env)] = t
+        rel_env_times.append(times_map)
+
+    stats = []
+    prev_key = None
+    for env in envs_sorted:
+        key = _env_key(env)
+        deploy_times = []
+        gaps_h = []
+        for times_map in rel_env_times:
+            t = times_map.get(key)
+            if t is None:
+                continue
+            deploy_times.append(t)
+            if prev_key is not None and prev_key in times_map:
+                gap = (t - times_map[prev_key]).total_seconds() / 3600.0
+                if gap >= 0:
+                    gaps_h.append(gap)
+        deploy_times.sort()
+        count = len(deploy_times)
+        avg_days = (round((deploy_times[-1] - deploy_times[0]).total_seconds()
+                          / 86400.0 / (count - 1), 1)
+                    if count >= 2 else None)
+        avg_gap = round(sum(gaps_h) / len(gaps_h), 1) if gaps_h else None
+        stats.append({
+            "stage": env.get("name", "?"),
+            "releases": count,
+            "avg_days": avg_days,
+            "avg_gap_hours": avg_gap,
+        })
+        prev_key = key
+    return stats
+
+
+def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100):
+    """Fetch detalles de un pipeline CD: ambientes, releases, variables."""
     def_id = definition.get("id")
     name = definition.get("name", "")
-    
+
     # Fetch full definition detail (incluye variables)
     detail_url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/definitions/{def_id}"
     full_detail = safe_az_get(detail_url, headers)
-    
-    # Último release
+
+    # Últimos N releases con environments (para stats por stage + último release)
     url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases"
-    last_release = safe_az_get(url, headers, {"definitionId": def_id, "$top": 1})
+    last_release = safe_az_get(
+        url, headers,
+        {"definitionId": def_id, "$top": max_releases, "$expand": "environments"})
     releases = last_release.get("value", []) if isinstance(last_release, dict) else []
     
     last_r = releases[0] if releases else {}
@@ -318,6 +408,7 @@ def _fetch_cd_pipeline(definition, headers, org, project):
     var_string = _variables_to_string(var_list)
 
     stage_tasks, total_tasks = _count_stage_tasks(envs)
+    stage_stats = _release_stage_stats(envs, releases)
 
     result = {
         "id": def_id,
@@ -329,6 +420,7 @@ def _fetch_cd_pipeline(definition, headers, org, project):
         "environmentsCount": len(envs),
         "environments": " / ".join(env_names),
         "totalTasks": total_tasks,
+        "totalReleasesAnalyzed": len(releases),
         "lastReleaseDate": last_rel_date,
         "lastReleaseStatus": last_rel_status,
         "isObsolete": detect_obsolete(name),
@@ -344,6 +436,15 @@ def _fetch_cd_pipeline(definition, headers, org, project):
     # Agregar conteo de tareas por stage como columna individual (tasksPerStage_<stage>)
     for stage_name, n_tasks in stage_tasks:
         result[f"tasksPerStage_{stage_name}"] = n_tasks
+
+    # Stats de releases por stage como columnas individuales
+    for st in stage_stats:
+        stage_name = st["stage"]
+        result[f"releasesPerStage_{stage_name}"] = st["releases"]
+        result[f"avgDaysPerStage_{stage_name}"] = (
+            st["avg_days"] if st["avg_days"] is not None else "")
+        result[f"avgHrsFromPrev_{stage_name}"] = (
+            st["avg_gap_hours"] if st["avg_gap_hours"] is not None else "")
 
     return result
 
@@ -376,7 +477,7 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
         return excel_path, csv_path
     
     # Usar ExportManager
-    manager = ExportManager(script_name, "1.0.2")
+    manager = ExportManager(script_name, "1.0.3")
     
     summary = {
         "total_pipelines": len(rows),
@@ -441,6 +542,7 @@ def main():
     parser.add_argument("--output", default=None, help="Directorio de salida")
     parser.add_argument("--var-name", default=None, help="Filtrar pipelines que tienen esta variable (ej: branchConfig)")
     parser.add_argument("--var-value", default=None, help="Filtrar pipelines donde la variable --var-name tiene este valor (ej: cadenaSuministro)")
+    parser.add_argument("--max-releases", type=int, default=100, help="Releases por pipeline para stats por stage (default 100)")
     parser.add_argument("--force-refresh", action="store_true", help="Ignorar cache, consultar APIs")
     parser.add_argument("--skip-cache", action="store_true", help="Alias de --force-refresh")
     parser.add_argument("--use-cache-only", action="store_true", help="Solo cache, falla si no existe o > 24h")
@@ -513,7 +615,7 @@ def main():
                 with _progress_context() as progress:
                     task = progress.add_task("Procesando CD pipelines", total=total)
                     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project): d for d in definitions}
+                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases): d for d in definitions}
                         for future in as_completed(futures):
                             try:
                                 result = future.result()
@@ -527,7 +629,7 @@ def main():
                 tee.resume_terminal()
             else:
                 with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project): d for d in definitions}
+                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases): d for d in definitions}
                     for i, future in enumerate(as_completed(futures), 1):
                         try:
                             result = future.result()
