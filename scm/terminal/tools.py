@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.33"
+__version__ = "1.8.34"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -489,6 +489,16 @@ def run_script(script_key: str):
 
 def main():
     """Bucle principal del menú."""
+    # --run <key>: ejecución directa sin menú (usado por la TUI k9s)
+    if "--run" in sys.argv:
+        _i = sys.argv.index("--run")
+        _key = sys.argv[_i + 1].upper() if _i + 1 < len(sys.argv) else ""
+        if _key in SCRIPTS:
+            run_script(_key)
+        else:
+            print(f"{Colors.FAIL}Opción no válida: {_key}{Colors.ENDC}")
+            sys.exit(2)
+        return
     while True:
         if RICH_AVAILABLE and console:
             print_menu_rich()

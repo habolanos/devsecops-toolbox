@@ -66,7 +66,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -903,11 +903,36 @@ def _run_setup_wizard_if_needed():
             print(f"Wizard omitido: {e}")
 
 
+def _try_run_tui() -> bool:
+    """Intenta lanzar la TUI estilo k9s (Textual). Retorna True si corrió."""
+    if "--classic" in sys.argv:
+        return False
+    if not sys.stdout.isatty():
+        return False
+    try:
+        from tui.app import ToolboxApp
+    except ImportError:
+        try:
+            from scm.tui.app import ToolboxApp
+        except ImportError:
+            return False
+    try:
+        ToolboxApp().run()
+        return True
+    except Exception as e:
+        print(f"⚠️  TUI no disponible ({e}) — usando menú clásico.\n")
+        return False
+
+
 def main():
     """Función principal del menú."""
     # Ejecutar wizard de configuracion en primera ejecucion
     _run_setup_wizard_if_needed()
-    
+
+    # TUI estilo k9s por defecto; --classic fuerza el menú numerado
+    if _try_run_tui():
+        return
+
     while True:
         try:
             print_header()

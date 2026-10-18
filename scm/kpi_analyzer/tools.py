@@ -68,7 +68,7 @@ except ImportError:
     BASE_LAUNCHER_AVAILABLE = False
 
 # Metadata
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 __author__ = "Harold Adrian"
 
 # Grupos de herramientas
@@ -514,6 +514,16 @@ def run_tool(tool_key: str):
 
 def main():
     """Función principal del menú."""
+    # --run <key>: ejecución directa sin menú (usado por la TUI k9s)
+    if "--run" in sys.argv:
+        _i = sys.argv.index("--run")
+        _key = sys.argv[_i + 1].upper() if _i + 1 < len(sys.argv) else ""
+        if _key in TOOLS:
+            run_tool(_key)
+        else:
+            print(f"{Colors.FAIL}Opción no válida: {_key}{Colors.ENDC}")
+            sys.exit(2)
+        return
     while True:
         try:
             print_header()

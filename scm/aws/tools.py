@@ -61,7 +61,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas AWS DevSecOps"
 
@@ -1491,12 +1491,25 @@ def main():
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--profile", "-p", default=DEFAULT_PROFILE, help="AWS CLI profile por defecto")
     parser.add_argument("--region", "-r", default=DEFAULT_REGION, help="AWS region por defecto")
+    parser.add_argument("--run", default="", help="Ejecutar una tool directamente sin menú (TUI k9s)")
     cli_args = parser.parse_args()
 
     DEFAULT_PROFILE = cli_args.profile
     DEFAULT_REGION = cli_args.region
 
     OUTCOME_DIR.mkdir(exist_ok=True)
+
+    # --run <key>: ejecución directa sin menú (usado por la TUI k9s)
+    if cli_args.run:
+        _key = cli_args.run.upper()
+        if _key == "A":
+            run_all_checkers()
+        elif _key in TOOLS:
+            run_tool(_key)
+        else:
+            print(f"{Colors.FAIL}Opción no válida: {_key}{Colors.ENDC}")
+            sys.exit(2)
+        return
 
     while True:
         try:

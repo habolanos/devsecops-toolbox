@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.49"
+__version__ = "1.8.50"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -2838,6 +2838,17 @@ def _print_execution_summary(results: list, elapsed: float):
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 def main():
+    # --run <key>: ejecución directa sin menú (usado por la TUI k9s)
+    if "--run" in sys.argv:
+        _i = sys.argv.index("--run")
+        _key = sys.argv[_i + 1] if _i + 1 < len(sys.argv) else ""
+        _key = _key.upper() if _key.isalpha() else _key.lower()
+        if _key in TOOLS:
+            run_tool(_key)
+        else:
+            print(f"{Colors.FAIL}Opción no válida: {_key}{Colors.ENDC}")
+            sys.exit(2)
+        return
     while True:
         try:
             print_header()

@@ -59,7 +59,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA DEL PROGRAMA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.33"
+__version__ = "1.8.34"
 __author__ = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure"
 
@@ -1187,6 +1187,18 @@ def run_all_checkers():
 
 def main():
     """Función principal del menú."""
+    # --run <key>: ejecución directa sin menú (usado por la TUI k9s)
+    if "--run" in sys.argv:
+        _i = sys.argv.index("--run")
+        _key = sys.argv[_i + 1].upper() if _i + 1 < len(sys.argv) else ""
+        if _key == "A":
+            run_all_checkers()
+        elif _key in TOOLS and not _key.startswith("_"):
+            run_tool(_key)
+        else:
+            print(f"{Colors.FAIL}Opción no válida: {_key}{Colors.ENDC}")
+            sys.exit(2)
+        return
     while True:
         try:
             print_header()
