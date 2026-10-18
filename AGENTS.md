@@ -29,3 +29,4 @@ en lugar de hardcodearlos**:
 - Solo versiones **patch** en `VERSION`; documentar cada cambio en la tabla de historial de `README.md` y en `README.version.md`.
 - `__version__` de cada programa es **individual**: se actualiza únicamente cuando ese componente se modifica. Nunca hacer sync masivo de `__version__` entre programas.
 - Nunca hacer `git push`.
+- Commits sin trailer `Generated with [Devin]` ni `Co-Authored-By` — solo el mensaje.
