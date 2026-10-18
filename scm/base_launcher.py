@@ -24,6 +24,23 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime as dt
 
+# stdout/stderr en UTF-8: sin esto, pipear la salida en Windows (cp1252)
+# lanza UnicodeEncodeError al imprimir emojis/acentos. No afecta consola
+# interactiva (Rich usa WriteConsoleW ahí). errors="replace" blinda aún
+# si el pipe impone otra codec.
+def _force_utf8_stdio():
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_force_utf8_stdio()
+
 try:
     from rich.console import Console
     from rich.table import Table

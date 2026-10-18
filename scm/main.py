@@ -20,6 +20,22 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+# stdout/stderr en UTF-8: sin esto, pipear la salida en Windows (cp1252)
+# lanza UnicodeEncodeError al imprimir emojis/acentos. Va antes de
+# _ensure_rich() (que imprime) y de la creación de la Console Rich.
+def _force_utf8_stdio():
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_force_utf8_stdio()
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # AUTO-INSTALACIÓN DE RICH
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -66,7 +82,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.33"
+__version__ = "1.8.34"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 

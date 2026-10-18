@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.90`** — 2026-10-18
+**`1.8.91`** — 2026-10-18
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-18 | **1.8.91** | **fix: UnicodeEncodeError (cp1252) al pipear salida en Windows** — bootstrap `_force_utf8_stdio()` en `main.py`, `base_launcher.py` y los 6 `tools.py`: reconfigura stdout/stderr a UTF-8 con `errors="replace"` antes del primer print. Cubre todos los entry points (incl. direct-run sin PYTHONPATH, donde `base_launcher` no es importable) y el renderer legacy de Rich en pipes. Tests: +4. | `scm/main.py` (v1.8.34), `scm/base_launcher.py`, `scm/{gcp,azure,aws,azdo,terminal,kpi_analyzer}/tools.py`, `scm/tests/unit/test_utf8_stdio.py`, `VERSION` |
 | 2026-10-18 | **1.8.90** | **fix: incluir TUI en el build PyInstaller** — `toolbox_build_executables.py` agrega `--collect-all textual` (Textual carga CSS/widgets desde package data; sin esto `dist/devsecops-toolbox.exe` caería al menú clásico por ImportError). Docs: marcado como resuelto en el plan. | `toolbox_build_executables.py`, `docs/features/rearchitect_like_k9s/02_PLAN_IMPLEMENTACION.md`, `VERSION` |
 | 2026-10-18 | **1.8.89** | **feat: TUI estilo k9s como interfaz por defecto (Textual)** — nuevo paquete `scm/tui/` (app, screens, widgets, registry, commands, runner). Las herramientas se navegan como recursos: tabla con `/` filtro en vivo, `:` comandos (`:azdo`, `:15`, `:outcome`, `:all`, `:q`), Enter ejecuta vía `app.suspend()` + subprocess `tools.py --run <key>`, Esc retrocede, toast con exit code/duración, historial de `:` con ↑, `r` recarga config, `?` ayuda, `o`/`:outcome` navega reportes. Registry lazy-importa `TOOLS`/`SCRIPTS` de las 6 plataformas. Cada `tools.py` gana flag `--run <key>` que salta el menú (normalización de clave por plataforma). `main.py`: TUI default si TTY+textual; `--classic` para el menú numerado; fallback automático si textual falta. requirements.txt +`textual>=8.2.0,<9.0`. Docs en `docs/features/rearchitect_like_k9s/`. Tests: +25 (registry, parser, `--run`, screens headless). | `scm/tui/` (nuevo, v1.0.0), `scm/main.py` (v1.8.33), `scm/{gcp,azure,aws,azdo,terminal,kpi_analyzer}/tools.py` (+`--run`), `scm/requirements.txt`, `scm/tests/unit/test_tui_k9s.py`, `docs/features/rearchitect_like_k9s/`, `README.version.md`, `VERSION` |
 | 2026-10-17 | **1.8.88** | **revert(azdo): menú AZDO vuelve a las descripciones cortas** — se revierte el enriquecimiento de `fd4bdf9` a petición del usuario; conserva el arg `--max-releases` de la opción 15. tools.py v1.8.49. | `scm/azdo/tools.py` (v1.8.49), `README.version.md`, `VERSION` |

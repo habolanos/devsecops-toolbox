@@ -15,6 +15,22 @@ import platform
 from pathlib import Path
 from typing import Optional
 
+# stdout/stderr en UTF-8: sin esto, pipear la salida en Windows (cp1252)
+# lanza UnicodeEncodeError al imprimir emojis. Debe correr antes del
+# primer print (bootstrap — no depende de base_launcher).
+def _force_utf8_stdio():
+    for _stream in (sys.stdout, sys.stderr):
+        _reconf = getattr(_stream, "reconfigure", None)
+        if _reconf is None:
+            continue
+        try:
+            _reconf(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_force_utf8_stdio()
+
 # Auto-instalación de Rich
 def _ensure_rich():
     """Verifica si rich está instalado; si no, lo instala automáticamente."""
@@ -68,7 +84,7 @@ except ImportError:
     BASE_LAUNCHER_AVAILABLE = False
 
 # Metadata
-__version__ = "1.8.33"
+__version__ = "1.8.34"
 __author__ = "Harold Adrian"
 
 # Grupos de herramientas

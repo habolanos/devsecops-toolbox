@@ -26,6 +26,22 @@ import time as time_module
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# stdout/stderr en UTF-8: sin esto, pipear la salida en Windows (cp1252)
+# lanza UnicodeEncodeError al imprimir emojis. Debe correr antes del
+# primer print (bootstrap — no depende de base_launcher).
+def _force_utf8_stdio():
+    for _stream in (sys.stdout, sys.stderr):
+        _reconf = getattr(_stream, "reconfigure", None)
+        if _reconf is None:
+            continue
+        try:
+            _reconf(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_force_utf8_stdio()
+
 try:
     from rich.align import Align
     from rich.console import Console
@@ -59,7 +75,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.50"
+__version__ = "1.8.51"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
