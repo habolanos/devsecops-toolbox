@@ -45,7 +45,7 @@ except ImportError:
 
 console = Console()
 
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.0"
@@ -367,13 +367,32 @@ def create_auth_header(pat: str) -> str:
     return f"Basic {encoded}"
 
 
+def _urlopen_with_retry(req, attempts: int = 4):
+    """urlopen con reintentos ante fallos transitorios de red (VPN/WSL:
+    Errno 101, DNS intermitente, resets). Backoff 2s, 4s, 6s. Los
+    HTTPError se relanzan sin reintentar (son respuesta del servidor)."""
+    for attempt in range(attempts):
+        try:
+            return urllib.request.urlopen(req)
+        except urllib.error.HTTPError:
+            raise
+        except Exception as e:
+            if attempt >= attempts - 1:
+                raise
+            wait = (attempt + 1) * 2
+            print(f"{Colors.YELLOW}  Sin conectividad ({type(e).__name__}) — "
+                  f"reintentando en {wait}s...{Colors.ENDC}")
+            import time as _time
+            _time.sleep(wait)
+
+
 def get_release(org: str, project: str, release_id: int, pat: str) -> Dict:
     url = f"https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{release_id}?api-version={API_VERSION}"
     headers = {'Authorization': create_auth_header(pat), 'Content-Type': 'application/json'}
     print(f"{Colors.CYAN}>>> Obteniendo Release #{release_id}...{Colors.ENDC}")
     try:
         req = urllib.request.Request(url, headers=headers, method='GET')
-        with urllib.request.urlopen(req) as response:
+        with _urlopen_with_retry(req) as response:
             data = json.loads(response.read().decode('utf-8'))
             print(f"{Colors.GREEN}✓ Release obtenido: {data.get('name', 'N/A')} (status: {data.get('status', 'N/A')}){Colors.ENDC}")
             return data
@@ -394,7 +413,7 @@ def update_release(org: str, project: str, release_id: int, payload: Dict, pat: 
     try:
         body = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=body, headers=headers, method='PUT')
-        with urllib.request.urlopen(req) as response:
+        with _urlopen_with_retry(req) as response:
             data = json.loads(response.read().decode('utf-8'))
             print(f"{Colors.GREEN}✓ Release actualizado exitosamente{Colors.ENDC}")
             return data

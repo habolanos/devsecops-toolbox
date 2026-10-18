@@ -1249,6 +1249,44 @@ class TestReleaseUpdateTaskScriptAndAddVarTemplate(unittest.TestCase):
             original_inline
         )
 
+class TestUrlopenRetry(unittest.TestCase):
+    """_urlopen_with_retry: reintentos ante fallos transitorios de red."""
+
+    def _resp(self):
+        r = MagicMock()
+        r.__enter__ = MagicMock(return_value=r)
+        r.__exit__ = MagicMock(return_value=False)
+        return r
+
+    def test_success_first_try(self):
+        with patch("pipeline_cd_update_release.urllib.request.urlopen",
+                   return_value=self._resp()) as m:
+            mod._urlopen_with_retry(MagicMock())
+        self.assertEqual(m.call_count, 1)
+
+    def test_retries_on_connection_error(self):
+        import urllib.error
+        with patch("pipeline_cd_update_release.urllib.request.urlopen",
+                   side_effect=[OSError(101, "Network is unreachable"), self._resp()]) as m,              patch("time.sleep"):
+            mod._urlopen_with_retry(MagicMock())
+        self.assertEqual(m.call_count, 2)
+
+    def test_gives_up_after_attempts(self):
+        with patch("pipeline_cd_update_release.urllib.request.urlopen",
+                   side_effect=OSError(101, "Network is unreachable")) as m,              patch("time.sleep"):
+            with self.assertRaises(OSError):
+                mod._urlopen_with_retry(MagicMock(), attempts=3)
+        self.assertEqual(m.call_count, 3)
+
+    def test_http_error_not_retried(self):
+        import urllib.error
+        err = urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
+        with patch("pipeline_cd_update_release.urllib.request.urlopen",
+                   side_effect=err) as m:
+            with self.assertRaises(urllib.error.HTTPError):
+                mod._urlopen_with_retry(MagicMock())
+        self.assertEqual(m.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

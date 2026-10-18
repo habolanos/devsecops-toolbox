@@ -150,8 +150,19 @@ class AzdoClient:
               payload: dict = None, raw: bool = False, timeout: int = 60,
               return_headers: bool = False):
         for attempt in range(4):
-            resp = self.session.request(method, url, params=params,
-                                        json=payload, timeout=timeout)
+            try:
+                resp = self.session.request(method, url, params=params,
+                                            json=payload, timeout=timeout)
+            except (requests.ConnectionError, requests.Timeout) as e:
+                if attempt < 3:
+                    wait = (attempt + 1) * 2
+                    console.print(f"  [yellow]Sin conectividad "
+                                  f"({e.__class__.__name__}) — reintentando "
+                                  f"en {wait}s...[/]")
+                    time.sleep(wait)
+                    continue
+                sys.exit(f"ERROR: sin conectividad a {url} tras reintentos "
+                         f"(verifica VPN/red) — {e}")
             if resp.status_code == 200:
                 body = resp.text if raw else resp.json()
                 return (body, resp.headers) if return_headers else body

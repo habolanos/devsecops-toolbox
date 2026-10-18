@@ -53,7 +53,7 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         response.raise_for_status = MagicMock()
         return response
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_revision_not_incremented(self, mock_put):
         """La revisión enviada debe ser la MISMA que la descargada."""
         mock_put.return_value = self._mock_response(status_code=200)
@@ -63,7 +63,7 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         sent_body = mock_put.call_args.kwargs['json']
         self.assertEqual(sent_body['revision'], 23)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_original_definition_not_mutated(self, mock_put):
         """La definición original no debe modificarse (deepcopy)."""
         mock_put.return_value = self._mock_response(status_code=200)
@@ -75,7 +75,7 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         self.assertIn('lastRelease', self.definition)
         self.assertEqual(self.definition['revision'], 23)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_readonly_fields_removed(self, mock_put):
         """Los campos de solo lectura deben eliminarse del cuerpo enviado."""
         mock_put.return_value = self._mock_response(status_code=200)
@@ -99,7 +99,7 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         self.assertIn('environments', sent_body)
         self.assertIn('name', sent_body)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_success_returns_true(self, mock_put):
         """HTTP 200 debe retornar True."""
         mock_put.return_value = self._mock_response(status_code=200)
@@ -107,7 +107,7 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         result = self.client.update_release_definition(2016, self.definition)
         self.assertTrue(result)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_comment_sent_when_provided(self, mock_put):
         """El comentario del template debe enviarse en el campo 'comment'."""
         mock_put.return_value = self._mock_response(status_code=200)
@@ -118,7 +118,7 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         sent_body = mock_put.call_args.kwargs['json']
         self.assertEqual(sent_body['comment'], comment)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_comment_omitted_when_none(self, mock_put):
         """Si no se pasa comentario, no se debe forzar un 'comment' vacío."""
         mock_put.return_value = self._mock_response(status_code=200)
@@ -128,7 +128,7 @@ class TestUpdateReleaseDefinition(unittest.TestCase):
         sent_body = mock_put.call_args.kwargs['json']
         self.assertNotIn('comment', sent_body)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_http_400_includes_error_body(self, mock_put):
         """HTTP 400 debe lanzar AzureDevOpsError incluyendo el cuerpo del error."""
         error_body = '{"message":"You are using an old copy of the release pipeline."}'

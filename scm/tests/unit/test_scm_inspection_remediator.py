@@ -2,6 +2,8 @@
 import sys
 from pathlib import Path
 
+from unittest.mock import MagicMock
+
 import pytest
 import yaml
 
@@ -1289,3 +1291,48 @@ class TestUnknownRulesManual:
         assert len(a["manual"]) == 1         # SECURITY_SCAN → manual
         # antes: rules=[] y manual=[] → return 0 silencioso
         assert not (not a["rules"] and not a["manual"])
+
+
+class TestSendNetworkRetry:
+    """_send reintenta ante fallos transitorios de red (Errno 101, VPN)."""
+
+    def _client(self):
+        return rem.AzdoClient('org', 'proj', 'pat')
+
+    def _resp_ok(self):
+        r = MagicMock()
+        r.status_code = 200
+        r.json.return_value = {'ok': True}
+        return r
+
+    def test_retry_on_connection_error(self, monkeypatch):
+        import requests
+        c = self._client()
+        calls = []
+        def fake_request(*a, **k):
+            calls.append(1)
+            if len(calls) < 2:
+                raise requests.ConnectionError('Network is unreachable')
+            return self._resp_ok()
+        monkeypatch.setattr(c.session, 'request', fake_request)
+        monkeypatch.setattr(rem.time, 'sleep', lambda s: None)
+        assert c.get('http://x') == {'ok': True}
+        assert len(calls) == 2
+
+    def test_exits_after_max_retries(self, monkeypatch):
+        import requests
+        c = self._client()
+        monkeypatch.setattr(c.session, 'request', MagicMock(
+            side_effect=requests.ConnectionError('Network is unreachable')))
+        monkeypatch.setattr(rem.time, 'sleep', lambda s: None)
+        with pytest.raises(SystemExit):
+            c.get('http://x')
+
+    def test_no_retry_on_http_error(self, monkeypatch):
+        """HTTP 404 sale de inmediato (no es fallo de red)."""
+        c = self._client()
+        r = MagicMock(); r.status_code = 404; r.text = 'nf'
+        monkeypatch.setattr(c.session, 'request', MagicMock(return_value=r))
+        with pytest.raises(SystemExit):
+            c.get('http://x')
+        assert c.session.request.call_count == 1

@@ -8,7 +8,19 @@ import base64
 import copy
 from pathlib import Path
 from typing import Dict, Optional
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from .config import AZDO_API_VERSION, AZDO_BASE_URL, SNAPSHOT_DIR
+
+# Reintentos ante errores transitorios de red (VPN/WSL: ENETUNREACH,
+# DNS intermitente, resets). Solo métodos idempotentes; backoff 1.5s, 3s, 6s.
+_RETRY = Retry(
+    total=3, connect=3, read=3, status=3,
+    backoff_factor=1.5,
+    status_forcelist=(502, 503, 504),
+    allowed_methods=frozenset(["GET", "PUT", "DELETE", "HEAD", "OPTIONS"]),
+    raise_on_status=False,
+)
 
 
 class AzureDevOpsError(Exception):
@@ -55,7 +67,13 @@ class AzureDevOpsClient:
             self.base_url = f"{AZDO_BASE_URL}/{org}/{project}"
 
         self.headers = self._get_headers()
-        
+
+        # Sesión con reintentos automáticos ante fallos transitorios de red
+        self.session = requests.Session()
+        adapter = HTTPAdapter(max_retries=_RETRY)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+
         # Crear directorio de snapshots
         Path(SNAPSHOT_DIR).mkdir(parents=True, exist_ok=True)
     
@@ -81,7 +99,7 @@ class AzureDevOpsClient:
         params = {'api-version': self.api_version}
         
         try:
-            response = requests.get(url, params=params, headers=self.headers, timeout=30)
+            response = self.session.get(url, params=params, headers=self.headers, timeout=30)
             
             if response.status_code == 404:
                 raise PipelineNotFoundError(f"Pipeline {definition_id} no encontrado")
@@ -166,7 +184,7 @@ class AzureDevOpsClient:
             # Sanitizar definición para evitar errores de serialización
             definition_copy = self._sanitize_definition(definition_copy)
             
-            response = requests.put(
+            response = self.session.put(
                 url,
                 json=definition_copy,
                 params=params,
@@ -244,7 +262,7 @@ class AzureDevOpsClient:
         params = {'api-version': self.api_version, '$top': top}
         
         try:
-            response = requests.get(url, params=params, headers=self.headers, timeout=30)
+            response = self.session.get(url, params=params, headers=self.headers, timeout=30)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -267,7 +285,7 @@ class AzureDevOpsClient:
         params = {'api-version': self.api_version}
 
         try:
-            response = requests.delete(
+            response = self.session.delete(
                 url,
                 params=params,
                 headers=self.headers,
@@ -307,7 +325,7 @@ class AzureDevOpsClient:
         params = {'api-version': self.api_version}
         
         try:
-            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+            response = self.session.get(url, params=params, headers=self.headers, timeout=10)
             return response.status_code == 200
         except:
             return False
@@ -327,7 +345,7 @@ class AzureDevOpsClient:
         params = {'api-version': self.api_version}
 
         try:
-            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+            response = self.session.get(url, params=params, headers=self.headers, timeout=10)
             return response.status_code == 200
         except:
             return False

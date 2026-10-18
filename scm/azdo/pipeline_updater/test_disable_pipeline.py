@@ -162,7 +162,7 @@ class TestDisableReleaseDefinition(unittest.TestCase):
         response.raise_for_status = MagicMock()
         return response
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_disable_sets_is_disabled_true(self, mock_put):
         """update_release_definition con disable=True debe setear isDisabled=true en el body"""
         mock_put.return_value = self._mock_response(200)
@@ -172,7 +172,7 @@ class TestDisableReleaseDefinition(unittest.TestCase):
         sent_body = mock_put.call_args.kwargs['json']
         self.assertTrue(sent_body.get('isDisabled'))
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_disable_keeps_is_disabled_in_body(self, mock_put):
         """update_release_definition con disable=True NO debe remover isDisabled del body"""
         mock_put.return_value = self._mock_response(200)
@@ -182,7 +182,7 @@ class TestDisableReleaseDefinition(unittest.TestCase):
         sent_body = mock_put.call_args.kwargs['json']
         self.assertIn('isDisabled', sent_body)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_normal_update_preserves_is_disabled(self, mock_put):
         """update_release_definition sin disable debe preservar isDisabled del body"""
         mock_put.return_value = self._mock_response(200)
@@ -193,7 +193,7 @@ class TestDisableReleaseDefinition(unittest.TestCase):
         self.assertIn('isDisabled', sent_body)
         self.assertEqual(sent_body['isDisabled'], False)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_disable_returns_true_on_200(self, mock_put):
         """update_release_definition con disable=True debe retornar True en 200"""
         mock_put.return_value = self._mock_response(200)
@@ -201,7 +201,7 @@ class TestDisableReleaseDefinition(unittest.TestCase):
         result = self.client.update_release_definition(2016, self.definition, disable=True)
         self.assertTrue(result)
 
-    @patch('scm.azdo.pipeline_updater.azdo_client.requests.put')
+    @patch('requests.Session.put')
     def test_disable_raises_error_on_500(self, mock_put):
         """update_release_definition con disable=True debe lanzar AzureDevOpsError en 500"""
         mock_put.return_value = self._mock_response(500, 'Internal server error')
