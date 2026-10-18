@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.89`** — 2026-10-18
+**`1.8.90`** — 2026-10-18
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-18 | **1.8.90** | **fix: incluir TUI en el build PyInstaller** — `toolbox_build_executables.py` agrega `--collect-all textual` (Textual carga CSS/widgets desde package data; sin esto `dist/devsecops-toolbox.exe` caería al menú clásico por ImportError). Docs: marcado como resuelto en el plan. | `toolbox_build_executables.py`, `docs/features/rearchitect_like_k9s/02_PLAN_IMPLEMENTACION.md`, `VERSION` |
 | 2026-10-18 | **1.8.89** | **feat: TUI estilo k9s como interfaz por defecto (Textual)** — nuevo paquete `scm/tui/` (app, screens, widgets, registry, commands, runner). Las herramientas se navegan como recursos: tabla con `/` filtro en vivo, `:` comandos (`:azdo`, `:15`, `:outcome`, `:all`, `:q`), Enter ejecuta vía `app.suspend()` + subprocess `tools.py --run <key>`, Esc retrocede, toast con exit code/duración, historial de `:` con ↑, `r` recarga config, `?` ayuda, `o`/`:outcome` navega reportes. Registry lazy-importa `TOOLS`/`SCRIPTS` de las 6 plataformas. Cada `tools.py` gana flag `--run <key>` que salta el menú (normalización de clave por plataforma). `main.py`: TUI default si TTY+textual; `--classic` para el menú numerado; fallback automático si textual falta. requirements.txt +`textual>=8.2.0,<9.0`. Docs en `docs/features/rearchitect_like_k9s/`. Tests: +25 (registry, parser, `--run`, screens headless). | `scm/tui/` (nuevo, v1.0.0), `scm/main.py` (v1.8.33), `scm/{gcp,azure,aws,azdo,terminal,kpi_analyzer}/tools.py` (+`--run`), `scm/requirements.txt`, `scm/tests/unit/test_tui_k9s.py`, `docs/features/rearchitect_like_k9s/`, `README.version.md`, `VERSION` |
 | 2026-10-17 | **1.8.88** | **revert(azdo): menú AZDO vuelve a las descripciones cortas** — se revierte el enriquecimiento de `fd4bdf9` a petición del usuario; conserva el arg `--max-releases` de la opción 15. tools.py v1.8.49. | `scm/azdo/tools.py` (v1.8.49), `README.version.md`, `VERSION` |
 | 2026-10-17 | **1.8.87** | **fix(azdo): reintentos ante fallos transitorios de red (Errno 101 / VPN)** — `pipeline_updater/azdo_client.py` pasa de `requests.*` suelto a `requests.Session` con `HTTPAdapter(Retry)`: 3 reintentos, backoff 1.5s/3s/6s, `status_forcelist=[502,503,504]` — cubre NewConnectionError/ENETUNREACH vistos al aplicar con opción 44→41. `AzdoClient._send` del remediator ahora también reintenta `ConnectionError`/`Timeout` (antes solo 429/5xx). `pipeline_cd_update_release` (urllib) gana `_urlopen_with_retry` con backoff 2s/4s/6s — HTTPError no se reintenta (es respuesta del servidor). Tests de los 3 clientes adaptados/nuevos; versiones: updater 1.8.34, update_release 1.8.33. | `scm/azdo/pipeline_updater/azdo_client.py`, `scm/azdo/pipeline_updater/__init__.py`, `scm/azdo/scm_inspection_remediator.py`, `scm/azdo/pipeline_cd_update_release/pipeline_cd_update_release.py`, tests, `README.version.md`, `VERSION` |

@@ -65,6 +65,8 @@ def build_executable():
         "--specpath", str(project_root),
         "--add-data", f"{project_root / 'scm'}:scm",
         "--hidden-import=rich",
+        # TUI estilo k9s: Textual carga CSS/widgets desde package data
+        "--collect-all", "textual",
         "--hidden-import=pyyaml",
         "--hidden-import=google.cloud",
         "--hidden-import=azure",

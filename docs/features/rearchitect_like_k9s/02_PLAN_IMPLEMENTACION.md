@@ -44,5 +44,6 @@
 - Vistas nativas de recursos vivos (`:pipelines`, `:releases`,
   `:pods` con auto-refresh) — la arquitectura screens+registry ya lo
   permite; requiere refactorizar tools a providers de datos.
-- Build PyInstaller: `toolbox_build_executables.py` necesitará
-  hidden-imports de `textual` para incluir la TUI en `dist/toolbox.exe`.
+- Build PyInstaller: resuelto — `toolbox_build_executables.py` ya
+  incluye `--collect-all textual` (Textual carga CSS/widgets desde
+  package data, `--collect-all` empaqueta los assets junto a los módulos).
