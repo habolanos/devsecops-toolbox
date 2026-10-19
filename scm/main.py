@@ -82,7 +82,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.34"
+__version__ = "1.8.35"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -930,7 +930,9 @@ def _try_run_tui() -> bool:
     except ImportError:
         try:
             from scm.tui.app import ToolboxApp
-        except ImportError:
+        except ImportError as e:
+            print(f"⚠️  TUI no disponible ({e}) — usando menú clásico.\n")
+            print("    (instala textual: pip install textual)\n")
             return False
     try:
         ToolboxApp().run()

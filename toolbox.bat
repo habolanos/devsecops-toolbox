@@ -10,13 +10,13 @@ REM Obtener directorio del script
 set SCRIPT_DIR=%~dp0
 
 REM Verificar que el ejecutable existe
-if not exist "%SCRIPT_DIR%dist\toolbox.exe" (
+if not exist "%SCRIPT_DIR%dist\devsecops-toolbox.exe" (
     echo.
     echo ╔════════════════════════════════════════════════════════════════╗
     echo ║                      ERROR: Ejecutable no encontrado           ║
     echo ╚════════════════════════════════════════════════════════════════╝
     echo.
-    echo El archivo dist\toolbox.exe no existe.
+    echo El archivo dist\devsecops-toolbox.exe no existe.
     echo.
     echo Opciones:
     echo   1. Compilar ejecutable:
@@ -33,6 +33,6 @@ if not exist "%SCRIPT_DIR%dist\toolbox.exe" (
 )
 
 REM Ejecutar el toolbox
-"%SCRIPT_DIR%dist\toolbox.exe" %*
+"%SCRIPT_DIR%dist\devsecops-toolbox.exe" %*
 
 endlocal
