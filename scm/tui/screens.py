@@ -69,7 +69,8 @@ def _header_info() -> dict:
                  f"[{skin.CYBER_GRAY}]│[/] "
                  f"[{skin.CYBER_BLUE}]Azure DevOps[/]",
         "profile": f"[{skin.WHITE} bold]Profile:[/] "
-                   f"[{skin.CYBER_PURPLE}]DevSecOps / SRE Platform[/]",
+                   f"[{skin.CYBER_PURPLE}]DevSecOps / SCM Engineer "
+                   f"Platform[/]",
     }
 
 

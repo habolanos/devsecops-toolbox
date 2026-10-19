@@ -42,9 +42,7 @@ class LogoHeader(Horizontal):
 
         Los valores ya vienen formateados (markup) por el llamador.
         """
-        sep = f"[{skin.CYBER_GRAY}]════════════════════════════════════[/]"
-        lines = [sep] + list(fields.values())
-        self._info.update("\n".join(lines))
+        self._info.update("\n".join(fields.values()))
 
 
 class ContextBar(Static):
