@@ -4,6 +4,7 @@ Cubre: registry (aliases/flatten), parser de comandos `:`, `--run` en
 tools.py, y navegación headless con run_test().
 """
 import asyncio
+import importlib
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -226,6 +227,34 @@ class TestScreens:
             await pilot.pause()
             assert isinstance(app.screen, ToolsScreen)
             assert app.screen.platform_key == "aws"
+
+
+class TestK9sStyleFlag:
+    """La TUI es opt-in: solo arranca con --k9s-style."""
+
+    def test_sin_flag_no_lanza_tui(self):
+        import sys as _sys
+        main = importlib.import_module("main")
+        saved = _sys.argv[:]
+        try:
+            _sys.argv = ["main.py"]
+            assert main._try_run_tui() is False
+        finally:
+            _sys.argv = saved
+
+    def test_flag_sin_tty_cae_al_clasico(self):
+        import sys as _sys
+        import unittest.mock as mock
+        main = importlib.import_module("main")
+        saved = _sys.argv[:]
+        try:
+            _sys.argv = ["main.py", "--k9s-style"]
+            # stdout de pytest no es TTY → fallback False
+            with mock.patch.object(_sys.stdout, "isatty",
+                                   return_value=False, create=True):
+                assert main._try_run_tui() is False
+        finally:
+            _sys.argv = saved
 
 
 class TestSkinK9s:

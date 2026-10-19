@@ -25,8 +25,8 @@ el dot `●` de estado (verde = ready, naranja = pendiente, rojo = error).
 ## Arranque
 
 ```bash
-python scm/main.py            # TUI (default si hay terminal interactiva)
-python scm/main.py --classic  # menú numerado clásico
+python scm/main.py                # menú numerado clásico (default)
+python scm/main.py --k9s-style    # TUI full-screen estilo k9s
 ```
 
 ## Navegación
@@ -81,5 +81,6 @@ el exit code y la duración.
 
 ## Fallback
 
-Sin TTY (pipes/CI) o sin `textual` instalado, `main.py` cae
-automáticamente al menú clásico. `--classic` lo fuerza siempre.
+Con `--k9s-style`, si no hay TTY (pipes/CI) o `textual` no está
+instalado, `main.py` cae automáticamente al menú clásico e imprime
+la causa. Sin el flag siempre arranca el clásico.

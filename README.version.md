@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.93`** — 2026-10-18
+**`1.8.94`** — 2026-10-18
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-18 | **1.8.94** | **change: TUI pasa a ser opt-in con `--k9s-style`** — `python scm/main.py` ahora abre el menú clásico por defecto (comportamiento previo); la TUI estilo k9s solo arranca con `python scm/main.py --k9s-style`. El fallback por falta de TTY/textual sigue activo con mensaje visible. Docs actualizados. main.py v1.8.36 | `scm/main.py`, `test_tui_k9s.py` (+2 tests del flag), `docs/features/rearchitect_like_k9s/`, `VERSION` |
 | 2026-10-18 | **1.8.93** | **feat: TUI con skin "stock" de k9s (fidelidad visual real)** — nuevo `scm/tui/skin.py` con la paleta oficial de `skins/stock.yaml` (bg negro, texto `#1E90FF`, cursor **negro-sobre-aqua** `#00FFFF`, header blanco, crumbs negro/`#4682B4`, logo+info naranja, título `<vista(ctx)[count]>` aqua/fuchsia/papayawhip, hints con teclas dodgerblue/fuchsia, prompt `toolbox>` cadetblue). Chrome nuevo: `LogoHeader` (logo ASCII + info Rev/Python/Config/Outcome/Context), `CrumbBar`, `TableTitle` (muestra `/filtro` y count), `HintsBar`; `CommandBar` ahora es línea de prompt siempre visible. Sin `Header`/`Footer` genéricos de Textual ni zebra stripes. Columnas en mayúsculas + `ST` con dot `●` de estado. Tests: +4 (paleta, formato de título, dots, chrome). tui v1.0.1 | `scm/tui/skin.py` (nuevo), `scm/tui/widgets.py`, `scm/tui/screens.py`, `scm/tui/app.py`, `scm/tui/__init__.py`, `test_tui_k9s.py`, `docs/features/rearchitect_like_k9s/`, `VERSION` |
 | 2026-10-18 | **1.8.92** | **fix: wrappers apuntan al exe correcto + fallback TUI visible** — `toolbox.bat`/`.sh` referenciaban `dist/toolbox(.exe)` pero el build genera `dist/devsecops-toolbox(.exe)`. Además, el fallback de TUI por `ImportError` era silencioso: ahora imprime la causa y sugiere `pip install textual`. main.py v1.8.35 | `toolbox.bat`, `toolbox.sh`, `scm/main.py`, `VERSION` |
 | 2026-10-18 | **1.8.91** | **fix: UnicodeEncodeError (cp1252) al pipear salida en Windows** — bootstrap `_force_utf8_stdio()` en `main.py`, `base_launcher.py` y los 6 `tools.py`: reconfigura stdout/stderr a UTF-8 con `errors="replace"` antes del primer print. Cubre todos los entry points (incl. direct-run sin PYTHONPATH, donde `base_launcher` no es importable) y el renderer legacy de Rich en pipes. Tests: +4. | `scm/main.py` (v1.8.34), `scm/base_launcher.py`, `scm/{gcp,azure,aws,azdo,terminal,kpi_analyzer}/tools.py`, `scm/tests/unit/test_utf8_stdio.py`, `VERSION` |
