@@ -79,12 +79,6 @@ def _header_info() -> dict:
         "title": f"[{skin.WHITE} bold]\\[ DSO-TOOLBOX ][/]  "
                  f"[{skin.CYBER_PURPLE}]v{_version()}[/]",
         "suite": f"[{skin.CYBER_PURPLE}]DevSecOps Tactical Suite[/]",
-        "scope": f"[{skin.WHITE} bold]Scope:[/] "
-                 f"[{skin.CYBER_GREEN}]GKE[/] "
-                 f"[{skin.CYBER_GRAY}]│[/] "
-                 f"[{skin.CYBER_YELLOW}]Cloud Run[/] "
-                 f"[{skin.CYBER_GRAY}]│[/] "
-                 f"[{skin.CYBER_BLUE}]Azure DevOps[/]",
         "profile": f"[{skin.WHITE} bold]Profile:[/] "
                    f"[{skin.CYBER_PURPLE}]DevSecOps / SCM Engineer "
                    f"Platform[/]",

@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.101`** — 2026-10-18
+**`1.8.102`** — 2026-10-18
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-18 | **1.8.102** | **Header TUI: línea `Scope:` retirada** — el bloque de info queda con `[ DSO-TOOLBOX ]`, `DevSecOps Tactical Suite`, `Profile:` y `Projects:`. tui v1.0.9 | `scm/tui/screens.py`, `scm/tui/__init__.py`, `VERSION` |
 | 2026-10-18 | **1.8.101** | **Header muestra proyectos GCP del config** — bajo `Profile:` se listan los `gcp.service_accounts_reporter.projects` de `config.json`; el default (`gcp.project_id`) se marca con `★` verde. `LogoHeader` pasa a `height: auto` para crecer si la lista envuelve. tui v1.0.8 | `scm/tui/{screens,skin,__init__}.py`, `VERSION` |
 | 2026-10-18 | **1.8.100** | **ContextBar: borde abajo + header sin línea vacía** — la línea separadora pasa a la parte inferior (`border-bottom`, siempre 100% del ancho); altura del `LogoHeader` 7 → 6 para eliminar la línea en blanco bajo el logo. tui v1.0.7 | `scm/tui/{skin,widgets,__init__}.py`, `VERSION` |
 | 2026-10-18 | **1.8.99** | **ContextBar: plataformas listadas + borde único 100%** — la línea de contexto ahora muestra cada plataforma con su dot de estado (`●gcp ●azure ●aws ●azdo ●terminal ●kpi`); separadores `─` dibujados retirados y reemplazados por `border-top` CSS que ocupa el 100% del ancho (una sola línea superior). tui v1.0.6 | `scm/tui/{widgets,screens,skin,__init__}.py`, `VERSION` |
