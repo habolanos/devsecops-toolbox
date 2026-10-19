@@ -24,6 +24,7 @@ python scm/main.py --classic      # menú numerado clásico
 
 | Fecha | Versión | Cambio |
 |---|---|---|
+| 2026-10-18 | 1.9.0 | Release 1.9.0 — tag `1.9.0` sobre la TUI completa (default + skin stock + banner + hidratación async) |
 | 2026-10-18 | 1.8.103 | TUI vuelve a ser el default: `python scm/main.py` = TUI, `--classic` = menú numerado (opt-out). `--k9s-style` se acepta por compatibilidad |
 | 2026-10-18 | 1.8.94 | TUI pasa a ser opt-in: `python scm/main.py` = menú clásico (default), `--k9s-style` = TUI |
 | 2026-10-18 | 1.8.93 | Skin "stock" de k9s: paleta oficial de `skins/stock.yaml` — cursor negro-aqua, crumbs steelblue, logo/info naranja, `<vista(ctx)[count]>`, hints, prompt `toolbox>`, columna `ST` con `●` |
