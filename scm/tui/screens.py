@@ -1,62 +1,114 @@
-"""Screens de la TUI: plataformas, tools de una plataforma, outcome."""
+"""Screens de la TUI con el chrome estilo k9s (logo ▸ crumbs ▸ tabla ▸ hints)."""
 
+import sys
 from datetime import datetime
 from pathlib import Path
 
+from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Static
 
-from . import commands, registry
-from .widgets import CommandBar, CrumbBar, ToolsTable
+from . import commands, registry, skin
+from .widgets import (CommandBar, CrumbBar, HintsBar, LogoHeader,
+                      TableTitle, ToolsTable)
+
+_VERSION = "?"
 
 
-def _config_badge(platform_key: str) -> str:
-    """Badge de configuración reutilizando is_platform_configured."""
+def _version() -> str:
+    """Versión del toolbox desde VERSION en la raíz del repo."""
+    global _VERSION
+    if _VERSION == "?":
+        try:
+            _VERSION = (registry.SCM_DIR.parent / "VERSION")\
+                .read_text(encoding="utf-8").strip()
+        except Exception:
+            _VERSION = "dev"
+    return _VERSION
+
+
+def _configured(platform_key: str) -> bool:
+    """True si la plataforma tiene config (reusa is_platform_configured)."""
     try:
-        import sys
         main_mod = sys.modules.get("__main__")
         fn = getattr(main_mod, "is_platform_configured", None)
         if fn is None:
             import main as main_mod
             fn = main_mod.is_platform_configured
-        ok = fn(registry.PLATFORMS[platform_key]["main_key"])
-        return "[green]✅[/]" if ok else "[yellow]⚠️[/]"
+        return bool(fn(registry.PLATFORMS[platform_key]["main_key"]))
     except Exception:
-        return "[dim]—[/]"
+        return False
+
+
+def _status_dot(status: str) -> Text:
+    """Dot `●` de estado (columna PF de k9s) coloreado según skin."""
+    color = skin.STATUS_COLORS.get(status, skin.STATUS_COLORS["completed"])
+    return Text("●", style=color)
+
+
+def _outcome_count() -> int:
+    try:
+        out = registry.outcome_dir()
+        return sum(1 for p in out.rglob("*") if p.is_file()) \
+            if out.exists() else 0
+    except Exception:
+        return 0
+
+
+def _base_info() -> dict:
+    return {
+        "Toolbox Rev": f"v{_version()}",
+        "Python": ".".join(map(str, sys.version_info[:3])),
+        "Config": str(registry.SCM_DIR / "config.json"),
+        "Outcome": f"{_outcome_count()} archivos",
+    }
+
+
+def _sync_title(screen: Screen, view: str, ctx: str = "") -> None:
+    """Actualiza el TableTitle `<vista(ctx)[count]>` con filtro activo."""
+    table = screen.query_one(ToolsTable)
+    screen.query_one(TableTitle).set_title(
+        view, ctx, table.row_count, table.filter_text)
 
 
 class PlatformsScreen(Screen):
     """Contexto raíz: tabla de plataformas (equivalente a `:ctx` de k9s)."""
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield LogoHeader()
         yield CrumbBar(id="crumb")
-        with Vertical():
-            yield ToolsTable()
+        yield TableTitle()
+        yield ToolsTable()
+        yield HintsBar()
         yield CommandBar()
-        yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one(CrumbBar).set_crumbs(
-            "toolbox", right="Enter: entrar   :cmd   /filtro   q: salir")
+        self.query_one(LogoHeader).set_info(_base_info())
+        self.query_one(CrumbBar).set_crumbs("toolbox", "contexts")
+        self.query_one(HintsBar).set_hints([
+            ("enter", "Entrar"), ("0-9", "Quick"), ("/", "Filtro"),
+            (":", "Cmd"), ("r", "Reload"), ("?", "Ayuda"), ("q", "Salir"),
+        ])
         table = self.query_one(ToolsTable)
         rows = []
         for key, meta in registry.PLATFORMS.items():
-            badge = _config_badge(key)
+            ok = _configured(key)
+            dot = _status_dot("ready" if ok else "error")
             rows.append((key, [
                 meta["main_key"],
                 f"{meta['emoji']} {meta['label']}",
-                badge,
+                dot,
                 meta.get("desc", ""),
             ]))
-        table.load(["#", "Plataforma", "Config", ""], rows)
+        table.load(["#", "CONTEXT", "ST", "DESC"], rows)
+        _sync_title(self, "contexts")
         table.focus()
 
     def on_command_bar_submitted(self, event: CommandBar.Submitted) -> None:
         if event.mode == "filter":
             self.query_one(ToolsTable).set_filter(event.text)
+            _sync_title(self, "contexts")
             return
         cmd = commands.parse_command(event.text)
         self.app.dispatch_command(cmd)
@@ -79,20 +131,31 @@ class ToolsScreen(Screen):
         self._load_error: str = ""
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield LogoHeader()
         yield CrumbBar(id="crumb")
-        with Vertical():
-            yield ToolsTable()
-            yield Static("", id="load-error")
+        yield TableTitle()
+        yield ToolsTable()
+        yield Static("", id="load-error")
+        yield HintsBar()
         yield CommandBar()
-        yield Footer()
 
     def on_mount(self) -> None:
         meta = registry.PLATFORMS[self.platform_key]
+        info = _base_info()
+        info["Context"] = f"{meta['emoji']} {meta['label']}"
+        self.query_one(LogoHeader).set_info(info)
         self.query_one(CrumbBar).set_crumbs(
-            "toolbox", meta["label"],
-            right="Enter: ejecutar   :cmd   /filtro   Esc: volver")
+            "toolbox", "contexts", meta["label"])
+        self.query_one(HintsBar).set_hints([
+            ("enter", "Run"), ("0-9", "Quick"), ("/", "Filtro"),
+            (":", "Cmd"), ("o", "Outcome"), ("r", "Reload"),
+            ("?", "Ayuda"), ("esc", "Atrás"), ("q", "Volver"),
+        ])
         self.reload_tools()
+
+    def _title_ctx(self) -> str:
+        return registry.PLATFORMS[self.platform_key]["label"].split()[0]\
+            .lower()
 
     def reload_tools(self) -> None:
         table = self.query_one(ToolsTable)
@@ -102,14 +165,17 @@ class ToolsScreen(Screen):
         except Exception as e:
             rows = []
             self._load_error = str(e)
-        table.load(["#", "Grupo", "Herramienta", "Descripción"],
-                   [(r["key"], [r["key"], r["group_label"], r["name"],
-                                r["description"]]) for r in rows])
+        table.load(
+            ["#", "ST", "GROUP", "NAME", "DESC"],
+            [(r["key"], [r["key"], _status_dot(r["status"]),
+                         r["group_label"], r["name"], r["description"]])
+             for r in rows])
+        _sync_title(self, "tools", self._title_ctx())
         err = self.query_one("#load-error", Static)
         if self._load_error:
             err.update(
-                f"[red]⚠ No se pudo cargar el registry: "
-                f"{self._load_error}[/]\n"
+                f"⚠ No se pudo cargar el registry: "
+                f"{self._load_error}\n"
                 f"[dim]Enter abre el menú clásico de la plataforma.[/]")
         else:
             err.update("")
@@ -118,6 +184,7 @@ class ToolsScreen(Screen):
     def on_command_bar_submitted(self, event: CommandBar.Submitted) -> None:
         if event.mode == "filter":
             self.query_one(ToolsTable).set_filter(event.text)
+            _sync_title(self, "tools", self._title_ctx())
             return
         cmd = commands.parse_command(event.text,
                                      context_platform=self.platform_key)
@@ -135,28 +202,29 @@ class OutcomeScreen(Screen):
     """Navegador de archivos generados en outcome/ (`:outcome`)."""
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield LogoHeader()
         yield CrumbBar(id="crumb")
-        with Vertical():
-            yield ToolsTable()
+        yield TableTitle()
+        yield ToolsTable()
+        yield HintsBar()
         yield CommandBar()
-        yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one(CrumbBar).set_crumbs(
-            "toolbox", "outcome",
-            right="Enter: abrir carpeta   /filtro   Esc: volver")
+        self.query_one(LogoHeader).set_info(_base_info())
+        self.query_one(CrumbBar).set_crumbs("toolbox", "outcome")
+        self.query_one(HintsBar).set_hints([
+            ("enter", "Abrir"), ("/", "Filtro"), (":", "Cmd"),
+            ("r", "Reload"), ("esc", "Atrás"),
+        ])
         self.reload_files()
 
     def reload_files(self) -> None:
         out = registry.outcome_dir()
         rows = []
         if out.exists():
-            files = sorted(out.rglob("*"), key=lambda p: p.stat().st_mtime,
-                           reverse=True)
-            for i, f in enumerate(files[:400]):
-                if f.is_dir():
-                    continue
+            files = sorted((f for f in out.rglob("*") if f.is_file()),
+                           key=lambda p: p.stat().st_mtime, reverse=True)
+            for f in files[:400]:
                 rel = f.relative_to(out)
                 rows.append((str(f), [
                     str(rel),
@@ -164,13 +232,14 @@ class OutcomeScreen(Screen):
                     datetime.fromtimestamp(f.stat().st_mtime)
                             .strftime("%Y-%m-%d %H:%M"),
                 ]))
-        self.query_one(ToolsTable).load(["Archivo", "Tamaño", "Modificado"],
-                                        rows)
+        self.query_one(ToolsTable).load(["FILE", "SIZE", "MODIFIED"], rows)
+        _sync_title(self, "outcome", "files")
         self.query_one(ToolsTable).focus()
 
     def on_command_bar_submitted(self, event: CommandBar.Submitted) -> None:
         if event.mode == "filter":
             self.query_one(ToolsTable).set_filter(event.text)
+            _sync_title(self, "outcome", "files")
             return
         self.app.dispatch_command(commands.parse_command(event.text))
 
@@ -189,21 +258,21 @@ class HelpScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         yield Static(
-            "[bold cyan]DevSecOps Toolbox — k9s style[/]\n\n"
-            "[bold]Navegación[/]\n"
-            "  Enter        Ejecutar tool / entrar a plataforma\n"
-            "  Esc / q      Volver / salir\n"
-            "  ↑ ↓          Mover cursor\n\n"
-            "[bold]Comandos[/]\n"
-            "  :azdo :gcp :aws :azure :terminal :kpi   Saltar a plataforma\n"
-            "  :15            Ejecutar tool por clave\n"
-            "  :all / :allj   Ejecutar todo (opción A / B)\n"
-            "  :outcome       Navegador de reportes\n"
-            "  :reload        Recargar config y registry\n"
-            "  :back          Volver\n"
-            "  :q             Salir\n\n"
-            "[bold]Filtro[/]\n"
-            "  /texto         Filtra la tabla en vivo\n"
-            "  Esc            Cierra barra / limpia\n\n"
+            "[bold #00ffff]<toolbox>[/] [dim]k9s stock skin[/]\n\n"
+            "[bold #ffffff]Navegación[/]\n"
+            "  [#1e90ff]<enter>[/]     Ejecutar tool / entrar a plataforma\n"
+            "  [#1e90ff]<esc>/<q>[/]   Volver / salir\n"
+            "  [#1e90ff]<↑>/<↓>[/]     Mover cursor\n\n"
+            "[bold #ffffff]Comandos[/]\n"
+            "  [#1e90ff]:azdo :gcp :aws :azure :terminal :kpi[/]  Plataforma\n"
+            "  [#1e90ff]:15[/]           Ejecutar tool por clave\n"
+            "  [#1e90ff]:all/:allj[/]    Ejecutar todo (opción A / B)\n"
+            "  [#1e90ff]:outcome[/]      Navegador de reportes\n"
+            "  [#1e90ff]:reload[/]       Recargar config y registry\n"
+            "  [#1e90ff]:back[/]         Volver\n"
+            "  [#1e90ff]:q[/]            Salir\n\n"
+            "[bold #ffffff]Filtro[/]\n"
+            "  [#1e90ff]/texto[/]        Filtra la tabla en vivo\n"
+            "  [#1e90ff]<esc>[/]         Cierra barra / limpia\n\n"
             "[dim]El menú clásico sigue disponible con --classic[/]",
             id="help-panel")

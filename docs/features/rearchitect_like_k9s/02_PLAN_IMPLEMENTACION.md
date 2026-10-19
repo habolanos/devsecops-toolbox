@@ -27,7 +27,34 @@
 - Esta carpeta de docs + entradas en `README.version.md` y
   `scm/azdo/README.md`.
 
-## Tests (25 nuevos, `scm/tests/unit/test_tui_k9s.py`)
+### F4 — Skin "stock" de k9s ✅ (fidelidad visual)
+
+La primera versión usaba `Header`/`Footer` genéricos de Textual y
+colores de tema — no se parecía a k9s. F4 reimplementa el chrome con
+la **skin stock oficial** (`skins/stock.yaml` de
+https://github.com/derailed/k9s):
+
+- **`scm/tui/skin.py`** — paleta stock mapeada a hex + `APP_CSS`:
+  | k9s skin | Widget |
+  |---|---|
+  | `body` fg `#1E90FF` bg `#000` logo `#FFA500` | Screen, logo ASCII |
+  | `info` fg `#FFA500` section `#FFF` | líneas del header |
+  | `frame.crumbs` negro/`#4682B4` activo `#FFA500` | `CrumbBar` |
+  | `frame.title` aqua + fuchsia + papayawhip + steelblue | `TableTitle` `<vista(ctx)[count]>` |
+  | `frame.menu` dim white, keys `#1E90FF`, nums `#FF00FF` | `HintsBar` |
+  | `frame.status` greenyellow/orangered/darkorange | dots `●` de estado |
+  | `prompt` `#5F9EA0` | `toolbox>` idle en `CommandBar` |
+  | `views.table` cursor **negro-sobre-aqua**, header blanco | `DataTable` |
+
+- **Chrome nuevo**: `LogoHeader` (logo ASCII naranja + info
+  Toolbox Rev/Python/Config/Outcome/Context), `CrumbBar` steelblue,
+  `TableTitle` `<tools(azdo)[38]>`, `HintsBar` `<enter>Run`, prompt
+  `toolbox>` siempre visible. Sin `Header`/`Footer` de Textual ni
+  zebra stripes (k9s no usa filas alternadas).
+- Columnas de tabla en mayúsculas (`# ST GROUP NAME DESC`) y columna
+  `ST` con dot `●` de estado por fila.
+
+## Tests (29 nuevos, `scm/tests/unit/test_tui_k9s.py`)
 
 - `TestResolvePlatform` — aliases (`:azdo`, `:ado`, `:4`...).
 - `TestPlatformTools` — carga real de `TOOLS`/`SCRIPTS`, orden por

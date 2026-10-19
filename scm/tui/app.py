@@ -8,7 +8,7 @@ import sys
 from textual.app import App
 from textual.binding import Binding
 
-from . import commands, registry, runner
+from . import commands, registry, runner, skin
 from .screens import (HelpScreen, OutcomeScreen, PlatformsScreen,
                       ToolsScreen)
 from .widgets import CommandBar
@@ -22,31 +22,7 @@ class ToolboxApp(App):
     TITLE = "DevSecOps Toolbox"
     SUB_TITLE = "k9s mode"
 
-    CSS = """
-    #cmdbar {
-        height: 3;
-        dock: bottom;
-        background: $surface-darken-1;
-        border-top: solid $primary;
-        display: none;
-    }
-    #cmdbar-prompt { width: 2; content-align: center middle;
-                     text-style: bold; color: $accent; }
-    #cmdbar Input { border: none; }
-    CrumbBar {
-        height: 1;
-        padding: 0 1;
-        background: $surface-darken-2;
-        color: $text;
-    }
-    ToolsTable { height: 1fr; }
-    #load-error { padding: 0 2; }
-    HelpScreen { align: center middle; }
-    #help-panel {
-        width: 62; padding: 1 2;
-        background: $panel; border: round $accent;
-    }
-    """
+    CSS = skin.APP_CSS
 
     BINDINGS = [
         Binding("q", "quit_or_back", "salir/volver"),
@@ -95,7 +71,7 @@ class ToolboxApp(App):
 
     def action_back(self) -> None:
         bar = self.screen.query_one(CommandBar)
-        if bar.display:
+        if bar.is_open:
             bar.close()
             return
         if len(self.screen_stack) > 1:

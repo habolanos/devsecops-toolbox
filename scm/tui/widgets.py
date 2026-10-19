@@ -1,26 +1,95 @@
-"""Widgets de la TUI estilo k9s: barra de comandos, breadcrumb y tabla."""
+"""Widgets de la TUI con el look 'stock' de k9s.
+
+Layout k9s: logo+info (header) ▸ crumbs (steelblue) ▸ título
+`<vista(ctx)[count]>` ▸ tabla ▸ hints ▸ línea de comandos `toolbox>`.
+"""
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.message import Message
 from textual.widgets import DataTable, Input, Static
 
+from . import skin
+
+_LOGO = r"""
+██████╗ ███████╗████████╗
+██╔══██╗██╔════╝╚══██╔══╝
+██║  ██║███████╗   ██║
+██║  ██║╚════██║   ██║
+██████╔╝███████║   ██║
+╚═════╝ ╚══════╝   ╚═╝
+""".strip("\n")
+
+
+class LogoHeader(Horizontal):
+    """Bloque superior: logo naranja + líneas de info (estilo k9s info)."""
+
+    def __init__(self) -> None:
+        super().__init__(id="logo-header")
+        self._info = Static("", id="k9s-info")
+
+    def compose(self) -> ComposeResult:
+        yield Static(_LOGO, id="logo")
+        yield self._info
+
+    def set_info(self, fields: dict) -> None:
+        """fields: {"Etiqueta": "valor"} — etiqueta blanca, valor naranja."""
+        lines = [f"[{skin.WHITE}]{k}:[/] [{skin.ORANGE}]{v}[/]"
+                 for k, v in fields.items()]
+        self._info.update("\n" + "\n".join(lines))
+
 
 class CrumbBar(Static):
-    """Barra superior: breadcrumb + contexto (estilo header de k9s)."""
+    """Breadcrumbs: negro sobre steelblue, segmento activo en naranja."""
 
     def set_crumbs(self, *crumbs: str, right: str = "") -> None:
-        left = " [bold cyan]▸[/] ".join(f"[bold]{c}[/]" for c in crumbs)
-        right_txt = f"[dim]{right}[/]" if right else ""
+        segs = []
+        for i, c in enumerate(crumbs):
+            if i == len(crumbs) - 1:
+                segs.append(f"[{skin.ORANGE} bold]{c}[/]")
+            else:
+                segs.append(f"[{skin.BLACK} bold]{c}[/]")
+        left = f"[{skin.BLACK}] ▸ [/]".join(segs)
+        right_txt = f"[{skin.BLACK}]{right}[/]" if right else ""
         self.update(f" {left}    {right_txt}")
 
 
-class CommandBar(Horizontal):
-    """Input inferior activado con `:` (comando) o `/` (filtro).
+class TableTitle(Static):
+    """Título de la vista: `<vista(ctx)[count]>` y `/filtro` (estilo k9s)."""
 
-    Emite CommandBar.Submitted(texto, modo) al Enter y se oculta solo.
+    def set_title(self, view: str, ctx: str = "", count=None,
+                  filter_text: str = "") -> None:
+        t = f"[{skin.AQUA} bold]<{view}[/]"
+        if ctx:
+            t += f"[{skin.FUCHSIA} bold]({ctx})[/]"
+        if count is not None:
+            t += f"[{skin.PAPAYAWHIP} bold]\\[{count}\\][/]"
+        t += f"[{skin.AQUA} bold]>[/]"
+        if filter_text:
+            t += f" [{skin.STEELBLUE} bold]/{filter_text}[/]"
+        self.update(t)
+
+
+class HintsBar(Static):
+    """Línea de atajos estilo menú k9s: `<tecla>Acción  <tecla>Acción`."""
+
+    def set_hints(self, hints: list) -> None:
+        """hints: [(tecla, acción)] — teclas numéricas en fuchsia."""
+        parts = []
+        for key, label in hints:
+            kc = skin.FUCHSIA if key[:1].isdigit() else skin.DODGERBLUE
+            parts.append(f"[{kc} bold]<{key}>[/][dim]{label}[/]")
+        self.update(" " + " ".join(parts))
+
+
+class CommandBar(Horizontal):
+    """Línea de comandos inferior estilo k9s.
+
+    Idle muestra el prompt `toolbox>` (cadetblue); con `:`/`/` se abre
+    el input. Emite CommandBar.Submitted(texto, modo) al Enter.
     """
 
+    PROMPT = "toolbox>"
     can_focus = True
 
     class Submitted(Message):
@@ -39,27 +108,35 @@ class CommandBar(Horizontal):
         self._hist_idx = -1
 
     def compose(self) -> ComposeResult:
-        yield Static(":", id="cmdbar-prompt")
-        yield Input(placeholder="comando...", id="cmdbar-input")
+        yield Static(self.PROMPT, id="cmdbar-prompt")
+        yield Input(id="cmdbar-input")
 
     def on_mount(self) -> None:
-        self.display = False
+        self.query_one("#cmdbar-input", Input).display = False
 
     def open(self, mode: str, prefix: str = "") -> None:
-        """Muestra la barra. mode='cmd' → ':' ; mode='filter' → '/'."""
+        """Abre el input. mode='cmd' → ':' ; mode='filter' → '/'."""
         self.mode = mode
         self.query_one("#cmdbar-prompt", Static).update(
             ":" if mode == "cmd" else "/")
         inp = self.query_one("#cmdbar-input", Input)
+        inp.display = True
         inp.value = prefix
         inp.placeholder = ("comando (:azdo :15 :outcome :q...)"
                            if mode == "cmd" else "filtrar tabla...")
-        self.display = True
         inp.focus()
         inp.action_end()
 
     def close(self) -> None:
-        self.display = False
+        self.query_one("#cmdbar-input", Input).display = False
+        self.query_one("#cmdbar-prompt", Static).update(self.PROMPT)
+
+    @property
+    def is_open(self) -> bool:
+        try:
+            return bool(self.query_one("#cmdbar-input", Input).display)
+        except Exception:
+            return False
 
     def on_input_changed(self, event: Input.Changed) -> None:
         # El filtro es en vivo: cada tecla filtra la tabla actual
@@ -90,10 +167,10 @@ class CommandBar(Horizontal):
 
 
 class ToolsTable(DataTable):
-    """Tabla de herramientas/recursos con filtro en vivo."""
+    """Tabla de herramientas/recursos con filtro en vivo (cursor de k9s)."""
 
     def __init__(self) -> None:
-        super().__init__(cursor_type="row", zebra_stripes=True)
+        super().__init__(cursor_type="row", zebra_stripes=False)
         self._rows_all: list = []       # (key, [celdas])
         self._filter = ""
 
@@ -107,6 +184,10 @@ class ToolsTable(DataTable):
     def set_filter(self, text: str) -> None:
         self._filter = text.strip().lower()
         self._rebuild()
+
+    @property
+    def filter_text(self) -> str:
+        return self._filter
 
     @property
     def current_key(self):

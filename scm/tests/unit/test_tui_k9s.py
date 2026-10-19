@@ -226,3 +226,59 @@ class TestScreens:
             await pilot.pause()
             assert isinstance(app.screen, ToolsScreen)
             assert app.screen.platform_key == "aws"
+
+
+class TestSkinK9s:
+    """Chrome estilo k9s: logo, crumbs, título, hints, prompt."""
+
+    def test_paleta_stock(self):
+        from scm.tui import skin
+        assert skin.BLACK == "#000000"
+        assert skin.AQUA == "#00FFFF"
+        assert skin.STEELBLUE == "#4682B4"
+        assert skin.ORANGE == "#FFA500"
+        assert skin.STATUS_COLORS["ready"] == "#ADFF2F"
+        assert skin.STATUS_COLORS["error"] == "#FF4500"
+        # la firma de k9s: cursor negro sobre aqua en la tabla
+        assert "cursor" in skin.APP_CSS and "#00FFFF" in skin.APP_CSS
+
+    def test_table_title_formato_k9s(self):
+        from scm.tui.widgets import TableTitle
+        t = TableTitle()
+        t.set_title("tools", "azdo", 38)
+        rendered = str(t.content)
+        # el markup escapa los corchetes literales como \[38\]
+        assert "<tools" in rendered and "(azdo)" in rendered \
+            and r"\[38\]" in rendered
+        t.set_title("tools", "azdo", 5, filter_text="cd")
+        assert "/cd" in str(t.content)
+
+    def test_status_dot_colores(self):
+        from scm.tui.screens import _status_dot
+        assert str(_status_dot("ready")) == "●"
+        assert _status_dot("ready").style == "#ADFF2F"
+        assert _status_dot("error").style == "#FF4500"
+        assert _status_dot("nada").style == "#808080"
+
+    def test_chrome_en_screens(self):
+        asyncio.run(self._t_chrome())
+
+    async def _t_chrome(self):
+        from scm.tui.app import ToolboxApp
+        from scm.tui.widgets import CommandBar, HintsBar, LogoHeader, \
+            TableTitle
+        app = ToolboxApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = app.screen
+            assert scr.query_one(LogoHeader)
+            assert scr.query_one(TableTitle)
+            assert scr.query_one(HintsBar)
+            # CommandBar siempre visible con prompt idle toolbox>
+            bar = scr.query_one(CommandBar)
+            assert not bar.is_open
+            app.push_tools_screen("azdo")
+            await pilot.pause()
+            scr = app.screen
+            assert scr.query_one(LogoHeader)
+            assert scr.query_one(TableTitle)

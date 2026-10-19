@@ -1,5 +1,27 @@
 # 03 — Guía de uso: keymap estilo k9s
 
+## Layout (skin "stock" de k9s)
+
+```
+██████╗ ███████╗████████╗   Toolbox Rev: v1.8.x    ← logo naranja + info
+██╔══██╗██╔════╝╚══██╔══╝   Python: 3.12           (etiquetas blancas,
+██║  ██║███████╗   ██║      Config: scm/config.json valores naranja)
+██║  ██║╚════██║   ██║      Outcome: N archivos
+██████╔╝███████║   ██║      Context: 🔷 Azure DevOps
+╚═════╝ ╚══════╝   ╚═╝
+toolbox ▸ contexts ▸ Azure DevOps                  ← crumbs (steelblue)
+<tools(azdo)[38]>                                  ← título aqua + count
+#   ST  GROUP      NAME                  DESC
+15  ●   Inventario CD Detailed Inventory  ...      ← filas dodgerblue
+44  ●   UpdatePipe SCM Inspection Remed.  ...      ← cursor negro/aqua
+<enter>Run  <0-9>Quick  </>Filtro  <:>Cmd  <?>Ayuda  ← hints
+toolbox>                                           ← prompt cadetblue
+```
+
+Colores tomados de `skins/stock.yaml` del repo de k9s — ver
+`scm/tui/skin.py` para el mapeo completo. La columna `ST` muestra
+el dot `●` de estado (verde = ready, naranja = pendiente, rojo = error).
+
 ## Arranque
 
 ```bash
