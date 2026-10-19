@@ -103,7 +103,8 @@ class PlatformsScreen(Screen):
         self.query_one(LogoHeader).set_info(_header_info())
         self.query_one(ContextBar).set_context({
             "CONTEXT": f"[{skin.CYBER_GREEN}]toolbox[/]",
-            "AUTH": f"[{skin.CYBER_GRAY}]…[/]",
+            "PLATFORMS": f"[{skin.CYBER_GRAY}]"
+                       f"{' '.join(registry.PLATFORMS)}[/]",
             "OUTCOME": f"[{skin.CYBER_GRAY}]…[/]",
         })
         self.query_one(CrumbBar).set_crumbs("toolbox", "contexts")
@@ -154,12 +155,14 @@ class PlatformsScreen(Screen):
                     data["desc"].get(key, ""),
                 ]))
             table.load(["#", "CONTEXT", "ST", "DESC"], rows)
-            n_ok = sum(1 for v in data["configured"].values() if v)
+            def _plat(k):
+                c = skin.GREENYELLOW if data["configured"].get(k) \
+                    else skin.ORANGERED
+                return f"[{c}]●[/][{skin.CYBER_WHITE}]{k}[/]"
+            plats = " ".join(_plat(k) for k in registry.PLATFORMS)
             self.query_one(ContextBar).set_context({
                 "CONTEXT": f"[{skin.CYBER_GREEN}]toolbox[/]",
-                "AUTH": f"[{skin.CYBER_GREEN}]●[/] "
-                        f"[{skin.CYBER_WHITE}]{n_ok}/"
-                        f"{len(registry.PLATFORMS)} platforms[/]",
+                "PLATFORMS": plats,
                 "OUTCOME": f"[{skin.CYBER_PURPLE}]"
                            f"{data['outcome']} archivos[/]",
             })

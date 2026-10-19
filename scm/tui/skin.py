@@ -64,7 +64,10 @@ Screen {{ background: {BLACK}; }}
 LogoHeader {{ height: 7; background: {BLACK}; }}
 #k9s-info {{ color: {CYBER_WHITE}; padding: 0 1; width: 1fr; }}
 #logo {{ width: 33; padding: 0 1; content-align: right top; }}
-ContextBar {{ height: 3; background: {BLACK}; }}
+ContextBar {{
+    height: 2; background: {BLACK};
+    border-top: solid {CYBER_GRAY};
+}}
 
 /* ── Breadcrumbs: negro sobre steelblue, activo naranja ───── */
 CrumbBar {{ height: 1; background: {STEELBLUE}; color: {BLACK}; }}

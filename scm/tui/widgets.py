@@ -46,19 +46,21 @@ class LogoHeader(Horizontal):
 
 
 class ContextBar(Static):
-    """Línea de contexto con separadores, estilo banner de k9s.
+    """Línea de contexto, estilo banner de k9s.
 
-        ─────────────────────────────────────────────
+    Una sola línea separadora superior dibujada con CSS border-top
+    (ocupa el 100% del ancho siempre); el contenido va en la línea
+    inferior:
+
+        ─────────────────────────────────────────────  (border)
          CONTEXT: azdo   AUTH: ● config   TOOLS: 38
-        ─────────────────────────────────────────────
     """
 
     def set_context(self, fields: dict) -> None:
         """fields: {"CLAVE": "valor-markup"}."""
-        sep = f"[{skin.CYBER_GRAY}]" + "─" * 79 + "[/]"
         line = " ".join(
             f"[{skin.WHITE} bold]{k}:[/] {v}" for k, v in fields.items())
-        self.update(f"{sep}\n {line}\n{sep}")
+        self.update(f" {line}")
 
 
 class CrumbBar(Static):
