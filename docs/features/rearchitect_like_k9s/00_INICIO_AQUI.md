@@ -16,9 +16,10 @@ filtro en vivo, comandos `:` y ejecución con Enter.
   (`app.suspend()`) y lanza `python <plat>/tools.py --run <key>` con el
   mismo env-prep de `launch_platform`. Los prompts, spinners y
   submenús interactivos de cada tool funcionan idéntico.
-- **Coexistencia**: el menú clásico es el default;
-  `python scm/main.py --k9s-style` abre la TUI. Si no hay TTY o
-  Textual no está instalado, cae al clásico automáticamente.
+- **Coexistencia**: la TUI es el default;
+  `python scm/main.py` la abre y `python scm/main.py --classic`
+  fuerza el menú numerado. Si no hay TTY o Textual no está
+  instalado, cae al clásico automáticamente.
 - **Multi-plataforma**: las 6 plataformas se leen por import perezoso
   de sus dicts `TOOLS`/`SCRIPTS` (los `tools.py` ya son paquetes con
   guard `__main__`).

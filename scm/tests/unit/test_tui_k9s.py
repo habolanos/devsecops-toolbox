@@ -314,25 +314,26 @@ class TestScreens:
 
 
 class TestK9sStyleFlag:
-    """La TUI es opt-in: solo arranca con --k9s-style."""
+    """La TUI es la entrada por defecto; --classic es el opt-out."""
 
-    def test_sin_flag_no_lanza_tui(self):
+    def test_classic_no_lanza_tui(self):
         import sys as _sys
         main = importlib.import_module("main")
         saved = _sys.argv[:]
         try:
-            _sys.argv = ["main.py"]
+            _sys.argv = ["main.py", "--classic"]
             assert main._try_run_tui() is False
         finally:
             _sys.argv = saved
 
-    def test_flag_sin_tty_cae_al_clasico(self):
+    def test_sin_flag_sin_tty_cae_al_clasico(self):
+        """Sin flag → intenta TUI; sin TTY → fallback al clásico."""
         import sys as _sys
         import unittest.mock as mock
         main = importlib.import_module("main")
         saved = _sys.argv[:]
         try:
-            _sys.argv = ["main.py", "--k9s-style"]
+            _sys.argv = ["main.py"]
             # stdout de pytest no es TTY → fallback False
             with mock.patch.object(_sys.stdout, "isatty",
                                    return_value=False, create=True):

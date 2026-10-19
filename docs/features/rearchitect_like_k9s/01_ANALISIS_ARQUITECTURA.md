@@ -18,7 +18,7 @@ main.py  ──menú──▶  <plat>/tools.py  ──menú──▶  run_tool(k
 ## Después (k9s)
 
 ```
-main.py --k9s-style
+main.py
    └── scm/tui/ToolboxApp (Textual)
         PlatformsScreen ──Enter──▶ ToolsScreen(plataforma)
                                      │ Enter en fila
@@ -41,7 +41,7 @@ main.py --k9s-style
 
 ## Cambios en existentes
 
-- `scm/main.py`: `_try_run_tui()` — TUI solo con `--k9s-style` (opt-in)
+- `scm/main.py`: `_try_run_tui()` — TUI por defecto; `--classic` fuerza el menú
   y si hay TTY + textual importable; sin el flag o ante excepción →
   menú clásico.
 - `scm/<plat>/tools.py` ×6: flag `--run <key>` al inicio de `main()`

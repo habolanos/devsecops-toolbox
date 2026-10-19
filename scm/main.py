@@ -9,8 +9,8 @@ Punto de entrada unificado para acceder a las herramientas de:
 - Amazon Web Services (aws/tools.py)
 
 Uso:
-    python main.py               # menú clásico
-    python main.py --k9s-style   # TUI full-screen estilo k9s
+    python main.py               # TUI full-screen estilo k9s (default)
+    python main.py --classic     # menú numerado clásico
 """
 
 import os
@@ -83,7 +83,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.36"
+__version__ = "1.8.37"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -923,10 +923,10 @@ def _run_setup_wizard_if_needed():
 def _try_run_tui() -> bool:
     """Intenta lanzar la TUI estilo k9s (Textual). Retorna True si corrió.
 
-    La TUI es opt-in: solo arranca con ``--k9s-style``. Sin el flag,
-    ``main.py`` muestra el menú clásico.
+    La TUI es la entrada por defecto. ``--classic`` fuerza el menú
+    numerado clásico. ``--k9s-style`` se acepta por compatibilidad.
     """
-    if "--k9s-style" not in sys.argv:
+    if "--classic" in sys.argv:
         return False
     if not sys.stdout.isatty():
         print("⚠️  TUI requiere terminal interactiva (TTY) — usando menú clásico.\n",
@@ -954,7 +954,7 @@ def main():
     # Ejecutar wizard de configuracion en primera ejecucion
     _run_setup_wizard_if_needed()
 
-    # Menú clásico por defecto; --k9s-style lanza la TUI
+    # TUI por defecto; --classic fuerza el menú numerado
     if _try_run_tui():
         return
 

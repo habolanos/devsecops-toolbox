@@ -10,8 +10,8 @@
 ### F1 — Núcleo TUI ✅
 - `scm/tui/` creado (7 archivos).
 - `--run <key>` en los 6 `tools.py` con normalización por plataforma.
-- `main.py`: menú clásico por defecto; `--k9s-style` lanza la TUI
-  (opt-in), con fallback al clásico si no hay TTY/textual.
+- `main.py`: TUI por defecto; `--classic` fuerza el menú clásico,
+  con fallback automático si no hay TTY/textual.
 - Navegación end-to-end: plataformas → tools → suspend → subprocess →
   toast resultado.
 

@@ -30,7 +30,8 @@ viven en la línea inferior, igual que la cmdline de k9s.
 
 ```bash
 python scm/main.py                # menú numerado clásico (default)
-python scm/main.py --k9s-style    # TUI full-screen estilo k9s
+python scm/main.py                # TUI full-screen estilo k9s (default)
+python scm/main.py --classic      # menú numerado clásico
 ```
 
 ## Navegación
@@ -85,6 +86,6 @@ el exit code y la duración.
 
 ## Fallback
 
-Con `--k9s-style`, si no hay TTY (pipes/CI) o `textual` no está
+Si no hay TTY (pipes/CI) o `textual` no está
 instalado, `main.py` cae automáticamente al menú clásico e imprime
 la causa. Sin el flag siempre arranca el clásico.

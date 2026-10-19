@@ -16,14 +16,15 @@ viviente, `:` comandos, `/` filtro, Enter ejecuta y Esc retrocede.
 ## Uso rápido
 
 ```bash
-python scm/main.py                # menú numerado clásico (default)
-python scm/main.py --k9s-style    # TUI full-screen estilo k9s
+python scm/main.py                # TUI full-screen estilo k9s (default)
+python scm/main.py --classic      # menú numerado clásico
 ```
 
 ## Historial
 
 | Fecha | Versión | Cambio |
 |---|---|---|
+| 2026-10-18 | 1.8.103 | TUI vuelve a ser el default: `python scm/main.py` = TUI, `--classic` = menú numerado (opt-out). `--k9s-style` se acepta por compatibilidad |
 | 2026-10-18 | 1.8.94 | TUI pasa a ser opt-in: `python scm/main.py` = menú clásico (default), `--k9s-style` = TUI |
 | 2026-10-18 | 1.8.93 | Skin "stock" de k9s: paleta oficial de `skins/stock.yaml` — cursor negro-aqua, crumbs steelblue, logo/info naranja, `<vista(ctx)[count]>`, hints, prompt `toolbox>`, columna `ST` con `●` |
 | 2026-10-18 | 1.8.89 | Implementación inicial: `scm/tui/` (app, screens, widgets, registry, commands, runner), `--run <key>` en los 6 tools.py, TUI por defecto con fallback `--classic` |

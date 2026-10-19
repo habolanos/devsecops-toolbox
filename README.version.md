@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.102`** — 2026-10-18
+**`1.8.103`** — 2026-10-18
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-18 | **1.8.103** | **TUI por defecto de nuevo** — `python scm/main.py` abre la TUI estilo k9s; `--classic` fuerza el menú numerado (opt-out). `--k9s-style` se acepta por compatibilidad. Fallback automático al clásico sin TTY/textual. main v1.8.37 | `scm/main.py`, `scm/tests/unit/test_tui_k9s.py`, `docs/features/rearchitect_like_k9s/*.md`, `VERSION` |
 | 2026-10-18 | **1.8.102** | **Header TUI: línea `Scope:` retirada** — el bloque de info queda con `[ DSO-TOOLBOX ]`, `DevSecOps Tactical Suite`, `Profile:` y `Projects:`. tui v1.0.9 | `scm/tui/screens.py`, `scm/tui/__init__.py`, `VERSION` |
 | 2026-10-18 | **1.8.101** | **Header muestra proyectos GCP del config** — bajo `Profile:` se listan los `gcp.service_accounts_reporter.projects` de `config.json`; el default (`gcp.project_id`) se marca con `★` verde. `LogoHeader` pasa a `height: auto` para crecer si la lista envuelve. tui v1.0.8 | `scm/tui/{screens,skin,__init__}.py`, `VERSION` |
 | 2026-10-18 | **1.8.100** | **ContextBar: borde abajo + header sin línea vacía** — la línea separadora pasa a la parte inferior (`border-bottom`, siempre 100% del ancho); altura del `LogoHeader` 7 → 6 para eliminar la línea en blanco bajo el logo. tui v1.0.7 | `scm/tui/{skin,widgets,__init__}.py`, `VERSION` |
