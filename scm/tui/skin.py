@@ -31,6 +31,17 @@ DARKORANGE = "#FF8C00"
 ORANGERED = "#FF4500"
 MEDIUMPURPLE = "#9370DB"
 
+# ── Paleta Cyberpunk / DevSecOps del header (ANSI 256) ─────
+# 51=#00ffff  39=#00afff  141=#af87ff  82=#5fff00
+# 220=#ffd700 242=#6c6c6c 255=#eeeeee
+CYBER_CYAN = "#00ffff"
+CYBER_BLUE = "#00afff"
+CYBER_PURPLE = "#af87ff"
+CYBER_GREEN = "#5fff00"
+CYBER_YELLOW = "#ffd700"
+CYBER_GRAY = "#6c6c6c"
+CYBER_WHITE = "#eeeeee"
+
 # frame.status
 STATUS_COLORS = {
     "ready": GREENYELLOW,
@@ -49,10 +60,11 @@ STATUS_COLORS = {
 APP_CSS = f"""
 Screen {{ background: {BLACK}; }}
 
-/* ── Bloque superior: logo + info ─────────────────────────── */
+/* ── Bloque superior: info izquierda + logo derecha ───────── */
 LogoHeader {{ height: 7; background: {BLACK}; }}
-#logo {{ width: 24; color: {ORANGE}; text-style: bold; padding: 0 1; }}
-#k9s-info {{ color: {ORANGE}; padding: 0 1; }}
+#k9s-info {{ color: {CYBER_WHITE}; padding: 0 1; width: 1fr; }}
+#logo {{ width: 33; padding: 0 1; content-align: right top; }}
+ContextBar {{ height: 3; background: {BLACK}; }}
 
 /* ── Breadcrumbs: negro sobre steelblue, activo naranja ───── */
 CrumbBar {{ height: 1; background: {STEELBLUE}; color: {BLACK}; }}

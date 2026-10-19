@@ -10,8 +10,8 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Static
 
 from . import commands, registry, skin
-from .widgets import (CommandBar, CrumbBar, HintsBar, LogoHeader,
-                      TableTitle, ToolsTable)
+from .widgets import (CommandBar, ContextBar, CrumbBar, HintsBar,
+                      LogoHeader, TableTitle, ToolsTable)
 
 _VERSION = "?"
 
@@ -56,12 +56,20 @@ def _outcome_count() -> int:
         return 0
 
 
-def _base_info() -> dict:
+def _header_info() -> dict:
+    """Info del banner (mockup cyberpunk): título, suite, scope, profile."""
     return {
-        "Toolbox Rev": f"v{_version()}",
-        "Python": ".".join(map(str, sys.version_info[:3])),
-        "Config": str(registry.SCM_DIR / "config.json"),
-        "Outcome": f"{_outcome_count()} archivos",
+        "title": f"[{skin.WHITE} bold]\\[ DSO-TOOLBOX ][/]  "
+                 f"[{skin.CYBER_PURPLE}]v{_version()}[/]",
+        "suite": f"[{skin.CYBER_PURPLE}]DevSecOps Tactical Suite[/]",
+        "scope": f"[{skin.WHITE} bold]Scope:[/] "
+                 f"[{skin.CYBER_GREEN}]GKE[/] "
+                 f"[{skin.CYBER_GRAY}]│[/] "
+                 f"[{skin.CYBER_YELLOW}]Cloud Run[/] "
+                 f"[{skin.CYBER_GRAY}]│[/] "
+                 f"[{skin.CYBER_BLUE}]Azure DevOps[/]",
+        "profile": f"[{skin.WHITE} bold]Profile:[/] "
+                   f"[{skin.CYBER_PURPLE}]DevSecOps / SRE Platform[/]",
     }
 
 
@@ -77,6 +85,7 @@ class PlatformsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield LogoHeader()
+        yield ContextBar()
         yield CrumbBar(id="crumb")
         yield TableTitle()
         yield ToolsTable()
@@ -84,7 +93,16 @@ class PlatformsScreen(Screen):
         yield CommandBar()
 
     def on_mount(self) -> None:
-        self.query_one(LogoHeader).set_info(_base_info())
+        self.query_one(LogoHeader).set_info(_header_info())
+        n_ok = sum(1 for k in registry.PLATFORMS if _configured(k))
+        self.query_one(ContextBar).set_context({
+            "CONTEXT": f"[{skin.CYBER_GREEN}]toolbox[/]",
+            "AUTH": f"[{skin.CYBER_GREEN}]●[/] "
+                    f"[{skin.CYBER_WHITE}]{n_ok}/"
+                    f"{len(registry.PLATFORMS)} platforms[/]",
+            "OUTCOME": f"[{skin.CYBER_PURPLE}]"
+                       f"{_outcome_count()} archivos[/]",
+        })
         self.query_one(CrumbBar).set_crumbs("toolbox", "contexts")
         self.query_one(HintsBar).set_hints([
             ("enter", "Entrar"), ("0-9", "Quick"), ("/", "Filtro"),
@@ -132,6 +150,7 @@ class ToolsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield LogoHeader()
+        yield ContextBar()
         yield CrumbBar(id="crumb")
         yield TableTitle()
         yield ToolsTable()
@@ -141,9 +160,7 @@ class ToolsScreen(Screen):
 
     def on_mount(self) -> None:
         meta = registry.PLATFORMS[self.platform_key]
-        info = _base_info()
-        info["Context"] = f"{meta['emoji']} {meta['label']}"
-        self.query_one(LogoHeader).set_info(info)
+        self.query_one(LogoHeader).set_info(_header_info())
         self.query_one(CrumbBar).set_crumbs(
             "toolbox", "contexts", meta["label"])
         self.query_one(HintsBar).set_hints([
@@ -170,6 +187,16 @@ class ToolsScreen(Screen):
             [(r["key"], [r["key"], _status_dot(r["status"]),
                          r["group_label"], r["name"], r["description"]])
              for r in rows])
+        ok = _configured(self.platform_key)
+        label = registry.PLATFORMS[self.platform_key]["label"]
+        auth = (f"[{skin.CYBER_GREEN}]●[/] [{skin.CYBER_WHITE}]{label}[/]"
+                if ok else
+                f"[{skin.ORANGERED}]●[/] [{skin.CYBER_WHITE}]sin config[/]")
+        self.query_one(ContextBar).set_context({
+            "CONTEXT": f"[{skin.CYBER_GREEN}]{self.platform_key}[/]",
+            "AUTH": auth,
+            "TOOLS": f"[{skin.CYBER_PURPLE}]{table.row_count}[/]",
+        })
         _sync_title(self, "tools", self._title_ctx())
         err = self.query_one("#load-error", Static)
         if self._load_error:
@@ -203,6 +230,7 @@ class OutcomeScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield LogoHeader()
+        yield ContextBar()
         yield CrumbBar(id="crumb")
         yield TableTitle()
         yield ToolsTable()
@@ -210,7 +238,12 @@ class OutcomeScreen(Screen):
         yield CommandBar()
 
     def on_mount(self) -> None:
-        self.query_one(LogoHeader).set_info(_base_info())
+        self.query_one(LogoHeader).set_info(_header_info())
+        self.query_one(ContextBar).set_context({
+            "CONTEXT": f"[{skin.CYBER_GREEN}]outcome[/]",
+            "DIR": f"[{skin.CYBER_WHITE}]"
+                   f"{registry.outcome_dir()}[/]",
+        })
         self.query_one(CrumbBar).set_crumbs("toolbox", "outcome")
         self.query_one(HintsBar).set_hints([
             ("enter", "Abrir"), ("/", "Filtro"), (":", "Cmd"),

@@ -1277,6 +1277,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-18 | 1.8.95 | **Banner cyberpunk + ContextBar en la TUI** — logo `DSO` degradado cyan→azul→púrpura arriba-derecha, `[ DSO-TOOLBOX ]/Tactical Suite/Scope/Profile` izquierda, `CONTEXT/AUTH/TOOLS` con separadores; cmdline abajo (`toolbox>`/`:`/`/`) como k9s. tui v1.0.2 | `scm/tui/{skin,widgets,screens,__init__}.py` |
 | 2026-10-18 | 1.8.94 | **TUI opt-in con `--k9s-style`** — `python scm/main.py` vuelve a abrir el menú clásico por defecto; la TUI estilo k9s solo con `python scm/main.py --k9s-style`. main.py v1.8.36 | `scm/main.py`, `test_tui_k9s.py` |
 | 2026-10-18 | 1.8.93 | **TUI con skin "stock" de k9s** — `scm/tui/skin.py` con la paleta oficial de k9s (cursor negro-aqua, crumbs steelblue, logo/info naranja, título `<vista(ctx)[count]>`, hints `<tecla>Acción`, prompt `toolbox>`); `LogoHeader`, `TableTitle`, `HintsBar`, columna `ST` con `●`. tui v1.0.1 | `scm/tui/skin.py`, `scm/tui/{widgets,screens,app,__init__}.py`, `test_tui_k9s.py` |
 | 2026-10-18 | 1.8.91 | **UTF-8 en stdout/stderr al arrancar** — bootstrap `_force_utf8_stdio()` evita `UnicodeEncodeError` (cp1252) cuando la salida se pipea en Windows; cubre direct-run sin PYTHONPATH. tools.py v1.8.51 | `scm/azdo/tools.py`, `scm/main.py`, `scm/base_launcher.py`, `scm/{gcp,azure,aws,terminal,kpi_analyzer}/tools.py`, `test_utf8_stdio.py` |

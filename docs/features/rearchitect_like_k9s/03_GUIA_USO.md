@@ -1,26 +1,30 @@
 # 03 — Guía de uso: keymap estilo k9s
 
-## Layout (skin "stock" de k9s)
+## Layout (skin "stock" de k9s + banner cyberpunk)
 
 ```
-██████╗ ███████╗████████╗   Toolbox Rev: v1.8.x    ← logo naranja + info
-██╔══██╗██╔════╝╚══██╔══╝   Python: 3.12           (etiquetas blancas,
-██║  ██║███████╗   ██║      Config: scm/config.json valores naranja)
-██║  ██║╚════██║   ██║      Outcome: N archivos
-██████╔╝███████║   ██║      Context: 🔷 Azure DevOps
-╚═════╝ ╚══════╝   ╚═╝
+═══════════════                    ██████╗  ███████╗  ██████╗   ← logo
+[ DSO-TOOLBOX ] v1.8.x             ██╔══██╗ ██╔════╝ ██╔═══██╗    degradado
+DevSecOps Tactical Suite           ██║  ██║ ███████╗ ██║   ██║    cyan→azul→
+Scope: GKE │ Cloud Run │ AzDO      ██║  ██║ ╚════██║ ██║   ██║    púrpura
+Profile: DevSecOps / SRE Platform  ██████╔╝ ███████║ ╚██████╔╝  (derecha)
+────────────────────────────────────────────────────────────────
+ CONTEXT: azdo   AUTH: ● Azure DevOps   TOOLS: 38    ← ContextBar
 toolbox ▸ contexts ▸ Azure DevOps                  ← crumbs (steelblue)
 <tools(azdo)[38]>                                  ← título aqua + count
 #   ST  GROUP      NAME                  DESC
 15  ●   Inventario CD Detailed Inventory  ...      ← filas dodgerblue
 44  ●   UpdatePipe SCM Inspection Remed.  ...      ← cursor negro/aqua
-<enter>Run  <0-9>Quick  </>Filtro  <:>Cmd  <?>Ayuda  ← hints
-toolbox>                                           ← prompt cadetblue
+<enter>Run  <0-9>Quick  </>Filtro  <:>Cmd  <?>Ayuda  ← hints (abajo)
+toolbox>                                           ← prompt (abajo)
 ```
 
-Colores tomados de `skins/stock.yaml` del repo de k9s — ver
-`scm/tui/skin.py` para el mapeo completo. La columna `ST` muestra
-el dot `●` de estado (verde = ready, naranja = pendiente, rojo = error).
+Tabla y comandos usan la paleta "stock" de `skins/stock.yaml` del repo
+de k9s; el banner usa la paleta Cyberpunk del toolbox (ANSI 51/39/141/
+82/220/242/255). Ver `scm/tui/skin.py` para el mapeo completo. La
+columna `ST` muestra el dot `●` de estado (verde = ready, naranja =
+pendiente, rojo = error). Los comandos `:`, `/` y el prompt `toolbox>`
+viven en la línea inferior, igual que la cmdline de k9s.
 
 ## Arranque
 

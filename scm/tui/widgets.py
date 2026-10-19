@@ -11,32 +11,56 @@ from textual.widgets import DataTable, Input, Static
 
 from . import skin
 
-_LOGO = r"""
-██████╗ ███████╗████████╗
-██╔══██╗██╔════╝╚══██╔══╝
-██║  ██║███████╗   ██║
-██║  ██║╚════██║   ██║
-██████╔╝███████║   ██║
-╚═════╝ ╚══════╝   ╚═╝
-""".strip("\n")
+_LOGO = (
+    f"[{skin.CYBER_CYAN}]██████╗  ███████╗  ██████╗ [/]\n"
+    f"[{skin.CYBER_CYAN}]██╔══██╗ ██╔════╝ ██╔═══██╗[/]\n"
+    f"[{skin.CYBER_BLUE}]██║  ██║ ███████╗ ██║   ██║[/]\n"
+    f"[{skin.CYBER_BLUE}]██║  ██║ ╚════██║ ██║   ██║[/]\n"
+    f"[{skin.CYBER_PURPLE}]██████╔╝ ███████║ ╚██████╔╝[/]\n"
+    f"[{skin.CYBER_PURPLE}]╚═════╝  ╚══════╝  ╚═════╝ [/]"
+)
 
 
 class LogoHeader(Horizontal):
-    """Bloque superior: logo naranja + líneas de info (estilo k9s info)."""
+    """Bloque superior: info izquierda + logo DSO arriba-derecha.
+
+    Look "Cyberpunk / DevSecOps": [ DSO-TOOLBOX ], Tactical Suite,
+    Scope y Profile a la izquierda; logo ASCII degradado cyan/azul/
+    púrpura alineado a la derecha.
+    """
 
     def __init__(self) -> None:
         super().__init__(id="logo-header")
         self._info = Static("", id="k9s-info")
 
     def compose(self) -> ComposeResult:
-        yield Static(_LOGO, id="logo")
         yield self._info
+        yield Static(_LOGO, id="logo")
 
     def set_info(self, fields: dict) -> None:
-        """fields: {"Etiqueta": "valor"} — etiqueta blanca, valor naranja."""
-        lines = [f"[{skin.WHITE}]{k}:[/] [{skin.ORANGE}]{v}[/]"
-                 for k, v in fields.items()]
-        self._info.update("\n" + "\n".join(lines))
+        """fields: {"Etiqueta": "valor-markup"} — una línea por campo.
+
+        Los valores ya vienen formateados (markup) por el llamador.
+        """
+        sep = f"[{skin.CYBER_GRAY}]════════════════════════════════════[/]"
+        lines = [sep] + list(fields.values())
+        self._info.update("\n".join(lines))
+
+
+class ContextBar(Static):
+    """Línea de contexto con separadores, estilo banner de k9s.
+
+        ─────────────────────────────────────────────
+         CONTEXT: azdo   AUTH: ● config   TOOLS: 38
+        ─────────────────────────────────────────────
+    """
+
+    def set_context(self, fields: dict) -> None:
+        """fields: {"CLAVE": "valor-markup"}."""
+        sep = f"[{skin.CYBER_GRAY}]" + "─" * 79 + "[/]"
+        line = " ".join(
+            f"[{skin.WHITE} bold]{k}:[/] {v}" for k, v in fields.items())
+        self.update(f"{sep}\n {line}\n{sep}")
 
 
 class CrumbBar(Static):
