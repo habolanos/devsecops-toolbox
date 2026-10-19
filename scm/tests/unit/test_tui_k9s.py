@@ -157,13 +157,18 @@ class TestScreens:
     def test_entrar_a_azdo_carga_tools(self):
         asyncio.run(self._t_entrar())
 
+    async def _wait_hydration(self, app, pilot):
+        """Espera a que terminen los workers thread=True de hidratación."""
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
     async def _t_entrar(self):
         from scm.tui.app import ToolboxApp
         from scm.tui.screens import ToolsScreen
         app = ToolboxApp()
         async with app.run_test() as pilot:
             app.push_tools_screen("azdo")
-            await pilot.pause()
+            await self._wait_hydration(app, pilot)
             assert isinstance(app.screen, ToolsScreen)
             assert app.screen.query_one(
                 "ToolsTable").row_count > 30
@@ -176,7 +181,7 @@ class TestScreens:
         app = ToolboxApp()
         async with app.run_test() as pilot:
             app.push_tools_screen("azdo")
-            await pilot.pause()
+            await self._wait_hydration(app, pilot)
             table = app.screen.query_one("ToolsTable")
             total = table.row_count
             table.set_filter("health")
@@ -192,7 +197,7 @@ class TestScreens:
         app.launch_tool = lambda p, k: launched.append((p, k))
         async with app.run_test() as pilot:
             app.push_tools_screen("azdo")
-            await pilot.pause()
+            await self._wait_hydration(app, pilot)
             table = app.screen.query_one("ToolsTable")
             table.move_cursor(row=0)
             await pilot.pause()
@@ -268,6 +273,25 @@ class TestScreens:
             assert isinstance(app.screen, PlatformsScreen) \
                 or isinstance(app.screen, HelpScreen) \
                 or app.screen_stack[-1] is app.screen
+
+    def test_arranque_instantaneo_hidratacion_async(self):
+        """La tabla aparece al instante con fila 'cargando'; los datos
+        llegan después vía worker (no bloquea el primer render)."""
+        asyncio.run(self._t_hydrate())
+
+    async def _t_hydrate(self):
+        from scm.tui.app import ToolboxApp
+        from scm.tui.screens import PlatformsScreen
+        app = ToolboxApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, PlatformsScreen)
+            # los datos hidratan en worker → tras wait, hay 6 contextos
+            await self._wait_hydration(app, pilot)
+            table = app.screen.query_one("ToolsTable")
+            assert table.row_count == len(
+                __import__("scm.tui.registry",
+                           fromlist=["x"]).PLATFORMS)
 
     def test_jump_plataforma_desde_tools_preserva_back(self):
         """:aws desde ToolsScreen debe volver a PlatformsScreen con Esc,

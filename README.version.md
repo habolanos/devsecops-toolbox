@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.8.97`** — 2026-10-18
+**`1.8.98`** — 2026-10-18
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-18 | **1.8.98** | **Arranque instantáneo de la TUI** — eliminada la pantalla negra al abrir `--k9s-style`: las 3 screens pintan su shell de inmediato y la data pesada (config por plataforma, scan de `outcome/`, import del `tools.py` de la plataforma) se hidrata en workers `thread=True`; `r` rehidrata en plataformas; Enter sobre la fila "cargando…" se ignora. tui v1.0.5 | `scm/tui/{screens,app,__init__}.py`, `scm/tests/unit/test_tui_k9s.py`, `VERSION` |
 | 2026-10-18 | **1.8.97** | **fix: crash `NoMatches` con Esc/`:`/`/` fuera de screens con CommandBar** — `Esc` en la raíz ya no popea a la `_default` vacía; `:`/`/`/`Esc` en el modal de ayuda son no-ops seguros; `:plat` desde otra screen preserva el back a plataformas. tui v1.0.4 | `scm/tui/app.py`, `scm/tui/__init__.py`, `scm/tests/unit/test_tui_k9s.py`, `VERSION` |
 | 2026-10-18 | **1.8.96** | **fix: ajustes del banner TUI** — retirada la línea separadora `═══` del bloque de info; `Profile:` ahora dice `DevSecOps / SCM Engineer Platform`. tui v1.0.3 | `scm/tui/widgets.py`, `scm/tui/screens.py`, `scm/tui/__init__.py`, `VERSION` |
 | 2026-10-18 | **1.8.95** | **feat: banner cyberpunk + ContextBar en la TUI** — header rediseñado según mockup del usuario: logo `DSO` ASCII degradado cyan→azul→púrpura (ANSI 51/39/141) alineado **arriba-derecha**, info a la izquierda (`[ DSO-TOOLBOX ] v`, `DevSecOps Tactical Suite`, `Scope: GKE │ Cloud Run │ Azure DevOps`, `Profile:`). Nuevo `ContextBar` con separadores: `CONTEXT: x  AUTH: ● plataforma  TOOLS: n`. La línea de comandos permanece abajo (prompt `toolbox>` idle, `:`/`/` al abrir) como la cmdline de k9s. tui v1.0.2 | `scm/tui/skin.py`, `scm/tui/widgets.py` (+`ContextBar`), `scm/tui/screens.py`, `scm/tui/__init__.py`, `docs/features/rearchitect_like_k9s/`, `VERSION` |

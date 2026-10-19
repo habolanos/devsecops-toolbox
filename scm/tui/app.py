@@ -100,6 +100,9 @@ class ToolboxApp(App):
             scr.reload_tools()
         elif isinstance(scr, OutcomeScreen):
             scr.reload_files()
+        elif isinstance(scr, PlatformsScreen):
+            scr.run_worker(scr._hydrate, name="hydrate-contexts",
+                           thread=True)
         # invalidar config cacheada de main.py
         try:
             import main as main_mod
