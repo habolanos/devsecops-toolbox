@@ -61,12 +61,12 @@ APP_CSS = f"""
 Screen {{ background: {BLACK}; }}
 
 /* ── Bloque superior: info izquierda + logo derecha ───────── */
-LogoHeader {{ height: 7; background: {BLACK}; }}
+LogoHeader {{ height: 6; background: {BLACK}; }}
 #k9s-info {{ color: {CYBER_WHITE}; padding: 0 1; width: 1fr; }}
 #logo {{ width: 33; padding: 0 1; content-align: right top; }}
 ContextBar {{
     height: 2; background: {BLACK};
-    border-top: solid {CYBER_GRAY};
+    border-bottom: solid {CYBER_GRAY};
 }}
 
 /* ── Breadcrumbs: negro sobre steelblue, activo naranja ───── */

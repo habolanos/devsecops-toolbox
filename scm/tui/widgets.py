@@ -48,12 +48,12 @@ class LogoHeader(Horizontal):
 class ContextBar(Static):
     """Línea de contexto, estilo banner de k9s.
 
-    Una sola línea separadora superior dibujada con CSS border-top
-    (ocupa el 100% del ancho siempre); el contenido va en la línea
-    inferior:
+    Una sola línea separadora inferior dibujada con CSS
+    border-bottom (ocupa el 100% del ancho siempre); el contenido
+    va en la línea superior:
 
-        ─────────────────────────────────────────────  (border)
          CONTEXT: azdo   AUTH: ● config   TOOLS: 38
+        ─────────────────────────────────────────────  (border)
     """
 
     def set_context(self, fields: dict) -> None:

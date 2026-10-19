@@ -8,4 +8,4 @@ Navegación por contextos (plataformas) y recursos (herramientas):
 - `Esc`/`q` retrocede, `?` ayuda, `r` recarga config/registry
 """
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
