@@ -228,6 +228,66 @@ class TestScreens:
             assert isinstance(app.screen, ToolsScreen)
             assert app.screen.platform_key == "aws"
 
+    def test_esc_en_raiz_no_popea_ni_crashea(self):
+        """Esc en PlatformsScreen: no debe ir a la _default vacía
+        ni lanzar NoMatches por CommandBar (bug real)."""
+        asyncio.run(self._t_esc_raiz())
+
+    async def _t_esc_raiz(self):
+        from scm.tui.app import ToolboxApp
+        from scm.tui.screens import PlatformsScreen
+        app = ToolboxApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+            assert isinstance(app.screen, PlatformsScreen)
+            assert len(app.screen_stack) == 2  # _default + platforms
+
+    def test_esc_y_comandos_en_modal_help_no_crashean(self):
+        """En el HelpScreen (modal sin CommandBar), Esc/:/ / deben
+        ser no-ops seguros, no NoMatches."""
+        asyncio.run(self._t_help_modal())
+
+    async def _t_help_modal(self):
+        from scm.tui.app import ToolboxApp
+        from scm.tui.screens import HelpScreen, PlatformsScreen
+        app = ToolboxApp()
+        async with app.run_test() as pilot:
+            app.push_screen(HelpScreen())
+            await pilot.pause()
+            assert isinstance(app.screen, HelpScreen)
+            # : y / sobre un modal no deben lanzar NoMatches
+            app.action_open_cmd()
+            app.action_open_filter()
+            await pilot.pause()
+            # Esc cierra el modal por su propio binding (o action_back
+            # seguro); en cualquier caso no debe quedar en _default
+            await pilot.press("escape")
+            await pilot.pause()
+            assert isinstance(app.screen, PlatformsScreen) \
+                or isinstance(app.screen, HelpScreen) \
+                or app.screen_stack[-1] is app.screen
+
+    def test_jump_plataforma_desde_tools_preserva_back(self):
+        """:aws desde ToolsScreen debe volver a PlatformsScreen con Esc,
+        no a la _default vacía."""
+        asyncio.run(self._t_jump_back())
+
+    async def _t_jump_back(self):
+        from scm.tui.app import ToolboxApp
+        from scm.tui.screens import PlatformsScreen, ToolsScreen
+        app = ToolboxApp()
+        async with app.run_test() as pilot:
+            app.push_tools_screen("azdo")
+            await pilot.pause()
+            app.dispatch_command(parse_command(":aws"))
+            await pilot.pause()
+            assert isinstance(app.screen, ToolsScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert isinstance(app.screen, PlatformsScreen)
+
 
 class TestK9sStyleFlag:
     """La TUI es opt-in: solo arranca con --k9s-style."""

@@ -51,11 +51,22 @@ class ToolboxApp(App):
         return scr.platform_key if isinstance(scr, ToolsScreen) else None
 
     # ── Acciones globales ───────────────────────────────────────
+    def _command_bar(self) -> CommandBar | None:
+        """CommandBar de la screen actual, o None (modals/_default)."""
+        try:
+            return self.screen.query_one(CommandBar)
+        except Exception:
+            return None
+
     def action_open_cmd(self) -> None:
-        self.screen.query_one(CommandBar).open("cmd")
+        bar = self._command_bar()
+        if bar is not None:
+            bar.open("cmd")
 
     def action_open_filter(self) -> None:
-        self.screen.query_one(CommandBar).open("filter")
+        bar = self._command_bar()
+        if bar is not None:
+            bar.open("filter")
 
     def action_help(self) -> None:
         self.push_screen(HelpScreen())
@@ -70,11 +81,13 @@ class ToolboxApp(App):
             self.action_back()
 
     def action_back(self) -> None:
-        bar = self.screen.query_one(CommandBar)
-        if bar.is_open:
+        bar = self._command_bar()
+        if bar is not None and bar.is_open:
             bar.close()
             return
-        if len(self.screen_stack) > 1:
+        # _default + PlatformsScreen siempre quedan en la pila; nunca
+        # popear la raíz (dejaría la _default vacía en pantalla).
+        if len(self.screen_stack) > 2:
             self.pop_screen()
 
     def action_reload(self) -> None:
@@ -113,7 +126,8 @@ class ToolboxApp(App):
         elif cmd.action == "reload":
             self.action_reload()
         elif cmd.action == "platform":
-            while len(self.screen_stack) > 1:
+            # volver a PlatformsScreen (raíz) y desde ahí a la plataforma
+            while len(self.screen_stack) > 2:
                 self.pop_screen()
             self.push_tools_screen(cmd.arg)
         elif cmd.action == "tool":

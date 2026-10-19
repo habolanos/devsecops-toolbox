@@ -1277,6 +1277,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-18 | 1.8.97 | **Fix crash `NoMatches` en TUI** — `Esc` en la raíz no popea a `_default`; `:`/`/`/`Esc` en modales son seguros; `:plat` preserva back. tui v1.0.4 | `scm/tui/app.py`, `scm/tui/__init__.py`, `scm/tests/unit/test_tui_k9s.py` |
 | 2026-10-18 | 1.8.96 | **Ajustes del banner TUI** — separador `═══` retirado del bloque de info; `Profile: DevSecOps / SCM Engineer Platform`. tui v1.0.3 | `scm/tui/{widgets,screens,__init__}.py` |
 | 2026-10-18 | 1.8.95 | **Banner cyberpunk + ContextBar en la TUI** — logo `DSO` degradado cyan→azul→púrpura arriba-derecha, `[ DSO-TOOLBOX ]/Tactical Suite/Scope/Profile` izquierda, `CONTEXT/AUTH/TOOLS` con separadores; cmdline abajo (`toolbox>`/`:`/`/`) como k9s. tui v1.0.2 | `scm/tui/{skin,widgets,screens,__init__}.py` |
 | 2026-10-18 | 1.8.94 | **TUI opt-in con `--k9s-style`** — `python scm/main.py` vuelve a abrir el menú clásico por defecto; la TUI estilo k9s solo con `python scm/main.py --k9s-style`. main.py v1.8.36 | `scm/main.py`, `test_tui_k9s.py` |
