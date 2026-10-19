@@ -1,5 +1,6 @@
 """Screens de la TUI con el chrome estilo k9s (logo ▸ crumbs ▸ tabla ▸ hints)."""
 
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -58,9 +59,23 @@ def _outcome_count() -> int:
         return 0
 
 
+def _gcp_projects() -> tuple:
+    """(projects, default) desde gcp.service_accounts_reporter.projects;
+    el default es gcp.project_id del config."""
+    try:
+        cfg = json.loads((registry.SCM_DIR / "config.json")
+                         .read_text(encoding="utf-8"))
+        gcp = cfg.get("gcp", {})
+        sar = gcp.get("service_accounts_reporter", {})
+        return (sar.get("projects") or [],
+                gcp.get("project_id") or "")
+    except Exception:
+        return [], ""
+
+
 def _header_info() -> dict:
     """Info del banner (mockup cyberpunk): título, suite, scope, profile."""
-    return {
+    info = {
         "title": f"[{skin.WHITE} bold]\\[ DSO-TOOLBOX ][/]  "
                  f"[{skin.CYBER_PURPLE}]v{_version()}[/]",
         "suite": f"[{skin.CYBER_PURPLE}]DevSecOps Tactical Suite[/]",
@@ -74,6 +89,16 @@ def _header_info() -> dict:
                    f"[{skin.CYBER_PURPLE}]DevSecOps / SCM Engineer "
                    f"Platform[/]",
     }
+    projects, default = _gcp_projects()
+    if projects:
+        parts = [
+            f"[{skin.CYBER_GREEN} bold]★{p}[/]" if p == default
+            else f"[{skin.CYBER_WHITE}]{p}[/]"
+            for p in projects
+        ]
+        info["projects"] = (f"[{skin.WHITE} bold]Projects:[/] "
+                            f"{' '.join(parts)}")
+    return info
 
 
 def _sync_title(screen: Screen, view: str, ctx: str = "") -> None:

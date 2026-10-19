@@ -61,7 +61,7 @@ APP_CSS = f"""
 Screen {{ background: {BLACK}; }}
 
 /* ── Bloque superior: info izquierda + logo derecha ───────── */
-LogoHeader {{ height: 6; background: {BLACK}; }}
+LogoHeader {{ height: auto; background: {BLACK}; }}
 #k9s-info {{ color: {CYBER_WHITE}; padding: 0 1; width: 1fr; }}
 #logo {{ width: 33; padding: 0 1; content-align: right top; }}
 ContextBar {{

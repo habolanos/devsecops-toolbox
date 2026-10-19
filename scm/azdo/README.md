@@ -1277,6 +1277,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-18 | 1.8.101 | **Header TUI lista proyectos GCP** — `service_accounts_reporter.projects` bajo `Profile:`; default (`gcp.project_id`) marcado con `★`; `LogoHeader` `height: auto`. tui v1.0.8 | `scm/tui/{screens,skin,__init__}.py` |
 | 2026-10-18 | 1.8.100 | **Borde del ContextBar abajo** — separador único inferior (100% ancho); línea en blanco bajo el logo eliminada (header 7 → 6). tui v1.0.7 | `scm/tui/{skin,widgets,__init__}.py` |
 | 2026-10-18 | 1.8.99 | **ContextBar lista plataformas** — cada plataforma con dot de estado en la línea de contexto; separador único superior al 100% vía `border-top` CSS. tui v1.0.6 | `scm/tui/{widgets,screens,skin,__init__}.py` |
 | 2026-10-18 | 1.8.98 | **TUI de arranque instantáneo** — pantalla negra eliminada: shell pinta de inmediato y la data (config, `outcome/`, import del launcher) se hidrata en workers en background. tui v1.0.5 | `scm/tui/{screens,app,__init__}.py`, `scm/tests/unit/test_tui_k9s.py` |
