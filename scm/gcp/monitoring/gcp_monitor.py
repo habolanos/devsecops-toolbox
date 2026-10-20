@@ -150,7 +150,7 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-__version__ = "1.8.35"
+__version__ = "1.9.0"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAPEO DE TIPOS DE MÁQUINA A ESPECIFICACIONES
@@ -1124,6 +1124,7 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
     all_network_capacity = []
     all_nodes = []
     all_deploy_attention = []
+    all_deploy_restarts = []   # solo deployments con restarts > 0
     total_deployments = 0
     gke_metrics_all = {}
     # (gke_extra, health_status) por proyecto → tabla '🩺 Salud GKE'
@@ -1354,6 +1355,17 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
                     restarts_fmt,
                     dep_status_fmt,
                 ))
+                if restarts > 0:
+                    all_deploy_restarts.append((
+                        project_id,
+                        cluster_name[:25],
+                        dep.get('namespace', 'default'),
+                        dep.get('deployment', '')[:40],
+                        dep.get('pods', '0/0'),
+                        restarts,
+                        restarts_fmt,
+                        dep_status_fmt,
+                    ))
     
     if all_clusters:
         table = Table(title="☸️  Clusters GKE", box=box.ROUNDED)
@@ -1669,6 +1681,13 @@ def create_consolidated_detailed_tables(all_data: Dict[str, Dict[str, Any]], con
             pid: aggregate_gke_project_health(rows)
             for pid, rows in project_gke_rows.items()}
         console.print(create_consolidated_gke_health_table(project_health))
+        console.print()
+
+    # 🔄 Deployments/pods con reinicios — antes del plan de trabajo.
+    # Reusa los datos ya recolectados (sin nuevas consultas); ordenado
+    # de mayor a menor número de restarts.
+    if all_deploy_restarts:
+        console.print(create_gke_restarts_table(all_deploy_restarts))
         console.print()
 
     # 📋 Plan de Trabajo — consolida los hallazgos accionables de todas
@@ -2169,6 +2188,32 @@ def create_consolidated_gke_health_table(
             f"[bold]{tot['pods_not_running']}[/]", "",
             f"[bold]{tot['deploy_attention']}[/]",
             f"[bold]{tot['nodes_high']}[/]", "", "")
+    return table
+
+
+def create_gke_restarts_table(rows: List[tuple]) -> Table:
+    """Tabla '🔄 Pods/Deployments con reinicios': solo los deployments
+    con restarts > 0, ordenados de mayor a menor. Reusa los datos ya
+    consultados por la tabla de atención (sin nuevas consultas).
+
+    rows: (project, cluster, namespace, deployment, pods, restarts_int,
+           restarts_fmt, status_fmt)
+    """
+    rows = sorted(rows, key=lambda r: (-r[5], r[0], r[1], r[3]))
+    table = Table(
+        title=f"🔄 Pods/Deployments GKE con reinicios "
+              f"({len(rows)} — orden descendente)",
+        box=box.ROUNDED)
+    table.add_column("PROYECTO", style="magenta")
+    table.add_column("CLUSTER", style="cyan")
+    table.add_column("NAMESPACE", style="yellow")
+    table.add_column("DEPLOYMENT", style="cyan")
+    table.add_column("PODS", style="blue", justify="center")
+    table.add_column("RESTARTS", style="red", justify="right")
+    table.add_column("STATUS", justify="center")
+    for project_id, cname, ns, dep, pods, _r, restarts_fmt, st_fmt in rows:
+        table.add_row(project_id, cname, ns, dep, pods,
+                      restarts_fmt, st_fmt)
     return table
 
 

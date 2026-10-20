@@ -86,6 +86,36 @@ class TestConsolidatedHealthMatrix:
         assert "🟢 OK" in _render(t)
 
 
+@pytest.mark.skipif(not RICH, reason="rich no instalado")
+class TestGkeRestartsTable:
+    """Tabla 🔄 Pods/Deployments con reinicios — solo restarts>0, desc."""
+
+    def _row(self, restarts, project="p1", cluster="c1", dep="api"):
+        return (project, cluster, "ns", dep, "2/3", restarts,
+                str(restarts), f"[green]Running[/]")
+
+    def test_solo_restarts_y_desc(self):
+        rows = [self._row(3, dep="low"), self._row(42, dep="high"),
+                self._row(7, dep="mid")]
+        t = mon.create_gke_restarts_table(rows)
+        out = _render(t)
+        assert "reinicios (3" in out
+        # orden descendente: high(42) antes que mid(7) antes que low(3)
+        assert out.index("high") < out.index("mid") < out.index("low")
+
+    def test_row_count_y_columnas(self):
+        t = mon.create_gke_restarts_table([self._row(1)] * 5)
+        assert len(t.rows) == 5
+        headers = [str(c.header) for c in t.columns]
+        assert "RESTARTS" in headers and "STATUS" in headers
+
+    def test_desempate_por_recurso(self):
+        rows = [self._row(5, dep="b-app"), self._row(5, dep="a-app")]
+        t = mon.create_gke_restarts_table(rows)
+        out = _render(t)
+        assert out.index("a-app") < out.index("b-app")
+
+
 class TestAggregateGkeHealth:
     def _rows(self):
         return [
