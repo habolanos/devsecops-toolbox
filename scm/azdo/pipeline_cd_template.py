@@ -55,7 +55,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent          # scm/azdo
 SCM_ROOT = BASE_DIR.parent                          # scm/
 
-__version__ = "1.0.18"
+__version__ = "1.0.19"
 
 # Reuso del cliente/config del remediator (mismo directorio)
 try:
@@ -1292,7 +1292,8 @@ def _console_section_html() -> str:
         css = _style_to_css(style)
         esc = _html.escape(text)
         lines.append(f'<span style="{css}">{esc}</span>' if css else esc)
-    return f'<pre class="console">{"\n".join(lines)}</pre>'
+    joined = "\n".join(lines)
+    return f'<pre class="console">{joined}</pre>'
 
 
 def write_evidence_report(report_dir: Path) -> Optional[Path]:

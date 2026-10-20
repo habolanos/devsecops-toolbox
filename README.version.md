@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.0`** — 2026-10-18
+**`1.9.1`** — 2026-10-20
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-20 | **1.9.1** | **fix: SyntaxError en Python <3.12 (CI)** — `pipeline_cd_template.py` usaba `\n` dentro de un f-string (`{"\n".join(...)}`), válido solo desde 3.12; el CI corre 3.11 y fallaba la colección. Extraído a variable. pipeline_cd_template v1.0.19 | `scm/azdo/pipeline_cd_template.py`, `VERSION` |
 | 2026-10-18 | **1.9.0** | **Release 1.9.0** — bump de versión del proyecto a petición del usuario (solicitud explícita de minor bump); tag `1.9.0`. Cierra la serie de la TUI estilo k9s: TUI por defecto, skin stock, banner cyberpunk con proyectos GCP, arranque instantáneo con hidratación async. | `VERSION`, `README.md`, `README.version.md` |
 | 2026-10-18 | **1.8.103** | **TUI por defecto de nuevo** — `python scm/main.py` abre la TUI estilo k9s; `--classic` fuerza el menú numerado (opt-out). `--k9s-style` se acepta por compatibilidad. Fallback automático al clásico sin TTY/textual. main v1.8.37 | `scm/main.py`, `scm/tests/unit/test_tui_k9s.py`, `docs/features/rearchitect_like_k9s/*.md`, `VERSION` |
 | 2026-10-18 | **1.8.102** | **Header TUI: línea `Scope:` retirada** — el bloque de info queda con `[ DSO-TOOLBOX ]`, `DevSecOps Tactical Suite`, `Profile:` y `Projects:`. tui v1.0.9 | `scm/tui/screens.py`, `scm/tui/__init__.py`, `VERSION` |

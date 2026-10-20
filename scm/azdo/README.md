@@ -1277,6 +1277,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-20 | 1.9.1 | **fix SyntaxError Py<3.12** — `\n` dentro de f-string rompía colección en CI (Python 3.11). pipeline_cd_template v1.0.19 | `scm/azdo/pipeline_cd_template.py` |
 | 2026-10-18 | 1.9.0 | **Release 1.9.0** — bump del proyecto a `1.9.0` y tag `1.9.0` (solicitud explícita del usuario) | `VERSION`, `README.md`, `README.version.md` |
 | 2026-10-18 | 1.8.103 | **TUI por defecto** — `python scm/main.py` abre la TUI; `--classic` = menú numerado; `--k9s-style` aceptado por compatibilidad. main v1.8.37 | `scm/main.py`, `scm/tests/unit/test_tui_k9s.py` |
 | 2026-10-18 | 1.8.102 | **Header TUI: `Scope:` retirado** del bloque de info. tui v1.0.9 | `scm/tui/{screens,__init__}.py` |
