@@ -1207,23 +1207,30 @@ que se va a instalar sea coherente con su rollback antes del despliegue.
    artifact; *no* `definitionReference.repository`, que apunta al repo
    del YAML de CI, p.ej. `pipelines-projects`).
 3. Consulta el **build** (`_apis/build/builds/{id}`) — es el que vincula
-   todo: `build.repository` es el repo fuente real (nombre + url, se usa
-   para la `Ruta del Repositorio en Azure` y para buscar el PR), y se
-   valida que su `sourceVersion` coincida con el commit del artifact.
-4. Busca el **PR** en el repo fuente cuyo `lastMergeCommit` /
-   `lastMergeTargetCommit` / `lastMergeSourceCommit` coincida con el
-   commit del release → `PR asociado: #N ✔ commit coincide`.
+   todo: su sección **Repositories** (`build.sourceRepositories`) trae
+   cada checkout por alias (`self` = repo del YAML CI, `sources` = repo
+   fuente del componente, `archetype`, `properties`), con su
+   `sourceVersion` (commit de la compilación) y `sourceBranch`. El
+   `sources` da nombre + url del repo (`Ruta del Repositorio en Azure`) y
+   se valida que su `sourceVersion` coincida con el commit del artifact.
+4. Resuelve el **PR**: si el `sourceBranch` del `sources` (o del build)
+   es `refs/pull/{id}/merge|head` → consulta el PR por id en el repo
+   fuente y muestra su **commit definitivo**
+   (`lastMergeCommit`/`lastMergeSourceCommit`), contrastado con el commit
+   del release (`Commit definitivo del PR: <sha> ✔/✘`). Si no hay ref de
+   PR, hace fallback al scan de PRs completados que coincidan con el
+   commit.
 5. Lee la variable **`RELASE_ID`** (o `RELEASE_ID`) del release a instalar y
    la compara contra el release de rollback (por id numérico, con/sin ceros a
    la izquierda, o por nombre `Release-N`) → se muestra **en verde** si
    coincide, en rojo si no.
 6. **Commit Properties**: del `build.sourceRepositories` toma el
-   `sourceVersion` del repo de propiedades (commit de la compilación) y lo
-   contrasta con el último commit del folder `/{artifact.name}` dentro de
-   ese repo (`searchCriteria.itemPath`) → línea
-   `Commit Properties Folder /{componente}: <sha> ✔/✘`. El repo de
-   propiedades se identifica desde el build; si el build no expone
-   `sourceRepositories`, autodetecta el repo cuyo nombre contenga
+   `sourceVersion` del repo de propiedades — alias `properties` o nombre
+   que lo contenga — (commit de la compilación) y lo contrasta con el
+   último commit del folder `/{artifact.name}` dentro de ese repo
+   (`searchCriteria.itemPath`) → línea
+   `Commit Properties Folder /{componente}: <sha> ✔/✘`. Si el build no
+   expone `sourceRepositories`, autodetecta el repo cuyo nombre contenga
    `properties` (o `--properties-repo`).
 7. Los releases con **más de 30 días** (`STALE_DAYS`) se muestran en
    color tenue en la tabla de selección (ya no son válidos).
@@ -1355,6 +1362,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.6 | **Opción 47: sección Repositories del build + PR por ref** — `sourceRepositories` clasificado por alias (`sources`=fuente, `self`=YAML CI, `properties`); repo fuente y commit por entry, no `build.repository` (que apunta a `self`). PR resuelto por `refs/pull/{id}/merge` del `sourceBranch` → consulta directa por id y línea `Commit definitivo del PR` contrastado con el commit del release; fallback a scan de PRs completados. azdo_release_deploy_check v1.0.3. Tests: 56 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.5 | **Opción 47: repo fuente desde el build** — `componente` = `artifact.name` (validado con `build.repository.name`); `Ruta del Repositorio` = `build.repository.url` (repo fuente, no `pipelines-projects` del YAML CI); PR buscado en el repo fuente; `Commit Properties` = `sourceVersion` del repo properties en `build.sourceRepositories` (commit de la compilación) contrastado con el último commit del folder `/{artifact.name}`; releases >30 días en color tenue. azdo_release_deploy_check v1.0.2. Tests: 44 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.4 | **Opción 47: releases `inProgress` en amarillo** — el `STATUS` `inProgress` se pinta de amarillo en la tabla de selección de releases. azdo_release_deploy_check v1.0.1 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.3 | **AZDO opción 47: Release Deploy Check** — comparativo release a instalar vs rollback: lista releases prod, selección interactiva, valida build/commit/PR del artifact, variable `RELASE_ID`/`RELEASE_ID` en verde si coincide con el rollback, y último commit del folder del componente en el repo de propiedades. azdo_release_deploy_check v1.0.0. Tests: 36 | `scm/azdo/azdo_release_deploy_check.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md` |

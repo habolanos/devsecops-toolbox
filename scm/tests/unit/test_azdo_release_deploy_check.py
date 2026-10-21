@@ -65,20 +65,36 @@ def _build_artifact(build_id="5001", build_number="20261015.7",
 
 def _build_detail(source_version="9dad7445abcd1234",
                   repo_name="wms-sys-originalorder", repo_id="r-src",
-                  props_commit="a16b06c8"):
+                  props_commit="a16b06c8", pr_ref="refs/pull/521334/merge"):
+    """Replica la seccion 'Repositories' del build (screenshot AzDO):
+    self=pipelines-projects (YAML CI), sources=repo fuente,
+    archetype=pipeline-archetype-yml, properties=repo de propiedades."""
     return {
         "sourceVersion": source_version,
+        "sourceBranch": pr_ref or "",
         "repository": {
-            "id": repo_id, "name": repo_name,
-            "url": f"https://dev.azure.com/o/p/_git/{repo_name}",
+            "id": "ci-repo", "name": "pipelines-projects",
+            "url": "https://dev.azure.com/o/p/_git/pipelines-projects",
         },
         "sourceRepositories": [
-            {"repository": {"id": "ci-repo", "name": "pipelines-projects"},
-             "sourceVersion": "aaaa"},
-            {"repository": {"id": "props-1", "name": "devsecops-properties"},
-             "sourceVersion": props_commit},
-            {"repository": {"id": repo_id, "name": repo_name},
-             "sourceVersion": source_version},
+            {"alias": "self",
+             "repository": {"id": "ci-repo", "name": "pipelines-projects",
+                            "url": "https://dev.azure.com/o/p/_git/pipelines-projects"},
+             "sourceVersion": "9acc8cc3", "sourceBranch": "refs/heads/master"},
+            {"alias": "sources",
+             "repository": {"id": repo_id, "name": repo_name,
+                            "url": f"https://dev.azure.com/o/p/_git/{repo_name}"},
+             "sourceVersion": source_version, "sourceBranch": pr_ref},
+            {"alias": "archetype",
+             "repository": {"id": "arch-1", "name": "pipeline-archetype-yml",
+                            "url": "https://dev.azure.com/o/p/_git/pipeline-archetype-yml"},
+             "sourceVersion": "20691efb",
+             "sourceBranch": "refs/heads/feature/feature-amad"},
+            {"alias": "properties",
+             "repository": {"id": "props-1", "name": "properties",
+                            "url": "https://dev.azure.com/o/p/_git/properties"},
+             "sourceVersion": props_commit,
+             "sourceBranch": "refs/heads/master"},
         ],
     }
 
@@ -324,7 +340,7 @@ def test_releases_table_mas_de_30_dias_tenue(monkeypatch):
 # release_block — integracion con API mockeada
 # ═══════════════════════════════════════════════════════════════════════════
 def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
-               build=None):
+               build=None, pr_by_id=None):
     detail = _release(
         rel_id=61949, name="Release-382",
         artifacts=[_build_artifact()],
@@ -336,14 +352,17 @@ def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
                         lambda *a, **k: build or _build_detail())
     monkeypatch.setattr(rdc, "find_pr_for_commit",
                         lambda *a, **k: pr)
+    monkeypatch.setattr(rdc, "get_pull_request",
+                        lambda *a, **k: pr_by_id)
     monkeypatch.setattr(rdc, "last_commit_in_path",
                         lambda *a, **k: {"commitId": props_folder_commit}
                         if props_folder_commit else None)
 
 
 def test_release_block_fields(monkeypatch):
-    pr = {"pullRequestId": 42, "title": "feat"}
-    _mock_apis(monkeypatch, pr=pr)
+    pr = {"pullRequestId": 42, "title": "feat",
+          "lastMergeCommit": {"commitId": "9dad7445abcd1234"}}
+    _mock_apis(monkeypatch, pr_by_id=pr)
     rel = _release(rel_id=61949, name="Release-382",
                    artifacts=[_build_artifact()])
     b = rdc.release_block("https://dev.azure.com/o", "proj", rel,
@@ -357,19 +376,36 @@ def test_release_block_fields(monkeypatch):
     assert b["props_commit"] == "a16b06c8"
     assert b["props_folder_commit"] == "a16b06c8"
     assert b["props_match"] is True
-    # Ruta del repo = build.repository.url (repo fuente, no pipelines-projects)
+    # Ruta del repo = entry 'sources' del build (repo fuente)
     assert "wms-sys-originalorder" in b["repo_url"]
     assert "pipelines-projects" not in b["repo_url"]
     assert "@" not in b["repo_url"]
     assert b["commit_matches_build"] is True
+    # PR resuelto por ref refs/pull/521334/merge del sourceBranch
     assert b["pr"] is pr
+    assert b["pr_ref"] == "refs/pull/521334/merge"
+    assert b["pr_commit"] == "9dad7445abcd1234"
+    assert b["pr_commit_matches"] is True
     assert "releaseId=61949" in b["url"]
     assert b["variables"]["RELASE_ID"] == "61344"
     assert b["excepto_a"] == "N/A"
 
 
+def test_release_block_pr_fallback_scan(monkeypatch):
+    """Sin ref refs/pull en el build → scan de PRs completados."""
+    pr = {"pullRequestId": 7,
+          "lastMergeCommit": {"commitId": "9dad7445abcd1234"}}
+    _mock_apis(monkeypatch, pr=pr, pr_by_id=None,
+               build=_build_detail(pr_ref=""))
+    rel = _release(artifacts=[_build_artifact()])
+    b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
+                          False)
+    assert b["pr"] is pr
+    assert b["pr_ref"] == ""
+
+
 def test_release_block_pr_buscado_en_repo_fuente(monkeypatch):
-    """La PR se busca en build.repository.id (fuente), no en
+    """La PR se busca en el repo fuente (entry 'sources'), no en
     pipelines-projects."""
     seen = {}
 
@@ -377,7 +413,7 @@ def test_release_block_pr_buscado_en_repo_fuente(monkeypatch):
         seen["repo_id"] = repo_id
         return None
 
-    _mock_apis(monkeypatch)
+    _mock_apis(monkeypatch, build=_build_detail(pr_ref=""))
     monkeypatch.setattr(rdc, "find_pr_for_commit", fake_pr)
     rel = _release(artifacts=[_build_artifact()])
     rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master", False)
@@ -424,12 +460,86 @@ def test_strip_userinfo():
 def test_props_source_from_build():
     out = rdc.props_source_from_build(_build_detail(props_commit="deadbeef"))
     assert out["repo_id"] == "props-1"
-    assert out["repo_name"] == "devsecops-properties"
+    assert out["repo_name"] == "properties"
     assert out["commit"] == "deadbeef"
     assert rdc.props_source_from_build({})["commit"] == ""
     # build sin sourceRepositories (APIs viejas)
     assert rdc.props_source_from_build(
         {"sourceVersion": "x"})["commit"] == ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# sourceRepositories — seccion 'Repositories' del build
+# ═══════════════════════════════════════════════════════════════════════════
+def test_build_source_entries():
+    entries = rdc.build_source_entries(_build_detail())
+    assert len(entries) == 4
+    by_alias = {e["alias"]: e for e in entries}
+    assert by_alias["self"]["repo_name"] == "pipelines-projects"
+    assert by_alias["sources"]["commit"] == "9dad7445abcd1234"
+    assert by_alias["sources"]["branch"] == "refs/pull/521334/merge"
+    assert by_alias["properties"]["commit"] == "a16b06c8"
+    assert by_alias["archetype"]["repo_name"] == "pipeline-archetype-yml"
+
+
+def test_find_source_entry():
+    entries = rdc.build_source_entries(_build_detail())
+    # por artifact.name
+    e = rdc.find_source_entry(entries, "wms-sys-originalorder")
+    assert e["alias"] == "sources"
+    # por alias sources
+    e = rdc.find_source_entry(entries, "otro-nombre")
+    assert e["alias"] == "sources"
+    # sin alias sources → el primero que no sea self/archetype/properties
+    build = _build_detail()
+    for sr in build["sourceRepositories"]:
+        if sr["alias"] == "sources":
+            sr["alias"] = "custom"
+    e = rdc.find_source_entry(rdc.build_source_entries(build),
+                              "otro-nombre")
+    assert e["repo_name"] == "wms-sys-originalorder"
+    assert rdc.find_source_entry([], "x") is None
+
+
+def test_find_props_entry():
+    entries = rdc.build_source_entries(_build_detail())
+    assert rdc.find_props_entry(entries)["repo_name"] == "properties"
+    assert rdc.find_props_entry([]) is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PR — refs/pull/{id} y commit definitivo
+# ═══════════════════════════════════════════════════════════════════════════
+@pytest.mark.parametrize("ref,expected", [
+    ("refs/pull/521334/merge", 521334),
+    ("refs/pull/42/head", 42),
+    ("refs/heads/master", None),
+    ("master", None),
+    ("", None),
+    (None, None),
+])
+def test_pr_id_from_ref(ref, expected):
+    assert rdc.pr_id_from_ref(ref) == expected
+
+
+def test_pr_commit_info():
+    pr = {"lastMergeCommit": {"commitId": "m1"},
+          "lastMergeSourceCommit": {"commitId": "s1"},
+          "lastMergeTargetCommit": {"commitId": "t1"}}
+    info = rdc.pr_commit_info(pr)
+    assert info == {"merge": "m1", "source": "s1", "target": "t1"}
+    assert rdc.pr_commit_info(None) == {"merge": "", "source": "",
+                                        "target": ""}
+
+
+def test_pr_matches_commit():
+    pr = {"lastMergeCommit": {"commitId": "AAA"},
+          "lastMergeSourceCommit": {"commitId": "BBB"}}
+    assert rdc.pr_matches_commit(pr, "aaa") is True
+    assert rdc.pr_matches_commit(pr, "BBB") is True
+    assert rdc.pr_matches_commit(pr, "ccc") is False
+    assert rdc.pr_matches_commit(pr, "") is False
+    assert rdc.pr_matches_commit(None, "aaa") is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -452,7 +562,9 @@ def _block(**kw):
         "commit": "9dad7445abcd", "commit_short": "9dad7445",
         "build_commit": "9dad7445abcd", "commit_matches_build": True,
         "component_matches_build_repo": True,
-        "pr": None, "props_commit": "a16b06c8",
+        "pr": None, "pr_ref": "", "pr_commit": "",
+        "pr_commit_short": "", "pr_commit_matches": False,
+        "props_commit": "a16b06c8",
         "props_folder_commit": "a16b06c8", "props_match": True,
         "props_folder": "wms-sys-originalorder",
         "repo_url": "http://repo", "variables": {},
