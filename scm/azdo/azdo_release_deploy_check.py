@@ -1,0 +1,601 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+azdo_release_deploy_check.py
+
+Analisis de despliegue CD: compara el release que se va a instalar contra
+su release de rollback para un Pipeline CD de Azure DevOps.
+
+Flujo interactivo:
+  1. Lista los releases del pipeline CD (ultimo deploy a produccion +
+     los mas recientes) y pregunta cual se instala y cual es el rollback.
+  2. Por cada release consulta el artifact primario (build id, numero de
+     compilacion, commit sourceVersion) y el repo Git vinculado.
+  3. Consulta el build para validar que el PR que lo origino corresponde
+     con el commit empaquetado en el release.
+  4. Lee la variable RELASE_ID / RELEASE_ID del release a instalar y la
+     compara contra el release de rollback (verde = coincide).
+  5. Consulta el repositorio de propiedades y muestra el ultimo commit
+     del folder con el nombre del componente.
+  6. Imprime el comparativo listo para evidencia.
+
+Autor: Harold Adrian
+"""
+
+import argparse
+import base64
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
+
+import requests
+
+try:
+    from utils import get_output_dir
+except ImportError:
+    def get_output_dir(default="."):
+        env = os.getenv("DEVSECOPS_OUTPUT_DIR")
+        if env:
+            p = Path(env)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        p = Path(default)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich import box
+    RICH = True
+    console = Console()
+except ImportError:
+    RICH = False
+    console = None
+
+__version__ = "1.0.0"
+__author__ = "Harold Adrian"
+
+DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
+DEFAULT_PROJECT = "Cadena_de_Suministros"
+API_VERSION = "7.1"
+API_VERSION_REL = "7.2-preview.8"
+API_VERSION_DEF = "7.2-preview.4"
+API_VERSION_BUILD = "7.1"
+PROD_KEYWORDS = ("prod", "prd", "production")
+TOP_RELEASES = 50
+TOP_PR_SEARCH = 60
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ARGS / HTTP / HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+def get_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Comparativo release a instalar vs rollback para un CD")
+    p.add_argument("--pat", required=True)
+    p.add_argument("--org", default=DEFAULT_ORG_URL)
+    p.add_argument("--project", default=DEFAULT_PROJECT)
+    p.add_argument("--definition-id", "--id", dest="definition_id", type=int,
+                   required=True)
+    p.add_argument("--properties-repo", default="",
+                   help="Nombre del repo de propiedades (default: autodetectar "
+                        "repo que contenga 'properties')")
+    p.add_argument("--branch", default="master",
+                   help="Rama para consultar commits del repo de propiedades")
+    p.add_argument("--top", type=int, default=TOP_RELEASES,
+                   help="Max releases a listar")
+    p.add_argument("--debug", action="store_true")
+    return p.parse_args()
+
+
+def make_headers(pat: str) -> Dict[str, str]:
+    token = base64.b64encode(f":{pat}".encode()).decode()
+    return {"Authorization": f"Basic {token}",
+            "Accept": "application/json"}
+
+
+def vsrm(org_url: str) -> str:
+    if "vsrm.dev.azure.com" in org_url:
+        return org_url
+    return org_url.replace("dev.azure.com", "vsrm.dev.azure.com")
+
+
+def api_get(url: str, headers: Dict, params: Dict = None,
+            debug: bool = False) -> Optional[Any]:
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=40)
+        if r.status_code >= 400 and debug:
+            print(f"[DEBUG] HTTP {r.status_code} {url}\n{r.text[:400]}")
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] {url}: {e}")
+        return None
+
+
+def _print(msg: str = "", markup: bool = True) -> None:
+    if RICH and console:
+        console.print(msg, markup=markup)
+    else:
+        import re
+        print(re.sub(r"\[/?[a-zA-Z0-9_# =]+\]", "", str(msg)))
+
+
+def _is_prod_env(name: str) -> bool:
+    n = (name or "").lower()
+    return any(k in n for k in PROD_KEYWORDS)
+
+
+def _parse_iso(s: str) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _fmt_date(s: str) -> str:
+    d = _parse_iso(s)
+    return d.strftime("%Y-%m-%d %H:%M") if d else "—"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RELEASE DATA
+# ═══════════════════════════════════════════════════════════════════════════════
+def get_definition(org, project, def_id, headers, debug) -> Optional[Dict]:
+    url = f"{vsrm(org)}/{quote(project, safe='')}/_apis/release/definitions/{def_id}"
+    return api_get(url, headers, {"api-version": API_VERSION_DEF}, debug)
+
+
+def get_releases(org, project, def_id, headers, top, debug) -> List[Dict]:
+    url = f"{vsrm(org)}/{quote(project, safe='')}/_apis/release/releases"
+    data = api_get(url, headers, {
+        "api-version": API_VERSION_REL,
+        "definitionId": def_id, "$top": top,
+        "$expand": "environments,artifacts",
+    }, debug)
+    return data.get("value", []) if data else []
+
+
+def get_release_detail(org, project, rel_id, headers, debug) -> Optional[Dict]:
+    url = (f"{vsrm(org)}/{quote(project, safe='')}"
+           f"/_apis/release/releases/{rel_id}")
+    return api_get(url, headers, {"api-version": API_VERSION_REL,
+                                  "$expand": "artifacts"}, debug)
+
+
+def release_prod_status(rel: Dict) -> Tuple[str, str]:
+    """(status, fecha) del environment de produccion mas reciente."""
+    best = ("", "")
+    for env in rel.get("environments", []) or []:
+        if not _is_prod_env(env.get("name", "")):
+            continue
+        status = env.get("status", "")
+        when = ""
+        for step in env.get("deploySteps", []) or []:
+            if step.get("deploymentStatus") in ("succeeded",
+                                                "partiallySucceeded"):
+                when = step.get("finishedOn", "") or when
+        if not when:
+            when = env.get("modifiedOn", "")
+        return status or "?", when
+    return best
+
+
+def extract_primary_artifact(rel: Dict) -> Optional[Dict]:
+    """Artifact primario tipo Build (o el primero disponible)."""
+    arts = rel.get("artifacts", []) or []
+    if not arts:
+        return None
+    arts = sorted(arts, key=lambda a: not a.get("isPrimary", False))
+    for a in arts:
+        if a.get("type") == "Build":
+            return a
+    return arts[0]
+
+
+def artifact_info(art: Optional[Dict]) -> Dict[str, str]:
+    """Extrae build_id, build_number, commit, repo del artifact."""
+    info = {"build_id": "", "build_number": "", "commit": "",
+            "repo_id": "", "repo_name": ""}
+    if not art:
+        return info
+    ref = art.get("definitionReference", {}) or {}
+    ver = ref.get("version") or {}
+    info["build_id"] = str(ver.get("id", "") or "")
+    info["build_number"] = ver.get("name", "") or ""
+    sv = ref.get("sourceVersion") or {}
+    info["commit"] = sv.get("id", "") or ""
+    repo = ref.get("repository") or {}
+    info["repo_id"] = repo.get("id", "") or ""
+    info["repo_name"] = (repo.get("name", "")
+                         or ref.get("repositoryName", {})
+                         or "")
+    if isinstance(info["repo_name"], dict):
+        info["repo_name"] = info["repo_name"].get("id", "")
+    if not info["repo_name"]:
+        info["repo_name"] = art.get("alias", "")
+    return info
+
+
+def release_variables(rel: Dict) -> Dict[str, str]:
+    out = {}
+    for name, v in (rel.get("variables") or {}).items():
+        if isinstance(v, dict):
+            out[name.upper()] = str(v.get("value", "") or "")
+        else:
+            out[name.upper()] = str(v)
+    return out
+
+
+def relase_id_matches_rollback(value: str, rollback_name: str,
+                               rollback_id) -> bool:
+    """True si la variable RELASE_ID del release a instalar apunta al
+    release de rollback (por id numerico o nombre Release-N)."""
+    v = (value or "").strip()
+    if not v:
+        return False
+    rid = str(rollback_id or "")
+    return (v == rid or v.lstrip("0") == rid.lstrip("0")
+            or v.lower() == (rollback_name or "").lower())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BUILD / PR / GIT
+# ═══════════════════════════════════════════════════════════════════════════════
+def get_build(org, project, build_id, headers, debug) -> Optional[Dict]:
+    url = f"{org}/{quote(project, safe='')}/_apis/build/builds/{build_id}"
+    return api_get(url, headers, {"api-version": API_VERSION_BUILD}, debug)
+
+
+def get_repositories(org, project, headers, debug) -> List[Dict]:
+    url = f"{org}/{quote(project, safe='')}/_apis/git/repositories"
+    data = api_get(url, headers, {"api-version": API_VERSION}, debug)
+    return data.get("value", []) if data else []
+
+
+def find_pr_for_commit(org, project, repo_id, commit, headers,
+                       debug) -> Optional[Dict]:
+    """Busca el PR cuyo merge commit coincide con el commit del release.
+
+    Compara lastMergeCommit / lastMergeTargetCommit /
+    lastMergeSourceCommit de los PRs completados mas recientes.
+    """
+    if not repo_id or not commit:
+        return None
+    url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
+           f"{quote(repo_id, safe='')}/pullrequests")
+    data = api_get(url, headers, {
+        "api-version": API_VERSION,
+        "searchCriteria.status": "completed",
+        "$top": TOP_PR_SEARCH,
+    }, debug)
+    for pr in (data or {}).get("value", []) or []:
+        for key in ("lastMergeCommit", "lastMergeTargetCommit",
+                    "lastMergeSourceCommit"):
+            c = (pr.get(key) or {}).get("commitId", "")
+            if c and c.lower() == commit.lower():
+                return pr
+    return None
+
+
+def last_commit_in_path(org, project, repo_id, path, branch, headers,
+                        debug) -> Optional[Dict]:
+    """Ultimo commit que toco el folder `path` en `branch`."""
+    url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
+           f"{quote(repo_id, safe='')}/commits")
+    data = api_get(url, headers, {
+        "api-version": API_VERSION,
+        "searchCriteria.itemPath": path,
+        "searchCriteria.itemVersion.version": branch,
+        "searchCriteria.itemVersion.versionType": "branch",
+        "$top": 1,
+    }, debug)
+    commits = (data or {}).get("value", []) if data else []
+    return commits[0] if commits else None
+
+
+def find_properties_repo(repos: List[Dict], hint: str) -> Optional[Dict]:
+    """Repo de propiedades: match exacto con hint, o nombre que contenga
+    'properties'."""
+    if hint:
+        for r in repos:
+            if r.get("name", "").lower() == hint.lower():
+                return r
+        for r in repos:
+            if hint.lower() in r.get("name", "").lower():
+                return r
+    for r in repos:
+        if "properties" in r.get("name", "").lower():
+            return r
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UI — seleccion de releases
+# ═══════════════════════════════════════════════════════════════════════════════
+def choose_release(releases: List[Dict], prompt_label: str,
+                   exclude_id: int = 0) -> Optional[Dict]:
+    """Lista los releases y pide elegir uno por numero/nombre."""
+    while True:
+        if RICH and console:
+            console.print(f"\n[bold cyan]{prompt_label}[/] "
+                          "[dim](numero de la lista, nombre Release-N "
+                          "o id — 'q' para salir)[/]")
+        else:
+            print(f"\n{prompt_label} (numero, nombre Release-N o id — "
+                  f"'q' para salir):")
+        val = input("> ").strip()
+        if val.lower() in ("q", "quit", "exit"):
+            return None
+        if not val:
+            continue
+        # numero de la lista
+        if val.isdigit():
+            idx = int(val)
+            if 1 <= idx <= len(releases):
+                pick = releases[idx - 1]
+                if exclude_id and pick.get("id") == exclude_id:
+                    _print("[red]No puede ser el mismo release que el "
+                           "anterior — elige otro.[/]")
+                    continue
+                return pick
+        # nombre Release-N
+        for rel in releases:
+            if rel.get("name", "").lower() == val.lower():
+                if exclude_id and rel.get("id") == exclude_id:
+                    _print("[red]No puede ser el mismo release — "
+                           "elige otro.[/]")
+                    break
+                return rel
+        # id numerico
+        if val.isdigit():
+            for rel in releases:
+                if rel.get("id") == int(val):
+                    if exclude_id and rel.get("id") == exclude_id:
+                        _print("[red]No puede ser el mismo release — "
+                               "elige otro.[/]")
+                        break
+                    return rel
+        _print("[yellow]Seleccion no valida — intenta de nuevo.[/]")
+
+
+def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
+    if RICH and console:
+        t = Table(title=f"🚀 Releases del pipeline CD {tz_note}",
+                  box=box.ROUNDED)
+        t.add_column("#", style="dim", justify="right")
+        t.add_column("RELEASE", style="cyan", no_wrap=True, min_width=11)
+        t.add_column("ID", style="magenta", justify="right")
+        t.add_column("CREADO", style="yellow", no_wrap=True)
+        t.add_column("STATUS", justify="center")
+        t.add_column("PROD", justify="center")
+        t.add_column("PROD FECHA", style="green", no_wrap=True)
+        t.add_column("BUILD", style="cyan", no_wrap=True)
+        for i, rel in enumerate(releases, 1):
+            pst, pdate = release_prod_status(rel)
+            art = extract_primary_artifact(rel)
+            ai = artifact_info(art)
+            prod_fmt = (f"[green]{pst}[/]" if pst in
+                        ("succeeded", "partiallySucceeded")
+                        else (f"[red]{pst}[/]" if pst else "—"))
+            t.add_row(str(i), rel.get("name", ""), str(rel.get("id", "")),
+                      _fmt_date(rel.get("createdOn", "")),
+                      rel.get("status", ""), prod_fmt,
+                      _fmt_date(pdate), ai["build_number"] or "—")
+        console.print(t)
+    else:
+        for i, rel in enumerate(releases, 1):
+            pst, pdate = release_prod_status(rel)
+            print(f"{i:>3}. {rel.get('name',''):<14} "
+                  f"id={rel.get('id','')} {rel.get('status','')} "
+                  f"prod={pst or '-'} {_fmt_date(pdate)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REPORTE COMPARATIVO
+# ═══════════════════════════════════════════════════════════════════════════════
+def release_block(org, project, rel, defn_name, headers, props_repo,
+                  repos_by_name, branch, debug) -> Dict[str, Any]:
+    """Arma el bloque de datos de un release para el comparativo."""
+    rel_id = rel.get("id")
+    detail = get_release_detail(org, project, rel_id, headers, debug) or rel
+    art = extract_primary_artifact(detail)
+    ai = artifact_info(art)
+    repo = repos_by_name.get((ai["repo_name"] or "").lower()) or {}
+    repo_url = repo.get("remoteUrl", "") or ""
+    repo_id = repo.get("id", "") or ai["repo_id"]
+
+    # PR asociado al commit del artifact
+    pr = find_pr_for_commit(org, project, repo_id, ai["commit"], headers,
+                            debug)
+    build = get_build(org, project, ai["build_id"], headers, debug) \
+        if ai["build_id"] else None
+    build_commit = (build or {}).get("sourceVersion", "") or ""
+
+    # Commit del folder en el repo de propiedades
+    props_commit = ""
+    if props_repo and ai["repo_name"]:
+        c = last_commit_in_path(org, project, props_repo["id"],
+                                f"/{ai['repo_name']}", branch, headers,
+                                debug)
+        props_commit = (c or {}).get("commitId", "")
+
+    url = (f"{org}/{quote(project, safe='')}/_releaseProgress?"
+           f"releaseId={rel_id}&_a=release-pipeline-progress")
+
+    return {
+        "component": ai["repo_name"] or "N/A",
+        "release_name": detail.get("name", rel.get("name", "")),
+        "release_id": rel_id,
+        "pipeline": defn_name,
+        "url": url,
+        "build_id": ai["build_id"],
+        "build_number": ai["build_number"],
+        "commit": ai["commit"],
+        "commit_short": (ai["commit"] or "")[:8],
+        "build_commit": build_commit,
+        "commit_matches_build": bool(
+            ai["commit"] and build_commit
+            and ai["commit"].lower() == build_commit.lower()),
+        "pr": pr,
+        "props_commit": props_commit,
+        "repo_url": repo_url,
+        "variables": release_variables(detail),
+        "excepto_a": (release_variables(detail).get("EXCEPTO_A")
+                      or release_variables(detail).get("EXCEPTOA")
+                      or "N/A"),
+    }
+
+
+def print_block(b: Dict[str, Any], org_project_label: str,
+                rollback_match: Optional[bool] = None,
+                release_id_var: str = "") -> None:
+    """Imprime el bloque del comparativo en el formato pedido."""
+    lines = []
+    lines.append(f"Nombre del componente: {b['component']}")
+    lines.append(f"Nombre Organización: {org_project_label}")
+    lines.append(f"Nombre del Release: {b['release_name']}")
+    lines.append(f"Pipeline de CD: {b['pipeline']}")
+    lines.append(b["url"])
+    lines.append(f"No. compilación: {b['build_number'] or 'N/A'}")
+    lines.append(f"Commit Release: {b['commit_short'] or 'N/A'}")
+    lines.append(f"Commit Properties: {b['props_commit'] or 'N/A'}")
+    lines.append(f"Ruta del Repositorio en Azure: {b['repo_url'] or 'N/A'}")
+    lines.append(f"Excepto a: {b['excepto_a']}")
+    if release_id_var:
+        mark = ("[green]✔ coincide con el rollback[/]"
+                if rollback_match else
+                "[red]✘ NO coincide con el rollback[/]")
+        lines.append(f"Variable RELASE_ID: {release_id_var} {mark}")
+    pr = b.get("pr")
+    if pr:
+        pr_title = pr.get("title", "")[:60]
+        lines.append(
+            f"PR asociado: #{pr.get('pullRequestId')} {pr_title} "
+            f"[green]✔ commit coincide[/]")
+    elif b.get("commit"):
+        lines.append("PR asociado: no encontrado para el commit "
+                     "[yellow]⚠[/]")
+    if b.get("build_commit"):
+        ok = b["commit_matches_build"]
+        lines.append(
+            f"Commit build {b['build_commit'][:8]}: "
+            + ("[green]✔ coincide con artifact[/]" if ok else
+               "[red]✘ difiere del artifact[/]"))
+    if RICH and console:
+        console.print(Panel("\n".join(lines), box=box.ROUNDED))
+    else:
+        print("\n".join(lines))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════════════════
+def main() -> int:
+    args = get_args()
+    headers = make_headers(args.pat)
+    org = args.org.rstrip("/")
+    project = args.project
+
+    _print(f"[bold cyan]🔎 Release Deploy Check — pipeline "
+           f"{args.definition_id}[/]")
+
+    defn = get_definition(org, project, args.definition_id, headers,
+                          args.debug)
+    if not defn:
+        _print("[red]❌ No se encontro la definicion del pipeline "
+               f"{args.definition_id}[/]")
+        return 1
+    defn_name = defn.get("name", "")
+    _print(f"[dim]Pipeline CD: {defn_name}[/]")
+
+    releases = get_releases(org, project, args.definition_id, headers,
+                            args.top, args.debug)
+    if not releases:
+        _print("[red]❌ El pipeline no tiene releases.[/]")
+        return 1
+
+    print_releases_table(releases)
+
+    rel_install = choose_release(releases,
+                                 "¿Cuál release se va a INSTALAR?")
+    if rel_install is None:
+        _print("[yellow]Cancelado.[/]")
+        return 0
+    rel_rollback = choose_release(releases,
+                                  "¿Cuál es el release de ROLLBACK?",
+                                  exclude_id=rel_install.get("id", 0))
+    if rel_rollback is None:
+        _print("[yellow]Cancelado.[/]")
+        return 0
+
+    _print("\n[dim]Consultando artifacts, builds, PRs y repositorios…[/]")
+
+    repos = get_repositories(org, project, headers, args.debug)
+    repos_by_name = {r.get("name", "").lower(): r for r in repos}
+    props_repo = find_properties_repo(repos, args.properties_repo)
+
+    org_label = project.replace("_", " ")
+
+    b_install = release_block(org, project, rel_install, defn_name,
+                              headers, props_repo, repos_by_name,
+                              args.branch, args.debug)
+    b_rollback = release_block(org, project, rel_rollback, defn_name,
+                               headers, props_repo, repos_by_name,
+                               args.branch, args.debug)
+
+    # RELASE_ID / RELEASE_ID del release a instalar vs rollback
+    rel_var = (b_install["variables"].get("RELASE_ID")
+               or b_install["variables"].get("RELEASE_ID") or "")
+    rb_name = str(b_rollback["release_name"])
+    rb_id = str(b_rollback["release_id"])
+    rollback_match = (relase_id_matches_rollback(rel_var, rb_name, rb_id)
+                      if rel_var else None)
+
+    _print("\n[bold green]══════════ RELEASE A INSTALAR "
+           "══════════[/]")
+    print_block(b_install, org_label, rollback_match=rollback_match,
+                release_id_var=rel_var)
+
+    _print("\n[bold yellow]══════════ ROLLBACK "
+           "══════════[/]")
+    print_block(b_rollback, org_label)
+
+    # Resumen de validacion
+    _print("\n[bold cyan]── Validaciones ──[/]")
+    if rel_var:
+        if rollback_match:
+            _print(f"[green]✔ RELASE_ID={rel_var} coincide con el "
+                   f"rollback {rb_name}[/]")
+        else:
+            _print(f"[red]✘ RELASE_ID={rel_var} NO coincide con el "
+                   f"rollback {rb_name} (id {rb_id})[/]")
+    else:
+        _print("[dim]El release a instalar no tiene variable "
+               "RELASE_ID/RELEASE_ID.[/]")
+    for tag, b in (("instalar", b_install), ("rollback", b_rollback)):
+        if b["pr"]:
+            _print(f"[green]✔ Release a {tag}: PR "
+                   f"#{b['pr'].get('pullRequestId')} corresponde al "
+                   f"commit {b['commit_short']}[/]")
+        elif b["commit"]:
+            _print(f"[yellow]⚠ Release a {tag}: no se encontro PR "
+                   f"para el commit {b['commit_short']}[/]")
+
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\nCancelado.")
+        sys.exit(130)

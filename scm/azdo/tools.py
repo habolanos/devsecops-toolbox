@@ -389,6 +389,14 @@ TOOLS: Dict = {
         "group":       "release",
         "status":      "ready",
     },
+    "47": {
+        "name":        "Release Deploy Check",
+        "description": "Comparativo release a instalar vs rollback: lista releases de producción, valida build/commit/PR, variable RELASE_ID y commit en repo de propiedades",
+        "path":        "azdo_release_deploy_check.py",
+        "args":        ["--pat", "--org", "--project", "--definition-id", "--properties-repo", "--branch", "--top", "--debug"],
+        "group":       "release",
+        "status":      "ready",
+    },
     "40": {
         "name":        "Health Probe Masivo Validator",
         "description": "Validación masiva de health probes en K8s desde AZDO - Mapeo de stages, pruebas de conectividad, reportería ejecutiva",

@@ -1187,6 +1187,73 @@ outcome/
 └── pipeline_drift_20250320_142233.xlsx      ← celdas de severidad coloreadas
 ```
 
+### 13 · Release Deploy Check — opción 47 — `azdo_release_deploy_check.py`
+
+Comparativo **release a instalar vs rollback** para un Pipeline CD. Complementa
+la opción 26 (Pipeline History): en vez de revisar la evolución de la
+definición, trabaja sobre los **releases** del pipeline y valida que el release
+que se va a instalar sea coherente con su rollback antes del despliegue.
+
+#### Flujo
+
+1. Lista los últimos releases del pipeline (columna `PROD` marca los
+   environments con nombre prod/prd/production) y pregunta:
+   - **¿Cuál release se va a INSTALAR?** (número de lista, `Release-N` o id)
+   - **¿Cuál es el release de ROLLBACK?** (no permite repetir el anterior)
+2. Por cada release consulta el **artifact primario tipo Build**:
+   `build_id` (`definitionReference.version.id`), `No. compilación`
+   (`version.name`) y `Commit Release` (`sourceVersion.id`, 8 chars).
+3. Consulta el **build** (`_apis/build/builds/{id}`) y valida que su
+   `sourceVersion` coincida con el commit del artifact.
+4. Busca el **PR** cuyo `lastMergeCommit` / `lastMergeTargetCommit` /
+   `lastMergeSourceCommit` coincida con el commit del release →
+   `PR asociado: #N ✔ commit coincide`.
+5. Lee la variable **`RELASE_ID`** (o `RELEASE_ID`) del release a instalar y
+   la compara contra el release de rollback (por id numérico, con/sin ceros a
+   la izquierda, o por nombre `Release-N`) → se muestra **en verde** si
+   coincide, en rojo si no.
+6. Localiza el **repositorio de propiedades** (`--properties-repo`, o
+   autodetecta el repo cuyo nombre contenga `properties`) y muestra el último
+   commit del folder con el nombre del componente
+   (`searchCriteria.itemPath=/{repo_name}`) → `Commit Properties`.
+7. Imprime el comparativo en el formato de evidencia (componente,
+   organización, release, pipeline, URL `_releaseProgress`, compilación,
+   commits, ruta del repo y `Excepto a`) + resumen de validaciones.
+
+#### Argumentos CLI
+
+| Arg | Default | Descripción |
+|---|---|---|
+| `--pat` | — | PAT (scopes: Release read + Code read + Build read) |
+| `--org` | `https://dev.azure.com/Coppel-Retail` | URL de la organización |
+| `--project` | `Cadena_de_Suministros` | Proyecto |
+| `--definition-id` | — | **Obligatorio.** Id del pipeline CD |
+| `--properties-repo` | autodetectar | Nombre del repo de propiedades |
+| `--branch` | `master` | Rama para el commit del folder en properties |
+| `--top` | `50` | Máx. releases a listar |
+| `--debug` | off | Imprime respuestas HTTP con error |
+
+#### Ejemplo
+
+```bash
+python azdo_release_deploy_check.py --pat "$PAT" --definition-id 1234
+```
+
+```
+Nombre del componente: wms-sys-originalorder
+Nombre Organización: Cadena de Suministros
+Nombre del Release: Release-382
+Pipeline de CD: wms-sys-originalorder-springboot-java17-GKE-WMS-CD
+https://dev.azure.com/.../_releaseProgress?releaseId=61949&_a=release-pipeline-progress
+No. compilación: 20261015.7
+Commit Release: 9dad7445
+Commit Properties: a16b06c8218bcf87cdbce61390578bbdda1480d1
+Ruta del Repositorio en Azure: https://dev.azure.com/.../_git/wms-sys-originalorder
+Excepto a: N/A
+Variable RELASE_ID: 61344 ✔ coincide con el rollback
+PR asociado: #4210 feat: ... ✔ commit coincide
+```
+
 ---
 
 ## API REST de Azure DevOps
@@ -1277,6 +1344,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.3 | **AZDO opción 47: Release Deploy Check** — comparativo release a instalar vs rollback: lista releases prod, selección interactiva, valida build/commit/PR del artifact, variable `RELASE_ID`/`RELEASE_ID` en verde si coincide con el rollback, y último commit del folder del componente en el repo de propiedades. azdo_release_deploy_check v1.0.0. Tests: 36 | `scm/azdo/azdo_release_deploy_check.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md` |
 | 2026-10-20 | 1.9.2 | **GCP opción 1: tabla de reinicios** — `🔄 Pods/Deployments GKE con reinicios` antes del plan de trabajo; solo restarts>0, desc; reusa datos ya consultados. gcp_monitor v1.9.0 | `scm/gcp/monitoring/gcp_monitor.py`, `scm/tests/unit/test_gcp_monitor_consolidated.py` |
 | 2026-10-20 | 1.9.1 | **fix SyntaxError Py<3.12** — `\n` dentro de f-string rompía colección en CI (Python 3.11). pipeline_cd_template v1.0.19 | `scm/azdo/pipeline_cd_template.py` |
 | 2026-10-18 | 1.9.0 | **Release 1.9.0** — bump del proyecto a `1.9.0` y tag `1.9.0` (solicitud explícita del usuario) | `VERSION`, `README.md`, `README.version.md` |
