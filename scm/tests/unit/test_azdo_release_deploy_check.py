@@ -594,6 +594,57 @@ def test_find_source_entry():
     assert rdc.find_source_entry([], "x") is None
 
 
+def test_find_source_entry_excluye_repo_ci():
+    """Caso real: alias 'sources' apunta a pipelines-projects (repo del
+    YAML CI) — con exclude debe ignorarlo y resolver por prefijo."""
+    build = {"sourceRepositories": [
+        {"alias": "sources",
+         "repository": {"id": "ci-repo", "name": "pipelines-projects"},
+         "sourceVersion": "9acc"},
+        {"alias": "app",
+         "repository": {"id": "r-src", "name": "oms-com-order"},
+         "sourceVersion": "cf6e2244"},
+    ]}
+    entries = rdc.build_source_entries(build)
+    # sin exclude → ganaria 'sources' = pipelines-projects (el bug real)
+    assert rdc.find_source_entry(
+        entries, "x")["repo_name"] == "pipelines-projects"
+    # con exclude → prefijo sobre el nombre del artifact
+    e = rdc.find_source_entry(
+        entries, "_oms-com-order-springboot-java17-GKE-TMS-OMS-CI",
+        exclude="pipelines-projects")
+    assert e["repo_name"] == "oms-com-order"
+
+
+def test_release_block_sources_alias_es_repo_ci(monkeypatch):
+    """El alias 'sources' → pipelines-projects (repo del CI) no debe
+    ganar: se resuelve el repo real por prefijo del artifact.name."""
+    build = {"sourceVersion": "cf6e2244",
+             "repository": {"id": "ci-repo", "name": "pipelines-projects",
+                            "url": "https://dev.azure.com/o/p/_git/pipelines-projects"},
+             "sourceRepositories": [
+                 {"alias": "sources",
+                  "repository": {"id": "ci-repo",
+                                 "name": "pipelines-projects",
+                                 "url": "https://dev.azure.com/o/p/_git/pipelines-projects"},
+                  "sourceVersion": "9acc"}]}
+    _mock_apis(monkeypatch, build=build)
+    repos_by_name = {
+        "oms-com-order": {"id": "r-oms", "name": "oms-com-order",
+                          "remoteUrl": "https://dev.azure.com/o/p/"
+                                       "_git/oms-com-order"},
+    }
+    art = _build_artifact(
+        artifact_name="_oms-com-order-springboot-java17-GKE-TMS-OMS-CI")
+    detail = _release(artifacts=[art])
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    b = rdc.release_block("o", "p", _release(artifacts=[art]), "cd", {},
+                          None, repos_by_name, "master", False)
+    assert b["src_repo_name"] == "oms-com-order"
+    assert "pipelines-projects" not in b["repo_url"]
+
+
 def test_repo_prefix_candidates():
     assert rdc.repo_prefix_candidates("a-b-c") == ["a-b-c", "a-b", "a"]
     assert rdc.repo_prefix_candidates("solo") == ["solo"]

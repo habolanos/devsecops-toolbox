@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -207,7 +207,7 @@ def artifact_info(art: Optional[Dict]) -> Dict[str, str]:
     """Extrae build_id, build_number, commit sourceVersion y el nombre
     del artifact (artifact.name = nombre del componente/repo fuente)."""
     info = {"build_id": "", "build_number": "", "commit": "",
-            "artifact_name": ""}
+            "artifact_name": "", "ci_repo_name": ""}
     if not art:
         return info
     ref = art.get("definitionReference", {}) or {}
@@ -216,9 +216,12 @@ def artifact_info(art: Optional[Dict]) -> Dict[str, str]:
     info["build_number"] = ver.get("name", "") or ""
     sv = ref.get("sourceVersion") or {}
     info["commit"] = sv.get("id", "") or ""
-    # artifact.name = nombre del componente (repo fuente del artifact);
-    # no confundir con definitionReference.repository (repo del YAML CI).
+    # artifact.name = nombre del CI/artifact; definitionReference.
+    # repository = repo del YAML CI (ej: pipelines-projects) — NUNCA es
+    # el repo fuente del componente, se usa para excluirlo.
     info["artifact_name"] = (art.get("name") or art.get("alias") or "")
+    ci_repo = ref.get("repository") or {}
+    info["ci_repo_name"] = ci_repo.get("name", "") or ""
     return info
 
 
@@ -438,22 +441,27 @@ def resolve_repo_by_prefix(cleaned: str, repos_by_name: Dict) \
     return None
 
 
-def find_source_entry(entries: List[Dict], artifact_name: str) \
-        -> Optional[Dict]:
+def find_source_entry(entries: List[Dict], artifact_name: str,
+                      exclude: str = "") -> Optional[Dict]:
     """Entrada del repo fuente del componente dentro de
     sourceRepositories: nombre == artifact.name, alias 'sources', o repo
-    cuyo nombre sea prefijo del artifact.name limpio. NUNCA cae a un repo
-    arbitrario (self/pipelines-projects)."""
-    for e in entries:
+    cuyo nombre sea prefijo del artifact.name limpio.
+
+    `exclude` = nombre del repo del YAML CI (definitionReference.
+    repository): puede venir como 'sources' aunque no sea el componente,
+    asi que se ignora aqui — solo se usa como ultimo recurso fuera."""
+    pool = [e for e in entries
+            if e["repo_name"].lower() != (exclude or "").lower()]
+    for e in pool:
         if e["repo_name"].lower() == (artifact_name or "").lower():
             return e
-    for e in entries:
+    for e in pool:
         if e["alias"] in ("sources", "source"):
             return e
     cleaned = clean_component_name(artifact_name)
     if cleaned:
         for cand in repo_prefix_candidates(cleaned):
-            for e in entries:
+            for e in pool:
                 if e["repo_name"].lower() == cand.lower():
                     return e
     return None
@@ -591,7 +599,11 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     build = get_build(org, project, ai["build_id"], headers, debug) \
         if ai["build_id"] else None
     entries = build_source_entries(build)
-    source_e = find_source_entry(entries, ai["artifact_name"]) or {}
+    # El repo del YAML CI (definitionReference.repository) se excluye:
+    # puede venir como 'sources' aunque no sea el componente.
+    ci_repo_name = ai["ci_repo_name"]
+    source_e = find_source_entry(entries, ai["artifact_name"],
+                                 exclude=ci_repo_name) or {}
     props_e = find_props_entry(entries) or {}
     build_repo = (build or {}).get("repository") or {}
 
@@ -622,14 +634,23 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
 
     # Ultimo recurso: el nombre del repo es prefijo del artifact.name
     # limpio (convencion '_{repo}-{stack}-CI') → match sobre los repos
-    # del proyecto sin llamadas extra.
+    # del proyecto sin llamadas extra. El repo del YAML CI no califica.
     cleaned = clean_component_name(ai["artifact_name"])
     if not src_repo_id and cleaned:
         hit = resolve_repo_by_prefix(cleaned, repos_by_name) or {}
-        src_repo_id = hit.get("id", "") or ""
-        src_repo_name = hit.get("name", "") or ""
-        src_url = strip_userinfo(hit.get("remoteUrl", "")
-                                 or hit.get("webUrl", ""))
+        if hit and hit.get("name", "").lower() != ci_repo_name.lower():
+            src_repo_id = hit.get("id", "") or ""
+            src_repo_name = hit.get("name", "") or ""
+            src_url = strip_userinfo(hit.get("remoteUrl", "")
+                                     or hit.get("webUrl", ""))
+
+    # De verdad ultimo recurso: algun pipeline puede tener su YAML en el
+    # repo del componente — solo ahi se acepta el repo del CI.
+    if not src_repo_id:
+        source_e = find_source_entry(entries, ai["artifact_name"]) or {}
+        src_repo_id = source_e.get("repo_id", "")
+        src_repo_name = source_e.get("repo_name", "")
+        src_url = source_e.get("url", "")
 
     # Componente = el repo fuente resuelto (el verdadero componente);
     # si no se resolvio, el artifact.name limpio.
