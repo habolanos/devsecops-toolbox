@@ -432,15 +432,47 @@ def test_release_block_props_folder_contrast(monkeypatch):
     assert b["props_match"] is False
 
 
-def test_release_block_component_mismatch(monkeypatch):
+def test_release_block_component_desde_repo_resuelto(monkeypatch):
+    """component = repo fuente resuelto; artifact.name distinto queda
+    como anotacion (CI: ...)."""
     _mock_apis(monkeypatch,
                build=_build_detail(repo_name="otro-repo"))
     rel = _release(artifacts=[_build_artifact()])
     b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
                           False)
-    assert b["component"] == "wms-sys-originalorder"   # artifact.name manda
+    assert b["component"] == "otro-repo"          # repo fuente manda
+    assert b["artifact_clean"] == "wms-sys-originalorder"
     assert b["src_repo_name"] == "otro-repo"
-    assert b["component_matches_build_repo"] is False
+    assert b["component_matches_build_repo"] is True
+
+
+def test_release_block_repo_por_prefijo(monkeypatch):
+    """Sin sourceRepositories ni changes: el repo se resuelve como
+    prefijo del artifact.name sobre la lista de repos del proyecto."""
+    build = {"sourceVersion": "cf6e2244",
+             "repository": {"id": "ci-repo", "name": "pipelines-projects"}}
+    _mock_apis(monkeypatch, build=build)
+    repos_by_name = {
+        "oms-com-order": {"id": "r-oms", "name": "oms-com-order",
+                          "remoteUrl": "https://o@dev.azure.com/o/p/"
+                                       "_git/oms-com-order"},
+        "properties": {"id": "props1", "name": "properties"},
+    }
+    art = _build_artifact(
+        artifact_name="_oms-com-order-springboot-java17-GKE-TMS-OMS-CI")
+    rel = _release(artifacts=[art])
+    # el detail mockeado tambien debe traer este artifact
+    detail = _release(artifacts=[art])
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    b = rdc.release_block("o", "p", rel, "cd", {}, None, repos_by_name,
+                          "master", False)
+    assert b["component"] == "oms-com-order"
+    assert b["src_repo_name"] == "oms-com-order"
+    assert b["repo_url"] == "https://dev.azure.com/o/p/_git/oms-com-order"
+    # el PR se busca en el repo resuelto
+    # (find_pr_for_commit mockeado devuelve None, pero repo_id quedo)
+    assert b["commit"] == "9dad7445abcd1234"
 
 
 def test_release_block_sin_source_repositories(monkeypatch):
@@ -546,15 +578,39 @@ def test_find_source_entry():
     # por alias sources
     e = rdc.find_source_entry(entries, "otro-nombre")
     assert e["alias"] == "sources"
-    # sin alias sources → el primero que no sea self/archetype/properties
+    # sin alias sources → match por prefijo de nombre
     build = _build_detail()
     for sr in build["sourceRepositories"]:
         if sr["alias"] == "sources":
             sr["alias"] = "custom"
-    e = rdc.find_source_entry(rdc.build_source_entries(build),
-                              "otro-nombre")
+    e = rdc.find_source_entry(
+        rdc.build_source_entries(build),
+        "wms-sys-originalorder-springboot-java17")
     assert e["repo_name"] == "wms-sys-originalorder"
+    # NUNCA cae a pipelines-projects/self con nombre ajeno
+    assert rdc.find_source_entry(
+        rdc.build_source_entries(build), "otro-totalmente-distinto"
+    ) is None
     assert rdc.find_source_entry([], "x") is None
+
+
+def test_repo_prefix_candidates():
+    assert rdc.repo_prefix_candidates("a-b-c") == ["a-b-c", "a-b", "a"]
+    assert rdc.repo_prefix_candidates("solo") == ["solo"]
+    assert rdc.repo_prefix_candidates("") == []
+
+
+def test_resolve_repo_by_prefix():
+    repos = {"oms-com-order": {"id": "r1", "name": "oms-com-order"},
+             "properties": {"id": "p1", "name": "properties"}}
+    hit = rdc.resolve_repo_by_prefix(
+        "oms-com-order-springboot-java17-GKE-TMS-OMS", repos)
+    assert hit["id"] == "r1"
+    assert rdc.resolve_repo_by_prefix("sin-match-xyz", repos) is None
+    # el prefijo mas largo gana
+    repos["oms-com"] = {"id": "r0"}
+    hit = rdc.resolve_repo_by_prefix("oms-com-order-x", repos)
+    assert hit["id"] == "r1"
 
 
 def test_find_props_entry():

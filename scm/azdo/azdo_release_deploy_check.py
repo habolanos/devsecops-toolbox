@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -419,24 +419,43 @@ def build_source_entries(build: Optional[Dict]) -> List[Dict[str, str]]:
     return out
 
 
+def repo_prefix_candidates(name: str) -> List[str]:
+    """Prefijos del nombre cortados en '-' de mayor a menor longitud.
+    La convencion CI/CD es '_{repo}-{stack}-CI', asi que el repo suele ser
+    un prefijo (ej: oms-com-order-springboot-java17-... → oms-com-order)."""
+    parts = [p for p in (name or "").split("-") if p]
+    return ["-".join(parts[:i]) for i in range(len(parts), 0, -1)]
+
+
+def resolve_repo_by_prefix(cleaned: str, repos_by_name: Dict) \
+        -> Optional[Dict]:
+    """Repo del proyecto cuyo nombre es el prefijo mas largo del nombre
+    limpio del artifact (convencion '_{repo}-{stack}-CI')."""
+    for cand in repo_prefix_candidates(cleaned):
+        hit = repos_by_name.get(cand.lower())
+        if hit:
+            return hit
+    return None
+
+
 def find_source_entry(entries: List[Dict], artifact_name: str) \
         -> Optional[Dict]:
     """Entrada del repo fuente del componente dentro de
-    sourceRepositories: por nombre == artifact.name, luego por alias
-    'sources', y por ultimo el primero que no sea self/archetype/
-    properties."""
-    if artifact_name:
-        for e in entries:
-            if e["repo_name"].lower() == artifact_name.lower():
-                return e
+    sourceRepositories: nombre == artifact.name, alias 'sources', o repo
+    cuyo nombre sea prefijo del artifact.name limpio. NUNCA cae a un repo
+    arbitrario (self/pipelines-projects)."""
+    for e in entries:
+        if e["repo_name"].lower() == (artifact_name or "").lower():
+            return e
     for e in entries:
         if e["alias"] in ("sources", "source"):
             return e
-    for e in entries:
-        n = e["repo_name"].lower()
-        if (e["alias"] != "self" and "properties" not in n
-                and "archetype" not in n):
-            return e
+    cleaned = clean_component_name(artifact_name)
+    if cleaned:
+        for cand in repo_prefix_candidates(cleaned):
+            for e in entries:
+                if e["repo_name"].lower() == cand.lower():
+                    return e
     return None
 
 
@@ -601,10 +620,20 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
                     repo.get("remoteUrl", "") or repo.get("webUrl", ""))
             break
 
-    # Componente: artifact.name limpio (quita '_' inicial y sufijo -CI);
-    # se contrasta con el repo fuente resuelto.
-    component = (clean_component_name(ai["artifact_name"])
-                 or src_repo_name or "N/A")
+    # Ultimo recurso: el nombre del repo es prefijo del artifact.name
+    # limpio (convencion '_{repo}-{stack}-CI') → match sobre los repos
+    # del proyecto sin llamadas extra.
+    cleaned = clean_component_name(ai["artifact_name"])
+    if not src_repo_id and cleaned:
+        hit = resolve_repo_by_prefix(cleaned, repos_by_name) or {}
+        src_repo_id = hit.get("id", "") or ""
+        src_repo_name = hit.get("name", "") or ""
+        src_url = strip_userinfo(hit.get("remoteUrl", "")
+                                 or hit.get("webUrl", ""))
+
+    # Componente = el repo fuente resuelto (el verdadero componente);
+    # si no se resolvio, el artifact.name limpio.
+    component = src_repo_name or cleaned or "N/A"
 
     # Ruta del repo: entry 'sources' → repo resuelto por changes →
     # build.repository (self/YAML CI como ultimo recurso) → remoteUrl.
@@ -614,9 +643,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
                 or strip_userinfo(repo_entry.get("remoteUrl", ""))
                 or "")
     repo_id = src_repo_id or repo_entry.get("id", "") or ""
-    component_matches = bool(
-        component and src_repo_name
-        and component.lower() == src_repo_name.lower())
+    component_matches = bool(src_repo_name)
 
     # PR asociado al commit del artifact: primero por ref
     # refs/pull/{id}/merge|head (del entry 'sources' o del build), y si
@@ -644,11 +671,12 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     props_commit = props_e.get("commit", "")
     props_rid = props_e.get("repo_id") or (props_repo or {}).get("id", "")
     props_folder_commit, props_folder = "", ""
-    folder_candidates = [n for n in (src_repo_name, component,
-                                     ai["artifact_name"])
-                         if n and n != "N/A"]
+    folder_candidates = [src_repo_name, cleaned] \
+        + repo_prefix_candidates(cleaned)[1:] \
+        + [ai["artifact_name"]]
     if props_rid:
-        for folder in dict.fromkeys(folder_candidates):
+        for folder in dict.fromkeys(
+                n for n in folder_candidates if n and n != "N/A"):
             c = last_commit_in_path(org, project, props_rid,
                                     f"/{folder}", branch, headers,
                                     debug)
@@ -664,6 +692,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
 
     return {
         "component": component,
+        "artifact_clean": cleaned,
         "src_repo_name": src_repo_name,
         "component_matches_build_repo": component_matches,
         "release_name": detail.get("name", rel.get("name", "")),
@@ -700,10 +729,11 @@ def print_block(b: Dict[str, Any], org_project_label: str,
                 release_id_var: str = "") -> None:
     """Imprime el bloque del comparativo en el formato pedido."""
     lines = []
-    if b.get("component_matches_build_repo"):
+    if b.get("src_repo_name"):
         comp_note = "[green]✔ repo del build[/]"
-    elif b.get("src_repo_name"):
-        comp_note = f"[dim](repo fuente: {b['src_repo_name']})[/]"
+        ac = b.get("artifact_clean", "")
+        if ac and ac != b["component"]:
+            comp_note += f" [dim](CI: {ac})[/]"
     else:
         comp_note = "[yellow]⚠ repo fuente no resuelto[/]"
     lines.append(f"Nombre del componente: {b['component']} {comp_note}")
