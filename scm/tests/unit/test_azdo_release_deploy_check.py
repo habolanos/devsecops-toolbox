@@ -45,17 +45,41 @@ def _prod_env(status="succeeded", when="2026-10-16T08:00:00Z"):
 
 
 def _build_artifact(build_id="5001", build_number="20261015.7",
-                    commit="9dad7445abcd1234", repo_name="wms-sys-originalorder",
+                    commit="9dad7445abcd1234",
+                    artifact_name="wms-sys-originalorder",
                     primary=True):
     return {
         "type": "Build",
-        "alias": repo_name,
+        "alias": "_wms-CI",
+        "name": artifact_name,
         "isPrimary": primary,
         "definitionReference": {
             "version": {"id": build_id, "name": build_number},
             "sourceVersion": {"id": commit},
-            "repository": {"id": "repo-1", "name": repo_name},
+            # OJO: este repository es el repo del YAML CI
+            # (pipelines-projects), NO el repo fuente del componente.
+            "repository": {"id": "ci-repo", "name": "pipelines-projects"},
         },
+    }
+
+
+def _build_detail(source_version="9dad7445abcd1234",
+                  repo_name="wms-sys-originalorder", repo_id="r-src",
+                  props_commit="a16b06c8"):
+    return {
+        "sourceVersion": source_version,
+        "repository": {
+            "id": repo_id, "name": repo_name,
+            "url": f"https://dev.azure.com/o/p/_git/{repo_name}",
+        },
+        "sourceRepositories": [
+            {"repository": {"id": "ci-repo", "name": "pipelines-projects"},
+             "sourceVersion": "aaaa"},
+            {"repository": {"id": "props-1", "name": "devsecops-properties"},
+             "sourceVersion": props_commit},
+            {"repository": {"id": repo_id, "name": repo_name},
+             "sourceVersion": source_version},
+        ],
     }
 
 
@@ -96,7 +120,14 @@ def test_artifact_info_build_fields():
     assert info["build_id"] == "5001"
     assert info["build_number"] == "20261015.7"
     assert info["commit"] == "9dad7445abcd1234"
-    assert info["repo_name"] == "wms-sys-originalorder"
+    # artifact.name = componente fuente, NO el repo del YAML CI
+    assert info["artifact_name"] == "wms-sys-originalorder"
+
+
+def test_artifact_info_name_fallback_alias():
+    art = _build_artifact()
+    del art["name"]
+    assert rdc.artifact_info(art)["artifact_name"] == "_wms-CI"
 
 
 def test_artifact_info_empty():
@@ -266,11 +297,34 @@ def test_releases_table_inprogress_amarillo(monkeypatch):
     assert "\x1b[33m" in line or "\x1b[1;33m" in line
 
 
+def test_releases_table_mas_de_30_dias_tenue(monkeypatch):
+    """Releases con >30 dias se renderizan con estilo dim (SGR 2)."""
+    if not rdc.RICH:
+        pytest.skip("rich no disponible")
+    from datetime import datetime, timedelta, timezone
+    from rich.console import Console
+    buf = io.StringIO()
+    monkeypatch.setattr(rdc, "console",
+                        Console(file=buf, force_terminal=True, width=120))
+    old = (datetime.now(timezone.utc) - timedelta(days=45)).isoformat()
+    new = datetime.now(timezone.utc).isoformat()
+    rels = [dict(_release(rel_id=1, name="Release-1"), createdOn=old),
+            dict(_release(rel_id=2, name="Release-2"), createdOn=new)]
+    rdc.print_releases_table(rels)
+    out = buf.getvalue()
+    old_line = next(l for l in out.splitlines() if "Release-1" in l)
+    new_line = next(l for l in out.splitlines() if "Release-2" in l)
+    # dim en la celda RELEASE: SGR combinado 2;36 (dim+cyan)
+    assert "\x1b[2;36m" in old_line
+    assert "\x1b[2;36m" not in new_line
+    assert "\x1b[36mRelease-2" in new_line   # cyan sin dim
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # release_block — integracion con API mockeada
 # ═══════════════════════════════════════════════════════════════════════════
-def _mock_apis(monkeypatch, pr=None, props_commit="a16b06c8",
-               build_commit="9dad7445abcd1234"):
+def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
+               build=None):
     detail = _release(
         rel_id=61949, name="Release-382",
         artifacts=[_build_artifact()],
@@ -279,31 +333,34 @@ def _mock_apis(monkeypatch, pr=None, props_commit="a16b06c8",
     monkeypatch.setattr(rdc, "get_release_detail",
                         lambda *a, **k: detail)
     monkeypatch.setattr(rdc, "get_build",
-                        lambda *a, **k: {"sourceVersion": build_commit})
+                        lambda *a, **k: build or _build_detail())
     monkeypatch.setattr(rdc, "find_pr_for_commit",
                         lambda *a, **k: pr)
     monkeypatch.setattr(rdc, "last_commit_in_path",
-                        lambda *a, **k: {"commitId": props_commit})
+                        lambda *a, **k: {"commitId": props_folder_commit}
+                        if props_folder_commit else None)
 
 
 def test_release_block_fields(monkeypatch):
     pr = {"pullRequestId": 42, "title": "feat"}
     _mock_apis(monkeypatch, pr=pr)
-    repos = [{"name": "wms-sys-originalorder",
-              "remoteUrl": "https://dev.azure.com/o/p/_git/wms-sys-originalorder",
-              "id": "repo-1"}]
-    props = {"name": "devsecops-properties", "id": "props-1"}
     rel = _release(rel_id=61949, name="Release-382",
                    artifacts=[_build_artifact()])
     b = rdc.release_block("https://dev.azure.com/o", "proj", rel,
-                          "cd-pipe", {}, props,
-                          {"wms-sys-originalorder": repos[0]},
-                          "master", False)
+                          "cd-pipe", {}, None, {}, "master", False)
     assert b["component"] == "wms-sys-originalorder"
+    assert b["component_matches_build_repo"] is True
     assert b["release_name"] == "Release-382"
     assert b["build_number"] == "20261015.7"
     assert b["commit_short"] == "9dad7445"
+    # Commit Properties = sourceVersion del repo properties en el build
     assert b["props_commit"] == "a16b06c8"
+    assert b["props_folder_commit"] == "a16b06c8"
+    assert b["props_match"] is True
+    # Ruta del repo = build.repository.url (repo fuente, no pipelines-projects)
+    assert "wms-sys-originalorder" in b["repo_url"]
+    assert "pipelines-projects" not in b["repo_url"]
+    assert "@" not in b["repo_url"]
     assert b["commit_matches_build"] is True
     assert b["pr"] is pr
     assert "releaseId=61949" in b["url"]
@@ -311,12 +368,68 @@ def test_release_block_fields(monkeypatch):
     assert b["excepto_a"] == "N/A"
 
 
+def test_release_block_pr_buscado_en_repo_fuente(monkeypatch):
+    """La PR se busca en build.repository.id (fuente), no en
+    pipelines-projects."""
+    seen = {}
+
+    def fake_pr(org, project, repo_id, commit, headers, debug):
+        seen["repo_id"] = repo_id
+        return None
+
+    _mock_apis(monkeypatch)
+    monkeypatch.setattr(rdc, "find_pr_for_commit", fake_pr)
+    rel = _release(artifacts=[_build_artifact()])
+    rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master", False)
+    assert seen["repo_id"] == "r-src"
+
+
+def test_release_block_props_folder_contrast(monkeypatch):
+    _mock_apis(monkeypatch, props_folder_commit="otro-commit")
+    rel = _release(artifacts=[_build_artifact()])
+    b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
+                          False)
+    assert b["props_commit"] == "a16b06c8"        # commit compilación
+    assert b["props_folder_commit"] == "otro-commit"
+    assert b["props_match"] is False
+
+
+def test_release_block_component_mismatch(monkeypatch):
+    _mock_apis(monkeypatch,
+               build=_build_detail(repo_name="otro-repo"))
+    rel = _release(artifacts=[_build_artifact()])
+    b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
+                          False)
+    assert b["component"] == "wms-sys-originalorder"   # artifact.name manda
+    assert b["component_matches_build_repo"] is False
+
+
 def test_release_block_commit_mismatch(monkeypatch):
-    _mock_apis(monkeypatch, build_commit="diferente")
+    _mock_apis(monkeypatch,
+               build=_build_detail(source_version="diferente"))
     rel = _release(artifacts=[_build_artifact()])
     b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
                           False)
     assert b["commit_matches_build"] is False
+
+
+def test_strip_userinfo():
+    assert rdc.strip_userinfo(
+        "https://Coppel-Retail@dev.azure.com/o/p/_git/r") == \
+        "https://dev.azure.com/o/p/_git/r"
+    assert rdc.strip_userinfo("https://dev.azure.com/o/p/_git/r") == \
+        "https://dev.azure.com/o/p/_git/r"
+
+
+def test_props_source_from_build():
+    out = rdc.props_source_from_build(_build_detail(props_commit="deadbeef"))
+    assert out["repo_id"] == "props-1"
+    assert out["repo_name"] == "devsecops-properties"
+    assert out["commit"] == "deadbeef"
+    assert rdc.props_source_from_build({})["commit"] == ""
+    # build sin sourceRepositories (APIs viejas)
+    assert rdc.props_source_from_build(
+        {"sourceVersion": "x"})["commit"] == ""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -338,7 +451,10 @@ def _block(**kw):
         "build_id": "5001", "build_number": "20261015.7",
         "commit": "9dad7445abcd", "commit_short": "9dad7445",
         "build_commit": "9dad7445abcd", "commit_matches_build": True,
+        "component_matches_build_repo": True,
         "pr": None, "props_commit": "a16b06c8",
+        "props_folder_commit": "a16b06c8", "props_match": True,
+        "props_folder": "wms-sys-originalorder",
         "repo_url": "http://repo", "variables": {},
         "excepto_a": "N/A",
     }

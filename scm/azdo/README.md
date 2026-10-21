@@ -1203,20 +1203,31 @@ que se va a instalar sea coherente con su rollback antes del despliegue.
 2. Por cada release consulta el **artifact primario tipo Build**:
    `build_id` (`definitionReference.version.id`), `No. compilación`
    (`version.name`) y `Commit Release` (`sourceVersion.id`, 8 chars).
-3. Consulta el **build** (`_apis/build/builds/{id}`) y valida que su
-   `sourceVersion` coincida con el commit del artifact.
-4. Busca el **PR** cuyo `lastMergeCommit` / `lastMergeTargetCommit` /
-   `lastMergeSourceCommit` coincida con el commit del release →
-   `PR asociado: #N ✔ commit coincide`.
+   El **componente** se toma de `artifact.name` (el repo fuente del
+   artifact; *no* `definitionReference.repository`, que apunta al repo
+   del YAML de CI, p.ej. `pipelines-projects`).
+3. Consulta el **build** (`_apis/build/builds/{id}`) — es el que vincula
+   todo: `build.repository` es el repo fuente real (nombre + url, se usa
+   para la `Ruta del Repositorio en Azure` y para buscar el PR), y se
+   valida que su `sourceVersion` coincida con el commit del artifact.
+4. Busca el **PR** en el repo fuente cuyo `lastMergeCommit` /
+   `lastMergeTargetCommit` / `lastMergeSourceCommit` coincida con el
+   commit del release → `PR asociado: #N ✔ commit coincide`.
 5. Lee la variable **`RELASE_ID`** (o `RELEASE_ID`) del release a instalar y
    la compara contra el release de rollback (por id numérico, con/sin ceros a
    la izquierda, o por nombre `Release-N`) → se muestra **en verde** si
    coincide, en rojo si no.
-6. Localiza el **repositorio de propiedades** (`--properties-repo`, o
-   autodetecta el repo cuyo nombre contenga `properties`) y muestra el último
-   commit del folder con el nombre del componente
-   (`searchCriteria.itemPath=/{repo_name}`) → `Commit Properties`.
-7. Imprime el comparativo en el formato de evidencia (componente,
+6. **Commit Properties**: del `build.sourceRepositories` toma el
+   `sourceVersion` del repo de propiedades (commit de la compilación) y lo
+   contrasta con el último commit del folder `/{artifact.name}` dentro de
+   ese repo (`searchCriteria.itemPath`) → línea
+   `Commit Properties Folder /{componente}: <sha> ✔/✘`. El repo de
+   propiedades se identifica desde el build; si el build no expone
+   `sourceRepositories`, autodetecta el repo cuyo nombre contenga
+   `properties` (o `--properties-repo`).
+7. Los releases con **más de 30 días** (`STALE_DAYS`) se muestran en
+   color tenue en la tabla de selección (ya no son válidos).
+8. Imprime el comparativo en el formato de evidencia (componente,
    organización, release, pipeline, URL `_releaseProgress`, compilación,
    commits, ruta del repo y `Excepto a`) + resumen de validaciones.
 
@@ -1344,6 +1355,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.5 | **Opción 47: repo fuente desde el build** — `componente` = `artifact.name` (validado con `build.repository.name`); `Ruta del Repositorio` = `build.repository.url` (repo fuente, no `pipelines-projects` del YAML CI); PR buscado en el repo fuente; `Commit Properties` = `sourceVersion` del repo properties en `build.sourceRepositories` (commit de la compilación) contrastado con el último commit del folder `/{artifact.name}`; releases >30 días en color tenue. azdo_release_deploy_check v1.0.2. Tests: 44 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.4 | **Opción 47: releases `inProgress` en amarillo** — el `STATUS` `inProgress` se pinta de amarillo en la tabla de selección de releases. azdo_release_deploy_check v1.0.1 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.3 | **AZDO opción 47: Release Deploy Check** — comparativo release a instalar vs rollback: lista releases prod, selección interactiva, valida build/commit/PR del artifact, variable `RELASE_ID`/`RELEASE_ID` en verde si coincide con el rollback, y último commit del folder del componente en el repo de propiedades. azdo_release_deploy_check v1.0.0. Tests: 36 | `scm/azdo/azdo_release_deploy_check.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md` |
 | 2026-10-20 | 1.9.2 | **GCP opción 1: tabla de reinicios** — `🔄 Pods/Deployments GKE con reinicios` antes del plan de trabajo; solo restarts>0, desc; reusa datos ya consultados. gcp_monitor v1.9.0 | `scm/gcp/monitoring/gcp_monitor.py`, `scm/tests/unit/test_gcp_monitor_consolidated.py` |

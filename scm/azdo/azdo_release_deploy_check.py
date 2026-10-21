@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -69,6 +69,8 @@ API_VERSION_BUILD = "7.1"
 PROD_KEYWORDS = ("prod", "prd", "production")
 TOP_RELEASES = 50
 TOP_PR_SEARCH = 60
+# Releases con mas de N dias se muestran tenues (ya no son validos)
+STALE_DAYS = 30
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -202,9 +204,10 @@ def extract_primary_artifact(rel: Dict) -> Optional[Dict]:
 
 
 def artifact_info(art: Optional[Dict]) -> Dict[str, str]:
-    """Extrae build_id, build_number, commit, repo del artifact."""
+    """Extrae build_id, build_number, commit sourceVersion y el nombre
+    del artifact (artifact.name = nombre del componente/repo fuente)."""
     info = {"build_id": "", "build_number": "", "commit": "",
-            "repo_id": "", "repo_name": ""}
+            "artifact_name": ""}
     if not art:
         return info
     ref = art.get("definitionReference", {}) or {}
@@ -213,15 +216,9 @@ def artifact_info(art: Optional[Dict]) -> Dict[str, str]:
     info["build_number"] = ver.get("name", "") or ""
     sv = ref.get("sourceVersion") or {}
     info["commit"] = sv.get("id", "") or ""
-    repo = ref.get("repository") or {}
-    info["repo_id"] = repo.get("id", "") or ""
-    info["repo_name"] = (repo.get("name", "")
-                         or ref.get("repositoryName", {})
-                         or "")
-    if isinstance(info["repo_name"], dict):
-        info["repo_name"] = info["repo_name"].get("id", "")
-    if not info["repo_name"]:
-        info["repo_name"] = art.get("alias", "")
+    # artifact.name = nombre del componente (repo fuente del artifact);
+    # no confundir con definitionReference.repository (repo del YAML CI).
+    info["artifact_name"] = (art.get("name") or art.get("alias") or "")
     return info
 
 
@@ -318,6 +315,31 @@ def find_properties_repo(repos: List[Dict], hint: str) -> Optional[Dict]:
     return None
 
 
+def strip_userinfo(url: str) -> str:
+    """Quita el 'user@' embebido en remoteUrl
+    (https://org@dev.azure.com/... → https://dev.azure.com/...)."""
+    if "//" in url and "@" in url.split("//", 1)[1].split("/", 1)[0]:
+        scheme, rest = url.split("//", 1)
+        return f"{scheme}//{rest.split('@', 1)[1]}"
+    return url
+
+
+def props_source_from_build(build: Optional[Dict]) -> Dict[str, str]:
+    """Del build (el que vincula todo), extrae la entrada del repositorio
+    de propiedades en sourceRepositories: id/nombre del repo y el
+    sourceVersion = commit de la compilacion para ese repo."""
+    out = {"repo_id": "", "repo_name": "", "commit": ""}
+    for sr in (build or {}).get("sourceRepositories", []) or []:
+        repo = sr.get("repository") or {}
+        name = repo.get("name", "") or ""
+        if "properties" in name.lower():
+            out["repo_id"] = repo.get("id", "") or ""
+            out["repo_name"] = name
+            out["commit"] = sr.get("sourceVersion", "") or ""
+            break
+    return out
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # UI — seleccion de releases
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -379,6 +401,7 @@ def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
         t.add_column("PROD", justify="center")
         t.add_column("PROD FECHA", style="green", no_wrap=True)
         t.add_column("BUILD", style="cyan", no_wrap=True)
+        now = datetime.now(timezone.utc)
         for i, rel in enumerate(releases, 1):
             pst, pdate = release_prod_status(rel)
             art = extract_primary_artifact(rel)
@@ -389,10 +412,14 @@ def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
             status = rel.get("status", "")
             status_fmt = (f"[yellow]{status}[/]"
                           if status.lower() == "inprogress" else status)
+            created = _parse_iso(rel.get("createdOn", ""))
+            stale = bool(created
+                         and (now - created).days > STALE_DAYS)
             t.add_row(str(i), rel.get("name", ""), str(rel.get("id", "")),
                       _fmt_date(rel.get("createdOn", "")),
                       status_fmt, prod_fmt,
-                      _fmt_date(pdate), ai["build_number"] or "—")
+                      _fmt_date(pdate), ai["build_number"] or "—",
+                      style="dim" if stale else "")
         console.print(t)
     else:
         for i, rel in enumerate(releases, 1):
@@ -412,30 +439,57 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     detail = get_release_detail(org, project, rel_id, headers, debug) or rel
     art = extract_primary_artifact(detail)
     ai = artifact_info(art)
-    repo = repos_by_name.get((ai["repo_name"] or "").lower()) or {}
-    repo_url = repo.get("remoteUrl", "") or ""
-    repo_id = repo.get("id", "") or ai["repo_id"]
 
-    # PR asociado al commit del artifact
-    pr = find_pr_for_commit(org, project, repo_id, ai["commit"], headers,
-                            debug)
+    # El build es el que vincula todo: su 'repository' es el repo fuente
+    # del componente (no el repo del YAML CI como en el artifact).
     build = get_build(org, project, ai["build_id"], headers, debug) \
         if ai["build_id"] else None
     build_commit = (build or {}).get("sourceVersion", "") or ""
+    build_repo = (build or {}).get("repository") or {}
+    build_repo_name = build_repo.get("name", "") or ""
+    build_repo_id = build_repo.get("id", "") or ""
 
-    # Commit del folder en el repo de propiedades
-    props_commit = ""
-    if props_repo and ai["repo_name"]:
-        c = last_commit_in_path(org, project, props_repo["id"],
-                                f"/{ai['repo_name']}", branch, headers,
+    # Componente: artifact.name del release; se valida con el repo del
+    # build. Fallbacks: alias del artifact → repo del build.
+    component = (ai["artifact_name"] or build_repo_name or "N/A")
+
+    # Ruta del repo: primero la url del build; si no, el remoteUrl del
+    # listado de repos (limpiando el 'user@' embebido).
+    repo_entry = repos_by_name.get((build_repo_name or "").lower()) \
+        or repos_by_name.get((ai["artifact_name"] or "").lower()) or {}
+    repo_url = (build_repo.get("url")
+                or strip_userinfo(repo_entry.get("remoteUrl", ""))
+                or "")
+    repo_id = build_repo_id or repo_entry.get("id", "") or ""
+
+    # PR asociado al commit del artifact: se busca en el repo FUENTE
+    # (build.repository), no en el repo del YAML CI.
+    pr = find_pr_for_commit(org, project, repo_id, ai["commit"], headers,
+                            debug)
+
+    # Commit Properties = sourceVersion del repo de propiedades en el
+    # build (commit de la compilacion); se contrasta con el ultimo
+    # commit del folder /{component} dentro de ese repo.
+    props_src = props_source_from_build(build)
+    props_commit = props_src["commit"]
+    props_rid = props_src["repo_id"] or (props_repo or {}).get("id", "")
+    props_folder_commit = ""
+    if props_rid and component != "N/A":
+        c = last_commit_in_path(org, project, props_rid,
+                                f"/{component}", branch, headers,
                                 debug)
-        props_commit = (c or {}).get("commitId", "")
+        props_folder_commit = (c or {}).get("commitId", "")
+    props_match = (bool(props_commit and props_folder_commit)
+                   and props_commit.lower() == props_folder_commit.lower())
 
     url = (f"{org}/{quote(project, safe='')}/_releaseProgress?"
            f"releaseId={rel_id}&_a=release-pipeline-progress")
 
     return {
-        "component": ai["repo_name"] or "N/A",
+        "component": component,
+        "component_matches_build_repo": bool(
+            ai["artifact_name"] and build_repo_name
+            and ai["artifact_name"].lower() == build_repo_name.lower()),
         "release_name": detail.get("name", rel.get("name", "")),
         "release_id": rel_id,
         "pipeline": defn_name,
@@ -450,6 +504,9 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
             and ai["commit"].lower() == build_commit.lower()),
         "pr": pr,
         "props_commit": props_commit,
+        "props_folder_commit": props_folder_commit,
+        "props_match": props_match,
+        "props_folder": component,
         "repo_url": repo_url,
         "variables": release_variables(detail),
         "excepto_a": (release_variables(detail).get("EXCEPTO_A")
@@ -463,7 +520,10 @@ def print_block(b: Dict[str, Any], org_project_label: str,
                 release_id_var: str = "") -> None:
     """Imprime el bloque del comparativo en el formato pedido."""
     lines = []
-    lines.append(f"Nombre del componente: {b['component']}")
+    comp_note = ("[green]✔ repo del build[/]"
+                 if b.get("component_matches_build_repo")
+                 else "[yellow]⚠ difiere del repo del build[/]")
+    lines.append(f"Nombre del componente: {b['component']} {comp_note}")
     lines.append(f"Nombre Organización: {org_project_label}")
     lines.append(f"Nombre del Release: {b['release_name']}")
     lines.append(f"Pipeline de CD: {b['pipeline']}")
@@ -471,6 +531,14 @@ def print_block(b: Dict[str, Any], org_project_label: str,
     lines.append(f"No. compilación: {b['build_number'] or 'N/A'}")
     lines.append(f"Commit Release: {b['commit_short'] or 'N/A'}")
     lines.append(f"Commit Properties: {b['props_commit'] or 'N/A'}")
+    folder_commit = b.get("props_folder_commit") or ""
+    if folder_commit:
+        mark = ("[green]✔ coincide con compilación[/]"
+                if b.get("props_match")
+                else "[red]✘ difiere de la compilación[/]")
+        lines.append(
+            f"Commit Properties Folder /{b.get('props_folder', '')}: "
+            f"{folder_commit} {mark}")
     lines.append(f"Ruta del Repositorio en Azure: {b['repo_url'] or 'N/A'}")
     lines.append(f"Excepto a: {b['excepto_a']}")
     if release_id_var:

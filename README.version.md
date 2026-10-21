@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.4`** — 2026-10-21
+**`1.9.5`** — 2026-10-21
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-21 | **1.9.5** | **Opción 47: repo fuente desde el build (vincula todo)** — corrige la `Ruta del Repositorio`: `definitionReference.repository` del artifact apunta al repo del YAML CI (`pipelines-projects`); el repo fuente real sale de `build.repository` (nombre + url). `Nombre del componente` = `artifact.name`, validado contra `build.repository.name`. El PR se busca ahora en el repo fuente (antes lo buscaba en pipelines-projects y nunca lo encontraba). `Commit Properties` = `sourceVersion` del repo de propiedades en `build.sourceRepositories` (commit de la compilación), contrastado con el último commit del folder `/{artifact.name}` (`Commit Properties Folder` con ✔/✘). Releases con >30 días se muestran tenues (`STALE_DAYS`). azdo_release_deploy_check v1.0.2. Tests: 44 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-21 | **1.9.4** | **Opción 47: releases `inProgress` en amarillo** — en la tabla de selección del pipeline CD, el `STATUS` `inProgress` se pinta de amarillo para distinguir los releases en curso. azdo_release_deploy_check v1.0.1 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `VERSION` |
 | 2026-10-21 | **1.9.3** | **AZDO opción 47: Release Deploy Check** — nueva herramienta `azdo_release_deploy_check.py`: lista los releases del pipeline CD con su estado en producción, pide interactivamente cuál se instala y cuál es el rollback, y genera el comparativo de evidencia (componente, organización, release, pipeline, URL `_releaseProgress`, No. compilación, Commit Release, Commit Properties, ruta del repo, Excepto a). Valida: commit del artifact vs `sourceVersion` del build, PR cuyo merge commit corresponda al commit del release, variable `RELASE_ID`/`RELEASE_ID` (verde si coincide con el rollback por id o nombre) y último commit del folder `/{componente}` en el repo de propiedades. azdo_release_deploy_check v1.0.0. Tests: 36 | `scm/azdo/azdo_release_deploy_check.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-20 | **1.9.2** | **GCP opción 1: tabla de reinicios antes del plan de trabajo** — nueva tabla `🔄 Pods/Deployments GKE con reinicios` que lista solo los deployments con `restarts > 0`, ordenada de mayor a menor (desempate por proyecto/cluster/deployment). Reusa los datos ya consultados por la tabla de atención — cero llamadas API adicionales. gcp_monitor v1.9.0 | `scm/gcp/monitoring/gcp_monitor.py`, `scm/tests/unit/test_gcp_monitor_consolidated.py`, `VERSION` |
