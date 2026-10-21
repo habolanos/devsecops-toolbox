@@ -1206,13 +1206,20 @@ que se va a instalar sea coherente con su rollback antes del despliegue.
    El **componente** se toma de `artifact.name` (el repo fuente del
    artifact; *no* `definitionReference.repository`, que apunta al repo
    del YAML de CI, p.ej. `pipelines-projects`).
-3. Consulta el **build** (`_apis/build/builds/{id}`) — es el que vincula
-   todo: su sección **Repositories** (`build.sourceRepositories`) trae
-   cada checkout por alias (`self` = repo del YAML CI, `sources` = repo
-   fuente del componente, `archetype`, `properties`), con su
-   `sourceVersion` (commit de la compilación) y `sourceBranch`. El
-   `sources` da nombre + url del repo (`Ruta del Repositorio en Azure`) y
-   se valida que su `sourceVersion` coincida con el commit del artifact.
+3. Consulta el **build** (`_apis/build/builds/{id}`, api `7.2-preview.1`
+   con fallback `7.1`) — es el que vincula todo: su sección
+   **Repositories** (`build.sourceRepositories`) trae cada checkout por
+   alias (`self` = repo del YAML CI, `sources` = repo fuente del
+   componente, `archetype`, `properties`), con su `sourceVersion` (commit
+   de la compilación) y `sourceBranch`. El `sources` da nombre + url del
+   repo (`Ruta del Repositorio en Azure`) y se valida que su
+   `sourceVersion` coincida con el commit del artifact. **Si el build no
+   expone `sourceRepositories`**, el repo fuente se resuelve buscando el
+   commit del release en `_apis/build/builds/{id}/changes` (cada change
+   `location` trae `.../repositories/{repoId}/commits/{sha}` →
+   `git/repositories/{repoId}`). El `Nombre del componente` se muestra con
+   `artifact.name` limpio (sin `_` inicial ni sufijo `-CI`) y, si difiere,
+   anota el repo fuente real.
 4. Resuelve el **PR**: si el `sourceBranch` del `sources` (o del build)
    es `refs/pull/{id}/merge|head` → consulta el PR por id en el repo
    fuente y muestra su **commit definitivo**
@@ -1362,6 +1369,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.7 | **Opción 47: repo fuente vía build changes + componente limpio** — el build se consulta con api `7.2-preview.1` (expone `sourceRepositories`); si no viene, el repo fuente se resuelve buscando el commit del release en `builds/{id}/changes` (`location` → repoId → `git/repositories/{id}`). `Nombre del componente` = `artifact.name` limpio (`_…-CI` → nombre), con anotación del repo fuente real si difiere. Folder de properties se intenta primero con el nombre del repo fuente. azdo_release_deploy_check v1.0.4. Tests: 63 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.6 | **Opción 47: sección Repositories del build + PR por ref** — `sourceRepositories` clasificado por alias (`sources`=fuente, `self`=YAML CI, `properties`); repo fuente y commit por entry, no `build.repository` (que apunta a `self`). PR resuelto por `refs/pull/{id}/merge` del `sourceBranch` → consulta directa por id y línea `Commit definitivo del PR` contrastado con el commit del release; fallback a scan de PRs completados. azdo_release_deploy_check v1.0.3. Tests: 56 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.5 | **Opción 47: repo fuente desde el build** — `componente` = `artifact.name` (validado con `build.repository.name`); `Ruta del Repositorio` = `build.repository.url` (repo fuente, no `pipelines-projects` del YAML CI); PR buscado en el repo fuente; `Commit Properties` = `sourceVersion` del repo properties en `build.sourceRepositories` (commit de la compilación) contrastado con el último commit del folder `/{artifact.name}`; releases >30 días en color tenue. azdo_release_deploy_check v1.0.2. Tests: 44 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.4 | **Opción 47: releases `inProgress` en amarillo** — el `STATUS` `inProgress` se pinta de amarillo en la tabla de selección de releases. azdo_release_deploy_check v1.0.1 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |

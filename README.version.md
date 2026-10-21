@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.6`** — 2026-10-21
+**`1.9.7`** — 2026-10-21
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-21 | **1.9.7** | **Opción 47: repo fuente vía build changes + componente limpio** — en el run real el build no devolvía `sourceRepositories` y `artifact.name` era el nombre del CI (`_wms-…-CI`), por eso la ruta salía `pipelines-projects`. Ahora: build consultado con `api-version=7.2-preview.1` (fallback `7.1`); si `sourceRepositories` falta, el repo fuente se resuelve buscando el commit del release en `builds/{id}/changes` (cada `location` trae `…/repositories/{repoId}/commits/{sha}` → `git/repositories/{repoId}`). `Nombre del componente` = `artifact.name` limpio (sin `_` ni `-CI`), con anotación `(repo fuente: X)` si difiere. El folder de properties se intenta primero con el nombre del repo fuente resuelto. azdo_release_deploy_check v1.0.4. Tests: 63 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-21 | **1.9.6** | **Opción 47: sección Repositories del build + PR por ref** — `build.sourceRepositories` se clasifica por alias (`self`=repo del YAML CI, `sources`=repo fuente, `archetype`, `properties`); el repo fuente, su URL y el commit de la compilación salen del entry `sources` (o el que matchea `artifact.name`), ya no de `build.repository` que en YAML builds apunta a `self`. El PR se resuelve por `refs/pull/{id}/merge|head` del `sourceBranch` → consulta directa `pullrequests/{id}` y nueva línea `Commit definitivo del PR` (`lastMergeCommit`/`lastMergeSourceCommit`) contrastada con el commit del release; fallback al scan de PRs completados. `Commit Properties` = `sourceVersion` del entry `properties`. azdo_release_deploy_check v1.0.3. Tests: 56 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-21 | **1.9.5** | **Opción 47: repo fuente desde el build (vincula todo)** — corrige la `Ruta del Repositorio`: `definitionReference.repository` del artifact apunta al repo del YAML CI (`pipelines-projects`); el repo fuente real sale de `build.repository` (nombre + url). `Nombre del componente` = `artifact.name`, validado contra `build.repository.name`. El PR se busca ahora en el repo fuente (antes lo buscaba en pipelines-projects y nunca lo encontraba). `Commit Properties` = `sourceVersion` del repo de propiedades en `build.sourceRepositories` (commit de la compilación), contrastado con el último commit del folder `/{artifact.name}` (`Commit Properties Folder` con ✔/✘). Releases con >30 días se muestran tenues (`STALE_DAYS`). azdo_release_deploy_check v1.0.2. Tests: 44 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-21 | **1.9.4** | **Opción 47: releases `inProgress` en amarillo** — en la tabla de selección del pipeline CD, el `STATUS` `inProgress` se pinta de amarillo para distinguir los releases en curso. azdo_release_deploy_check v1.0.1 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `VERSION` |

@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -248,8 +248,51 @@ def relase_id_matches_rollback(value: str, rollback_name: str,
 # BUILD / PR / GIT
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_build(org, project, build_id, headers, debug) -> Optional[Dict]:
+    """GET build — primero con api 7.2-preview.1 (expone
+    sourceRepositories en pipelines multi-checkout); fallback a 7.1."""
     url = f"{org}/{quote(project, safe='')}/_apis/build/builds/{build_id}"
-    return api_get(url, headers, {"api-version": API_VERSION_BUILD}, debug)
+    data = api_get(url, headers, {"api-version": "7.2-preview.1"}, debug)
+    if data is None:
+        data = api_get(url, headers,
+                       {"api-version": API_VERSION_BUILD}, debug)
+    return data
+
+
+def get_build_changes(org, project, build_id, headers,
+                      debug) -> List[Dict]:
+    """GET builds/{id}/changes — commits asociados a la compilacion; cada
+    change.location trae .../repositories/{repoId}/commits/{sha}, lo que
+    permite resolver el repo fuente cuando sourceRepositories no viene."""
+    url = (f"{org}/{quote(project, safe='')}/_apis/build/builds/"
+           f"{build_id}/changes")
+    data = api_get(url, headers, {"api-version": API_VERSION_BUILD,
+                                  "$top": 200}, debug)
+    return data.get("value", []) if data else []
+
+
+def repo_id_from_location(location: str) -> str:
+    """Extrae el repoId de una URL .../repositories/{id}/commits/..."""
+    import re
+    m = re.search(r"/repositories/([^/]+)/commits/", location or "")
+    return m.group(1) if m else ""
+
+
+def get_repository(org, project, repo_id, headers,
+                   debug) -> Optional[Dict]:
+    if not repo_id:
+        return None
+    url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
+           f"{quote(str(repo_id), safe='')}")
+    return api_get(url, headers, {"api-version": API_VERSION}, debug)
+
+
+def clean_component_name(name: str) -> str:
+    """artifact.name suele ser el nombre del CI: '_repo-xxx-CI'.
+    Limpia prefijo '_' y sufijos -CI/-CD para dejar el componente."""
+    import re
+    n = (name or "").strip().lstrip("_")
+    n = re.sub(r"-CI$|-CD$", "", n, flags=re.IGNORECASE)
+    return n or (name or "")
 
 
 def get_repositories(org, project, headers, debug) -> List[Dict]:
@@ -522,7 +565,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     art = extract_primary_artifact(detail)
     ai = artifact_info(art)
 
-    # El build es el que vincula todo: su seccion 'Repositories'
+    # El build es el que vincula todo. Su seccion 'Repositories'
     # (sourceRepositories) trae, por alias, el repo fuente del componente
     # ('sources'), el del YAML CI ('self'), el archetype y el repo de
     # propiedades ('properties') — cada uno con su sourceVersion.
@@ -531,37 +574,58 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     entries = build_source_entries(build)
     source_e = find_source_entry(entries, ai["artifact_name"]) or {}
     props_e = find_props_entry(entries) or {}
-
     build_repo = (build or {}).get("repository") or {}
-    build_repo_name = (source_e.get("repo_name")
-                       or build_repo.get("name", "") or "")
-    build_repo_id = (source_e.get("repo_id")
-                     or build_repo.get("id", "") or "")
+
+    src_repo_id = source_e.get("repo_id", "")
+    src_repo_name = source_e.get("repo_name", "")
+    src_url = source_e.get("url", "")
     # Commit de la compilacion del repo fuente (entry 'sources'); fallback
     # al sourceVersion global del build.
     build_commit = (source_e.get("commit")
                     or (build or {}).get("sourceVersion", "") or "")
 
-    # Componente: artifact.name del release, validado con el repo fuente
-    # del build. Fallbacks: repo del build.
-    component = (ai["artifact_name"] or build_repo_name or "N/A")
+    # Sin sourceRepositories: resolver el repo fuente buscando el commit
+    # del release entre los 'changes' del build (location trae el repoId).
+    if not src_repo_id and ai["commit"]:
+        for ch in get_build_changes(org, project, ai["build_id"],
+                                    headers, debug):
+            if (ch.get("id", "") or "").lower() != ai["commit"].lower():
+                continue
+            rid = repo_id_from_location(ch.get("location", ""))
+            if rid:
+                repo = get_repository(org, project, rid, headers,
+                                      debug) or {}
+                src_repo_id = rid
+                src_repo_name = repo.get("name", "") or ""
+                src_url = strip_userinfo(
+                    repo.get("remoteUrl", "") or repo.get("webUrl", ""))
+            break
 
-    # Ruta del repo: url del repo fuente en el build; si no, el remoteUrl
-    # del listado de repos (limpiando el 'user@' embebido).
-    repo_entry = repos_by_name.get((build_repo_name or "").lower()) \
-        or repos_by_name.get((ai["artifact_name"] or "").lower()) or {}
-    repo_url = (source_e.get("url")
-                or build_repo.get("url")
+    # Componente: artifact.name limpio (quita '_' inicial y sufijo -CI);
+    # se contrasta con el repo fuente resuelto.
+    component = (clean_component_name(ai["artifact_name"])
+                 or src_repo_name or "N/A")
+
+    # Ruta del repo: entry 'sources' → repo resuelto por changes →
+    # build.repository (self/YAML CI como ultimo recurso) → remoteUrl.
+    repo_entry = repos_by_name.get((src_repo_name or "").lower()) \
+        or repos_by_name.get((component or "").lower()) or {}
+    repo_url = (src_url
                 or strip_userinfo(repo_entry.get("remoteUrl", ""))
                 or "")
-    repo_id = build_repo_id or repo_entry.get("id", "") or ""
+    repo_id = src_repo_id or repo_entry.get("id", "") or ""
+    component_matches = bool(
+        component and src_repo_name
+        and component.lower() == src_repo_name.lower())
 
     # PR asociado al commit del artifact: primero por ref
-    # refs/pull/{id}/merge del build/source entry (PR directo), y si no,
-    # scan de PRs completados en el repo FUENTE.
+    # refs/pull/{id}/merge|head (del entry 'sources' o del build), y si
+    # no, scan de PRs completados en el repo FUENTE resuelto.
     pr, pr_ref = None, ""
-    for cand_ref in (source_e.get("branch", ""),
-                     (build or {}).get("sourceBranch", "")):
+    cand_refs = [source_e.get("branch", ""),
+                 (build or {}).get("sourceBranch", "")] \
+        + [e.get("branch", "") for e in entries]
+    for cand_ref in cand_refs:
         pid = pr_id_from_ref(cand_ref)
         if pid:
             pr = get_pull_request(org, project, repo_id, pid, headers,
@@ -576,15 +640,22 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
 
     # Commit Properties = sourceVersion del repo de propiedades en el
     # build (commit de la compilacion); se contrasta con el ultimo
-    # commit del folder /{component} dentro de ese repo.
+    # commit del folder con el nombre del repo fuente/componente.
     props_commit = props_e.get("commit", "")
     props_rid = props_e.get("repo_id") or (props_repo or {}).get("id", "")
-    props_folder_commit = ""
-    if props_rid and component != "N/A":
-        c = last_commit_in_path(org, project, props_rid,
-                                f"/{component}", branch, headers,
-                                debug)
-        props_folder_commit = (c or {}).get("commitId", "")
+    props_folder_commit, props_folder = "", ""
+    folder_candidates = [n for n in (src_repo_name, component,
+                                     ai["artifact_name"])
+                         if n and n != "N/A"]
+    if props_rid:
+        for folder in dict.fromkeys(folder_candidates):
+            c = last_commit_in_path(org, project, props_rid,
+                                    f"/{folder}", branch, headers,
+                                    debug)
+            if c and c.get("commitId"):
+                props_folder_commit = c["commitId"]
+                props_folder = folder
+                break
     props_match = (bool(props_commit and props_folder_commit)
                    and props_commit.lower() == props_folder_commit.lower())
 
@@ -593,9 +664,8 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
 
     return {
         "component": component,
-        "component_matches_build_repo": bool(
-            ai["artifact_name"] and build_repo_name
-            and ai["artifact_name"].lower() == build_repo_name.lower()),
+        "src_repo_name": src_repo_name,
+        "component_matches_build_repo": component_matches,
         "release_name": detail.get("name", rel.get("name", "")),
         "release_id": rel_id,
         "pipeline": defn_name,
@@ -616,7 +686,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
         "props_commit": props_commit,
         "props_folder_commit": props_folder_commit,
         "props_match": props_match,
-        "props_folder": component,
+        "props_folder": props_folder or component,
         "repo_url": repo_url,
         "variables": release_variables(detail),
         "excepto_a": (release_variables(detail).get("EXCEPTO_A")
@@ -630,9 +700,12 @@ def print_block(b: Dict[str, Any], org_project_label: str,
                 release_id_var: str = "") -> None:
     """Imprime el bloque del comparativo en el formato pedido."""
     lines = []
-    comp_note = ("[green]✔ repo del build[/]"
-                 if b.get("component_matches_build_repo")
-                 else "[yellow]⚠ difiere del repo del build[/]")
+    if b.get("component_matches_build_repo"):
+        comp_note = "[green]✔ repo del build[/]"
+    elif b.get("src_repo_name"):
+        comp_note = f"[dim](repo fuente: {b['src_repo_name']})[/]"
+    else:
+        comp_note = "[yellow]⚠ repo fuente no resuelto[/]"
     lines.append(f"Nombre del componente: {b['component']} {comp_note}")
     lines.append(f"Nombre Organización: {org_project_label}")
     lines.append(f"Nombre del Release: {b['release_name']}")
@@ -643,9 +716,12 @@ def print_block(b: Dict[str, Any], org_project_label: str,
     lines.append(f"Commit Properties: {b['props_commit'] or 'N/A'}")
     folder_commit = b.get("props_folder_commit") or ""
     if folder_commit:
-        mark = ("[green]✔ coincide con compilación[/]"
-                if b.get("props_match")
-                else "[red]✘ difiere de la compilación[/]")
+        if b.get("props_commit"):
+            mark = ("[green]✔ coincide con compilación[/]"
+                    if b.get("props_match")
+                    else "[red]✘ difiere de la compilación[/]")
+        else:
+            mark = "[dim](build sin commit de compilación)[/]"
         lines.append(
             f"Commit Properties Folder /{b.get('props_folder', '')}: "
             f"{folder_commit} {mark}")

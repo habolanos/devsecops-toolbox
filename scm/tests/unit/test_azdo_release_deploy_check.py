@@ -354,6 +354,8 @@ def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
                         lambda *a, **k: pr)
     monkeypatch.setattr(rdc, "get_pull_request",
                         lambda *a, **k: pr_by_id)
+    monkeypatch.setattr(rdc, "get_build_changes", lambda *a, **k: [])
+    monkeypatch.setattr(rdc, "get_repository", lambda *a, **k: None)
     monkeypatch.setattr(rdc, "last_commit_in_path",
                         lambda *a, **k: {"commitId": props_folder_commit}
                         if props_folder_commit else None)
@@ -437,7 +439,61 @@ def test_release_block_component_mismatch(monkeypatch):
     b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
                           False)
     assert b["component"] == "wms-sys-originalorder"   # artifact.name manda
+    assert b["src_repo_name"] == "otro-repo"
     assert b["component_matches_build_repo"] is False
+
+
+def test_release_block_sin_source_repositories(monkeypatch):
+    """Build sin sourceRepositories (api vieja): el repo fuente se
+    resuelve buscando el commit del release en builds/{id}/changes."""
+    build = {"sourceVersion": "9dad7445abcd1234",
+             "sourceBranch": "",
+             "repository": {"id": "ci-repo", "name": "pipelines-projects",
+                            "url": "https://dev.azure.com/o/p/_git/pipelines-projects"}}
+    changes = [{"id": "9dad7445abcd1234",
+                "location": "https://dev.azure.com/o/p/_apis/git/"
+                            "repositories/r-src/commits/9dad7445abcd1234",
+                "type": "TfsGit"}]
+    repo = {"id": "r-src", "name": "wms-sys-originalorder",
+            "remoteUrl": "https://Coppel-Retail@dev.azure.com/o/p/"
+                         "_git/wms-sys-originalorder"}
+    pr = {"pullRequestId": 55,
+          "lastMergeCommit": {"commitId": "9dad7445abcd1234"}}
+
+    _mock_apis(monkeypatch, build=build, pr=pr)
+    monkeypatch.setattr(rdc, "get_build_changes", lambda *a, **k: changes)
+    monkeypatch.setattr(rdc, "get_repository", lambda *a, **k: repo)
+
+    rel = _release(artifacts=[_build_artifact()])
+    b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
+                          False)
+    assert b["repo_url"] == \
+        "https://dev.azure.com/o/p/_git/wms-sys-originalorder"
+    assert "pipelines-projects" not in b["repo_url"]
+    assert "@" not in b["repo_url"]
+    assert b["src_repo_name"] == "wms-sys-originalorder"
+    # el PR se busco en el repo fuente resuelto por changes
+    assert b["pr"] is pr
+
+
+def test_repo_id_from_location():
+    assert rdc.repo_id_from_location(
+        "https://dev.azure.com/o/p/_apis/git/repositories/abc-123/"
+        "commits/0f5f937b") == "abc-123"
+    assert rdc.repo_id_from_location("") == ""
+    assert rdc.repo_id_from_location("no-match") == ""
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("_wms-front-motosmanagement-cloudrun-angular21-CI",
+     "wms-front-motosmanagement-cloudrun-angular21"),
+    ("wms-sys-originalorder", "wms-sys-originalorder"),
+    ("_repo-CD", "repo"),
+    ("", ""),
+    (None, ""),
+])
+def test_clean_component_name(raw, expected):
+    assert rdc.clean_component_name(raw) == expected
 
 
 def test_release_block_commit_mismatch(monkeypatch):
