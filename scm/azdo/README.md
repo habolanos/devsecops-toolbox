@@ -1344,6 +1344,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.4 | **Opción 47: releases `inProgress` en amarillo** — el `STATUS` `inProgress` se pinta de amarillo en la tabla de selección de releases. azdo_release_deploy_check v1.0.1 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.3 | **AZDO opción 47: Release Deploy Check** — comparativo release a instalar vs rollback: lista releases prod, selección interactiva, valida build/commit/PR del artifact, variable `RELASE_ID`/`RELEASE_ID` en verde si coincide con el rollback, y último commit del folder del componente en el repo de propiedades. azdo_release_deploy_check v1.0.0. Tests: 36 | `scm/azdo/azdo_release_deploy_check.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md` |
 | 2026-10-20 | 1.9.2 | **GCP opción 1: tabla de reinicios** — `🔄 Pods/Deployments GKE con reinicios` antes del plan de trabajo; solo restarts>0, desc; reusa datos ya consultados. gcp_monitor v1.9.0 | `scm/gcp/monitoring/gcp_monitor.py`, `scm/tests/unit/test_gcp_monitor_consolidated.py` |
 | 2026-10-20 | 1.9.1 | **fix SyntaxError Py<3.12** — `\n` dentro de f-string rompía colección en CI (Python 3.11). pipeline_cd_template v1.0.19 | `scm/azdo/pipeline_cd_template.py` |

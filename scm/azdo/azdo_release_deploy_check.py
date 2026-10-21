@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -386,9 +386,12 @@ def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
             prod_fmt = (f"[green]{pst}[/]" if pst in
                         ("succeeded", "partiallySucceeded")
                         else (f"[red]{pst}[/]" if pst else "—"))
+            status = rel.get("status", "")
+            status_fmt = (f"[yellow]{status}[/]"
+                          if status.lower() == "inprogress" else status)
             t.add_row(str(i), rel.get("name", ""), str(rel.get("id", "")),
                       _fmt_date(rel.get("createdOn", "")),
-                      rel.get("status", ""), prod_fmt,
+                      status_fmt, prod_fmt,
                       _fmt_date(pdate), ai["build_number"] or "—")
         console.print(t)
     else:

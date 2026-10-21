@@ -245,6 +245,28 @@ def test_choose_release_quit(monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# print_releases_table — coloreo de status
+# ═══════════════════════════════════════════════════════════════════════════
+def test_releases_table_inprogress_amarillo(monkeypatch):
+    """Los releases con status inProgress se pintan de amarillo (SGR 33)."""
+    if not rdc.RICH:
+        pytest.skip("rich no disponible")
+    from rich.console import Console
+    buf = io.StringIO()
+    monkeypatch.setattr(rdc, "console",
+                        Console(file=buf, force_terminal=True, width=120))
+    rels = [_release(rel_id=1, name="Release-1"),
+            dict(_release(rel_id=2, name="Release-2"),
+                 status="inProgress")]
+    rdc.print_releases_table(rels)
+    out = buf.getvalue()
+    assert "inProgress" in out
+    # el amarillo de Rich es SGR 33: debe aparecer justo antes del texto
+    line = next(l for l in out.splitlines() if "inProgress" in l)
+    assert "\x1b[33m" in line or "\x1b[1;33m" in line
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # release_block — integracion con API mockeada
 # ═══════════════════════════════════════════════════════════════════════════
 def _mock_apis(monkeypatch, pr=None, props_commit="a16b06c8",
