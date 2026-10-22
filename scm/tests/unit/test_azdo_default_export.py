@@ -56,6 +56,28 @@ class TestWriteDefaultReports:
         payload = json.loads(Path(out["json"]).read_text(encoding="utf-8"))
         assert payload["summary"]["total"] == 0
 
+    def test_excel_when_requested(self, outdir):
+        pytest.importorskip("pandas")
+        pytest.importorskip("openpyxl")
+        out = write_default_reports(
+            "t", "1", [{"id": 1, "name": "x"}], excel=True, quiet=True)
+        assert out["excel"].endswith(".xlsx")
+        assert Path(out["excel"]).exists()
+
+    def test_excel_not_generated_by_default(self, outdir):
+        out = write_default_reports("t", "1", [{"id": 1}], quiet=True)
+        assert "excel" not in out
+
+    def test_dict_payload(self, outdir):
+        """Un reporte dict se guarda tal cual y el HTML usa key/value."""
+        out = write_default_reports(
+            "t", "1", {"install": {"id": 1}, "rollback": {"id": 2}},
+            quiet=True)
+        payload = json.loads(Path(out["json"]).read_text(encoding="utf-8"))
+        assert payload["data"]["install"]["id"] == 1
+        content = Path(out["html"]).read_text(encoding="utf-8")
+        assert "<th>key</th>" in content
+
 
 class TestResolveOutdir:
     def test_env_var_wins(self, tmp_path, monkeypatch):

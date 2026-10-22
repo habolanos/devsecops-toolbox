@@ -44,7 +44,7 @@ import requests
 try:
     from rich.console import Console
     from rich.table import Table
-    from rich.panel import Panel
+
     from rich import box
     RICH = True
     console = Console()
@@ -52,7 +52,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -785,62 +785,158 @@ def print_main_table(rows: List[Dict]) -> None:
                   f"prod {r['prod_status']}")
 
 
+def _validator_cell(r: Dict) -> str:
+    if not r["validator_ran"]:
+        return f"{ICON_SKIP} sin ejecutar"
+    if not r["violations"]:
+        return f"{ICON_OK} limpio"
+    return _viol_cell(r["violations"])
+
+
+def _rollback_cell(r: Dict) -> str:
+    if not r["rb_valid"]:
+        return "sin validar"
+    return (f"rel {r['rb_release_id']} | "
+            f"build {r['rb_build_id'] or '—'} ({r['rb_build_number'] or '—'}) | "
+            f"git {_short(r['rb_git_commit'])} | "
+            f"props {_short(r['rb_props_commit'])}")
+
+
+def _stages_cell(r: Dict) -> str:
+    return " → ".join(
+        f"{_stage_icon(st)}{name}" for name, st, _ in r["stages"])
+
+
 def print_row_details(rows: List[Dict], args) -> None:
-    """Panel por release: snapshot de stages (Deep Dive) + violaciones del
-    Validator (reglas opcion 44 + issues de tarea)."""
-    for r in rows:
-        lines = []
-        # snapshot de stages
-        lines.append("[bold]Stages[/] " + " → ".join(
-            f"{_stage_icon(st)}{name}" for name, st, _ in r["stages"]))
-        lines.append(f"[bold]Production[/]: {r['prod_status']} "
-                     f"({r['prod_attempts']} intentos)")
-        # PR / commit / rollback
-        lines.append(f"[bold]PR a master[/]: #{r['pr_id'] or '?'} "
-                     f"{r['pr_title']}")
-        lines.append(f"[bold]Build[/]: {r['build_id']} "
-                     f"({r['build_number']}) | "
-                     f"[bold]Commit Git[/]: {r['git_commit'][:12]}")
-        lines.append(f"[bold]Commit properties[/]: {r['props_commit'] or '—'}")
-        if r["rb_valid"]:
-            lines.append(
-                f"[bold]Rollback[/]: release {r['rb_release_id']} → "
-                f"build {r['rb_build_id']} ({r['rb_build_number']}), "
-                f"git {_short(r['rb_git_commit'])}, "
-                f"props {_short(r['rb_props_commit'])}")
-        else:
-            lines.append(f"[bold]Rollback[/]: sin validar "
-                         f"(RELEASE_ID vacío o apunta a este release)")
-        # validador
-        if not r["validator_ran"]:
-            lines.append(f"[bold]Validator[/]: {ICON_SKIP} no existe o "
-                         "no fue ejecutado en este release")
-        elif not r["violations"]:
-            lines.append(f"[bold]Validator[/]: {ICON_OK} sin hallazgos "
-                         "en los logs de las tareas")
-        else:
-            lines.append(f"[bold]Validator[/]: {len(r['violations'])} "
-                         "hallazgos")
-            for v in r["violations"]:
+    """Detalle por release EN TABLA: snapshot de stages (Deep Dive) +
+    rollback + estado del Validator; y tabla de hallazgos del Validator
+    (reglas opcion 44 + issues de tarea)."""
+    findings = [(r, v) for r in rows for v in r["violations"]]
+
+    if RICH and console:
+        # ── Tabla de detalle por release ──
+        t = Table(title="Detalle por release — stages / rollback / validator",
+                  box=box.ROUNDED)
+        t.add_column("RELEASE", style="magenta", no_wrap=True)
+        t.add_column("STAGES", style="dim")
+        t.add_column("PROD", justify="center", no_wrap=True)
+        t.add_column("PR → MASTER", style="green")
+        t.add_column("BUILD", style="yellow", no_wrap=True)
+        t.add_column("COMMIT GIT", style="magenta", no_wrap=True)
+        t.add_column("COMMIT PROPS", style="cyan", no_wrap=True)
+        t.add_column("ROLLBACK", style="dim")
+        t.add_column("VALIDATOR", no_wrap=True)
+        for r in rows:
+            t.add_row(
+                f"{r['release_name']}\n#{r['release_id']} — {r['cd_name'][:24]}",
+                _stages_cell(r),
+                f"{_stage_icon(r['prod_status'])} {r['prod_status'][:9]}\n"
+                f"{r['prod_attempts']} intentos",
+                f"#{r['pr_id'] or '?'}\n{(r['pr_title'] or '?')[:30]}",
+                f"{r['build_id'] or '—'}\n{r['build_number'] or '—'}",
+                _short(r["git_commit"]),
+                _short(r["props_commit"]),
+                _rollback_cell(r),
+                _validator_cell(r),
+            )
+        console.print(t)
+
+        # ── Tabla de hallazgos del Validator ──
+        if findings:
+            ft = Table(title="Hallazgos del stage Validator",
+                       box=box.ROUNDED)
+            ft.add_column("RELEASE", style="magenta", no_wrap=True)
+            ft.add_column("SEVERIDAD", no_wrap=True)
+            ft.add_column("REGLA", style="cyan")
+            ft.add_column("STAGE", style="dim")
+            ft.add_column("VARIABLE", style="yellow")
+            ft.add_column("RAZÓN", style="dim")
+            ft.add_column("DETALLE", style="dim")
+            for r, v in findings:
                 style = SEV_STYLE.get(v["severity"], "white")
-                head = f"[{style}][{v['severity']}] {v['rule']}[/]"
+                ft.add_row(
+                    f"{r['release_name']}",
+                    f"[{style}]{v['severity']}[/]",
+                    v["rule"],
+                    v["environment"] or "—",
+                    v["variable"] or "—",
+                    (v["reason"] or "—")[:40],
+                    (v["detail"] or "—")[:80],
+                )
+            console.print(ft)
+        else:
+            console.print(f"[green]{ICON_OK} Sin hallazgos del Validator "
+                          "en los releases pendientes.[/]")
+
+        # Logs no legibles
+        errs = [(r["release_name"], e) for r in rows for e in r["log_errors"]]
+        if errs:
+            et = Table(title="Logs de tareas no legibles", box=box.ROUNDED)
+            et.add_column("RELEASE", style="magenta")
+            et.add_column("TAREA", style="yellow")
+            for rel_name, e in errs:
+                et.add_row(rel_name, e)
+            console.print(et)
+    else:
+        for r in rows:
+            print(f"\n=== {r['release_name']} — {r['cd_name']} ===")
+            print(f"Stages: {_stages_cell(r)}")
+            print(f"Production: {r['prod_status']} "
+                  f"({r['prod_attempts']} intentos)")
+            print(f"PR a master: #{r['pr_id'] or '?'} {r['pr_title']}")
+            print(f"Build: {r['build_id']} ({r['build_number']}) | "
+                  f"Commit Git: {r['git_commit'][:12]}")
+            print(f"Commit properties: {r['props_commit'] or '—'}")
+            print(f"Rollback: {_rollback_cell(r)}")
+            print(f"Validator: {_validator_cell(r)}")
+            for v in r["violations"]:
                 ctx = (f" env={v['environment']}" if v["environment"] else "") + \
                       (f" var={v['variable']}" if v["variable"] else "") + \
                       (f" reason={v['reason']}" if v["reason"] else "")
-                lines.append(f"  {head}{ctx}")
+                print(f"  [{v['severity']}] {v['rule']}{ctx}")
                 if v["detail"]:
-                    lines.append(f"    [dim]{v['detail'][:150]}[/]")
-        if r["log_errors"]:
-            lines.append(f"[yellow]No se pudo leer el log de: "
-                         f"{', '.join(r['log_errors'])}[/]")
-        if RICH and console:
-            console.print(Panel(
-                "\n".join(lines),
-                title=f"{r['release_name']} — {r['cd_name']}",
-                border_style="cyan", expand=False))
-        else:
-            print(f"\n=== {r['release_name']} — {r['cd_name']} ===")
-            print(re.sub(r"\[/?[a-zA-Z0-9_# =]+\]", "", "\n".join(lines)))
+                    print(f"    {v['detail'][:150]}")
+            for e in r["log_errors"]:
+                print(f"  No se pudo leer el log de: {e}")
+
+
+def export_row(r: Dict) -> Dict:
+    """Fila plana para exportación (JSON/HTML/Excel)."""
+    return {
+        "cd_pipeline": r["cd_name"],
+        "cd_id": r["cd_id"],
+        "release": r["release_name"],
+        "release_id": r["release_id"],
+        "created_on": r["created_on"],
+        "repo": r["repo"],
+        "pr_id": r["pr_id"],
+        "pr_title": r["pr_title"],
+        "pr_target": r["pr_target"],
+        "build_id": r["build_id"],
+        "build_number": r["build_number"],
+        "git_commit": r["git_commit"],
+        "score": r["score"],
+        "rating": r["rating"][1],
+        "props_commit": r["props_commit"],
+        "rollback_release_id": r["rb_release_id"],
+        "rollback_build_id": r["rb_build_id"],
+        "rollback_build_number": r["rb_build_number"],
+        "rollback_git_commit": r["rb_git_commit"],
+        "rollback_props_commit": r["rb_props_commit"],
+        "rollback_valid": r["rb_valid"],
+        "prod_status": r["prod_status"],
+        "prod_attempts": r["prod_attempts"],
+        "stages": " → ".join(f"{n}:{s}" for n, s, _ in r["stages"]),
+        "validator_ran": r["validator_ran"],
+        "violations_count": len(r["violations"]),
+        "violations": "; ".join(
+            f"[{v['severity']}] {v['rule']}"
+            + (f" env={v['environment']}" if v["environment"] else "")
+            + (f" var={v['variable']}" if v["variable"] else "")
+            + (f" — {v['detail']}" if v["detail"] else "")
+            for v in r["violations"]),
+        "log_errors": ", ".join(r["log_errors"]),
+    }
 
 
 def print_summary(cd_results: List[Dict], rows: List[Dict],
@@ -917,15 +1013,17 @@ def main() -> int:
 
     rows = [r for c in cd_results for r in c["rows"]]
 
-    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    # ── Salida por defecto: JSON + HTML + Excel en outcome/ ──
     try:
         from azdo_default_export import write_default_reports
         write_default_reports(
-            "prod_preinstall_validator", __version__, rows,
+            "prod_preinstall_validator", __version__,
+            [export_row(r) for r in rows],
             summary={"cds_git_master": len(master_cds),
-                     "pendientes_production": len(rows)},
+                     "pendientes_production": len(rows),
+                     "con_hallazgos": sum(1 for r in rows if r["violations"])},
             organization=org, project=project,
-            title="Production Pre-Install Validator")
+            title="Production Pre-Install Validator", excel=True)
     except Exception:
         pass
 

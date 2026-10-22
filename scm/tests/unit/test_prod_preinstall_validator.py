@@ -460,3 +460,40 @@ def test_viol_cell():
 
 def test_score_cell():
     assert "85" in pv._score_cell(85, ("🟢", "Excelente"))
+
+
+def test_export_row_aplana_campos():
+    """export_row produce una fila plana serializable para JSON/HTML/Excel."""
+    r = _row(violations=[{"severity": "HIGH", "rule": "RULE_1_SECRET",
+                          "environment": "Production", "variable": "passAzure",
+                          "reason": "", "detail": "secreto sin isSecret",
+                          "task": "t", "generic": False}])
+    flat = pv.export_row(r)
+    assert flat["cd_pipeline"] == "oms-com-order-CD"
+    assert flat["build_id"] == "495667"
+    assert flat["git_commit"] == "aacda92cbd18"
+    assert flat["rating"] == "X"          # label, no emoji
+    assert flat["rollback_release_id"] == "60993"
+    assert flat["rollback_git_commit"] == "f228b069"
+    assert flat["rollback_props_commit"] == "107cd5c8465"
+    assert flat["violations_count"] == 1
+    assert "RULE_1_SECRET" in flat["violations"]
+    assert "var=passAzure" in flat["violations"]
+    assert "SCM Inspection:succeeded" in flat["stages"]
+    assert "Production:notStarted" in flat["stages"]
+    # todo el valor es escalar (str/int/bool) — serializable directo
+    import json as _json
+    _json.dumps(flat)
+
+
+def test_print_row_details_sin_paneles(monkeypatch):
+    """El detalle ya no usa fichas/Panel: solo tablas."""
+    import io as _io
+    assert not hasattr(pv, "Panel"), "print_row_details ya no debe usar Panel"
+    # modo Rich (si disponible): imprime tablas sin error
+    if pv.RICH:
+        buf = _io.StringIO()
+        monkeypatch.setattr(pv.console, "print",
+                            lambda *a, **k: buf.write(str(a[0]) + "\n"))
+        pv.print_row_details([_row()], _A())
+        assert buf.getvalue()

@@ -179,6 +179,7 @@ outcome/
 - El directorio se resuelve igual que el resto del toolbox: `DEVSECOPS_OUTPUT_DIR` → `config.json` `global.output_dir` → `scm/outcome/`.
 - El launcher `tools.py` **ya no pregunta por formato de exportación** (JSON+HTML siempre se generan). Los formatos extra (`csv`/`excel`) siguen disponibles solo por CLI directa con `--output` en las herramientas que los soportan.
 - Las herramientas de acción (rollback, restore, backup, clone, updater, template) exportan el resumen/resultado de la operación; las de consulta exportan el dataset completo mostrado en consola.
+- `write_default_reports(..., excel=True)` genera además `.xlsx` (requiere `pandas`+`openpyxl`) — usado por la opción 48.
 
 ---
 
@@ -1358,9 +1359,19 @@ Previene instalaciones fallidas al stage **Production**: identifica los
 | VALIDATOR | conteo de violaciones por severidad |
 | PROD | status e intentos de Production |
 
-Y por cada release un panel con: snapshot de stages (Deep Dive compacto),
-PR, build, commits, rollback, y el detalle de violaciones del Validator
-(reglas de la opción 44 + issues de tarea).
+Y dos tablas de detalle (sin fichas/paneles):
+
+- **Detalle por release** — una fila por release con: snapshot de stages
+  (Deep Dive compacto, `icono+status` por stage), Production
+  (status+intentos), PR a master, build, commit Git, commit props,
+  rollback completo (release + build id + commit Git + commit props) y
+  estado del Validator.
+- **Hallazgos del stage Validator** — una fila por hallazgo: release,
+  severidad, regla (opción 44), stage/ambiente, variable, razón y detalle.
+
+**Exportación por defecto**: `prod_preinstall_validator_<ts>.json` +
+`.html` + `.xlsx` en `outcome/` — siempre, sin flags (filas planas con
+todas las columnas: build, commits, score, rollback, stages, violaciones).
 
 #### Argumentos CLI
 
@@ -1472,6 +1483,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-22 | 1.9.21 | **Opción 48: detalle en tablas (sin fichas) + Excel por defecto** — el detalle por release deja de imprimir paneles (fichas) y pasa a dos tablas: "Detalle por release" (stages snapshot, prod, PR, build, commits, rollback, validator) y "Hallazgos del Validator" (release/severidad/regla/stage/variable/razón/detalle). `write_default_reports` acepta `excel=True` y genera además `.xlsx`; la opción 48 exporta siempre JSON + HTML + Excel con filas planas (`export_row`). azdo_prod_preinstall_validator v1.0.1, azdo_default_export v1.0.1. Tests: +5 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/azdo/azdo_default_export.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/tests/unit/test_azdo_default_export.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-22 | 1.9.19 | **Opción 48: Production Pre-Install Validator** — nueva herramienta basada en la opción 1: lista los CDs con artifact Git branch master, excluye releases con Production instalado, identifica el PR a master (rama `refs/pull/N/merge` del build + fallback por commit), extrae los logs del stage Validator y evalúa las violaciones con la lógica de la opción 44 (+ issues genéricos), calcula el score health del CD (opción 3) y el snapshot de stages (opción 5), con rollback desde `RELEASE_ID`. azdo_prod_preinstall_validator v1.0.0. Tests: 33 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_prod_preinstall_validator.py` |
 | 2026-10-22 | 1.9.18 | **Opción 47: sin dump de respuestas API** — retirado el volcado de JSON que devolvían las llamadas (release detail, build, changes, PR, lista de releases, repos) y el listado de commits del folder en modo debug; `--debug` queda solo para errores HTTP. azdo_release_deploy_check v1.0.15. Tests: 78 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.17 | **Opción 47: scan de PR por rama + paginado** — el Git source artifact trae su rama (`branch.id`, ej: master): el scan de PRs filtra por `searchCriteria.targetRefName=refs/heads/{rama}` (un PR a `feature/` cuyo target previo coincide con el commit del release queda fuera, caso real #360315) y pagina hasta 5×200=1000 PRs completados (releases viejos → PRs viejos). azdo_release_deploy_check v1.0.14. Tests: 78 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |

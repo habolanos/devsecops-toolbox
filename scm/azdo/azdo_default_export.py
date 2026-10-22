@@ -24,7 +24,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # Asegurar que scm/ (padre de azdo/) está en sys.path para importar
 # export_manager / utils cuando el script se ejecuta directo.
@@ -134,23 +134,26 @@ def write_default_reports(
     organization: Optional[str] = None,
     project: Optional[str] = None,
     title: Optional[str] = None,
+    excel: bool = False,
     quiet: bool = False,
 ) -> Dict[str, Optional[str]]:
     """
-    Genera siempre <tool>_<ts>.json y <tool>_<ts>.html en outcome/.
+    Genera siempre <tool>_<ts>.json y <tool>_<ts>.html en outcome/;
+    con ``excel=True`` también <tool>_<ts>.xlsx (requiere pandas+openpyxl).
 
     Args:
         tool_name: nombre base del archivo (ej. "pr_master_checker")
         tool_version: __version__ del script
-        rows: lista de dicts (datos del reporte)
+        rows: lista de dicts (datos del reporte) o reporte dict
         metadata: pares extra para la sección metadata
         summary: pares extra para el resumen (tarjetas en HTML)
         organization / project: contexto Azure DevOps
         title: título del reporte HTML
+        excel: True para generar también .xlsx
         quiet: True para no imprimir las rutas generadas
 
     Returns:
-        {"json": ruta | "Error: ...", "html": ruta | "Error: ..."}
+        {"json": ruta, "html": ruta, ["excel": ruta]} — o "Error: ..." por formato
     """
     out: Dict[str, Optional[str]] = {}
     try:
@@ -214,6 +217,19 @@ def write_default_reports(
             out["html"] = str(html_path)
         except Exception as e:
             out["html"] = f"Error: {e}"
+
+        # ── Excel (opcional) ──
+        if excel:
+            xlsx_path = outdir / f"{tool_name}_{ts}.xlsx"
+            try:
+                import pandas as pd
+                pd.DataFrame(table_rows).to_excel(
+                    xlsx_path, index=False, engine="openpyxl")
+                out["excel"] = str(xlsx_path)
+            except ImportError:
+                out["excel"] = "Error: pandas/openpyxl no instalados"
+            except Exception as e:
+                out["excel"] = f"Error: {e}"
     except Exception as e:
         out = {"json": f"Error: {e}", "html": f"Error: {e}"}
 
