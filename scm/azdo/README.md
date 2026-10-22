@@ -1203,10 +1203,15 @@ que se va a instalar sea coherente con su rollback antes del despliegue.
    - **¿Cuál es el release de ROLLBACK?** (no permite repetir el anterior)
 2. Por cada release consulta el **artifact primario tipo Build**:
    `build_id` (`definitionReference.version.id`), `No. compilación`
-   (`version.name`) y `Commit Release` (`sourceVersion.id`, 8 chars).
+   (`version.name`) y el commit del artifact (`sourceVersion.id`).
    El **componente** se toma de `artifact.name` (el repo fuente del
    artifact; *no* `definitionReference.repository`, que apunta al repo
-   del YAML de CI, p.ej. `pipelines-projects`).
+   del YAML de CI, p.ej. `pipelines-projects`). El `sourceVersion` del
+   artifact es el commit del **repo del CI**, no del componente: el
+   `Commit Release` se sigue buscando hasta el source del build cuyo
+   repo hace **match con el componente** (entry de
+   `sourceRepositories` → changes del build en ese repo); el commit del
+   artifact se muestra como `Commit Artifact (CI)` cuando difiere.
 3. Consulta el **build** (`_apis/build/builds/{id}`, api `7.2-preview.1`
    con fallback `7.1`) — es el que vincula todo: su sección
    **Repositories** (`build.sourceRepositories`) trae cada checkout por
@@ -1377,6 +1382,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.12 | **Opción 47: Commit Release sigue la cadena hasta el repo del componente** — el `sourceVersion` del artifact es el commit del repo del CI (pipeline YAML); el `Commit Release` ahora se resuelve hasta el source del build cuyo repo hace match con el componente (`sourceRepositories` → changes del build en ese repo), y el commit del artifact se muestra como `Commit Artifact (CI)` cuando difiere. El PR y su commit definitivo se comparan contra el commit del componente. azdo_release_deploy_check v1.0.9. Tests: 76 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.11 | **Opción 47: commit del build por nombre de componente, URL del PR, Commit Properties por fecha y columna COMMIT** — el commit de la compilación se toma del source del build cuyo repo tiene el mismo nombre del componente; nueva línea `URL Pull Request` copiable; `Commit Properties` del install = último commit del folder `/{repo fuente}`, del rollback = el commit que coincide con la fecha de ejecución del release (último en o antes de `createdOn`); columna `COMMIT` (artifact source repository) en la tabla de releases. azdo_release_deploy_check v1.0.8. Tests: 74 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.10 | **Opción 47: changes multi-repo** — en builds multi-checkout, `builds/{id}/changes` trae commits de varios repos; el loop hacía `break` en el primer match (caía en el repo del CI). Ahora recolecta todos los repoIds del commit, prefiere uno que no sea el repo del YAML CI, y si solo existe el del CI cae a la resolución por prefijo. azdo_release_deploy_check v1.0.7. Tests: 70 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.9 | **Opción 47: el alias `sources` puede ser el repo del CI** — caso real: `sourceRepositories` traía `sources`→`pipelines-projects` (repo del YAML); ahora `find_source_entry` excluye `definitionReference.repository` (el repo del CI) en todos sus pases y solo lo acepta como último recurso (YAML dentro del repo del componente). azdo_release_deploy_check v1.0.6. Tests: 68 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |

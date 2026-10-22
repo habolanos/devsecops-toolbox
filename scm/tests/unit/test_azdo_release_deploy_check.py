@@ -618,6 +618,49 @@ def test_release_block_commit_mismatch(monkeypatch):
     assert b["commit_matches_build"] is False
 
 
+def test_release_block_commit_sigue_hasta_repo_componente(monkeypatch):
+    """El sourceVersion del artifact es el commit del repo del CI
+    (pipeline yaml): el commit del release debe seguir buscando hasta el
+    source del build cuyo repo hace match con el componente."""
+    art = _build_artifact(commit="aaaaciii")   # commit del pipeline CI
+    detail = _release(artifacts=[art])
+    # build: entry 'sources' → componente con su commit real
+    build = _build_detail(source_version="9dad7445abcd1234")
+    seen = {}
+
+    def fake_pr(org, project, repo_id, commit, headers, debug):
+        seen["commit"] = commit
+        return None
+
+    _mock_apis(monkeypatch, build=build)
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    monkeypatch.setattr(rdc, "find_pr_for_commit", fake_pr)
+    b = rdc.release_block("o", "p", _release(artifacts=[art]), "cd", {},
+                          None, {}, "master", False)
+    # Commit Release = el del componente, no el del CI
+    assert b["commit"] == "9dad7445abcd1234"
+    assert b["artifact_commit"] == "aaaaciii"
+    assert b["commit_short"] == "9dad7445"
+    assert b["artifact_commit_short"] == "aaaaciii"
+    # el PR se busca con el commit del componente
+    assert seen["commit"] == "9dad7445abcd1234"
+    # comparacion: commit del artifact (CI) vs commit del componente
+    assert b["commit_matches_build"] is False
+
+
+def test_print_block_commit_artifact_ci(monkeypatch):
+    """Cuando el commit del artifact (CI) difiere del commit del
+    release, se muestra la linea de referencia."""
+    buf = _capture_plain(monkeypatch)
+    rdc.print_block(_block(artifact_commit="aaaaciii",
+                           artifact_commit_short="aaaaciii"),
+                    "org")
+    out = buf.getvalue()
+    assert "Commit Release: 9dad7445" in out
+    assert "Commit Artifact (CI): aaaaciii" in out
+
+
 def test_strip_userinfo():
     assert rdc.strip_userinfo(
         "https://Coppel-Retail@dev.azure.com/o/p/_git/r") == \
@@ -804,6 +847,8 @@ def _block(**kw):
         "pipeline": "wms-cd", "url": "http://x",
         "build_id": "5001", "build_number": "20261015.7",
         "commit": "9dad7445abcd", "commit_short": "9dad7445",
+        "artifact_commit": "9dad7445abcd",
+        "artifact_commit_short": "9dad7445",
         "build_commit": "9dad7445abcd", "commit_matches_build": True,
         "component_matches_build_repo": True,
         "pr": None, "pr_ref": "", "pr_url": "", "pr_commit": "",

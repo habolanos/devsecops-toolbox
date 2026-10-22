@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -636,6 +636,12 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     src_repo_name = source_e.get("repo_name", "")
     src_url = source_e.get("url", "")
 
+    # changes del build (cache — se usan para resolver repo y commit)
+    changes: List[Dict] = []
+    if ai["build_id"]:
+        changes = get_build_changes(org, project, ai["build_id"],
+                                    headers, debug)
+
     # Sin sourceRepositories: resolver el repo fuente buscando el commit
     # del release entre los 'changes' del build. OJO: en builds
     # multi-checkout los changes pueden traer commits de VARIOS repos —
@@ -644,8 +650,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     if not src_repo_id and ai["commit"]:
         target = ai["commit"].lower()
         change_repo_ids = []
-        for ch in get_build_changes(org, project, ai["build_id"],
-                                    headers, debug):
+        for ch in changes:
             if (ch.get("id", "") or "").lower() != target:
                 continue
             rid = repo_id_from_location(ch.get("location", ""))
@@ -687,19 +692,30 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     # si no se resolvio, el artifact.name limpio.
     component = src_repo_name or cleaned or "N/A"
 
-    # Commit de la compilacion del componente: el source del build cuyo
-    # repo tiene el MISMO NOMBRE del componente; se compara contra el
-    # commit del source artifact del release.
-    build_commit = ""
+    # Commit del RELEASE: el sourceVersion del artifact es el commit del
+    # REPO DEL CI (pipeline yaml). Se sigue buscando hasta el source del
+    # build cuyo repo hace match con el componente: ese es el commit real
+    # del release.
+    source_commit = ""
     if src_repo_name:
         for e in entries:
             if (e["repo_name"].lower() == src_repo_name.lower()
                     and e.get("commit")):
-                build_commit = e["commit"]
+                source_commit = e["commit"]
                 break
-    if not build_commit:
-        build_commit = (source_e.get("commit")
-                        or (build or {}).get("sourceVersion", "") or "")
+    if not source_commit and src_repo_id:
+        for ch in changes:
+            if repo_id_from_location(ch.get("location", "")) == \
+                    src_repo_id:
+                source_commit = ch.get("id", "") or ""
+                break
+    release_commit = source_commit or ai["commit"]
+
+    # Commit de la compilacion del componente (para la comparacion
+    # contra el commit del source artifact del release).
+    build_commit = source_commit \
+        or (source_e.get("commit")
+            or (build or {}).get("sourceVersion", "") or "")
 
     # Ruta del repo: entry 'sources' → repo resuelto por changes →
     # build.repository (self/YAML CI como ultimo recurso) → remoteUrl.
@@ -711,9 +727,9 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     repo_id = src_repo_id or repo_entry.get("id", "") or ""
     component_matches = bool(src_repo_name)
 
-    # PR asociado al commit del artifact: primero por ref
-    # refs/pull/{id}/merge|head (del entry 'sources' o del build), y si
-    # no, scan de PRs completados en el repo FUENTE resuelto.
+    # PR asociado al commit del RELEASE (el del componente, no el del CI):
+    # primero por ref refs/pull/{id}/merge|head, y si no, scan de PRs
+    # completados en el repo FUENTE resuelto.
     pr, pr_ref = None, ""
     cand_refs = [source_e.get("branch", ""),
                  (build or {}).get("sourceBranch", "")] \
@@ -726,7 +742,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
             pr_ref = cand_ref
             break
     if not pr:
-        pr = find_pr_for_commit(org, project, repo_id, ai["commit"],
+        pr = find_pr_for_commit(org, project, repo_id, release_commit,
                                 headers, debug)
     prc = pr_commit_info(pr)
     pr_def_commit = prc["merge"] or prc["source"]
@@ -786,8 +802,11 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
         "url": url,
         "build_id": ai["build_id"],
         "build_number": ai["build_number"],
-        "commit": ai["commit"],
-        "commit_short": (ai["commit"] or "")[:8],
+        # commit del release = el del repo del componente (no el del CI)
+        "commit": release_commit,
+        "commit_short": (release_commit or "")[:8],
+        "artifact_commit": ai["commit"],
+        "artifact_commit_short": (ai["commit"] or "")[:8],
         "build_commit": build_commit,
         "commit_matches_build": bool(
             ai["commit"] and build_commit
@@ -797,7 +816,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
         "pr_url": pr_url,
         "pr_commit": pr_def_commit,
         "pr_commit_short": (pr_def_commit or "")[:8],
-        "pr_commit_matches": pr_matches_commit(pr, ai["commit"]),
+        "pr_commit_matches": pr_matches_commit(pr, release_commit),
         "props_commit": props_commit,
         "props_folder_commit": props_folder_commit,
         "props_match": props_match,
@@ -830,6 +849,10 @@ def print_block(b: Dict[str, Any], org_project_label: str,
     lines.append(b["url"])
     lines.append(f"No. compilación: {b['build_number'] or 'N/A'}")
     lines.append(f"Commit Release: {b['commit_short'] or 'N/A'}")
+    art_short = b.get("artifact_commit_short", "")
+    if art_short and art_short != b["commit_short"]:
+        lines.append(f"Commit Artifact (CI): {art_short}"
+                     " [dim](sourceVersion del pipeline CI)[/]")
     folder_commit = b.get("props_folder_commit") or ""
     mode = b.get("props_folder_mode", "")
     if b.get("props_commit"):
