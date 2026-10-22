@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.28`** — 2026-10-22
+**`1.9.29`** — 2026-10-22
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-22 | **1.9.29** | **Opción 48: criterio simplificado — trigger refs/heads/master + Production sin ejecutar** — `release_is_candidate(rel, args)` se reduce a dos condiciones: (1) la rama trigger del release (artifact Git fuente) es refs/heads/master, (2) el stage Production aún no se ejecutó (`stage_executed`: sin status terminal succeeded/failed/canceled/rejected ni deploySteps). Se retira la verificación de PR por API del filtro (más rápido — sin llamadas extra por release) y los chequeos de stages previos/en vuelo. azdo_prod_preinstall_validator v1.0.9. Tests: 56 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-22 | **1.9.28** | **Opción 48: criterios reales del listado — PR target master + release en vuelo** — nueva `release_is_candidate` usada idéntico en listado y `process_cd`: (1) Production no instalado, (2) release "en vuelo" — Production o Validator en progreso/no ejecutado, o sin ejecutar en SCM Inspection/develop/QA/Staging (`release_in_flight`/`env_pending`/`PRE_PROD_STAGES`), (3) el PR asociado tiene `targetRefName` = refs/heads/master verificado por API cuando el build trae `refs/pull/N/merge` (fallback: rama del artifact Git fuente). La fase 1 evalúa candidatos por CD en paralelo (`eligible_by_cd`) y el listado imprime solo releases elegibles; `process_cd` recibe `eligible_ids` y no re-verifica. azdo_prod_preinstall_validator v1.0.8. Tests: 57 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-22 | **1.9.27** | **Opción 48: primer listado por RELEASE + rutas al final** — el listado inicial ya no es por definición sino una fila por cada release que cumple los criterios (pendiente de Production, artifact Git fuente en master): #, CD, release, build id, commit git, repo, rama. La exportación JSON/HTML/Excel ahora corre DESPUÉS de las tablas y el resumen (antes se imprimía a mitad de corrida) y las rutas se imprimen absolutas con encabezado "Archivos generados". azdo_prod_preinstall_validator v1.0.7, azdo_default_export v1.0.2. Tests: 59 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/azdo/azdo_default_export.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-22 | **1.9.26** | **Opción 48: primer listado con release/build/commit** — el listado inicial de CDs candidatos ahora descarga los releases de cada CD en paralelo (con barra de progreso) y muestra además RELEASE (pendiente más reciente o el último), BUILD ID y COMMIT GIT del artifact fuente. Los releases pre-descargados se pasan a `process_cd` — no hay doble fetch. Nueva `release_preview`. azdo_prod_preinstall_validator v1.0.6. Tests: 49 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

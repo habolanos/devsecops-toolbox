@@ -1331,15 +1331,11 @@ Previene instalaciones fallidas al stage **Production**: identifica los
 2. Por CD toma los últimos `--top-releases` releases y aplica los
    **criterios de candidato** (`release_is_candidate`, idénticos en el
    listado y en el análisis):
-   - **Production NO instalado** (algún deployStep
-     succeeded/partiallySucceeded lo excluye).
-   - **Release en vuelo**: Production o Validator en progreso / no
-     ejecutado, o sin ejecutar en los stages previos **SCM Inspection,
-     develop, QA, Staging** (`release_in_flight`).
-   - **PR a master**: el build del release trae `refs/pull/N/merge` → se
-     consulta el PR y se verifica que `targetRefName` sea
-     `refs/heads/master`; si el PR no se puede consultar, se usa como
-     fallback la rama del artifact Git fuente del release.
+   - **Trigger refs/heads/master**: la rama del artifact Git fuente del
+     release (con el que se creó el release) es master.
+   - **Production sin ejecutar**: el stage Production no tiene status
+     terminal (succeeded/failed/canceled/rejected) ni deploySteps
+     corridos — aún no se ha intentado instalar.
 3. De cada release pendiente extrae: **Build artifact** (build id,
    número y rama `refs/pull/N/merge` → **PR a master**), **artifact Git**
    (repo componente + commit), variables (`RELEASE_ID` y
@@ -1496,6 +1492,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-22 | 1.9.29 | **Opción 48: criterio final — trigger refs/heads/master + Production sin ejecutar** — `release_is_candidate` se simplifica a: la rama trigger del release (artifact Git fuente) es master Y el stage Production aún no se ejecutó (sin status terminal ni deploySteps). Sin verificación de PR por API en el filtro → el listado es más rápido | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.9) |
 | 2026-10-22 | 1.9.28 | **Opción 48: criterios del listado — PR target master + release en vuelo** — `release_is_candidate` (compartido por listado y `process_cd`): Production no instalado + release en vuelo (Production/Validator en progreso o no ejecutado, o sin ejecutar en SCM Inspection/develop/QA/Staging) + PR con `targetRefName` refs/heads/master verificado por API (fallback: rama del artifact Git). El listado muestra solo releases elegibles; workers reciben `eligible_ids` | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.8) |
 | 2026-10-22 | 1.9.27 | **Opción 48: listado inicial por release + rutas de archivos al final** — el primer listado muestra una fila por cada RELEASE que cumple los criterios (pendiente de Production + artifact Git fuente en master): CD, release, build id, commit git, repo, rama. La exportación JSON/HTML/Excel corre al final (rutas absolutas visibles tras el resumen) | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.7), `scm/azdo/azdo_default_export.py` (v1.0.2) |
 | 2026-10-22 | 1.9.26 | **Opción 48: primer listado con release/build/commit** — los releases de cada CD candidato se descargan en paralelo antes de listar; la tabla inicial muestra ahora RELEASE (pendiente más reciente o el último), BUILD ID y COMMIT GIT del artifact fuente. Los releases se reutilizan en `process_cd` (sin doble fetch) | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.6) |

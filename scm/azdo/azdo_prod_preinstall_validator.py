@@ -54,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -406,67 +406,32 @@ def prod_installed(prod_env: Optional[Dict]) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Criterios del listado: release "en vuelo" + PR con target master
+# Criterios del listado: trigger refs/heads/master + Production sin ejecutar
 # ═══════════════════════════════════════════════════════════════════════════════
-PENDING_ENV_STATUSES = ("notstarted", "notdeployed", "inprogress",
-                        "queued", "scheduled")
-PRE_PROD_STAGES = ("SCM Inspection", "develop", "QA", "Staging")
+EXECUTED_ENV_STATUSES = ("succeeded", "partiallysucceeded", "failed",
+                         "canceled", "rejected")
 
 
-def env_pending(env: Optional[Dict]) -> bool:
-    """Stage en progreso o no ejecutado (stage inexistente = no ejecutado)."""
-    st = ((env or {}).get("status") or "").lower()
-    return st in PENDING_ENV_STATUSES or st == ""
+def stage_executed(env: Optional[Dict]) -> bool:
+    """El stage ya se ejecutó: status terminal o al menos un deployStep."""
+    if not env:
+        return False
+    if (env.get("status") or "").lower() in EXECUTED_ENV_STATUSES:
+        return True
+    return bool(env.get("deploySteps"))
 
 
-def release_in_flight(rel: Dict, prod_stage: str,
-                      validator_stage: str) -> bool:
-    """El release sigue 'en camino' a Production:
-    - Production o Validator en progreso / no ejecutado, o
-    - algún stage previo (SCM Inspection, develop, QA, Staging) sin
-      ejecutar todavía.
-    """
-    for name in (prod_stage, validator_stage):
-        if env_pending(stage_env(rel, name)):
-            return True
-    for name in PRE_PROD_STAGES:
-        env = stage_env(rel, name)
-        if env is not None and env_pending(env):
-            return True
-    return False
-
-
-def pr_target_is_master(pr: Optional[Dict], master_branch: str) -> bool:
-    """El targetRefName del PR es refs/heads/master (o la rama
-    configurada)."""
-    return normalize_branch((pr or {}).get("targetRefName", "")) == \
-        (master_branch or "").lower()
-
-
-def release_is_candidate(rel: Dict, def_gi: Optional[Dict], args,
-                         org: str, project: str, headers: Dict,
-                         debug: bool) -> bool:
+def release_is_candidate(rel: Dict, args) -> bool:
     """Criterios del listado/reporte (idénticos en ambas fases):
-    1. Production NO instalado.
-    2. Release en vuelo: Production/Validator en progreso o no ejecutado,
-       o sin ejecutar en SCM Inspection / develop / QA / Staging.
-    3. El PR asociado tiene target refs/heads/master — verificado por la
-       API cuando el build identifica el PR (refs/pull/N/merge);
-       fallback: rama del artifact Git fuente == master.
+    1. El trigger del release es la rama master — la rama del artifact
+       Git FUENTE del release (refs/heads/master ≡ master). Si el
+       release no la reporta, la avala el filtro de la definición.
+    2. Production aún NO ejecutado (sin status terminal ni deploySteps).
     """
-    if prod_installed(stage_env(rel, args.prod_stage)):
+    if stage_executed(stage_env(rel, args.prod_stage)):
         return False
-    if not release_in_flight(rel, args.prod_stage, args.validator_stage):
-        return False
-    build_art, gas = extract_artifacts(rel)
-    bi = build_artifact_info(build_art)
+    _, gas = extract_artifacts(rel)
     src = git_artifact_info(source_git_artifact(gas))
-    pr_id = pr_id_from_build_branch(bi["branch"])
-    if pr_id:
-        repo = src["repo_id"] or (def_gi or {}).get("repo_id", "")
-        pr = get_pull_request(org, project, repo, pr_id, headers, debug)
-        if pr is not None:
-            return pr_target_is_master(pr, args.master_branch)
     b = normalize_branch(src["branch"])
     return (not b) or b == (args.master_branch or "").lower()
 
@@ -771,14 +736,13 @@ def process_cd(org, project, cd, def_detail, args, headers, repos_by_id,
                                  dep["prod_ever_deployed"])
     result["score_data"] = score_data
 
-    # candidatos: listado ya verificó PR target master + release en vuelo;
-    # sin esa lista (uso directo) se evalúa aquí con los mismos criterios
+    # candidatos: el listado ya verificó trigger master + Production sin
+    # ejecutar; sin esa lista (uso directo) se evalúa con igual criterio
     if eligible_ids is not None:
         candidates = [r for r in releases if r.get("id") in eligible_ids]
     else:
         candidates = [r for r in releases
-                      if release_is_candidate(r, gi, args, org, project,
-                                              headers, args.debug)]
+                      if release_is_candidate(r, args)]
 
     for rel in candidates:
         prod_env = stage_env(rel, args.prod_stage)
@@ -1195,20 +1159,16 @@ def main() -> int:
 
     # ── Paso 1: releases por CD + evaluación de criterios (paralelo) ──
     #    releases_by_cd guarda TODOS los releases (los usa el score) y
-    #    eligible_by_cd los que cumplen: PR target master + release en
-    #    vuelo (Production/Validator en progreso o no ejecutado, o sin
-    #    ejecutar en SCM Inspection/develop/QA/Staging)
+    #    eligible_by_cd los que cumplen: trigger refs/heads/master +
+    #    Production sin ejecutar
     releases_by_cd: Dict[int, List[Dict]] = {}
     eligible_by_cd: Dict[int, List[Dict]] = {}
 
     def _fetch_rels(cd_d):
         cd, detail = cd_d
-        gi = cd_master_git_artifact(detail, args.master_branch) or {}
         rels = get_releases(org, project, cd.get("id"),
                             args.top_releases, headers, args.debug)
-        elig = [r for r in rels
-                if release_is_candidate(r, gi, args, org, project,
-                                        headers, args.debug)]
+        elig = [r for r in rels if release_is_candidate(r, args)]
         return cd, rels, elig
 
     if RICH and console:
@@ -1251,8 +1211,9 @@ def main() -> int:
     # listado por RELEASE (no por definición): una fila por cada release
     # que cumple los criterios (PR target master + release en vuelo)
     if RICH and console:
-        ct = Table(title=f"Releases pendientes de {args.prod_stage} "
-                         f"— PR a {args.master_branch} en vuelo",
+        ct = Table(title=f"Releases con trigger refs/heads/"
+                         f"{args.master_branch} — {args.prod_stage} "
+                         f"sin ejecutar",
                    box=box.ROUNDED)
         ct.add_column("#", justify="right", style="dim")
         ct.add_column("CD PIPELINE", style="cyan", no_wrap=True)
@@ -1276,8 +1237,8 @@ def main() -> int:
         console.print()
     else:
         n = 0
-        print(f"\nReleases pendientes de {args.prod_stage} — PR a "
-              f"{args.master_branch} en vuelo:", flush=True)
+        print(f"\nReleases con trigger refs/heads/{args.master_branch} "
+              f"— {args.prod_stage} sin ejecutar:", flush=True)
         for cd, detail in master_cds:
             for rel in eligible_by_cd.get(cd.get("id"), []):
                 n += 1

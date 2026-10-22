@@ -158,66 +158,48 @@ def test_process_cd_excluye_release_con_git_en_develop(monkeypatch):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Criterios: release en vuelo + PR target master
+# Criterios: trigger refs/heads/master + Production sin ejecutar
 # ═════════════════════════════════════════════════════════════════════════════
-def test_release_in_flight_prod_no_ejecutado():
+def test_stage_executed():
+    assert pv.stage_executed(None) is False
+    assert pv.stage_executed({"status": "notStarted"}) is False
+    assert pv.stage_executed({"status": "inProgress"}) is False
+    assert pv.stage_executed({"status": "succeeded"}) is True
+    assert pv.stage_executed({"status": "canceled"}) is True
+    assert pv.stage_executed({"status": "failed"}) is True
+    # sin status terminal pero con pasos corridos → ejecutado
+    assert pv.stage_executed({"status": "inProgress",
+                              "deploySteps": [{"x": 1}]}) is True
+
+
+def test_release_is_candidate_prod_no_ejecutado():
     rel = _rel(prod_status="notStarted")
-    assert pv.release_in_flight(rel, "Production", "Validator") is True
+    assert pv.release_is_candidate(rel, _A()) is True
 
 
-def test_release_in_flight_validator_en_progreso():
-    rel = _rel(envs=[
-        {"name": "Production", "status": "canceled", "deploySteps": []},
-        {"name": "Validator", "status": "inProgress", "deploySteps": []},
-    ])
-    assert pv.release_in_flight(rel, "Production", "Validator") is True
-
-
-def test_release_in_flight_stage_previo_sin_ejecutar():
-    rel = _rel(envs=[
-        {"name": "SCM Inspection", "status": "notStarted",
-         "deploySteps": []},
-        {"name": "Production", "status": "canceled", "deploySteps": []},
-        {"name": "Validator", "status": "succeeded", "deploySteps": []},
-    ])
-    assert pv.release_in_flight(rel, "Production", "Validator") is True
-
-
-def test_release_in_flight_todo_ejecutado():
-    rel = _rel(envs=[
-        {"name": "SCM Inspection", "status": "succeeded",
-         "deploySteps": []},
-        {"name": "Production", "status": "canceled", "deploySteps": []},
-        {"name": "Validator", "status": "succeeded", "deploySteps": []},
-    ])
-    assert pv.release_in_flight(rel, "Production", "Validator") is False
-
-
-def test_release_is_candidate_pr_target_develop(monkeypatch):
-    """PR con target refs/heads/develop → NO candidato aunque haya pr_id."""
-    monkeypatch.setattr(pv, "get_pull_request",
-                        lambda *a, **k: {
-                            "targetRefName": "refs/heads/develop"})
-    rel = _rel(prod_status="notStarted")
-    a = _A()
-    assert pv.release_is_candidate(rel, {"repo_id": "r"}, a,
-                                   "o", "p", {}, False) is False
-
-
-def test_release_is_candidate_pr_target_master(monkeypatch):
-    monkeypatch.setattr(pv, "get_pull_request",
-                        lambda *a, **k: {
-                            "targetRefName": "refs/heads/master"})
-    rel = _rel(prod_status="notStarted")
-    assert pv.release_is_candidate(rel, {"repo_id": "r"}, _A(),
-                                   "o", "p", {}, False) is True
+def test_release_is_candidate_prod_ejecutado():
+    """Production ya corrido (aunque haya fallado) → no es pendiente."""
+    rel = _rel(prod_status="failed",
+               prod_steps=[{"deploymentStatus": "failed"}])
+    assert pv.release_is_candidate(rel, _A()) is False
 
 
 def test_release_is_candidate_prod_instalado(monkeypatch):
     rel = _rel(prod_status="succeeded",
                prod_steps=[{"deploymentStatus": "succeeded"}])
-    assert pv.release_is_candidate(rel, {}, _A(), "o", "p", {},
-                                   False) is False
+    assert pv.release_is_candidate(rel, _A()) is False
+
+
+def test_release_is_candidate_trigger_develop():
+    rel = _rel(prod_status="notStarted",
+               git_art=_git_artifact(branch="develop"))
+    assert pv.release_is_candidate(rel, _A()) is False
+
+
+def test_release_is_candidate_trigger_full_ref():
+    rel = _rel(prod_status="notStarted",
+               git_art=_git_artifact(branch="refs/heads/master"))
+    assert pv.release_is_candidate(rel, _A()) is True
 
 
 def test_process_cd_usa_eligible_ids(monkeypatch):
