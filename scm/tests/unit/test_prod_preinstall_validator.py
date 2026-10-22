@@ -158,6 +158,83 @@ def test_process_cd_excluye_release_con_git_en_develop(monkeypatch):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Criterios: release en vuelo + PR target master
+# ═════════════════════════════════════════════════════════════════════════════
+def test_release_in_flight_prod_no_ejecutado():
+    rel = _rel(prod_status="notStarted")
+    assert pv.release_in_flight(rel, "Production", "Validator") is True
+
+
+def test_release_in_flight_validator_en_progreso():
+    rel = _rel(envs=[
+        {"name": "Production", "status": "canceled", "deploySteps": []},
+        {"name": "Validator", "status": "inProgress", "deploySteps": []},
+    ])
+    assert pv.release_in_flight(rel, "Production", "Validator") is True
+
+
+def test_release_in_flight_stage_previo_sin_ejecutar():
+    rel = _rel(envs=[
+        {"name": "SCM Inspection", "status": "notStarted",
+         "deploySteps": []},
+        {"name": "Production", "status": "canceled", "deploySteps": []},
+        {"name": "Validator", "status": "succeeded", "deploySteps": []},
+    ])
+    assert pv.release_in_flight(rel, "Production", "Validator") is True
+
+
+def test_release_in_flight_todo_ejecutado():
+    rel = _rel(envs=[
+        {"name": "SCM Inspection", "status": "succeeded",
+         "deploySteps": []},
+        {"name": "Production", "status": "canceled", "deploySteps": []},
+        {"name": "Validator", "status": "succeeded", "deploySteps": []},
+    ])
+    assert pv.release_in_flight(rel, "Production", "Validator") is False
+
+
+def test_release_is_candidate_pr_target_develop(monkeypatch):
+    """PR con target refs/heads/develop → NO candidato aunque haya pr_id."""
+    monkeypatch.setattr(pv, "get_pull_request",
+                        lambda *a, **k: {
+                            "targetRefName": "refs/heads/develop"})
+    rel = _rel(prod_status="notStarted")
+    a = _A()
+    assert pv.release_is_candidate(rel, {"repo_id": "r"}, a,
+                                   "o", "p", {}, False) is False
+
+
+def test_release_is_candidate_pr_target_master(monkeypatch):
+    monkeypatch.setattr(pv, "get_pull_request",
+                        lambda *a, **k: {
+                            "targetRefName": "refs/heads/master"})
+    rel = _rel(prod_status="notStarted")
+    assert pv.release_is_candidate(rel, {"repo_id": "r"}, _A(),
+                                   "o", "p", {}, False) is True
+
+
+def test_release_is_candidate_prod_instalado(monkeypatch):
+    rel = _rel(prod_status="succeeded",
+               prod_steps=[{"deploymentStatus": "succeeded"}])
+    assert pv.release_is_candidate(rel, {}, _A(), "o", "p", {},
+                                   False) is False
+
+
+def test_process_cd_usa_eligible_ids(monkeypatch):
+    """Con eligible_ids solo procesa esos releases (sin re-verificar)."""
+    rel_a = _rel(rid=1, name="Release-A", prod_status="notStarted",
+                 git_art=_git_artifact(branch="develop"))
+    rel_b = _rel(rid=2, name="Release-B", prod_status="notStarted")
+    _mock_apis(monkeypatch, [rel_a, rel_b])
+    cd = {"id": 1403, "name": "cd"}
+    detail = {"artifacts": [_git_artifact()],
+              "modifiedOn": "2026-09-01T00:00:00Z"}
+    res = pv.process_cd("o", "p", cd, detail, _A(), {}, {},
+                        releases=[rel_a, rel_b], eligible_ids={2})
+    assert [r["release_id"] for r in res["rows"]] == [2]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Paginación por continuationToken (>500 definiciones / releases)
 # ═════════════════════════════════════════════════════════════════════════════
 def test_get_release_defs_list_pagina(monkeypatch):

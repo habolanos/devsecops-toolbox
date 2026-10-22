@@ -54,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -406,6 +406,72 @@ def prod_installed(prod_env: Optional[Dict]) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Criterios del listado: release "en vuelo" + PR con target master
+# ═══════════════════════════════════════════════════════════════════════════════
+PENDING_ENV_STATUSES = ("notstarted", "notdeployed", "inprogress",
+                        "queued", "scheduled")
+PRE_PROD_STAGES = ("SCM Inspection", "develop", "QA", "Staging")
+
+
+def env_pending(env: Optional[Dict]) -> bool:
+    """Stage en progreso o no ejecutado (stage inexistente = no ejecutado)."""
+    st = ((env or {}).get("status") or "").lower()
+    return st in PENDING_ENV_STATUSES or st == ""
+
+
+def release_in_flight(rel: Dict, prod_stage: str,
+                      validator_stage: str) -> bool:
+    """El release sigue 'en camino' a Production:
+    - Production o Validator en progreso / no ejecutado, o
+    - algún stage previo (SCM Inspection, develop, QA, Staging) sin
+      ejecutar todavía.
+    """
+    for name in (prod_stage, validator_stage):
+        if env_pending(stage_env(rel, name)):
+            return True
+    for name in PRE_PROD_STAGES:
+        env = stage_env(rel, name)
+        if env is not None and env_pending(env):
+            return True
+    return False
+
+
+def pr_target_is_master(pr: Optional[Dict], master_branch: str) -> bool:
+    """El targetRefName del PR es refs/heads/master (o la rama
+    configurada)."""
+    return normalize_branch((pr or {}).get("targetRefName", "")) == \
+        (master_branch or "").lower()
+
+
+def release_is_candidate(rel: Dict, def_gi: Optional[Dict], args,
+                         org: str, project: str, headers: Dict,
+                         debug: bool) -> bool:
+    """Criterios del listado/reporte (idénticos en ambas fases):
+    1. Production NO instalado.
+    2. Release en vuelo: Production/Validator en progreso o no ejecutado,
+       o sin ejecutar en SCM Inspection / develop / QA / Staging.
+    3. El PR asociado tiene target refs/heads/master — verificado por la
+       API cuando el build identifica el PR (refs/pull/N/merge);
+       fallback: rama del artifact Git fuente == master.
+    """
+    if prod_installed(stage_env(rel, args.prod_stage)):
+        return False
+    if not release_in_flight(rel, args.prod_stage, args.validator_stage):
+        return False
+    build_art, gas = extract_artifacts(rel)
+    bi = build_artifact_info(build_art)
+    src = git_artifact_info(source_git_artifact(gas))
+    pr_id = pr_id_from_build_branch(bi["branch"])
+    if pr_id:
+        repo = src["repo_id"] or (def_gi or {}).get("repo_id", "")
+        pr = get_pull_request(org, project, repo, pr_id, headers, debug)
+        if pr is not None:
+            return pr_target_is_master(pr, args.master_branch)
+    b = normalize_branch(src["branch"])
+    return (not b) or b == (args.master_branch or "").lower()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Health score del CD (formula opcion 3)
 # ═══════════════════════════════════════════════════════════════════════════════
 def parse_azdo_date(s: Optional[str]) -> Optional[datetime]:
@@ -676,7 +742,7 @@ def release_preview(rel: Optional[Dict]) -> Dict[str, str]:
 
 
 def process_cd(org, project, cd, def_detail, args, headers, repos_by_id,
-               releases=None) -> Dict[str, Any]:
+               releases=None, eligible_ids=None) -> Dict[str, Any]:
     """Analiza un CD con artifact Git master y devuelve sus releases
     pendientes de Production con toda la info del PR a master.
     `releases` pre-descargados (listado inicial) evita el re-fetch."""
@@ -705,20 +771,20 @@ def process_cd(org, project, cd, def_detail, args, headers, repos_by_id,
                                  dep["prod_ever_deployed"])
     result["score_data"] = score_data
 
-    for rel in releases:
-        prod_env = stage_env(rel, args.prod_stage)
-        if prod_installed(prod_env):
-            continue  # ya instalado en Production → excluir
+    # candidatos: listado ya verificó PR target master + release en vuelo;
+    # sin esa lista (uso directo) se evalúa aquí con los mismos criterios
+    if eligible_ids is not None:
+        candidates = [r for r in releases if r.get("id") in eligible_ids]
+    else:
+        candidates = [r for r in releases
+                      if release_is_candidate(r, gi, args, org, project,
+                                              headers, args.debug)]
 
+    for rel in candidates:
+        prod_env = stage_env(rel, args.prod_stage)
         build_art, git_arts = extract_artifacts(rel)
         bi = build_artifact_info(build_art)
         src_gi = git_artifact_info(source_git_artifact(git_arts))
-        # la rama del artifact Git del release debe ser master; si AzDO la
-        # reporta y es otra (develop, feature/…), el release no es de un
-        # PR a master → se excluye del listado
-        src_branch = normalize_branch(src_gi["branch"])
-        if src_branch and src_branch != (args.master_branch or "").lower():
-            continue
         vars_ = release_vars(rel)
 
         # PR a master: id desde la rama del build (refs/pull/N/merge)
@@ -1127,13 +1193,23 @@ def main() -> int:
                f"{args.master_branch}.[/]")
         return 1
 
-    # ── Paso 1: releases por CD candidato (paralelo) → primer listado ──
-    #    se reutilizan en process_cd para no duplicar la descarga
+    # ── Paso 1: releases por CD + evaluación de criterios (paralelo) ──
+    #    releases_by_cd guarda TODOS los releases (los usa el score) y
+    #    eligible_by_cd los que cumplen: PR target master + release en
+    #    vuelo (Production/Validator en progreso o no ejecutado, o sin
+    #    ejecutar en SCM Inspection/develop/QA/Staging)
     releases_by_cd: Dict[int, List[Dict]] = {}
+    eligible_by_cd: Dict[int, List[Dict]] = {}
 
-    def _fetch_rels(cd):
-        return get_releases(org, project, cd.get("id"),
+    def _fetch_rels(cd_d):
+        cd, detail = cd_d
+        gi = cd_master_git_artifact(detail, args.master_branch) or {}
+        rels = get_releases(org, project, cd.get("id"),
                             args.top_releases, headers, args.debug)
+        elig = [r for r in rels
+                if release_is_candidate(r, gi, args, org, project,
+                                        headers, args.debug)]
+        return cd, rels, elig
 
     if RICH and console:
         with Progress(
@@ -1142,51 +1218,41 @@ def main() -> int:
                 BarColumn(),
                 TaskProgressColumn(),
                 console=console) as p:
-            t = p.add_task(f"Descargando releases de {len(master_cds)} "
-                           f"CDs candidatos…", total=len(master_cds))
+            t = p.add_task(f"Evaluando releases de {len(master_cds)} "
+                           f"CDs…", total=len(master_cds))
             with ThreadPoolExecutor(
                     max_workers=max(1, args.threads)) as ex:
-                futs = {ex.submit(_fetch_rels, cd): cd
-                        for cd, _ in master_cds}
+                futs = {ex.submit(_fetch_rels, cd_d): cd_d[0]
+                        for cd_d in master_cds}
                 for fut in as_completed(futs):
-                    cd = futs[fut]
-                    releases_by_cd[cd.get("id")] = fut.result() or []
-                    p.update(t, description=f"✔ {cd.get('name', '')[:60]}")
+                    cd, rels, elig = fut.result()
+                    releases_by_cd[cd.get("id")] = rels
+                    eligible_by_cd[cd.get("id")] = elig
+                    p.update(t, description=(
+                        f"✔ {cd.get('name', '')[:50]} — "
+                        f"{len(elig)} elegible(s)"))
                     p.advance(t)
-            p.update(t, description="✅ Releases descargados")
+            p.update(t, description="✅ Releases evaluados")
     else:
-        print(f"Descargando releases de {len(master_cds)} "
-              f"CDs candidatos…", flush=True)
+        print(f"Evaluando releases de {len(master_cds)} "
+              f"CDs…", flush=True)
         done = 0
         with ThreadPoolExecutor(max_workers=max(1, args.threads)) as ex:
-            futs = {ex.submit(_fetch_rels, cd): cd for cd, _ in master_cds}
+            futs = {ex.submit(_fetch_rels, cd_d): cd_d[0]
+                    for cd_d in master_cds}
             for fut in as_completed(futs):
-                cd = futs[fut]
-                releases_by_cd[cd.get("id")] = fut.result() or []
+                cd, rels, elig = fut.result()
+                releases_by_cd[cd.get("id")] = rels
+                eligible_by_cd[cd.get("id")] = elig
                 done += 1
-                print(f"  [{done}/{len(master_cds)}] {cd.get('name')}",
-                      flush=True)
-
-    def _eligible_releases(cd) -> List[Dict]:
-        """Releases del CD que cumplen los criterios: NO instalados en
-        Production y cuyo artifact Git fuente está en la rama master."""
-        out = []
-        for r in releases_by_cd.get(cd.get("id"), []):
-            if prod_installed(stage_env(r, args.prod_stage)):
-                continue
-            _, gas = extract_artifacts(r)
-            b = normalize_branch(
-                git_artifact_info(source_git_artifact(gas))["branch"])
-            if b and b != (args.master_branch or "").lower():
-                continue
-            out.append(r)
-        return out
+                print(f"  [{done}/{len(master_cds)}] {cd.get('name')} — "
+                      f"{len(elig)} elegible(s)", flush=True)
 
     # listado por RELEASE (no por definición): una fila por cada release
-    # pendiente que cumple los criterios
+    # que cumple los criterios (PR target master + release en vuelo)
     if RICH and console:
         ct = Table(title=f"Releases pendientes de {args.prod_stage} "
-                         f"— artifact Git en rama {args.master_branch}",
+                         f"— PR a {args.master_branch} en vuelo",
                    box=box.ROUNDED)
         ct.add_column("#", justify="right", style="dim")
         ct.add_column("CD PIPELINE", style="cyan", no_wrap=True)
@@ -1197,7 +1263,7 @@ def main() -> int:
         ct.add_column("RAMA", style="green")
         n = 0
         for cd, detail in master_cds:
-            for rel in _eligible_releases(cd):
+            for rel in eligible_by_cd.get(cd.get("id"), []):
                 n += 1
                 pv_ = release_preview(rel)
                 _, gas = extract_artifacts(rel)
@@ -1210,10 +1276,10 @@ def main() -> int:
         console.print()
     else:
         n = 0
-        print(f"\nReleases pendientes de {args.prod_stage} — artifact "
-              f"Git en rama {args.master_branch}:", flush=True)
+        print(f"\nReleases pendientes de {args.prod_stage} — PR a "
+              f"{args.master_branch} en vuelo:", flush=True)
         for cd, detail in master_cds:
-            for rel in _eligible_releases(cd):
+            for rel in eligible_by_cd.get(cd.get("id"), []):
                 n += 1
                 pv_ = release_preview(rel)
                 print(f"  {n:>3}. {cd.get('name')} — {pv_['release']} "
@@ -1242,7 +1308,10 @@ def main() -> int:
         idx, (cd, detail) = idx_cd
         return idx, process_cd(org, project, cd, detail, args, headers,
                                repos_by_id,
-                               releases=releases_by_cd.get(cd.get("id")))
+                               releases=releases_by_cd.get(cd.get("id")),
+                               eligible_ids={
+                                   r.get("id") for r in
+                                   eligible_by_cd.get(cd.get("id"), [])})
 
     if RICH and console:
         with Progress(
