@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -616,20 +616,30 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
                     or (build or {}).get("sourceVersion", "") or "")
 
     # Sin sourceRepositories: resolver el repo fuente buscando el commit
-    # del release entre los 'changes' del build (location trae el repoId).
+    # del release entre los 'changes' del build. OJO: en builds
+    # multi-checkout los changes pueden traer commits de VARIOS repos —
+    # se recolectan todos los matches y se prefiere uno que NO sea el
+    # repo del YAML CI.
     if not src_repo_id and ai["commit"]:
+        target = ai["commit"].lower()
+        change_repo_ids = []
         for ch in get_build_changes(org, project, ai["build_id"],
                                     headers, debug):
-            if (ch.get("id", "") or "").lower() != ai["commit"].lower():
+            if (ch.get("id", "") or "").lower() != target:
                 continue
             rid = repo_id_from_location(ch.get("location", ""))
-            if rid:
-                repo = get_repository(org, project, rid, headers,
-                                      debug) or {}
-                src_repo_id = rid
-                src_repo_name = repo.get("name", "") or ""
-                src_url = strip_userinfo(
-                    repo.get("remoteUrl", "") or repo.get("webUrl", ""))
+            if rid and rid not in change_repo_ids:
+                change_repo_ids.append(rid)
+        for rid in change_repo_ids:
+            repo = get_repository(org, project, rid, headers,
+                                  debug) or {}
+            if (repo.get("name", "") or "").lower() == \
+                    ci_repo_name.lower():
+                continue
+            src_repo_id = rid
+            src_repo_name = repo.get("name", "") or ""
+            src_url = strip_userinfo(
+                repo.get("remoteUrl", "") or repo.get("webUrl", ""))
             break
 
     # Ultimo recurso: el nombre del repo es prefijo del artifact.name

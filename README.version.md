@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.9`** — 2026-10-21
+**`1.9.10`** — 2026-10-21
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-21 | **1.9.10** | **Opción 47: changes multi-repo** — con la exclusión del repo del CI en `find_source_entry`, el fallback por `builds/{id}/changes` seguía resolviendo `pipelines-projects`: en builds multi-checkout los changes traen commits de varios repos y el loop hacía `break` en el primer match. Ahora se recolectan todos los repoIds del commit del release, se consulta cada repo y se prefiere uno que NO sea el repo del YAML CI; si solo existe el del CI, queda sin resolver y cae a la resolución por prefijo de la convención (`oms-com-order`). azdo_release_deploy_check v1.0.7. Tests: 70 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-21 | **1.9.9** | **Opción 47: el alias `sources` puede ser el repo del CI** — el run real mostró `sourceRepositories` con `sources`→`pipelines-projects` (el repo del YAML, no del componente); `find_source_entry` lo aceptaba y `src_repo_name` quedaba `pipelines-projects`. Ahora `definitionReference.repository` (repo del YAML CI) se excluye de todos los pases de `find_source_entry` y del match por prefijo; solo se acepta como último recurso (YAML viviendo en el repo del componente). azdo_release_deploy_check v1.0.6. Tests: 68 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-21 | **1.9.8** | **Opción 47: repo por prefijo de la convención `_{repo}-{stack}-CI`** — el run real con pipeline 1403 mostró que `artifact.name` = `_oms-com-order-springboot-java17-GKE-TMS-OMS-CI` y que `find_source_entry` caía a `pipelines-projects` por su fallback genérico. Ahora `find_source_entry` solo acepta match exacto, alias `sources` o prefijo de nombre; el último fallback resuelve el repo como el prefijo `-` más largo del artifact limpio presente en los repos del proyecto (`oms-com-order`). `Nombre del componente` = repo resuelto + anotación `(CI: …)`; el folder de properties prueba cada prefijo hasta encontrar commits. azdo_release_deploy_check v1.0.5. Tests: 66 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |
 | 2026-10-21 | **1.9.7** | **Opción 47: repo fuente vía build changes + componente limpio** — en el run real el build no devolvía `sourceRepositories` y `artifact.name` era el nombre del CI (`_wms-…-CI`), por eso la ruta salía `pipelines-projects`. Ahora: build consultado con `api-version=7.2-preview.1` (fallback `7.1`); si `sourceRepositories` falta, el repo fuente se resuelve buscando el commit del release en `builds/{id}/changes` (cada `location` trae `…/repositories/{repoId}/commits/{sha}` → `git/repositories/{repoId}`). `Nombre del componente` = `artifact.name` limpio (sin `_` ni `-CI`), con anotación `(repo fuente: X)` si difiere. El folder de properties se intenta primero con el nombre del repo fuente resuelto. azdo_release_deploy_check v1.0.4. Tests: 63 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py`, `scm/azdo/README.md`, `VERSION` |

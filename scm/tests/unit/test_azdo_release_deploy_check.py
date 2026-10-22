@@ -508,6 +508,63 @@ def test_release_block_sin_source_repositories(monkeypatch):
     assert b["pr"] is pr
 
 
+def test_release_block_changes_prefiere_repo_no_ci(monkeypatch):
+    """En builds multi-checkout los changes traen commits de varios repos:
+    si el commit aparece en el repo del CI y en el del componente, gana
+    el del componente."""
+    build = {"sourceVersion": "9dad7445abcd1234",
+             "repository": {"id": "ci-repo", "name": "pipelines-projects"}}
+    changes = [
+        {"id": "9dad7445abcd1234",
+         "location": "https://dev.azure.com/o/p/_apis/git/"
+                     "repositories/ci-repo/commits/9dad7445abcd1234"},
+        {"id": "9dad7445abcd1234",
+         "location": "https://dev.azure.com/o/p/_apis/git/"
+                     "repositories/r-src/commits/9dad7445abcd1234"},
+    ]
+    repos = {"ci-repo": {"id": "ci-repo", "name": "pipelines-projects",
+                         "remoteUrl": "https://x@dev.azure.com/o/p/_git/pipelines-projects"},
+             "r-src": {"id": "r-src", "name": "wms-sys-originalorder",
+                       "remoteUrl": "https://x@dev.azure.com/o/p/_git/wms-sys-originalorder"}}
+    _mock_apis(monkeypatch, build=build)
+    monkeypatch.setattr(rdc, "get_build_changes", lambda *a, **k: changes)
+    monkeypatch.setattr(rdc, "get_repository",
+                        lambda org, p, rid, h, d: repos.get(rid))
+    rel = _release(artifacts=[_build_artifact()])
+    b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
+                          False)
+    assert b["src_repo_name"] == "wms-sys-originalorder"
+    assert "pipelines-projects" not in b["repo_url"]
+
+
+def test_release_block_changes_solo_repo_ci_cae_a_prefijo(monkeypatch):
+    """Si el commit solo aparece en changes del repo del CI, se ignora y
+    la resolucion cae al prefijo del artifact.name."""
+    build = {"sourceVersion": "cf6e2244",
+             "repository": {"id": "ci-repo", "name": "pipelines-projects"}}
+    changes = [{"id": "cf6e2244",
+                "location": "https://dev.azure.com/o/p/_apis/git/"
+                            "repositories/ci-repo/commits/cf6e2244"}]
+    repos = {"ci-repo": {"id": "ci-repo", "name": "pipelines-projects",
+                         "remoteUrl": "https://dev.azure.com/o/p/_git/pipelines-projects"}}
+    repos_by_name = {"oms-com-order": {"id": "r-oms",
+                                       "name": "oms-com-order",
+                                       "remoteUrl": "https://dev.azure.com/o/p/_git/oms-com-order"}}
+    art = _build_artifact(
+        artifact_name="_oms-com-order-springboot-java17-GKE-TMS-OMS-CI")
+    _mock_apis(monkeypatch, build=build)
+    detail = _release(artifacts=[art])
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    monkeypatch.setattr(rdc, "get_build_changes", lambda *a, **k: changes)
+    monkeypatch.setattr(rdc, "get_repository",
+                        lambda org, p, rid, h, d: repos.get(rid))
+    b = rdc.release_block("o", "p", _release(artifacts=[art]), "cd", {},
+                          None, repos_by_name, "master", False)
+    assert b["src_repo_name"] == "oms-com-order"
+    assert b["repo_url"].endswith("/_git/oms-com-order")
+
+
 def test_repo_id_from_location():
     assert rdc.repo_id_from_location(
         "https://dev.azure.com/o/p/_apis/git/repositories/abc-123/"
