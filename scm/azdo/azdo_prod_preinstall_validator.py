@@ -54,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -662,10 +662,24 @@ def rollback_info(org, project, rel, vars_, headers, debug) -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Proceso por CD
 # ═══════════════════════════════════════════════════════════════════════════════
-def process_cd(org, project, cd, def_detail, args, headers, repos_by_id) \
-        -> Dict[str, Any]:
+def release_preview(rel: Optional[Dict]) -> Dict[str, str]:
+    """Datos del release para el primer listado: nombre, build id y
+    commit del artifact Git fuente."""
+    if not rel:
+        return {"release": "—", "build_id": "—", "commit": "—"}
+    build_art, git_arts = extract_artifacts(rel)
+    bi = build_artifact_info(build_art)
+    src_gi = git_artifact_info(source_git_artifact(git_arts))
+    return {"release": rel.get("name", ""),
+            "build_id": bi["build_id"] or "—",
+            "commit": (src_gi["commit"] or "—")[:10]}
+
+
+def process_cd(org, project, cd, def_detail, args, headers, repos_by_id,
+               releases=None) -> Dict[str, Any]:
     """Analiza un CD con artifact Git master y devuelve sus releases
-    pendientes de Production con toda la info del PR a master."""
+    pendientes de Production con toda la info del PR a master.
+    `releases` pre-descargados (listado inicial) evita el re-fetch."""
     result = {"cd_id": cd.get("id"), "cd_name": cd.get("name", ""),
               "rows": [], "score": 0, "rating": ("🔴", "Nunca"),
               "error": ""}
@@ -674,8 +688,9 @@ def process_cd(org, project, cd, def_detail, args, headers, repos_by_id) \
         result["error"] = "sin artifact Git master"
         return result
 
-    releases = get_releases(org, project, cd.get("id"),
-                            args.top_releases, headers, args.debug)
+    if releases is None:
+        releases = get_releases(org, project, cd.get("id"),
+                                args.top_releases, headers, args.debug)
     if not releases:
         result["error"] = "sin releases"
         return result
@@ -1112,7 +1127,54 @@ def main() -> int:
                f"{args.master_branch}.[/]")
         return 1
 
-    # ── Paso 1: listar TODOS los CDs candidatos antes de procesar ──
+    # ── Paso 1: releases por CD candidato (paralelo) → primer listado ──
+    #    se reutilizan en process_cd para no duplicar la descarga
+    releases_by_cd: Dict[int, List[Dict]] = {}
+
+    def _fetch_rels(cd):
+        return get_releases(org, project, cd.get("id"),
+                            args.top_releases, headers, args.debug)
+
+    if RICH and console:
+        with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console) as p:
+            t = p.add_task(f"Descargando releases de {len(master_cds)} "
+                           f"CDs candidatos…", total=len(master_cds))
+            with ThreadPoolExecutor(
+                    max_workers=max(1, args.threads)) as ex:
+                futs = {ex.submit(_fetch_rels, cd): cd
+                        for cd, _ in master_cds}
+                for fut in as_completed(futs):
+                    cd = futs[fut]
+                    releases_by_cd[cd.get("id")] = fut.result() or []
+                    p.update(t, description=f"✔ {cd.get('name', '')[:60]}")
+                    p.advance(t)
+            p.update(t, description="✅ Releases descargados")
+    else:
+        print(f"Descargando releases de {len(master_cds)} "
+              f"CDs candidatos…", flush=True)
+        done = 0
+        with ThreadPoolExecutor(max_workers=max(1, args.threads)) as ex:
+            futs = {ex.submit(_fetch_rels, cd): cd for cd, _ in master_cds}
+            for fut in as_completed(futs):
+                cd = futs[fut]
+                releases_by_cd[cd.get("id")] = fut.result() or []
+                done += 1
+                print(f"  [{done}/{len(master_cds)}] {cd.get('name')}",
+                      flush=True)
+
+    def _preview(cd):
+        """Release pendiente más reciente (o el último si no hay)."""
+        rels = releases_by_cd.get(cd.get("id"), [])
+        pend = next((r for r in rels
+                     if not prod_installed(stage_env(r, args.prod_stage))),
+                    None)
+        return release_preview(pend or (rels[0] if rels else None))
+
     if RICH and console:
         ct = Table(title=f"CDs con artifact Git en rama "
                          f"{args.master_branch} ({len(master_cds)})",
@@ -1122,10 +1184,15 @@ def main() -> int:
         ct.add_column("ID", style="dim", justify="right")
         ct.add_column("REPO (artifact Git)", style="magenta")
         ct.add_column("RAMA", style="green")
+        ct.add_column("RELEASE", style="magenta", no_wrap=True)
+        ct.add_column("BUILD ID", justify="right", style="dim")
+        ct.add_column("COMMIT GIT", style="dim")
         for i, (cd, detail) in enumerate(master_cds, 1):
             gi = cd_master_git_artifact(detail, args.master_branch) or {}
+            pv_ = _preview(cd)
             ct.add_row(str(i), cd.get("name", ""), str(cd.get("id")),
-                       gi.get("repo_name", "?"), gi.get("branch", "?"))
+                       gi.get("repo_name", "?"), gi.get("branch", "?"),
+                       pv_["release"], pv_["build_id"], pv_["commit"])
         console.print(ct)
         console.print()
     else:
@@ -1133,8 +1200,11 @@ def main() -> int:
               f"({len(master_cds)}):")
         for i, (cd, detail) in enumerate(master_cds, 1):
             gi = cd_master_git_artifact(detail, args.master_branch) or {}
+            pv_ = _preview(cd)
             print(f"  {i:>3}. {cd.get('name')} (id {cd.get('id')}) "
-                  f"— {gi.get('repo_name', '?')} [{gi.get('branch', '?')}]")
+                  f"— {gi.get('repo_name', '?')} [{gi.get('branch', '?')}] "
+                  f"| release {pv_['release']} "
+                  f"| build {pv_['build_id']} | commit {pv_['commit']}")
 
     # 3. Repositorios del proyecto (spinner)
     if RICH and console:
@@ -1157,7 +1227,8 @@ def main() -> int:
     def _work(idx_cd):
         idx, (cd, detail) = idx_cd
         return idx, process_cd(org, project, cd, detail, args, headers,
-                               repos_by_id)
+                               repos_by_id,
+                               releases=releases_by_cd.get(cd.get("id")))
 
     if RICH and console:
         with Progress(

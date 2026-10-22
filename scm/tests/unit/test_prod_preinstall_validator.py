@@ -202,6 +202,37 @@ def test_get_releases_top_recorta(monkeypatch):
     assert len(rels) == 2
 
 
+def test_release_preview_campos():
+    rel = _rel(rid=60995, name="Release-40")
+    pv_ = pv.release_preview(rel)
+    assert pv_["release"] == "Release-40"
+    assert pv_["build_id"] == "495667"
+    assert pv_["commit"] == "aacda92cbd"  # truncado a 10
+
+
+def test_release_preview_sin_release():
+    assert pv.release_preview(None) == {"release": "—", "build_id": "—",
+                                        "commit": "—"}
+
+
+def test_process_cd_usa_releases_precargados(monkeypatch):
+    """Si se pasan `releases` pre-descargados NO debe llamar get_releases."""
+    called = []
+    monkeypatch.setattr(pv, "get_releases",
+                        lambda *a, **k: called.append(1) or [])
+    monkeypatch.setattr(pv, "get_pull_request", lambda *a, **k: None)
+    monkeypatch.setattr(pv, "find_pr_for_commit", lambda *a, **k: None)
+    monkeypatch.setattr(pv, "api_get_text", lambda *a, **k: None)
+    rel = _rel(rid=60995, prod_status="notStarted")
+    cd = {"id": 1403, "name": "oms-com-order-CD"}
+    detail = {"artifacts": [_build_artifact(), _git_artifact()],
+              "modifiedOn": "2026-09-01T00:00:00Z"}
+    res = pv.process_cd("o", "p", cd, detail, _A(), {}, {},
+                        releases=[rel])
+    assert len(res["rows"]) == 1
+    assert called == []  # nunca re-fetchea
+
+
 def test_get_releases_top_cero_baja_todo(monkeypatch):
     pages = [{"value": [{"id": 0}]}, {"value": [{"id": 1}]}]
     it = iter(pages)
