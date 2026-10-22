@@ -1295,6 +1295,76 @@ Variable RELASE_ID: 61344 ✔ coincide con el rollback
 PR asociado: #4210 feat: ... ✔ commit coincide
 ```
 
+### 14 · Production Pre-Install Validator — opción 48 — `azdo_prod_preinstall_validator.py`
+
+Previene instalaciones fallidas al stage **Production**: identifica los
+**Pull Requests a master ya aplicados** cuyo release tiene el pipeline CD
+**en progreso o no instalado** en Production, y los pre-valida.
+
+#### Flujo
+
+1. Lista las definiciones CD (paralelo) y filtra las que tienen
+   **artifact tipo Git en rama master** (`--master-branch`, el source
+   repository del CD).
+2. Por CD toma los últimos `--top-releases` releases y **excluye los que
+   ya tienen Production instalado** (algún deployStep
+   succeeded/partiallySucceeded).
+3. De cada release pendiente extrae: **Build artifact** (build id,
+   número y rama `refs/pull/N/merge` → **PR a master**), **artifact Git**
+   (repo componente + commit), variables (`RELEASE_ID` y
+   `commitPropertiesRollback`).
+4. Extrae los **logs de todas las tareas del stage Validator** (solo si
+   existe / fue ejecutado) y evalúa las violaciones con la **misma
+   lógica de la opción 44** (reglas `##[sev] [SEVERITY] RULE_*` con
+   environment/variable/reason) más los **issues genéricos** de tarea
+   (`##[warning] variable not found: …`).
+5. Calcula el **health score del CD** (fórmula de la opción 3: recencia
+   0-70 + estabilidad deploy 0-20 + estabilidad definición 0-10, rating
+   🔴🟢🔵🟡🟠) y el **snapshot de stages** del release (estilo Deep Dive
+   de la opción 5).
+6. **Rollback**: resuelve el release apuntado por `RELEASE_ID` y extrae
+   su build id, commit del artifact Git y commit de properties.
+
+#### Tabla resultante
+
+| Columna | Contenido |
+|---|---|
+| CD PIPELINE | nombre del pipeline CD |
+| RELEASE | nombre + id del release pendiente |
+| PR → MASTER | id y título del PR (desde `refs/pull/N/merge` del build; fallback por `lastMergeCommit` == commit Git) |
+| REPO | repo componente |
+| BUILD ID | build id + número de compilación |
+| COMMIT GIT | commit del artifact type Git |
+| SCORE | score health del CD (opción 3) |
+| COMMIT PROPS | `commitPropertiesRollback` (o desde logs del Validator) |
+| ROLLBACK | release + build id + commit Git + commit props del rollback |
+| VALIDATOR | conteo de violaciones por severidad |
+| PROD | status e intentos de Production |
+
+Y por cada release un panel con: snapshot de stages (Deep Dive compacto),
+PR, build, commits, rollback, y el detalle de violaciones del Validator
+(reglas de la opción 44 + issues de tarea).
+
+#### Argumentos CLI
+
+| Arg | Default | Descripción |
+|---|---|---|
+| `--pat` | — | PAT (scopes: Release read + Code read + Build read) |
+| `--org` | `https://dev.azure.com/Coppel-Retail` | URL de la organización |
+| `--project` | `Cadena_de_Suministros` | Proyecto |
+| `--master-branch` | `master` | Rama del artifact Git del CD |
+| `--prod-stage` | `Production` | Nombre del stage de producción |
+| `--validator-stage` | `Validator` | Nombre del stage validador |
+| `--top-releases` | `10` | Releases recientes a revisar por CD |
+| `--threads` | `20` | Hilos para detalles de definiciones |
+| `--debug` | off | Imprime errores HTTP |
+
+#### Ejemplo
+
+```bash
+python azdo_prod_preinstall_validator.py --pat "$PAT"
+```
+
 ---
 
 ## API REST de Azure DevOps
@@ -1385,6 +1455,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-22 | 1.9.19 | **Opción 48: Production Pre-Install Validator** — nueva herramienta basada en la opción 1: lista los CDs con artifact Git branch master, excluye releases con Production instalado, identifica el PR a master (rama `refs/pull/N/merge` del build + fallback por commit), extrae los logs del stage Validator y evalúa las violaciones con la lógica de la opción 44 (+ issues genéricos), calcula el score health del CD (opción 3) y el snapshot de stages (opción 5), con rollback desde `RELEASE_ID`. azdo_prod_preinstall_validator v1.0.0. Tests: 33 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_prod_preinstall_validator.py` |
 | 2026-10-22 | 1.9.18 | **Opción 47: sin dump de respuestas API** — retirado el volcado de JSON que devolvían las llamadas (release detail, build, changes, PR, lista de releases, repos) y el listado de commits del folder en modo debug; `--debug` queda solo para errores HTTP. azdo_release_deploy_check v1.0.15. Tests: 78 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.17 | **Opción 47: scan de PR por rama + paginado** — el Git source artifact trae su rama (`branch.id`, ej: master): el scan de PRs filtra por `searchCriteria.targetRefName=refs/heads/{rama}` (un PR a `feature/` cuyo target previo coincide con el commit del release queda fuera, caso real #360315) y pagina hasta 5×200=1000 PRs completados (releases viejos → PRs viejos). azdo_release_deploy_check v1.0.14. Tests: 78 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.16 | **Opción 47: PR solo por lastMergeCommit** — el scan matcheaba `lastMergeSourceCommit`/`lastMergeTargetCommit` y un PR "parecido" ganaba (caso real: #360315 compartía source/target con el commit del release pero su merge commit era otro). Ahora SOLO el `lastMergeCommit` (commit definitivo en la rama destino) asocia el PR con el release; scan ampliado a 200 PRs. azdo_release_deploy_check v1.0.13. Tests: 75 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |

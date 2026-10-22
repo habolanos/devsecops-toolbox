@@ -397,6 +397,14 @@ TOOLS: Dict = {
         "group":       "release",
         "status":      "ready",
     },
+    "48": {
+        "name":        "Production Pre-Install Validator",
+        "description": "Pre-valida instalaciones a Production: PRs a master aplicados con CD en progreso o no instalado — logs del stage Validator (reglas opción 44), score CD (opción 3), commit Git/properties y rollback",
+        "path":        "azdo_prod_preinstall_validator.py",
+        "args":        ["--pat", "--org", "--project", "--master-branch", "--prod-stage", "--validator-stage", "--top-releases", "--threads", "--debug"],
+        "group":       "release",
+        "status":      "ready",
+    },
     "40": {
         "name":        "Health Probe Masivo Validator",
         "description": "Validación masiva de health probes en K8s desde AZDO - Mapeo de stages, pruebas de conectividad, reportería ejecutiva",
