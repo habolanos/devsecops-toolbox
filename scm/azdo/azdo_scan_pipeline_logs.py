@@ -529,6 +529,16 @@ def main() -> None:
         print(f"Total de registros encontrados: {len(all_rows)}")
         print(f"Tiempo de ejecución: {time_str}")
     
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "scan_pipeline_logs", globals().get("__version__", "1.0.0"), all_rows,
+            organization=args.org, project=args.project,
+            title="Pipeline Logs Scanner")
+    except Exception:
+        pass
+
     if all_rows:
         results_table = pd.DataFrame(all_rows)
         print("\n=== TABLA FINAL ===")

@@ -1,6 +1,6 @@
 # Azure DevOps Tools — SCM Toolbox
 
-**21 herramientas Python** para auditoría, análisis y gestión de pipelines, políticas de ramas y pull requests en **Azure DevOps**. Incluye **Pipeline Updater Template (Tool 41)** y **Pipeline Rollback** con 3 métodos de restauración. Todas las herramientas usan la API REST de AzDO v7.2 con autenticación por PAT y ofrecen salida enriquecida en consola (Rich) y exportación a JSON / CSV / Excel.
+**21 herramientas Python** para auditoría, análisis y gestión de pipelines, políticas de ramas y pull requests en **Azure DevOps**. Incluye **Pipeline Updater Template (Tool 41)** y **Pipeline Rollback** con 3 métodos de restauración. Todas las herramientas usan la API REST de AzDO v7.2 con autenticación por PAT y ofrecen salida enriquecida en consola (Rich). **Todas generan siempre JSON + HTML en `outcome/`** (ver [Salida por defecto](#salida-por-defecto-json--html)); formatos extra vía `--output` en CLI directa.
 
 ---
 
@@ -162,6 +162,23 @@ python tools.py
 - Si `config.json` existe, los valores de PAT / org / proyecto se usan como defaults (solo presionas Enter).
 - La opción **A** ejecuta las herramientas 1-4 secuencialmente (no incluye la 5 por requerir un ID específico).
 - El venv se crea en `.venv/` y las dependencias se instalan una sola vez (marcador en `.venv/.installed_requirements`).
+
+---
+
+## Salida por defecto: JSON + HTML
+
+**Todas las herramientas generan automáticamente, al finalizar, dos archivos en `outcome/`** sin necesidad de flags:
+
+```
+outcome/
+├── <tool>_<AAAAMMDD_HHMMSS>.json   # payload: metadata + summary + data
+└── <tool>_<AAAAMMDD_HHMMSS>.html   # reporte tabla tema oscuro, auto-contenido, con filtro
+```
+
+- Implementado por `azdo_default_export.py` (`write_default_reports`), usado por cada script.
+- El directorio se resuelve igual que el resto del toolbox: `DEVSECOPS_OUTPUT_DIR` → `config.json` `global.output_dir` → `scm/outcome/`.
+- El launcher `tools.py` **ya no pregunta por formato de exportación** (JSON+HTML siempre se generan). Los formatos extra (`csv`/`excel`) siguen disponibles solo por CLI directa con `--output` en las herramientas que los soportan.
+- Las herramientas de acción (rollback, restore, backup, clone, updater, template) exportan el resumen/resultado de la operación; las de consulta exportan el dataset completo mostrado en consola.
 
 ---
 

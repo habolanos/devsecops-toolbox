@@ -1156,6 +1156,16 @@ def main():
         console.print(table)
     
     # Exportar si se solicita
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "task_validator", globals().get("__version__", "1.0.0"), results,
+            organization=args.org, project=args.project,
+            title="Task Validator")
+    except Exception:
+        pass
+
     if args.output:
         export_results(results, args.output)
     

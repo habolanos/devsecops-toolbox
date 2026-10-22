@@ -1405,6 +1405,16 @@ def main():
         print(f"\nTotal: {total_defs} | Score promedio: {avg}/100 | Tiempo: {elapsed:.2f}s\n")
 
     # ── 6. Exportar ───────────────────────────────────────────────────────────
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "release_cd_health", globals().get("__version__", "1.0.0"), rows,
+            organization=args.org, project=args.project,
+            title="Release CD Health")
+    except Exception:
+        pass
+
     if args.output:
         fp = export_results(
             rows, args.output,

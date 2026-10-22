@@ -9,12 +9,13 @@ con estructura y nombres de archivo estandarizados.
 import json
 import csv
 import os
+import html as _html_mod
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from zoneinfo import ZoneInfo
 
-__version__ = "1.8.33"
+__version__ = "1.8.34"
 
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
@@ -231,7 +232,153 @@ class ExportManager:
         
         except ImportError:
             return None
-    
+
+    def export_html(
+        self,
+        data: List[Dict],
+        metadata: Optional[Dict] = None,
+        summary: Optional[Dict] = None,
+        organization: Optional[str] = None,
+        project: Optional[str] = None,
+        timezone: str = "UTC",
+        title: Optional[str] = None
+    ) -> str:
+        """
+        Exporta datos a HTML auto-contenido (tabla + resumen, tema oscuro).
+
+        Args:
+            data: Lista de diccionarios con los datos
+            metadata: Metadata adicional (opcional)
+            summary: Resumen de datos (opcional)
+            organization: Nombre de la organización (opcional)
+            project: Nombre del proyecto (opcional)
+            timezone: Zona horaria para timestamp
+            title: Título del reporte (default: tool_name)
+
+        Returns:
+            Ruta del archivo generado
+        """
+        filepath = self.output_dir / f"{self.tool_name}_{self.timestamp}.html"
+
+        gen_at = datetime.now(ZoneInfo(timezone)).isoformat(timespec="seconds")
+        esc = lambda v: _html_mod.escape("" if v is None else str(v))
+
+        # Columnas = unión de keys (orden de primera aparición)
+        columns = list(dict.fromkeys(k for row in data for k in row.keys()))
+
+        meta_rows = {
+            "Tool": self.tool_name, "Version": self.tool_version,
+            "Generated": gen_at,
+        }
+        if organization:
+            meta_rows["Organization"] = organization
+        if project:
+            meta_rows["Project"] = project
+        if metadata:
+            meta_rows.update(metadata)
+
+        meta_html = "".join(
+            f'<div class="meta-item"><span class="meta-k">{esc(k)}</span>'
+            f'<span class="meta-v">{esc(v)}</span></div>'
+            for k, v in meta_rows.items())
+
+        sum_items = {"total": len(data)}
+        if summary:
+            sum_items.update(summary)
+        sum_html = "".join(
+            f'<div class="stat"><div class="stat-v">{esc(v)}</div>'
+            f'<div class="stat-k">{esc(k)}</div></div>'
+            for k, v in sum_items.items())
+
+        head_html = "".join(f"<th>{esc(c)}</th>" for c in columns)
+        body_html = "".join(
+            "<tr>" + "".join(f"<td>{esc(row.get(c))}</td>" for c in columns) + "</tr>"
+            for row in data)
+
+        page_title = esc(title or self.tool_name.replace("_", " ").title())
+        html = f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{page_title}</title>
+<style>
+:root{{--bg:#0f172a;--card:#1e293b;--line:#334155;--txt:#e2e8f0;--dim:#94a3b8;--acc:#38bdf8}}
+*{{box-sizing:border-box;margin:0}}
+body{{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;padding:24px}}
+h1{{font-size:22px;margin-bottom:4px}}
+.sub{{color:var(--dim);font-size:13px;margin-bottom:16px}}
+.meta{{display:flex;flex-wrap:wrap;gap:10px 24px;background:var(--card);border:1px solid var(--line);
+border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12px}}
+.meta-item{{display:flex;gap:6px}}.meta-k{{color:var(--dim);font-weight:600}}
+.meta-v{{color:var(--txt)}}
+.stats{{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}}
+.stat{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 18px;min-width:110px}}
+.stat-v{{font-size:20px;font-weight:700;color:var(--acc)}}
+.stat-k{{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}}
+.wrap{{overflow-x:auto;border:1px solid var(--line);border-radius:8px}}
+table{{border-collapse:collapse;width:100%;font-size:12px}}
+th{{background:#0b1220;color:var(--acc);text-align:left;padding:10px 12px;position:sticky;top:0;
+text-transform:uppercase;font-size:10px;letter-spacing:.5px;white-space:nowrap}}
+td{{padding:8px 12px;border-top:1px solid var(--line);white-space:nowrap;max-width:420px;
+overflow:hidden;text-overflow:ellipsis}}
+tr:hover td{{background:#16213a}}
+input#q{{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:6px;
+padding:8px 12px;width:320px;margin-bottom:12px;font-size:13px}}
+</style></head><body>
+<h1>{page_title}</h1>
+<div class="sub">Generado automáticamente por DevSecOps Toolbox</div>
+<div class="meta">{meta_html}</div>
+<div class="stats">{sum_html}</div>
+<input id="q" placeholder="Filtrar..." onkeyup="filtrar()">
+<div class="wrap"><table id="t"><thead><tr>{head_html}</tr></thead>
+<tbody>{body_html}</tbody></table></div>
+<script>
+function filtrar(){{const q=document.getElementById('q').value.toLowerCase();
+document.querySelectorAll('#t tbody tr').forEach(r=>{{
+r.style.display=r.textContent.toLowerCase().includes(q)?'':'none';}});}}
+</script></body></html>"""
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(html)
+        return str(filepath)
+
+    def export_default(
+        self,
+        data: List[Dict],
+        metadata: Optional[Dict] = None,
+        summary: Optional[Dict] = None,
+        organization: Optional[str] = None,
+        project: Optional[str] = None,
+        timezone: str = "UTC",
+        title: Optional[str] = None
+    ) -> Dict[str, Optional[str]]:
+        """
+        Exportación por defecto: genera siempre JSON + HTML en outcome/.
+
+        Args:
+            data: Lista de diccionarios con los datos
+            metadata: Metadata adicional
+            summary: Resumen adicional
+            organization: Nombre de la organización
+            project: Nombre del proyecto
+            timezone: Zona horaria
+            title: Título para el HTML
+
+        Returns:
+            Diccionario {"json": ruta, "html": ruta} (o "Error: ..." por formato)
+        """
+        results: Dict[str, Optional[str]] = {}
+        try:
+            results["json"] = self.export_json(
+                data, metadata, summary, organization, project, timezone)
+        except Exception as e:
+            results["json"] = f"Error: {e}"
+        try:
+            results["html"] = self.export_html(
+                data, metadata, summary, organization, project, timezone, title)
+        except Exception as e:
+            results["html"] = f"Error: {e}"
+        return results
+
     def export_all(
         self,
         data: List[Dict],

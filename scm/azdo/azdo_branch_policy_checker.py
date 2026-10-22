@@ -660,6 +660,16 @@ def main():
         print(f"\nTotal: {len(rows)} | ✅ OK: {ok} | 🟡 WARNING: {warning} | 🔴 ALERT: {alert} | ⏱️ {elapsed:.2f}s\n")
 
     # ── 6. Exportar ───────────────────────────────────────────────────────────
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "branch_policy_checker", globals().get("__version__", "1.0.0"), rows,
+            organization=args.org, project=args.project,
+            title="Branch Policy Checker")
+    except Exception:
+        pass
+
     if args.output:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         filepath   = export_results(rows, args.output, script_dir, tz_name)

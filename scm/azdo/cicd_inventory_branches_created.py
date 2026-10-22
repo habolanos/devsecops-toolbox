@@ -411,6 +411,16 @@ Ejemplos:
                 sp.advance()
         sp.finish(f"{len(all_branches)} ramas nuevas en {total} repos")
     
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "branches_created", globals().get("__version__", "1.0.0"), all_branches,
+            organization=args.org, project=args.project,
+            title="Branches Created")
+    except Exception:
+        pass
+
     if not all_branches:
         print(f"\nℹ️ No se encontraron ramas creadas desde {args.since}")
         sys.exit(0)

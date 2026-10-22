@@ -563,7 +563,20 @@ def main():
             print(f"  {Colors.YELLOW}⏸{Colors.ENDC} Release #{result['source_id']} - {result['error']}")
     
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
-    
+
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "refresh_release", globals().get("__version__", "1.0.0"), results,
+            summary={"exitosos": successful, "errores": failed,
+                     "cancelados": cancelled},
+            organization=getattr(args, "org", ""),
+            project=getattr(args, "project", ""),
+            title="Refresh Release")
+    except Exception:
+        pass
+
     return 0 if failed == 0 and cancelled == 0 else 1
 
 

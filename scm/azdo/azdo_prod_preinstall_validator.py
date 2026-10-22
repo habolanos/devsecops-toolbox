@@ -916,6 +916,19 @@ def main() -> int:
         cd_results.append(res)
 
     rows = [r for c in cd_results for r in c["rows"]]
+
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "prod_preinstall_validator", __version__, rows,
+            summary={"cds_git_master": len(master_cds),
+                     "pendientes_production": len(rows)},
+            organization=org, project=project,
+            title="Production Pre-Install Validator")
+    except Exception:
+        pass
+
     if not rows:
         _print("[green]✅ Ningún release pendiente de Production en los "
                "CDs con artifact Git master.[/]")

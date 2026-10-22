@@ -419,6 +419,17 @@ def main():
         max_workers=args.workers
     )
     
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pipeline_updater", globals().get("__version__", "1.0.0"), result,
+            organization=org, project=project,
+            title="Pipeline Updater Template")
+    except Exception:
+        pass
+
     # Salir con código apropiado
     sys.exit(0 if result.get('success') else 1)
 

@@ -1705,6 +1705,15 @@ def _run() -> int:
                 resolve_outcome_dir() / "reports")
         except Exception:
             report_path = None
+        # ── Salida por defecto: JSON + HTML en outcome/ ──
+        try:
+            from azdo_default_export import write_default_reports
+            write_default_reports(
+                "pipeline_cd_template", globals().get("__version__", "1.0.0"),
+                dict(_REPORT_META),
+                title="Pipeline CD Template Export/Apply")
+        except Exception:
+            pass
     if report_path:
         _print(f"\n  Evidencia HTML: {report_path}", "dim")
     return rc

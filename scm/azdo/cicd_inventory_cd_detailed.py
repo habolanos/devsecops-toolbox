@@ -854,6 +854,14 @@ def main():
         
         if rows:
             export_results(rows, output_dir)
+            try:
+                from azdo_default_export import write_default_reports
+                write_default_reports(
+                    "cd_detailed_inventory", globals().get("__version__", "1.0.0"), rows,
+                    organization=args.org, project=args.project,
+                    title="CD Detailed Inventory")
+            except Exception:
+                pass
         else:
             print("⚠️  No hay datos para exportar")
         

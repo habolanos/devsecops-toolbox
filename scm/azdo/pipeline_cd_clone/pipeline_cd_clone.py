@@ -706,6 +706,18 @@ def main():
         json.dump(report, f, indent=2, ensure_ascii=False)
     console.print(f"\n[dim]📄 Reporte exportado: {report_path}[/dim]")
 
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pipeline_cd_clone", globals().get("__version__", "1.0.0"), report,
+            organization=getattr(args, "org", ""),
+            project=getattr(args, "project", ""),
+            title="Pipeline CD Clone")
+    except Exception:
+        pass
+
     console.print(f"\n[green bold]✅ Clone completado exitosamente.[/green bold]")
 
 

@@ -1127,6 +1127,19 @@ def run_flow(args, interactive: bool) -> int:
                                     release=discovery["release"])
     show_plan(discovery, actionables, definition_id)
 
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "scm_inspection_remediator", globals().get("__version__", "1.0.0"),
+            discovery["violations"],
+            summary={"violations": len(discovery["violations"]),
+                     "definition_id": definition_id},
+            organization=org, project=project,
+            title="SCM Inspection Remediator")
+    except Exception:
+        pass
+
     if not actionables["rules"] and not actionables["manual"]:
         return 0
 

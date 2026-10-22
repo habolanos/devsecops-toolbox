@@ -2067,6 +2067,16 @@ def main() -> int:
     print(f"\n  HTML interactivo: {html_path}")
 
     # 8. Export if requested
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pipeline_history", globals().get("__version__", "1.0.0"), data,
+            organization=args.org, project=args.project,
+            title="Pipeline History")
+    except Exception:
+        pass
+
     if args.output:
         export_results(data, args.output, args.timezone)
 

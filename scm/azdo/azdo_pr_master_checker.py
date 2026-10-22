@@ -991,6 +991,16 @@ def main():
         print(f"\nTotal: {len(all_rows)} PRs | Tiempo: {elapsed:.2f}s")
 
     # ── 5. Exportar ───────────────────────────────────────────────────────────
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pr_master_checker", globals().get("__version__", "1.0.0"), all_rows,
+            organization=args.org, project=args.project,
+            title="PR Master Checker")
+    except Exception:
+        pass
+
     if args.output:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         filepath = export_results(all_rows, args.output, script_dir, args.stage_name, tz_name)

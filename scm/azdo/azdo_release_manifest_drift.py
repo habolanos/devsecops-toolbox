@@ -1925,6 +1925,16 @@ def main() -> int:
     results.sort(key=lambda r: SEV_ORDER.get(r.get("severity", "NONE"), 9))
     print_summary(results, args.severity)
 
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "release_manifest_drift", globals().get("__version__", "1.0.0"), results,
+            organization=args.org, project=args.project,
+            title="Release Manifest Drift")
+    except Exception:
+        pass
+
     if args.output:
         paths = export_results(results, args.output, org, project)
         for p in paths:

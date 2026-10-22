@@ -609,6 +609,16 @@ def main() -> None:
         print(f"Total de registros encontrados: {len(rows)}")
         print(f"Tiempo de ejecución: {time_str}")
     
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "scan_repos_vulnerabilities", globals().get("__version__", "1.0.0"), rows,
+            organization=args.org, project=args.project,
+            title="Repo Vulnerabilities Scanner")
+    except Exception:
+        pass
+
     if not results_table.empty:
         print("\n=== TABLA FINAL ===")
         print(results_table.to_string(index=False))

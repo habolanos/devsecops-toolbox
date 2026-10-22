@@ -1140,6 +1140,17 @@ def param_mode(client: DevOpsClient, args):
             console.print(Syntax(json.dumps(pipelines, indent=2), "json"))
             return
         print_pipelines(pipelines)
+
+        # ── Salida por defecto: JSON + HTML en outcome/ ──
+        try:
+            from azdo_default_export import write_default_reports
+            write_default_reports(
+                "release_explorer", globals().get("__version__", "1.0.0"),
+                pipelines, organization=args.org, project=args.project,
+                title="Release Explorer — Pipelines")
+        except Exception:
+            pass
+
         if not args.definition_id:
             return
 
@@ -1157,6 +1168,19 @@ def param_mode(client: DevOpsClient, args):
             console.print(Syntax(json.dumps(out, indent=2), "json"))
             return
         print_releases(rows)
+
+        # ── Salida por defecto: JSON + HTML en outcome/ ──
+        try:
+            from azdo_default_export import write_default_reports
+            write_default_reports(
+                "release_explorer", globals().get("__version__", "1.0.0"),
+                [{"releaseId": r[0], "createdOn": r[1], "stage": r[2],
+                  "status": r[3], "buildIds": r[4]} for r in rows],
+                organization=args.org, project=args.project,
+                title="Release Explorer — Releases")
+        except Exception:
+            pass
+
         if not args.release_id:
             return
 
@@ -1167,6 +1191,16 @@ def param_mode(client: DevOpsClient, args):
             console.print(Syntax(json.dumps(release, indent=2), "json"))
             return
         print_release_details(release)
+
+        # ── Salida por defecto: JSON + HTML en outcome/ ──
+        try:
+            from azdo_default_export import write_default_reports
+            write_default_reports(
+                "release_explorer", globals().get("__version__", "1.0.0"),
+                release, organization=args.org, project=args.project,
+                title="Release Explorer — Detalle")
+        except Exception:
+            pass
 
 
 # ------------------------------------------------------------------

@@ -916,6 +916,16 @@ def main():
             print(f"{r['severity']:<10} {r['name']:<40} {gap:>4}  {s_add:>3} {s_rem:>3}  {app:>4}  {ta:>3} {tr:>3} {tv:>3}")
         print(f"\nTotal: {len(results)} | Tiempo: {elapsed:.2f}s")
 
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pipeline_drift", globals().get("__version__", "1.0.0"), results,
+            organization=args.org, project=args.project,
+            title="Pipeline Drift Analyzer")
+    except Exception:
+        pass
+
     if args.output:
         fp = export_results(
             results, args.output,

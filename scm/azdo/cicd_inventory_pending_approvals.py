@@ -292,6 +292,16 @@ Ejemplos:
     
     approvals = get_pending_approvals(org, args.project, pat)
     
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pending_approvals", globals().get("__version__", "1.0.0"), approvals,
+            organization=args.org, project=args.project,
+            title="Pending Approvals")
+    except Exception:
+        pass
+
     if not approvals:
         print("\n✅ No hay aprobaciones pendientes.")
         return

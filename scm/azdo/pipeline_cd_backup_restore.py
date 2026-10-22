@@ -1649,12 +1649,32 @@ def main():
             return 1
         results = backup_pipelines(ids, org, project, pat, args.format, args.workers)
         print_backup_results(results)
+
+        # ── Salida por defecto: JSON + HTML en outcome/ ──
+        try:
+            from azdo_default_export import write_default_reports
+            write_default_reports(
+                "pipeline_cd_backup", globals().get("__version__", "1.0.0"),
+                results, organization=org, project=project,
+                title="Pipeline CD Backup")
+        except Exception:
+            pass
         return 0
 
     if args.mode == 'backup-all':
         result = backup_all_pipelines(org, project, pat, args.path_filter, args.format, args.workers, args.dry_run)
         if not args.dry_run:
             print_backup_all_results(result)
+
+        # ── Salida por defecto: JSON + HTML en outcome/ ──
+        try:
+            from azdo_default_export import write_default_reports
+            write_default_reports(
+                "pipeline_cd_backup_all", globals().get("__version__", "1.0.0"),
+                result, organization=org, project=project,
+                title="Pipeline CD Backup All")
+        except Exception:
+            pass
         return 0
 
     if args.mode == 'restore':

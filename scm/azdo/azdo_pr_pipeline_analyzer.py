@@ -1338,6 +1338,16 @@ def main():
     print_timing_report(step_times, total_time, console)
     
     # Exportar si se solicitó
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pr_pipeline_analyzer", globals().get("__version__", "1.0.0"), all_prs,
+            organization=args.org, project=args.project,
+            title="PR Pipeline Analyzer")
+    except Exception:
+        pass
+
     if args.output:
         export_results(
             all_prs, repo_cds, repo_releases,

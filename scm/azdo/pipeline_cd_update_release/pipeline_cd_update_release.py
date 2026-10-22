@@ -1146,6 +1146,24 @@ def main():
             print(f"    {Colors.DIM}Releases: {', '.join([f'#{rid}' for rid in rids])}{Colors.ENDC}\n")
 
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
+
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "release_updater", globals().get("__version__", "1.0.0"), results,
+            summary={"exitosos": len(successful),
+                     "dry_run": len(dry_run_list),
+                     "saltados": len(skipped),
+                     "errores": len(failed),
+                     "cancelados": len(cancelled)},
+            organization=getattr(args, "org", ""),
+            project=getattr(args, "project", ""),
+            title="Release Updater Template")
+    except Exception:
+        pass
+
     return 0 if not failed and not cancelled else 1
 
 

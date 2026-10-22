@@ -1337,6 +1337,16 @@ def main() -> int:
         print_plain(results, source_branch, target_branch, component)
 
     # ── 6. Exportar ─────────────────────────────────────────────────────────────
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "repo_properties_branch_diff", globals().get("__version__", "1.0.0"), results,
+            organization=args.org, project=args.project,
+            title="Properties Branch Diff")
+    except Exception:
+        pass
+
     if args.output:
         export_results(
             results, args.output,

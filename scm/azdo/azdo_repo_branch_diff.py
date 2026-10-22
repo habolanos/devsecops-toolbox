@@ -1100,6 +1100,16 @@ def main() -> int:
         print_plain_report(report)
 
     # ── 5. Export ────────────────────────────────────────────────────────────────
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "repo_branch_diff", globals().get("__version__", "1.0.0"), vars(report),
+            organization=args.org, project=args.project,
+            title="Repo Branch Diff")
+    except Exception:
+        pass
+
     if args.output:
         export_results(report, args.output, args.org, args.project, args.timezone, console)
 

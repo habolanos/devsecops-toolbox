@@ -2285,6 +2285,14 @@ def main():
         # ============================================
         if health_rows:
             export_three_sheet_excel(ci_rows, cd_rows, health_rows, output_dir)
+            try:
+                from azdo_default_export import write_default_reports
+                write_default_reports(
+                    "pipeline_health_score", globals().get("__version__", "1.0.0"), health_rows,
+                    organization=args.org, project=args.project,
+                    title="Pipeline Health Score")
+            except Exception:
+                pass
         else:
             print("⚠️  No hay datos para exportar")
         

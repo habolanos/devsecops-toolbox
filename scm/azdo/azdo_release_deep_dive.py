@@ -772,6 +772,16 @@ def main() -> None:
         render_fallback(data, tz_name)
 
     # ── 6. Export ─────────────────────────────────────────────────────────────
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "release_deep_dive", globals().get("__version__", "1.0.0"), data,
+            organization=args.org, project=args.project,
+            title="Release Deep Dive")
+    except Exception:
+        pass
+
     if args.output:
         export_results(data, args.output, tz_name)
 

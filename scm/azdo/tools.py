@@ -153,7 +153,7 @@ TOOLS: Dict = {
         "description": "Lista PRs hacia master/main con pipeline CD asociado y stage 'validador'",
         "path":        "azdo_pr_master_checker.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--branch",
-                        "--status", "--stage-name", "--output"],
+                        "--status", "--stage-name"],
         "group":       "pr",
         "status":      "ready",
     },
@@ -162,7 +162,7 @@ TOOLS: Dict = {
         "description": "Analiza PRs de múltiples ramas y cruza con CD pipelines y releases",
         "path":        "azdo_pr_pipeline_analyzer.py",
         "args":        ["--pat", "--org", "--project", "--branches", "--status",
-                        "--threads", "--output", "--list-cds", "--debug"],
+                        "--threads", "--list-cds", "--debug"],
         "group":       "pr",
         "status":      "ready",
     },
@@ -170,7 +170,7 @@ TOOLS: Dict = {
         "name":        "Branch Policy Checker",
         "description": "Audita políticas de rama (master/main, QA, develop) por repositorio",
         "path":        "azdo_branch_policy_checker.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo"],
         "group":       "policy",
         "status":      "ready",
     },
@@ -178,7 +178,7 @@ TOOLS: Dict = {
         "name":        "Branch Lock Checker",
         "description": "Lista todas las ramas con lock (isLocked) por repositorio — Repo | Rama | Bloqueado por",
         "path":        "azdo_branch_lock_checker.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--workers", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--workers"],
         "group":       "policy",
         "status":      "ready",
     },
@@ -186,7 +186,7 @@ TOOLS: Dict = {
         "name":        "Release CD Health",
         "description": "Score de salud de Release Pipelines CD: recencia + estabilidad + consistencia",
         "path":        "azdo_release_cd_health.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--sort", "--diagram", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--sort", "--diagram"],
         "group":       "release",
         "status":      "ready",
     },
@@ -194,7 +194,7 @@ TOOLS: Dict = {
         "name":        "Pipeline Drift Analyzer",
         "description": "Detecta drift entre pipeline actual y snapshot del último release (stages/vars/approvals/tasks)",
         "path":        "azdo_pipeline_drift.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--severity", "--sort", "--output"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--severity", "--sort"],
         "group":       "drift",
         "status":      "ready",
     },
@@ -202,7 +202,7 @@ TOOLS: Dict = {
         "name":        "Release Deep Dive",
         "description": "Análisis profundo de un Release Definition por ID: PRs + Políticas + CD Health + Drift",
         "path":        "azdo_release_deep_dive.py",
-        "args":        ["--pat", "--org", "--project", "--definition-id", "--branch", "--stage-name", "--output"],
+        "args":        ["--pat", "--org", "--project", "--definition-id", "--branch", "--stage-name"],
         "group":       "release",
         "status":      "ready",
     },
@@ -212,7 +212,7 @@ TOOLS: Dict = {
         "path":        "azdo_task_validator.py",
         "args":        ["--pat", "--org", "--project", "--release-id",
                         "--image-actual", "--image-nueva", "--gcp-project",
-                        "--group-id", "--artifact-name", "--namespace", "--output"],
+                        "--group-id", "--artifact-name", "--namespace"],
         "group":       "validation",
         "status":      "ready",
     },
@@ -221,7 +221,7 @@ TOOLS: Dict = {
         "description": "Escanea logs de pipelines CI buscando términos de vulnerabilidades (axios, plain-crypto-js)",
         "path":        "azdo_scan_pipeline_logs.py",
         "args":        ["--pat", "--org", "--project", "--search-terms", "--top-runs",
-                        "--threads", "--output"],
+                        "--threads"],
         "group":       "security",
         "status":      "ready",
     },
@@ -230,7 +230,7 @@ TOOLS: Dict = {
         "description": "Escanea package.json en repositorios buscando dependencias vulnerables",
         "path":        "azdo_scan_repos_vulnerabilities.py",
         "args":        ["--pat", "--org", "--project", "--branches", "--targets",
-                        "--repo", "--output"],
+                        "--repo"],
         "group":       "security",
         "status":      "ready",
     },
@@ -238,7 +238,7 @@ TOOLS: Dict = {
         "name":        "CICD Inventory",
         "description": "Inventario completo de repos, CI pipelines (YAML) y CD pipelines (classic releases) con relación Repo ↔ CI ↔ CD",
         "path":        "cicd_inventory.py",
-        "args":        ["--pat", "--org", "--project", "--limit", "--output"],
+        "args":        ["--pat", "--org", "--project", "--limit"],
         "json_output": True,
         "group":       "inventory",
         "status":      "ready",
@@ -247,7 +247,7 @@ TOOLS: Dict = {
         "name":        "GKE Pipelines Inventory",
         "description": "Inventario de Release Definitions CD que contienen 'GKE' con detalle de stages y último estado",
         "path":        "cicd_inventory_gke_pipelines.py",
-        "args":        ["--pat", "--org", "--project", "--keyword", "--output"],
+        "args":        ["--pat", "--org", "--project", "--keyword"],
         "json_output": True,
         "group":       "inventory",
         "status":      "ready",
@@ -256,7 +256,7 @@ TOOLS: Dict = {
         "name":        "Pending Approvals",
         "description": "Releases con aprobaciones pendientes + estado del stage 'Validador'",
         "path":        "cicd_inventory_pending_approvals.py",
-        "args":        ["--pat", "--org", "--project", "--output"],
+        "args":        ["--pat", "--org", "--project"],
         "json_output": True,
         "group":       "inventory",
         "status":      "ready",
@@ -265,7 +265,7 @@ TOOLS: Dict = {
         "name":        "Branches Created",
         "description": "Ramas creadas desde fecha específica usando Pushes API (concurrente)",
         "path":        "cicd_inventory_branches_created.py",
-        "args":        ["--pat", "--org", "--project", "--since", "--workers", "--output"],
+        "args":        ["--pat", "--org", "--project", "--since", "--workers"],
         "group":       "inventory",
         "status":      "ready",
     },
@@ -273,7 +273,7 @@ TOOLS: Dict = {
         "name":        "Hotfix Branches Inventory",
         "description": "Inventario de ramas hotfix con creador, fecha de creación y actividad del repo",
         "path":        "cicd_inventory_hotfix_branches.py",
-        "args":        ["--pat", "--org", "--project", "--pattern", "--workers", "--output"],
+        "args":        ["--pat", "--org", "--project", "--pattern", "--workers"],
         "json_output": True,
         "group":       "inventory",
         "status":      "ready",
@@ -282,7 +282,7 @@ TOOLS: Dict = {
         "name":        "CI Detailed Inventory",
         "description": "[Flujo] Inventario detallado de pipelines CI. Verifica cache previo (ci_raw.json < 24h) para skip APIs. Genera Excel + CSV + JSON cache.",
         "path":        "cicd_inventory_ci_detailed.py",
-        "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--use-cache-only"],
+        "args":        ["--pat", "--org", "--project", "--workers", "--force-refresh", "--use-cache-only"],
         "group":       "inventory",
         "status":      "ready",
     },
@@ -290,7 +290,7 @@ TOOLS: Dict = {
         "name":        "CD Detailed Inventory",
         "description": "[Flujo] Inventario detallado de pipelines CD (Release Definitions). Extrae variables, filtra por var-name/var-value. Verifica cache previo (cd_raw.json < 24h) para skip APIs. Genera Excel + CSV + JSON cache.",
         "path":        "cicd_inventory_cd_detailed.py",
-        "args":        ["--pat", "--org", "--project", "--workers", "--output", "--var-name", "--var-value", "--max-releases", "--force-refresh", "--use-cache-only"],
+        "args":        ["--pat", "--org", "--project", "--workers", "--var-name", "--var-value", "--max-releases", "--force-refresh", "--use-cache-only"],
         "group":       "inventory",
         "status":      "ready",
     },
@@ -298,7 +298,7 @@ TOOLS: Dict = {
         "name":        "Pipeline Health Score",
         "description": "[Flujo / Orquestador] Reporte de salud con scoring DORA/SRE en 5 dimensiones. Genera 1 Excel con 3 pestañas (CI + CD + Health). Lee cache CI/CD si existe < 24h, consulta APIs solo si es necesario.",
         "path":        "cicd_inventory_health_score.py",
-        "args":        ["--pat", "--org", "--project", "--workers", "--output", "--force-refresh", "--offline", "--skip-incremental", "--run-inventory"],
+        "args":        ["--pat", "--org", "--project", "--workers", "--force-refresh", "--offline", "--skip-incremental", "--run-inventory"],
         "group":       "health",
         "status":      "ready",
     },
@@ -306,7 +306,7 @@ TOOLS: Dict = {
         "name":        "Prod Deploy Credenciales Git",
         "description": "[Flujo] Rastrea último despliegue exitoso a Producción por pipeline CD. Requiere cache CD previo. Genera Excel + CSV + JSON cache con deadline de vigencia, commit SHA y build ID.",
         "path":        "cicd_inventory_prod_deploy.py",
-        "args":        ["--pat", "--org", "--project", "--deadline", "--workers", "--output", "--force-refresh"],
+        "args":        ["--pat", "--org", "--project", "--deadline", "--workers", "--force-refresh"],
         "group":       "health",
         "status":      "ready",
     },
@@ -314,7 +314,7 @@ TOOLS: Dict = {
         "name":        "Pipeline Status",
         "description": "Reporte consolidado CI+CD: totales, deprecados, última actualización, estado (enabled/disabled/paused/inactivo)",
         "path":        "cicd_pipeline_status.py",
-        "args":        ["--pat", "--org", "--project", "--workers", "--inactive-days", "--type", "--only-deprecated", "--output", "--force-refresh"],
+        "args":        ["--pat", "--org", "--project", "--workers", "--inactive-days", "--type", "--only-deprecated", "--force-refresh"],
         "group":       "health",
         "status":      "ready",
     },
@@ -324,7 +324,7 @@ TOOLS: Dict = {
         "path":        "azdo_repo_properties_branch_diff.py",
         "args":        ["--pat", "--org", "--project", "--repo", "--component",
                         "--source", "--target", "--context", "--severity",
-                        "--only-diff", "--no-content", "--output"],
+                        "--only-diff", "--no-content"],
         "group":       "quality",
         "status":      "ready",
     },
@@ -334,7 +334,7 @@ TOOLS: Dict = {
         "path":        "azdo_repo_branch_diff.py",
         "args":        ["--pat", "--org", "--project", "--repo",
                         "--source", "--target", "--top-files", "--top-commits",
-                        "--no-commits", "--no-authors", "--severity", "--output"],
+                        "--no-commits", "--no-authors", "--severity"],
         "group":       "quality",
         "status":      "ready",
     },
@@ -385,7 +385,7 @@ TOOLS: Dict = {
         "name":        "Pipeline History",
         "description": "Evolución histórica de un Pipeline CD: revisiones, releases, diff exacto entre versiones y timeline interactiva HTML",
         "path":        "azdo_pipeline_history.py",
-        "args":        ["--pat", "--org", "--project", "--definition-id", "--months", "--timezone", "--output", "--debug"],
+        "args":        ["--pat", "--org", "--project", "--definition-id", "--months", "--timezone", "--debug"],
         "group":       "release",
         "status":      "ready",
     },
@@ -420,7 +420,7 @@ TOOLS: Dict = {
         "args":        ["--org", "--project", "--pat", "--mode", "--pipeline-ids",
                         "--pipeline-id", "--to-revision", "--top-revisions", "--yes",
                         "--backup-files", "--backup-file", "--new-name", "--path-filter",
-                        "--format", "--workers", "--dry-run", "--interactive", "--output"],
+                        "--format", "--workers", "--dry-run", "--interactive"],
         "group":       "updatepipe",
         "status":      "ready",
     },
@@ -476,7 +476,7 @@ TOOLS: Dict = {
         "args":        ["--pat", "--org", "--project", "--definition-ids",
                         "--stage-name", "--task-patterns", "--prev-release",
                         "--show-skipped",
-                        "--output", "--threads", "--severity", "--debug"],
+                        "--threads", "--severity", "--debug"],
         "group":       "drift",
         "status":      "ready",
     },
@@ -2432,21 +2432,8 @@ def run_tool(tool_key: str):
         if val == "s":
             extra.append("--diagram")
 
-    if "--output" in tool_args:
-        cfg_fmt = config_get(cfg, "defaults", "output_format", default="excel")
-        choices = (("json", "csv", "html", "both", "all") if tool_key == "45"
-                   else ("json", "csv", "excel"))
-        # Si el default de config no es válido para esta tool, caer a "all"
-        # (45) para no quedar sin export silenciosamente.
-        eff_default = cfg_fmt if cfg_fmt in choices else (
-            "all" if tool_key == "45" else cfg_fmt)
-        print(f"{Colors.BOLD}¿Exportar resultado? ({'/'.join(choices)}/ninguno) "
-              f"[{Colors.CYAN}{eff_default or 'ninguno'}{Colors.ENDC}{Colors.BOLD}]:{Colors.ENDC} ", end="")
-        val = input().strip().lower()
-        if val in choices:
-            extra += ["--output", val]
-        elif not val and eff_default in choices:
-            extra += ["--output", eff_default]
+    # JSON + HTML se generan siempre por defecto en outcome/ (azdo_default_export);
+    # ya no se pregunta por --output. Formatos extra (csv/excel) solo via CLI directa.
 
     if "--deadline" in tool_args:
         print(f"{Colors.BOLD}Fecha deadline (YYYY-MM-DD, obligatorio):{Colors.ENDC} ", end="")

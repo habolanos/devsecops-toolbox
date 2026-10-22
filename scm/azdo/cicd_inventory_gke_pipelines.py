@@ -339,6 +339,16 @@ Ejemplos:
             "variables": d.get("variables", {})
         })
     
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "gke_pipelines_inventory", globals().get("__version__", "1.0.0"), data,
+            organization=args.org, project=args.project,
+            title="GKE Pipelines Inventory")
+    except Exception:
+        pass
+
     _out = (args.output or "").lower()
     if _out == "json":
         json_path = resolve_output_path("json", f"gke_cd_pipelines_{args.project}")

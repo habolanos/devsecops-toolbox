@@ -1153,6 +1153,16 @@ def main():
         print_plain_table(rows, elapsed, args.inactive_days)
 
     # ── Exportar ──────────────────────────────────────────────────────────────
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "cicd_pipeline_status", globals().get("__version__", "1.0.0"), rows,
+            organization=args.org, project=args.project,
+            title="Pipeline Status")
+    except Exception:
+        pass
+
     if args.output:
         filepath = export_results(rows, args.output, tz_name)
         if filepath:

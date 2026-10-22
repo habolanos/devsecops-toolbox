@@ -447,7 +447,22 @@ def main():
         stats = {}
         report_path = export_report(stats, args, backup, restore_release)
         print(f"{Colors.CYAN}📄 Reporte exportado: {report_path}{Colors.ENDC}\n")
-        
+
+        # ── Salida por defecto: JSON + HTML en outcome/ ──
+        try:
+            from azdo_default_export import write_default_reports
+            write_default_reports(
+                "pipeline_restore_release",
+                globals().get("__version__", "1.0.0"),
+                {"backup_metadata": meta,
+                 "restore_release": restore_release,
+                 "restore_comment": args.restore_comment},
+                organization=getattr(args, "org", ""),
+                project=getattr(args, "project", ""),
+                title="Pipeline Restore Release")
+        except Exception:
+            pass
+
         return 0
         
     except KeyboardInterrupt:

@@ -391,6 +391,16 @@ Ejemplos:
                 sp.advance()
         sp.finish(f"{len(all_hotfix_branches)} hotfix branches en {total} repos")
     
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "hotfix_branches", globals().get("__version__", "1.0.0"), all_hotfix_branches,
+            organization=args.org, project=args.project,
+            title="Hotfix Branches Inventory")
+    except Exception:
+        pass
+
     if not all_hotfix_branches:
         print(f"\nℹ️ No se encontraron ramas con patrón '{args.pattern}'")
         sys.exit(0)

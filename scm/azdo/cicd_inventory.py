@@ -894,7 +894,18 @@ Ejemplos:
             pd.DataFrame(relations_rows).to_excel(writer, "Repo_CI_CD", index=False)
         excel_path = Path(output_file).resolve()
         print(f"\n✅ Reporte generado: {excel_path}")
-    
+
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "cicd_inventory", globals().get("__version__", "1.0.0"), relations_rows,
+            summary={"repos": len(repos_rows), "ci": len(ci_rows), "cd": len(cd_rows)},
+            organization=args.org, project=args.project,
+            title="CICD Inventory")
+    except Exception:
+        pass
+
     teardown_logging(tee)
 
 

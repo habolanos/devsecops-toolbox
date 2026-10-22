@@ -1070,6 +1070,18 @@ def main() -> int:
             _print(f"[yellow]⚠ Release a {tag}: no se encontro PR "
                    f"para el commit {b['commit_short']}[/]")
 
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "release_deploy_check", __version__,
+            {"install": b_install, "rollback": b_rollback,
+             "relase_id": rel_var, "rollback_match": rollback_match},
+            organization=org, project=project,
+            title="Release Deploy Check")
+    except Exception:
+        pass
+
     return 0
 
 

@@ -964,6 +964,14 @@ def main():
         # ============================================
         if rows:
             export_results(rows, output_dir, deadline_date=deadline_date)
+            try:
+                from azdo_default_export import write_default_reports
+                write_default_reports(
+                    "prod_deploy_credenciales", globals().get("__version__", "1.0.0"), rows,
+                    organization=args.org, project=args.project,
+                    title="Prod Deploy Credenciales Git")
+            except Exception:
+                pass
         else:
             print("⚠️  No hay datos para exportar")
 

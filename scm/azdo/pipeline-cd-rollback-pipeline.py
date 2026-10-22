@@ -191,14 +191,18 @@ def list_pipeline_revisions(org: str, project: str, definition_id: int, pat: str
     
     # Listar últimas N revisiones
     start_revision = max(1, current_revision - max_revisions + 1)
-    
+
+    rev_rows = []
     for rev in range(current_revision, start_revision - 1, -1):
         try:
             rev_def = get_pipeline_revision(org, project, definition_id, rev, pat)
             modified_by = rev_def.get('modifiedBy', {}).get('displayName', 'Unknown')
             modified_on = rev_def.get('modifiedOn', 'Unknown')
             comment = rev_def.get('comment', 'No comment')
-            
+            rev_rows.append({"revision": rev, "actual": rev == current_revision,
+                             "modified_by": modified_by,
+                             "modified_on": modified_on, "comment": comment})
+
             marker = " ← ACTUAL" if rev == current_revision else ""
             print(f"{Colors.GREEN if rev == current_revision else Colors.CYAN}Revisión {rev}{marker}{Colors.ENDC}")
             print(f"  Modificado por: {modified_by}")
@@ -207,6 +211,19 @@ def list_pipeline_revisions(org: str, project: str, definition_id: int, pat: str
             print()
         except Exception as e:
             print(f"{Colors.YELLOW}⚠ No se pudo obtener revisión {rev}: {e}{Colors.ENDC}\n")
+
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pipeline_rollback_revisions",
+            globals().get("__version__", "1.0.0"), rev_rows,
+            summary={"pipeline_id": definition_id,
+                     "revision_actual": current_revision},
+            organization=org, project=project,
+            title=f"Pipeline Rollback — Revisiones #{definition_id}")
+    except Exception:
+        pass
 
 
 def restore_pipeline_definition(org: str, project: str, definition_id: int, pat: str, definition: Dict) -> Dict:
@@ -275,14 +292,21 @@ def list_available_backups(directory: str = "outcome/backups"):
     print(f"\n{Colors.BOLD}{'='*70}{Colors.ENDC}")
     print(f"{Colors.BOLD}  Backups Disponibles{Colors.ENDC}")
     print(f"{Colors.BOLD}{'='*70}{Colors.ENDC}\n")
-    
+
+    rows = []
     for backup_file in backup_files:
         filepath = os.path.join(directory, backup_file)
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 backup_data = json.load(f)
                 metadata = backup_data.get('backup_metadata', {})
-                
+                rows.append({"file": backup_file,
+                             "pipeline_id": metadata.get('pipeline_id', 'N/A'),
+                             "pipeline_name": metadata.get('pipeline_name', 'N/A'),
+                             "backup_date": metadata.get('backup_timestamp', 'N/A'),
+                             "original_revision": metadata.get('original_revision', 'N/A'),
+                             "tool_version": metadata.get('tool_version', 'N/A')})
+
                 print(f"{Colors.CYAN}📄 {backup_file}{Colors.ENDC}")
                 print(f"   Pipeline ID: {metadata.get('pipeline_id', 'N/A')}")
                 print(f"   Pipeline Name: {metadata.get('pipeline_name', 'N/A')}")
@@ -292,6 +316,16 @@ def list_available_backups(directory: str = "outcome/backups"):
                 print()
         except Exception as e:
             print(f"{Colors.RED}✗ Error al leer {backup_file}: {e}{Colors.ENDC}\n")
+
+    # ── Salida por defecto: JSON + HTML en outcome/ ──
+    try:
+        from azdo_default_export import write_default_reports
+        write_default_reports(
+            "pipeline_rollback_backups",
+            globals().get("__version__", "1.0.0"), rows,
+            title="Pipeline Rollback — Backups Disponibles")
+    except Exception:
+        pass
 
 
 def rollback_from_backup(backup_file: str, pat: str, dry_run: bool = False):
