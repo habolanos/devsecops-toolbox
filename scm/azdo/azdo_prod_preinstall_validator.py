@@ -34,7 +34,7 @@ import argparse
 import base64
 import re
 import sys
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -44,6 +44,8 @@ import requests
 try:
     from rich.console import Console
     from rich.table import Table
+    from rich.progress import (BarColumn, Progress, SpinnerColumn,
+                               TaskProgressColumn, TextColumn)
 
     from rich import box
     RICH = True
@@ -52,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -975,20 +977,57 @@ def main() -> int:
     _print("[bold cyan]🛡️ Production Pre-Install Validator — "
            "PRs a master pendientes de Production[/]")
 
-    cds = get_release_defs_list(org, project, headers, args.debug)
+    # 1. Definiciones CD (spinner)
+    if RICH and console:
+        with Progress(SpinnerColumn(),
+                      TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            t = p.add_task("Obteniendo definiciones CD…", total=None)
+            cds = get_release_defs_list(org, project, headers, args.debug)
+            p.update(t, description=f"✅ {len(cds)} definiciones CD")
+    else:
+        print("Obteniendo definiciones CD…", end=" ", flush=True)
+        cds = get_release_defs_list(org, project, headers, args.debug)
+        print(f"{len(cds)}")
     if not cds:
         _print("[red]❌ No se encontraron pipeline CD.[/]")
         return 1
     _print(f"[dim]{len(cds)} definiciones CD — filtrando artifact Git "
            f"branch {args.master_branch}…[/]")
 
-    # detalles de definicion en paralelo
+    # 2. Detalles de definicion en paralelo (barra de progreso)
     def fetch_detail(cd):
         d = get_def_detail(org, project, cd.get("id"), headers, args.debug)
         return cd, d
 
-    with ThreadPoolExecutor(max_workers=max(1, args.threads)) as ex:
-        details = list(ex.map(fetch_detail, cds))
+    details = []
+    if RICH and console:
+        with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console) as p:
+            t = p.add_task(f"Descargando detalle de {len(cds)} definiciones…",
+                           total=len(cds))
+            with ThreadPoolExecutor(
+                    max_workers=max(1, args.threads)) as ex:
+                futs = {ex.submit(fetch_detail, cd): cd for cd in cds}
+                for fut in as_completed(futs):
+                    cd = futs[fut]
+                    try:
+                        details.append(fut.result())
+                    except Exception:
+                        details.append((cd, None))
+                    p.update(t, description=(
+                        f"Detalle CD [cyan]{cd.get('name', '?')[:40]}[/]"))
+                    p.advance(t)
+    else:
+        print(f"Descargando detalle de {len(cds)} definiciones…",
+              end=" ", flush=True)
+        with ThreadPoolExecutor(max_workers=max(1, args.threads)) as ex:
+            details = list(ex.map(fetch_detail, cds))
+        print("listo")
 
     # solo CDs con artifact Git branch master
     master_cds = []
@@ -1002,14 +1041,46 @@ def main() -> int:
     _print(f"[green]{len(master_cds)}[/] CDs con artifact Git "
            f"{args.master_branch} — analizando releases…\n")
 
-    repos = get_repositories(org, project, headers, args.debug)
+    # 3. Repositorios del proyecto (spinner)
+    if RICH and console:
+        with Progress(SpinnerColumn(),
+                      TextColumn("[progress.description]{task.description}"),
+                      console=console) as p:
+            t = p.add_task("Obteniendo repositorios…", total=None)
+            repos = get_repositories(org, project, headers, args.debug)
+            p.update(t, description=f"✅ {len(repos)} repositorios")
+    else:
+        print("Obteniendo repositorios…", end=" ", flush=True)
+        repos = get_repositories(org, project, headers, args.debug)
+        print(f"{len(repos)}")
     repos_by_id = {r.get("id"): r for r in repos}
 
+    # 4. Analisis por CD (barra de progreso)
     cd_results = []
-    for cd, detail in master_cds:
-        res = process_cd(org, project, cd, detail, args, headers,
-                         repos_by_id)
-        cd_results.append(res)
+    if RICH and console:
+        with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console) as p:
+            t = p.add_task("Analizando releases pendientes de Production…",
+                           total=len(master_cds))
+            for cd, detail in master_cds:
+                p.update(t, description=(
+                    f"CD [cyan]{cd.get('name', '?')[:50]}[/]"))
+                res = process_cd(org, project, cd, detail, args, headers,
+                                 repos_by_id)
+                cd_results.append(res)
+                p.advance(t)
+            p.update(t, description="✅ Análisis de CDs completado")
+    else:
+        for i, (cd, detail) in enumerate(master_cds, 1):
+            print(f"[{i}/{len(master_cds)}] {cd.get('name', '?')}",
+                  flush=True)
+            cd_results.append(
+                process_cd(org, project, cd, detail, args, headers,
+                           repos_by_id))
 
     rows = [r for c in cd_results for r in c["rows"]]
 
