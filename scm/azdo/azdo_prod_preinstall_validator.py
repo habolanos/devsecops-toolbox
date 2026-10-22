@@ -54,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -1167,44 +1167,58 @@ def main() -> int:
                 print(f"  [{done}/{len(master_cds)}] {cd.get('name')}",
                       flush=True)
 
-    def _preview(cd):
-        """Release pendiente más reciente (o el último si no hay)."""
-        rels = releases_by_cd.get(cd.get("id"), [])
-        pend = next((r for r in rels
-                     if not prod_installed(stage_env(r, args.prod_stage))),
-                    None)
-        return release_preview(pend or (rels[0] if rels else None))
+    def _eligible_releases(cd) -> List[Dict]:
+        """Releases del CD que cumplen los criterios: NO instalados en
+        Production y cuyo artifact Git fuente está en la rama master."""
+        out = []
+        for r in releases_by_cd.get(cd.get("id"), []):
+            if prod_installed(stage_env(r, args.prod_stage)):
+                continue
+            _, gas = extract_artifacts(r)
+            b = normalize_branch(
+                git_artifact_info(source_git_artifact(gas))["branch"])
+            if b and b != (args.master_branch or "").lower():
+                continue
+            out.append(r)
+        return out
 
+    # listado por RELEASE (no por definición): una fila por cada release
+    # pendiente que cumple los criterios
     if RICH and console:
-        ct = Table(title=f"CDs con artifact Git en rama "
-                         f"{args.master_branch} ({len(master_cds)})",
+        ct = Table(title=f"Releases pendientes de {args.prod_stage} "
+                         f"— artifact Git en rama {args.master_branch}",
                    box=box.ROUNDED)
         ct.add_column("#", justify="right", style="dim")
         ct.add_column("CD PIPELINE", style="cyan", no_wrap=True)
-        ct.add_column("ID", style="dim", justify="right")
-        ct.add_column("REPO (artifact Git)", style="magenta")
-        ct.add_column("RAMA", style="green")
         ct.add_column("RELEASE", style="magenta", no_wrap=True)
         ct.add_column("BUILD ID", justify="right", style="dim")
         ct.add_column("COMMIT GIT", style="dim")
-        for i, (cd, detail) in enumerate(master_cds, 1):
-            gi = cd_master_git_artifact(detail, args.master_branch) or {}
-            pv_ = _preview(cd)
-            ct.add_row(str(i), cd.get("name", ""), str(cd.get("id")),
-                       gi.get("repo_name", "?"), gi.get("branch", "?"),
-                       pv_["release"], pv_["build_id"], pv_["commit"])
+        ct.add_column("REPO (artifact Git)", style="magenta")
+        ct.add_column("RAMA", style="green")
+        n = 0
+        for cd, detail in master_cds:
+            for rel in _eligible_releases(cd):
+                n += 1
+                pv_ = release_preview(rel)
+                _, gas = extract_artifacts(rel)
+                sgi = git_artifact_info(source_git_artifact(gas))
+                ct.add_row(str(n), cd.get("name", ""), pv_["release"],
+                           pv_["build_id"], pv_["commit"],
+                           sgi["repo_name"] or "?",
+                           normalize_branch(sgi["branch"]) or "?")
         console.print(ct)
         console.print()
     else:
-        print(f"\nCDs con artifact Git en rama {args.master_branch} "
-              f"({len(master_cds)}):")
-        for i, (cd, detail) in enumerate(master_cds, 1):
-            gi = cd_master_git_artifact(detail, args.master_branch) or {}
-            pv_ = _preview(cd)
-            print(f"  {i:>3}. {cd.get('name')} (id {cd.get('id')}) "
-                  f"— {gi.get('repo_name', '?')} [{gi.get('branch', '?')}] "
-                  f"| release {pv_['release']} "
-                  f"| build {pv_['build_id']} | commit {pv_['commit']}")
+        n = 0
+        print(f"\nReleases pendientes de {args.prod_stage} — artifact "
+              f"Git en rama {args.master_branch}:", flush=True)
+        for cd, detail in master_cds:
+            for rel in _eligible_releases(cd):
+                n += 1
+                pv_ = release_preview(rel)
+                print(f"  {n:>3}. {cd.get('name')} — {pv_['release']} "
+                      f"| build {pv_['build_id']} "
+                      f"| commit {pv_['commit']}", flush=True)
 
     # 3. Repositorios del proyecto (spinner)
     if RICH and console:
@@ -1268,7 +1282,15 @@ def main() -> int:
 
     rows = [r for c in cd_results for r in c["rows"]]
 
-    # ── Salida por defecto: JSON + HTML + Excel en outcome/ ──
+    if not rows:
+        _print("[green]✅ Ningún release pendiente de Production en los "
+               "CDs con artifact Git master.[/]")
+    else:
+        print_main_table(rows)
+        print_row_details(rows, args)
+        print_summary(cd_results, rows, total_defs=len(cds))
+
+    # ── Salida por defecto: JSON + HTML + Excel en outcome/ (al final) ──
     try:
         from azdo_default_export import write_default_reports
         write_default_reports(
@@ -1281,15 +1303,6 @@ def main() -> int:
             title="Production Pre-Install Validator", excel=True)
     except Exception:
         pass
-
-    if not rows:
-        _print("[green]✅ Ningún release pendiente de Production en los "
-               "CDs con artifact Git master.[/]")
-        return 0
-
-    print_main_table(rows)
-    print_row_details(rows, args)
-    print_summary(cd_results, rows, total_defs=len(cds))
     return 0
 
 

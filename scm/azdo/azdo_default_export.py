@@ -24,7 +24,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 # Asegurar que scm/ (padre de azdo/) está en sys.path para importar
 # export_manager / utils cuando el script se ejecuta directo.
@@ -234,11 +234,24 @@ def write_default_reports(
         out = {"json": f"Error: {e}", "html": f"Error: {e}"}
 
     if not quiet:
+        try:
+            print("📁 Archivos generados:")
+        except UnicodeEncodeError:
+            print("Archivos generados:")
         for fmt, path in out.items():
             ok = path and not str(path).startswith("Error")
+            disp = path
+            if ok:
+                try:
+                    disp = str(Path(path).resolve())
+                except Exception:
+                    pass
             try:
-                print(f"📄 {fmt.upper()}: {path}" if ok
-                      else f"⚠️  {fmt.upper()}: {path}")
+                print(f"   📄 {fmt.upper()}: {disp}" if ok
+                      else f"   ⚠️  {fmt.upper()}: {disp}")
+            except UnicodeEncodeError:
+                # Consolas cp1252 (Windows) sin UTF-8
+                print(f"   {'[OK]' if ok else '[!!]'} {fmt.upper()}: {disp}")
             except UnicodeEncodeError:
                 # Consolas cp1252 (Windows) sin UTF-8
                 print(f"{'[OK]' if ok else '[!!]'} {fmt.upper()}: {path}")
