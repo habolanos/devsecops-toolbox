@@ -158,6 +158,64 @@ def test_process_cd_excluye_release_con_git_en_develop(monkeypatch):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Paginación por continuationToken (>500 definiciones / releases)
+# ═════════════════════════════════════════════════════════════════════════════
+def test_get_release_defs_list_pagina(monkeypatch):
+    calls = []
+
+    def fake_page(url, headers, params, debug=False):
+        calls.append(dict(params))
+        if "continuationToken" not in params:
+            return {"value": [{"id": i} for i in range(500)]}, "tok-2"
+        return {"value": [{"id": 500}]}, None
+
+    monkeypatch.setattr(pv, "api_get_page", fake_page)
+    defs = pv.get_release_defs_list("o", "p", {}, False)
+    assert len(defs) == 501
+    assert len(calls) == 2
+    assert calls[1]["continuationToken"] == "tok-2"
+
+
+def test_get_release_defs_list_sin_token_una_pagina(monkeypatch):
+    monkeypatch.setattr(pv, "api_get_page",
+                        lambda *a, **k: ({"value": [{"id": 1}]}, None))
+    assert len(pv.get_release_defs_list("o", "p", {}, False)) == 1
+
+
+def test_get_releases_pagina_hasta_top(monkeypatch):
+    def fake_page(url, headers, params, debug=False):
+        if "continuationToken" not in params:
+            return {"value": [{"id": i} for i in range(3)]}, "tok-2"
+        return {"value": [{"id": 3}], "": None}, None
+
+    monkeypatch.setattr(pv, "api_get_page", fake_page)
+    rels = pv.get_releases("o", "p", 1403, 10, {}, False)
+    assert len(rels) == 4
+
+
+def test_get_releases_top_recorta(monkeypatch):
+    monkeypatch.setattr(pv, "api_get_page",
+                        lambda *a, **k: ({"value": [{"id": i}
+                                                    for i in range(5)]},
+                                        None))
+    rels = pv.get_releases("o", "p", 1403, 2, {}, False)
+    assert len(rels) == 2
+
+
+def test_get_releases_top_cero_baja_todo(monkeypatch):
+    pages = [{"value": [{"id": 0}]}, {"value": [{"id": 1}]}]
+    it = iter(pages)
+
+    def fake_page(url, headers, params, debug=False):
+        page = next(it, {"value": []})
+        return page, "tok" if page is pages[0] else None
+
+    monkeypatch.setattr(pv, "api_get_page", fake_page)
+    rels = pv.get_releases("o", "p", 1403, 0, {}, False)
+    assert len(rels) == 2
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Production instalado → excluir
 # ═════════════════════════════════════════════════════════════════════════════
 def test_prod_installed_succeeded():

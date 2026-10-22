@@ -54,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -65,6 +65,7 @@ API_VERSION_DEF = "7.2-preview.4"
 GIT_ARTIFACT_TYPES = ("git", "github", "externalgit", "tfvc")
 TOP_PR_SEARCH = 200
 MAX_PR_PAGES = 5
+MAX_LIST_PAGES = 100  # tope de seguridad para paginación por continuationToken
 SEV_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4,
              "WARNING": 2, "ERROR": 1}
 
@@ -98,7 +99,8 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--validator-stage", default="Validator",
                    help="Nombre del stage validador (default: Validator)")
     p.add_argument("--top-releases", type=int, default=10,
-                   help="Releases recientes a revisar por CD (default: 10)")
+                   help="Releases recientes a revisar por CD (default: 10; "
+                        "0 = todos)")
     p.add_argument("--threads", type=int, default=20,
                    help="Workers paralelos: detalle de definiciones y "
                         "análisis por CD (default: 20)")
@@ -132,6 +134,22 @@ def api_get(url: str, headers: Dict, params: Dict = None,
         return None
 
 
+def api_get_page(url: str, headers: Dict, params: Dict = None,
+                 debug: bool = False) -> Tuple[Optional[Any], Optional[str]]:
+    """api_get que además devuelve el continuationToken del header
+    x-ms-continuationtoken (paginación de listados AzDO)."""
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=40)
+        if r.status_code >= 400 and debug:
+            print(f"[DEBUG] HTTP {r.status_code} {url}\n{r.text[:300]}")
+        r.raise_for_status()
+        return r.json(), r.headers.get("x-ms-continuationtoken")
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] {url}: {e}")
+        return None, None
+
+
 def api_get_text(url: str, headers: Dict,
                  debug: bool = False) -> Optional[str]:
     try:
@@ -162,10 +180,20 @@ def normalize_name(name: str) -> str:
 # API: definiciones, releases, PRs
 # ═══════════════════════════════════════════════════════════════════════════════
 def get_release_defs_list(org, project, headers, debug) -> List[Dict]:
+    """TODAS las definiciones de release — pagina con continuationToken
+    (el tope de la API es 500 por página)."""
     url = f"{vsrm(org)}/{quote(project, safe='')}/_apis/release/definitions"
-    data = api_get(url, headers, {"api-version": API_VERSION_DEF,
-                                   "$top": 500}, debug)
-    return data.get("value", []) if data else []
+    params = {"api-version": API_VERSION_DEF, "$top": 500}
+    out: List[Dict] = []
+    for _ in range(MAX_LIST_PAGES):
+        data, token = api_get_page(url, headers, params, debug)
+        if not data:
+            break
+        out.extend(data.get("value", []) or [])
+        if not token:
+            break
+        params["continuationToken"] = token
+    return out
 
 
 def get_def_detail(org, project, def_id, headers, debug) -> Optional[Dict]:
@@ -175,13 +203,23 @@ def get_def_detail(org, project, def_id, headers, debug) -> Optional[Dict]:
 
 
 def get_releases(org, project, def_id, top, headers, debug) -> List[Dict]:
+    """Últimos `top` releases del CD — pagina con continuationToken si `top`
+    excede una página; `top <= 0` baja TODOS los releases."""
     url = f"{vsrm(org)}/{quote(project, safe='')}/_apis/release/releases"
-    data = api_get(url, headers, {
-        "api-version": API_VERSION_REL,
-        "definitionId": def_id, "$top": top,
-        "$expand": "environments,artifacts",
-    }, debug)
-    return data.get("value", []) if data else []
+    params = {"api-version": API_VERSION_REL,
+              "definitionId": def_id,
+              "$top": top if top and top > 0 else 500,
+              "$expand": "environments,artifacts"}
+    out: List[Dict] = []
+    for _ in range(MAX_LIST_PAGES):
+        data, token = api_get_page(url, headers, params, debug)
+        if not data:
+            break
+        out.extend(data.get("value", []) or [])
+        if not token or (top and top > 0 and len(out) >= top):
+            break
+        params["continuationToken"] = token
+    return out[:top] if top and top > 0 else out
 
 
 def get_release_detail(org, project, rel_id, headers, debug) -> Optional[Dict]:
