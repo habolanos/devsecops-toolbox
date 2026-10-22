@@ -1230,15 +1230,14 @@ que se va a instalar sea coherente con su rollback antes del despliegue.
    `Nombre del componente` = repo fuente resuelto, con anotación
    `(CI: <artifact.name limpio>)` si difiere. El folder de properties se
    intenta con el nombre del repo y luego con cada prefijo del nombre.
-4. Resuelve el **PR**: si el `sourceBranch` del `sources` (o del build)
-   es `refs/pull/{id}/merge|head` → consulta el PR por id en el repo
-   fuente y muestra su **commit definitivo**
-   (`lastMergeCommit`/`lastMergeSourceCommit`), contrastado con el commit
-   del release (`Commit definitivo del PR: <sha> ✔/✘`) y el **link
-   copiable** (`URL Pull Request: …/_git/{repo}/pullrequest/{id}`). Si
-   no hay ref de PR, hace fallback al scan de PRs completados que
-   coincidan con el commit. El commit de la compilación se toma del
-   source del build cuyo repo tiene el **mismo nombre del componente**.
+4. Resuelve el **PR a partir del COMMIT** del repositorio fuente (el
+   commit del source artifact Git): scan de PRs completados en ese repo
+   cuyo `lastMergeCommit`/`lastMergeTargetCommit`/`lastMergeSourceCommit`
+   coincida. El `sourceBranch` del build NO se usa — es el PR que
+   disparó el CI en `pipelines-projects`, no el del componente. Muestra
+   su **commit definitivo** contrastado con el commit del release
+   (`Commit definitivo del PR: <sha> ✔/✘`) y el **link copiable**
+   (`URL Pull Request: …/_git/{repo}/pullrequest/{id}`).
 5. Lee la variable **`RELASE_ID`** (o `RELEASE_ID`) del release a instalar y
    la compara contra el release de rollback (por id numérico, con/sin ceros a
    la izquierda, o por nombre `Release-N`) → se muestra **en verde** si
@@ -1382,6 +1381,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.15 | **Opción 47: PR por commit (no por ref) + línea CI retirada** — el `refs/pull/{id}/merge` del `sourceBranch` es el PR que disparó el CI en `pipelines-projects` (por eso salía un id equivocado en la URL); la resolución del PR ahora es SOLO por el commit del source artifact en el repo fuente (scan de completados). Retirada la línea `Commit Artifact (CI)`. La ruta del repo se construye desde `org/project/_git/{repo}` si falta `remoteUrl`. azdo_release_deploy_check v1.0.12. Tests: 75 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.14 | **Opción 47: dump completo en debug** — con `--debug` se imprime TODO lo que devuelve la API por consulta: lista de releases (fuente de la columna COMMIT), repositorios, release detail (install y rollback), build, changes, PR y el listado de commits del folder `/{repo fuente}` en properties con el elegido marcado (último / a la fecha del release). La columna COMMIT se toma del Git source artifact (`version.id`) de la lista; fallback al `sourceVersion` del Build — por eso se repite entre releases que re-despliegan el mismo build. azdo_release_deploy_check v1.0.11. Tests: 80 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.13 | **Opción 47: source artifact (Git) del release** — el release trae 2 artifacts: Build (CI) y **Source (tipo Git)** = el artifact source repository con el repo real del componente y el **commit de los fuentes** (`version.id`). `Commit Release` viene del source artifact (fallback: sources del build); del build se toman los commits de **sources** (comparado contra el release) y **properties** (compilación); un artifact Git `properties` en el release sirve de fallback. Columna `COMMIT` de la tabla también desde el source artifact. azdo_release_deploy_check v1.0.10. Tests: 79 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.12 | **Opción 47: Commit Release sigue la cadena hasta el repo del componente** — el `sourceVersion` del artifact es el commit del repo del CI (pipeline YAML); el `Commit Release` ahora se resuelve hasta el source del build cuyo repo hace match con el componente (`sourceRepositories` → changes del build en ese repo), y el commit del artifact se muestra como `Commit Artifact (CI)` cuando difiere. El PR y su commit definitivo se comparan contra el commit del componente. azdo_release_deploy_check v1.0.9. Tests: 76 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |

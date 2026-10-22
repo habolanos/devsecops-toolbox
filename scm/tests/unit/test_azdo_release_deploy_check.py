@@ -362,7 +362,7 @@ def test_releases_table_mas_de_30_dias_tenue(monkeypatch):
 # release_block — integracion con API mockeada
 # ═══════════════════════════════════════════════════════════════════════════
 def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
-               build=None, pr_by_id=None):
+               build=None):
     detail = _release(
         rel_id=61949, name="Release-382",
         artifacts=[_build_artifact()],
@@ -374,8 +374,6 @@ def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
                         lambda *a, **k: build or _build_detail())
     monkeypatch.setattr(rdc, "find_pr_for_commit",
                         lambda *a, **k: pr)
-    monkeypatch.setattr(rdc, "get_pull_request",
-                        lambda *a, **k: pr_by_id)
     monkeypatch.setattr(rdc, "get_build_changes", lambda *a, **k: [])
     monkeypatch.setattr(rdc, "get_repository", lambda *a, **k: None)
     monkeypatch.setattr(rdc, "folder_commits",
@@ -436,7 +434,7 @@ def test_release_block_con_source_artifact(monkeypatch):
                                  _git_artifact()])
     pr = {"pullRequestId": 4210,
           "lastMergeCommit": {"commitId": "7ab55d31"}}
-    _mock_apis(monkeypatch, pr_by_id=pr)
+    _mock_apis(monkeypatch, pr=pr)
     monkeypatch.setattr(rdc, "get_release_detail",
                         lambda *a, **k: detail)
     # build: sources y properties con sus commits de compilacion
@@ -473,9 +471,12 @@ def test_release_block_con_source_artifact(monkeypatch):
     # PR con el commit del source artifact
     assert b["pr"] is pr
     assert b["pr_commit_matches"] is True
+
+
+def test_release_block_fields(monkeypatch):
     pr = {"pullRequestId": 42, "title": "feat",
           "lastMergeCommit": {"commitId": "9dad7445abcd1234"}}
-    _mock_apis(monkeypatch, pr_by_id=pr)
+    _mock_apis(monkeypatch, pr=pr)
     rel = _release(rel_id=61949, name="Release-382",
                    artifacts=[_build_artifact()])
     b = rdc.release_block("https://dev.azure.com/o", "proj", rel,
@@ -494,9 +495,8 @@ def test_release_block_con_source_artifact(monkeypatch):
     assert "pipelines-projects" not in b["repo_url"]
     assert "@" not in b["repo_url"]
     assert b["commit_matches_build"] is True
-    # PR resuelto por ref refs/pull/521334/merge del sourceBranch
+    # PR resuelto por commit del repo fuente (scan de completados)
     assert b["pr"] is pr
-    assert b["pr_ref"] == "refs/pull/521334/merge"
     assert b["pr_url"] == ("https://dev.azure.com/o/proj/_git/"
                            "wms-sys-originalorder/pullrequest/42")
     assert b["pr_commit"] == "9dad7445abcd1234"
@@ -506,17 +506,24 @@ def test_release_block_con_source_artifact(monkeypatch):
     assert b["excepto_a"] == "N/A"
 
 
-def test_release_block_pr_fallback_scan(monkeypatch):
-    """Sin ref refs/pull en el build → scan de PRs completados."""
-    pr = {"pullRequestId": 7,
-          "lastMergeCommit": {"commitId": "9dad7445abcd1234"}}
-    _mock_apis(monkeypatch, pr=pr, pr_by_id=None,
-               build=_build_detail(pr_ref=""))
+def test_release_block_pr_por_commit_del_repo_fuente(monkeypatch):
+    """El PR se determina por el COMMIT del release en el repo fuente —
+    el sourceBranch del build (PR del CI en pipelines-projects) NO se
+    usa."""
+    seen = {}
+
+    def fake_pr(org, project, repo_id, commit, headers, debug):
+        seen["repo_id"] = repo_id
+        seen["commit"] = commit
+        return None
+
+    _mock_apis(monkeypatch, build=_build_detail(
+        pr_ref="refs/pull/360315/merge"))  # PR del CI, debe ignorarse
+    monkeypatch.setattr(rdc, "find_pr_for_commit", fake_pr)
     rel = _release(artifacts=[_build_artifact()])
-    b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
-                          False)
-    assert b["pr"] is pr
-    assert b["pr_ref"] == ""
+    rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master", False)
+    assert seen["repo_id"] == "r-src"
+    assert seen["commit"] == "9dad7445abcd1234"
 
 
 def test_release_block_pr_buscado_en_repo_fuente(monkeypatch):
@@ -748,16 +755,16 @@ def test_release_block_commit_sigue_hasta_repo_componente(monkeypatch):
     assert b["commit_matches_build"] is True
 
 
-def test_print_block_commit_artifact_ci(monkeypatch):
-    """Cuando el commit del artifact (CI) difiere del commit del
-    release, se muestra la linea de referencia."""
+def test_print_block_sin_commit_artifact_ci(monkeypatch):
+    """La linea 'Commit Artifact (CI)' fue retirada: el bloque solo
+    muestra el Commit Release (del source artifact Git)."""
     buf = _capture_plain(monkeypatch)
     rdc.print_block(_block(artifact_commit="aaaaciii",
                            artifact_commit_short="aaaaciii"),
                     "org")
     out = buf.getvalue()
     assert "Commit Release: 9dad7445" in out
-    assert "Commit Artifact (CI): aaaaciii" in out
+    assert "Commit Artifact (CI)" not in out
 
 
 def test_strip_userinfo():
@@ -894,20 +901,8 @@ def test_find_props_entry():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PR — refs/pull/{id} y commit definitivo
+# PR — commit definitivo
 # ═══════════════════════════════════════════════════════════════════════════
-@pytest.mark.parametrize("ref,expected", [
-    ("refs/pull/521334/merge", 521334),
-    ("refs/pull/42/head", 42),
-    ("refs/heads/master", None),
-    ("master", None),
-    ("", None),
-    (None, None),
-])
-def test_pr_id_from_ref(ref, expected):
-    assert rdc.pr_id_from_ref(ref) == expected
-
-
 def test_pr_commit_info():
     pr = {"lastMergeCommit": {"commitId": "m1"},
           "lastMergeSourceCommit": {"commitId": "s1"},
@@ -966,7 +961,7 @@ def _block(**kw):
         "artifact_commit_short": "9dad7445",
         "build_commit": "9dad7445abcd", "commit_matches_build": True,
         "component_matches_build_repo": True,
-        "pr": None, "pr_ref": "", "pr_url": "", "pr_commit": "",
+        "pr": None, "pr_url": "", "pr_commit": "",
         "pr_commit_short": "", "pr_commit_matches": False,
         "props_commit": "a16b06c8",
         "props_folder_commit": "a16b06c8", "props_match": True,

@@ -58,7 +58,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.11"
+__version__ = "1.0.12"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -372,16 +372,6 @@ def get_repositories(org, project, headers, debug) -> List[Dict]:
     return data.get("value", []) if data else []
 
 
-def get_pull_request(org, project, repo_id, pr_id, headers,
-                     debug) -> Optional[Dict]:
-    """Consulta un PR por id en el repo fuente."""
-    if not repo_id or not pr_id:
-        return None
-    url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
-           f"{quote(str(repo_id), safe='')}/pullrequests/{pr_id}")
-    return api_get(url, headers, {"api-version": API_VERSION}, debug)
-
-
 def pr_commit_info(pr: Optional[Dict]) -> Dict[str, str]:
     """Commit 'definitivo' del PR: merge commit (destino) y ultimo commit
     del source branch."""
@@ -570,13 +560,6 @@ def props_source_from_build(build: Optional[Dict]) -> Dict[str, str]:
     return {"repo_id": e.get("repo_id", ""),
             "repo_name": e.get("repo_name", ""),
             "commit": e.get("commit", "")}
-
-
-def pr_id_from_ref(ref: str) -> Optional[int]:
-    """Extrae el id del PR de refs/pull/{id}/merge|head."""
-    import re
-    m = re.match(r"refs/pull/(\d+)/(merge|head)", ref or "")
-    return int(m.group(1)) if m else None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -825,30 +808,24 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     repo_url = (src_url
                 or strip_userinfo(repo_entry.get("remoteUrl", ""))
                 or "")
+    if not repo_url and src_repo_name:
+        repo_url = (f"{org}/{quote(project, safe='')}/_git/"
+                    f"{quote(src_repo_name, safe='')}")
     repo_id = src_repo_id or repo_entry.get("id", "") or ""
     component_matches = bool(src_repo_name)
 
-    # PR asociado al commit del RELEASE (el del componente, no el del CI):
-    # primero por ref refs/pull/{id}/merge|head, y si no, scan de PRs
-    # completados en el repo FUENTE resuelto.
-    pr, pr_ref = None, ""
-    cand_refs = [source_e.get("branch", ""),
-                 (build or {}).get("sourceBranch", "")] \
-        + [e.get("branch", "") for e in entries]
-    for cand_ref in cand_refs:
-        pid = pr_id_from_ref(cand_ref)
-        if pid:
-            pr = get_pull_request(org, project, repo_id, pid, headers,
-                                  debug)
-            pr_ref = cand_ref
-            break
-    if not pr:
-        pr = find_pr_for_commit(org, project, repo_id, release_commit,
-                                headers, debug)
+    # PR: se determina a PARTIR DEL COMMIT del repositorio fuente (el
+    # commit del source artifact Git) — scan de PRs completados en ese
+    # repo cuyo merge/lastMergeSource/lastMergeTarget commit coincida.
+    # El sourceBranch del build NO sirve: es el PR que disparo el CI en
+    # pipelines-projects, no el del componente.
+    pr = find_pr_for_commit(org, project, repo_id, release_commit,
+                            headers, debug)
     prc = pr_commit_info(pr)
     pr_def_commit = prc["merge"] or prc["source"]
     debug_dump(f"PR — release {rel.get('name')} "
-               f"[lastMergeCommit = commit definitivo]", pr, debug)
+               f"[resuelto por commit {release_commit[:8]} en "
+               f"{src_repo_name or 'repo fuente'}]", pr, debug)
 
     # Link copiable al pull request
     pr_url = ""
@@ -928,7 +905,6 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
             release_commit and build_commit
             and release_commit.lower() == build_commit.lower()),
         "pr": pr,
-        "pr_ref": pr_ref,
         "pr_url": pr_url,
         "pr_commit": pr_def_commit,
         "pr_commit_short": (pr_def_commit or "")[:8],
@@ -965,10 +941,6 @@ def print_block(b: Dict[str, Any], org_project_label: str,
     lines.append(b["url"])
     lines.append(f"No. compilación: {b['build_number'] or 'N/A'}")
     lines.append(f"Commit Release: {b['commit_short'] or 'N/A'}")
-    art_short = b.get("artifact_commit_short", "")
-    if art_short and art_short != b["commit_short"]:
-        lines.append(f"Commit Artifact (CI): {art_short}"
-                     " [dim](sourceVersion del pipeline CI)[/]")
     folder_commit = b.get("props_folder_commit") or ""
     mode = b.get("props_folder_mode", "")
     if b.get("props_commit"):
