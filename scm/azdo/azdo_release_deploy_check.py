@@ -24,7 +24,6 @@ Autor: Harold Adrian
 
 import argparse
 import base64
-import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -58,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.14"
+__version__ = "1.0.15"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -122,19 +121,6 @@ def api_get(url: str, headers: Dict, params: Dict = None,
         if debug:
             print(f"[DEBUG] {url}: {e}")
         return None
-
-
-def debug_dump(label: str, data: Any, debug: bool) -> None:
-    """En modo debug, imprime TODO lo que devolvio la API para una
-    consulta (JSON completo)."""
-    if not debug:
-        return
-    print(f"\n[DEBUG] ══════ {label} ══════")
-    try:
-        print(json.dumps(data, indent=2, ensure_ascii=False,
-                         default=str))
-    except (TypeError, ValueError):
-        print(data)
 
 
 def _print(msg: str = "", markup: bool = True) -> None:
@@ -684,8 +670,6 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     """Arma el bloque de datos de un release para el comparativo."""
     rel_id = rel.get("id")
     detail = get_release_detail(org, project, rel_id, headers, debug) or rel
-    debug_dump(f"RELEASE DETAIL — {rel.get('name')} (id {rel_id}) "
-               f"[artifacts: Build (CI) + Git (source)]", detail, debug)
     # El release trae 2+ artifacts: el del BUILD (CI) y el SOURCE
     # (tipo Git = el artifact source repository, con el repo real del
     # componente y el commit de los fuentes).
@@ -699,9 +683,6 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     # propiedades ('properties') — cada uno con su sourceVersion.
     build = get_build(org, project, ai["build_id"], headers, debug) \
         if ai["build_id"] else None
-    debug_dump(f"BUILD {ai['build_id']} ({ai['build_number'] or '?'}) "
-               f"[sourceRepositories: sources/properties]",
-               build, debug)
     entries = build_source_entries(build)
     # El repo del YAML CI (definitionReference.repository) se excluye:
     # puede venir como 'sources' aunque no sea el componente.
@@ -726,10 +707,6 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     if ai["build_id"]:
         changes = get_build_changes(org, project, ai["build_id"],
                                     headers, debug)
-        debug_dump(f"BUILD CHANGES {ai['build_id']} "
-                   "[location → repositories/{repoId}/commits/{sha}]",
-                   changes, debug)
-
     # Sin sourceRepositories: resolver el repo fuente buscando el commit
     # del release entre los 'changes' del build. OJO: en builds
     # multi-checkout los changes pueden traer commits de VARIOS repos —
@@ -837,10 +814,6 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
                             headers, debug,
                             target_branch=src_branch)
     pr_def_commit = pr_definitive_commit(pr)
-    pr_label_repo = src_repo_name or "repo fuente"
-    debug_dump(f"PR — release {rel.get('name')} "
-               f"[commit {release_commit[:8]} en {pr_label_repo}, "
-               f"rama {src_branch or '—'}]", pr, debug)
 
     # Link copiable al pull request
     pr_url = ""
@@ -878,20 +851,6 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
             if c and c.get("commitId"):
                 props_folder_commit = c["commitId"]
                 props_folder = folder
-                if debug:
-                    rd = (detail.get("createdOn")
-                          or rel.get("createdOn") or "")
-                    print(f"\n[DEBUG] ══════ COMMITS folder /{folder} "
-                          f"en properties (release "
-                          f"{rel.get('name')}, creado {rd}) ══════")
-                    for cc in commits[:30]:
-                        au = cc.get("author") or {}
-                        print(f"  {cc.get('commitId', '')[:10]}  "
-                              f"{au.get('date', '')}  "
-                              f"{au.get('name', '')}  "
-                              f"{(cc.get('comment') or '')[:60]}")
-                    print(f"  → elegido ({props_folder_mode}): "
-                          f"{props_folder_commit}")
                 break
     props_match = (bool(props_commit and props_folder_commit)
                    and props_commit.lower() == props_folder_commit.lower())
@@ -1035,11 +994,6 @@ def main() -> int:
     if not releases:
         _print("[red]❌ El pipeline no tiene releases.[/]")
         return 1
-    # La columna COMMIT de la tabla sale de los artifacts de ESTA lista:
-    # Git source artifact (version.id) → fallback Build sourceVersion.
-    debug_dump("RELEASES — lista ($expand=artifacts) [fuente de la "
-               "columna COMMIT: artifacts type=Git version.id → "
-               "fallback Build sourceVersion]", releases, args.debug)
 
     print_releases_table(releases)
 
@@ -1060,11 +1014,6 @@ def main() -> int:
     repos = get_repositories(org, project, headers, args.debug)
     repos_by_name = {r.get("name", "").lower(): r for r in repos}
     props_repo = find_properties_repo(repos, args.properties_repo)
-    debug_dump(f"REPOSITORIOS del proyecto [{len(repos)}] "
-               f"[properties detectado: "
-               f"{(props_repo or {}).get('name', '—')}]", repos,
-               args.debug)
-
     org_label = project.replace("_", " ")
 
     b_install = release_block(org, project, rel_install, defn_name,

@@ -1016,19 +1016,21 @@ def test_pr_matches_commit():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# debug_dump — dump completo de respuestas API
+# debug — sin dump de respuestas API
 # ═══════════════════════════════════════════════════════════════════════════
-def test_debug_dump(monkeypatch):
+def test_debug_no_imprime_respuestas(monkeypatch):
+    """El modo debug ya no vuelca las respuestas de la API: la corrida
+    no debe escribir JSON crudo por stdout."""
+    assert not hasattr(rdc, "debug_dump")
     buf = io.StringIO()
     monkeypatch.setattr(sys, "stdout", buf)
-    # sin debug → no imprime nada
-    rdc.debug_dump("x", {"a": 1}, False)
-    assert buf.getvalue() == ""
-    # con debug → imprime el JSON completo con acentos
-    rdc.debug_dump("LABEL", {"nombre": "órgano"}, True)
-    out = buf.getvalue()
-    assert "[DEBUG] ══════ LABEL ══════" in out
-    assert '"nombre": "órgano"' in out  # ensure_ascii=False
+    # release_block en modo debug con mocks no debe imprimir dumps
+    _mock_apis(monkeypatch)
+    rel = _release(artifacts=[_build_artifact()])
+    rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
+                      debug=True)
+    assert "[DEBUG] ══════" not in buf.getvalue()
+    assert '"pullRequestId"' not in buf.getvalue()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
