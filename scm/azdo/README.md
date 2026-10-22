@@ -1322,11 +1322,17 @@ Previene instalaciones fallidas al stage **Production**: identifica los
 #### Flujo
 
 1. Lista las definiciones CD (paralelo) y filtra las que tienen
-   **artifact tipo Git en rama master** (`--master-branch`, el source
-   repository del CD).
+   **artifact tipo Git en rama master** (`--master-branch`). Solo cuenta
+   el artifact Git del **componente fuente** — un artifact Git de
+   `properties` (alias/nombre con "properties") en master NO hace
+   candidato al CD, y la rama se normaliza (`refs/heads/master` ≡
+   `master`). Así un CD cuyo componente está en `develop` queda fuera
+   aunque su repo de properties apunte a master.
 2. Por CD toma los últimos `--top-releases` releases y **excluye los que
    ya tienen Production instalado** (algún deployStep
-   succeeded/partiallySucceeded).
+   succeeded/partiallySucceeded). Además, si el artifact Git del release
+   reporta una rama distinta a master (p. ej. `develop`), ese release se
+   excluye: el PR no fue a master.
 3. De cada release pendiente extrae: **Build artifact** (build id,
    número y rama `refs/pull/N/merge` → **PR a master**), **artifact Git**
    (repo componente + commit), variables (`RELEASE_ID` y
@@ -1483,6 +1489,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-22 | 1.9.24 | **Opción 48: filtro de rama por artifact FUENTE** — corrección: el filtro de CD ya no acepta cualquier artifact Git en master; solo cuenta el artifact Git del componente (se excluye el de `properties` por alias/nombre) y la rama se normaliza (`refs/heads/master` ≡ `master`). Además, por release se verifica que la rama del artifact Git del componente sea master — si el release reporta `develop` u otra, se excluye. Rollback toma el commit del artifact fuente (no properties). Nueva columna de exportación `git_branch`. azdo_prod_preinstall_validator v1.0.4. Tests: 41 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-22 | 1.9.23 | **Opción 48: lista de CDs primero + análisis paralelo** — primero imprime la tabla de todos los CDs con artifact Git master (nombre/id/repo/rama), luego `process_cd` corre en paralelo con `--threads` workers (default 20) y la barra avanza por CD completado | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.3) |
 | 2026-10-22 | 1.9.22 | **Opción 48: spinner + barra de progreso** — 4 fases con `Progress` de Rich (definiciones CD spinner → detalle por definición en paralelo con barra → repositorios spinner → análisis por CD con barra y nombre del CD en la descripción); sin Rich cae a `[i/N]` plano. azdo_prod_preinstall_validator v1.0.2 | `scm/azdo/azdo_prod_preinstall_validator.py` |
 | 2026-10-22 | 1.9.21 | **Opción 48: detalle en tablas (sin fichas) + Excel por defecto** — el detalle por release deja de imprimir paneles (fichas) y pasa a dos tablas: "Detalle por release" (stages snapshot, prod, PR, build, commits, rollback, validator) y "Hallazgos del Validator" (release/severidad/regla/stage/variable/razón/detalle). `write_default_reports` acepta `excel=True` y genera además `.xlsx`; la opción 48 exporta siempre JSON + HTML + Excel con filas planas (`export_row`). azdo_prod_preinstall_validator v1.0.1, azdo_default_export v1.0.1. Tests: +5 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/azdo/azdo_default_export.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/tests/unit/test_azdo_default_export.py`, `scm/azdo/README.md`, `VERSION` |

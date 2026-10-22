@@ -54,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -297,16 +297,42 @@ def pr_id_from_build_branch(branch_ref: str) -> Optional[int]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Filtro de CDs: artifact tipo Git con branch master
 # ═══════════════════════════════════════════════════════════════════════════════
+def normalize_branch(ref: str) -> str:
+    """'refs/heads/master' → 'master'; 'master' → 'master'."""
+    b = (ref or "").lower()
+    return b[len("refs/heads/"):] if b.startswith("refs/heads/") else b
+
+
+def is_properties_artifact(art: Dict) -> bool:
+    """True si el artifact Git es el repositorio de PROPIEDADES
+    (alias o nombre contiene 'properties'), no el fuente del componente."""
+    alias = (art.get("alias") or "").lower()
+    name = (art.get("name") or "").lower()
+    return "properties" in alias or "properties" in name
+
+
 def cd_master_git_artifact(def_detail: Dict,
                            master_branch: str) -> Optional[Dict]:
-    """Artifact Git del CD cuyo branch es master (el source repository)."""
+    """Artifact Git del CD cuyo branch es master — solo el artifact
+    FUENTE del componente (un artifact 'properties' en master NO hace
+    candidato al CD)."""
     for a in def_detail.get("artifacts", []) or []:
         if (a.get("type") or "").lower() not in GIT_ARTIFACT_TYPES:
             continue
+        if is_properties_artifact(a):
+            continue
         gi = git_artifact_info(a)
-        if gi["branch"].lower() == (master_branch or "").lower():
+        if normalize_branch(gi["branch"]) == (master_branch or "").lower():
             return gi
     return None
+
+
+def source_git_artifact(git_arts: List[Dict]) -> Optional[Dict]:
+    """El artifact Git del COMPONENTE (no properties) dentro del release."""
+    for a in git_arts:
+        if not is_properties_artifact(a):
+            return a
+    return git_arts[0] if git_arts else None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -584,11 +610,11 @@ def rollback_info(org, project, rel, vars_, headers, debug) -> Dict[str, Any]:
     bi = build_artifact_info(build_art)
     out["build_id"] = bi["build_id"]
     out["build_number"] = bi["build_number"]
-    for ga in git_arts:
-        gi = git_artifact_info(ga)
+    src_rb = source_git_artifact(git_arts)
+    if src_rb is not None:
+        gi = git_artifact_info(src_rb)
         if gi["commit"]:
             out["git_commit"] = gi["commit"]
-            break
     rb_vars = release_vars(rb)
     out["props_commit"] = rb_vars.get("COMMITPROPERTIESROLLBACK", "")
     out["valid"] = True
@@ -633,7 +659,13 @@ def process_cd(org, project, cd, def_detail, args, headers, repos_by_id) \
 
         build_art, git_arts = extract_artifacts(rel)
         bi = build_artifact_info(build_art)
-        src_gi = git_artifact_info(git_arts[0] if git_arts else None)
+        src_gi = git_artifact_info(source_git_artifact(git_arts))
+        # la rama del artifact Git del release debe ser master; si AzDO la
+        # reporta y es otra (develop, feature/…), el release no es de un
+        # PR a master → se excluye del listado
+        src_branch = normalize_branch(src_gi["branch"])
+        if src_branch and src_branch != (args.master_branch or "").lower():
+            continue
         vars_ = release_vars(rel)
 
         # PR a master: id desde la rama del build (refs/pull/N/merge)
@@ -680,6 +712,7 @@ def process_cd(org, project, cd, def_detail, args, headers, repos_by_id) \
             "build_id": bi["build_id"],
             "build_number": bi["build_number"],
             "git_commit": src_gi["commit"],
+            "git_branch": src_gi["branch"],
             "score": result["score"],
             "rating": result["rating"],
             "props_commit": props_commit,
@@ -918,6 +951,7 @@ def export_row(r: Dict) -> Dict:
         "build_id": r["build_id"],
         "build_number": r["build_number"],
         "git_commit": r["git_commit"],
+        "git_branch": r.get("git_branch", ""),
         "score": r["score"],
         "rating": r["rating"][1],
         "props_commit": r["props_commit"],

@@ -98,6 +98,65 @@ def test_cd_master_git_artifact_sin_git():
     assert pv.cd_master_git_artifact(detail, "master") is None
 
 
+def test_cd_master_git_artifact_properties_en_master_no_es_fuente():
+    """Componente en develop + artifact 'properties' en master → NO candidato."""
+    props = _git_artifact(repo="properties-repo", branch="master")
+    props["alias"] = "_properties"
+    detail = {"artifacts": [
+        _build_artifact(),
+        _git_artifact(repo="comp-develop", branch="develop"),
+        props,
+    ]}
+    assert pv.cd_master_git_artifact(detail, "master") is None
+
+
+def test_cd_master_git_artifact_componente_master_y_props():
+    """Componente en master + properties en develop → devuelve el componente."""
+    props = _git_artifact(repo="properties-repo", branch="develop")
+    props["alias"] = "_properties"
+    detail = {"artifacts": [
+        props,
+        _git_artifact(repo="oms-com-order", branch="master"),
+    ]}
+    gi = pv.cd_master_git_artifact(detail, "master")
+    assert gi and gi["repo_name"] == "oms-com-order"
+
+
+def test_normalize_branch():
+    assert pv.normalize_branch("refs/heads/master") == "master"
+    assert pv.normalize_branch("refs/heads/develop") == "develop"
+    assert pv.normalize_branch("master") == "master"
+    assert pv.normalize_branch("") == ""
+
+
+def test_cd_master_git_artifact_branch_full_ref():
+    """La API puede devolver 'refs/heads/master' en definitionReference."""
+    detail = {"artifacts": [
+        _git_artifact(branch="refs/heads/master")]}
+    gi = pv.cd_master_git_artifact(detail, "master")
+    assert gi is not None
+
+
+def test_source_git_artifact_omite_properties():
+    props = _git_artifact(repo="properties-repo")
+    props["alias"] = "_properties"
+    comp = _git_artifact(repo="oms-com-order")
+    assert pv.source_git_artifact([props, comp])["alias"] == "_oms-com-order"
+    assert pv.source_git_artifact([]) is None
+
+
+def test_process_cd_excluye_release_con_git_en_develop(monkeypatch):
+    """Release cuyo artifact Git del componente es develop → se excluye."""
+    rel = _rel(rid=60995, prod_status="notStarted",
+               git_art=_git_artifact(branch="develop"))
+    _mock_apis(monkeypatch, [rel])
+    cd = {"id": 1403, "name": "oms-com-order-CD"}
+    detail = {"artifacts": [_build_artifact(), _git_artifact()],
+              "modifiedOn": "2026-09-01T00:00:00Z"}
+    res = pv.process_cd("o", "p", cd, detail, _A(), {}, {})
+    assert res["rows"] == []
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Production instalado → excluir
 # ═════════════════════════════════════════════════════════════════════════════

@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.23`** — 2026-10-22
+**`1.9.24`** — 2026-10-22
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-10-22 | **1.9.24** | **Opción 48: filtro de rama por artifact FUENTE del componente** — corrección: `cd_master_git_artifact` ya no hace candidato a un CD por tener un artifact Git de `properties` en master; solo cuenta el artifact Git del componente fuente y la rama se normaliza (`refs/heads/master` ≡ `master`). Por release se verifica además que la rama del artifact Git del componente sea master — si es `develop` u otra, el release se excluye del listado. Rollback toma el commit del artifact fuente; nueva columna `git_branch` en la exportación. azdo_prod_preinstall_validator v1.0.4. Tests: 41 | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-22 | **1.9.23** | **Opción 48: lista de CDs primero + análisis paralelo** — tras filtrar, se imprime primero la tabla de TODOS los pipelines CD con artifact Git master (#, nombre, id, repo del artifact, rama); en un segundo paso `process_cd` corre en paralelo con `--threads` workers (default 20, antes solo para detalles de definición) — cada worker resuelve releases pendientes + logs del Validator + rollback; la barra avanza por CD completado con "✔ nombre — N pendiente(s)". Sin Rich: lista numerada + `[i/N]` por CD. El resultado mantiene el orden de los CDs (índice en `cd_results`). azdo_prod_preinstall_validator v1.0.3. Tests: 35 | `scm/azdo/azdo_prod_preinstall_validator.py`, `README.version.md`, `VERSION` |
 | 2026-10-22 | **1.9.22** | **Opción 48: spinner + barra de progreso** — la corrida muestra ahora el avance en 4 fases (convención del toolbox): spinner "Obteniendo definiciones CD", barra `Spinner+Bar+%` para la descarga en paralelo del detalle de cada definición (as_completed, descripción con el nombre del CD), spinner de repositorios, y barra para el análisis por CD (`process_cd`: releases + logs Validator + rollback) con el CD actual en la descripción. Sin Rich cae a contadores `[i/N]` en texto plano. azdo_prod_preinstall_validator v1.0.2. Tests: 35 | `scm/azdo/azdo_prod_preinstall_validator.py`, `README.version.md`, `VERSION` |
 | 2026-10-22 | **1.9.21** | **Opción 48: detalle en tablas (sin fichas) + Excel por defecto** — el detalle por release deja de imprimir paneles (fichas) y pasa a dos tablas Rich: "Detalle por release" (snapshot de stages con icono+status, Production status/intentos, PR a master, build, commit Git, commit props, rollback completo, Validator) y "Hallazgos del stage Validator" (release/severidad/regla/stage/variable/razón/detalle). `azdo_default_export.write_default_reports` acepta `excel=True` y genera además `.xlsx` vía pandas+openpyxl; la opción 48 exporta siempre JSON + HTML + Excel en `outcome/` con filas planas (`export_row`: todas las columnas, violaciones y stages serializados). azdo_prod_preinstall_validator v1.0.1, azdo_default_export v1.0.1. Tests: +5 (53 total verificados) | `scm/azdo/azdo_prod_preinstall_validator.py`, `scm/azdo/azdo_default_export.py`, `scm/tests/unit/test_prod_preinstall_validator.py`, `scm/tests/unit/test_azdo_default_export.py`, `scm/azdo/README.md`, `VERSION` |
