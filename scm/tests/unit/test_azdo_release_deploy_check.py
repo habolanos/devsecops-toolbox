@@ -929,6 +929,22 @@ def test_pr_matches_commit():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# debug_dump — dump completo de respuestas API
+# ═══════════════════════════════════════════════════════════════════════════
+def test_debug_dump(monkeypatch):
+    buf = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", buf)
+    # sin debug → no imprime nada
+    rdc.debug_dump("x", {"a": 1}, False)
+    assert buf.getvalue() == ""
+    # con debug → imprime el JSON completo con acentos
+    rdc.debug_dump("LABEL", {"nombre": "órgano"}, True)
+    out = buf.getvalue()
+    assert "[DEBUG] ══════ LABEL ══════" in out
+    assert '"nombre": "órgano"' in out  # ensure_ascii=False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # print_block — render del comparativo
 # ═══════════════════════════════════════════════════════════════════════════
 def _capture_plain(monkeypatch):
