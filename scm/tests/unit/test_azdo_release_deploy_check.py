@@ -390,13 +390,15 @@ def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
 
 
 def _git_artifact(repo_name="oms-com-order", commit="7ab55d31",
-                  repo_id="r-oms", primary=False):
-    """Artifact SOURCE (tipo Git) del release: repo real + commit."""
+                  repo_id="r-oms", primary=False, branch="master"):
+    """Artifact SOURCE (tipo Git) del release: repo real + commit +
+    rama (como el release real: branch.id = master)."""
     return {
         "type": "Git", "alias": repo_name, "isPrimary": primary,
         "definitionReference": {
             "repository": {"id": repo_id, "name": repo_name},
             "version": {"id": commit},
+            "branch": {"id": branch},
         },
     }
 
@@ -420,7 +422,58 @@ def test_git_artifact_info():
     assert gi["repo_id"] == "r-oms"
     assert gi["repo_name"] == "oms-com-order"
     assert gi["commit"] == "7ab55d31"
+    assert gi["branch"] == "master"
     assert rdc.git_artifact_info(None)["commit"] == ""
+
+
+def test_find_pr_for_commit_filtro_rama(monkeypatch):
+    """Caso real: PR #360315 mergeo a feature/feature-x con
+    lastMergeTargetCommit == commit del release. Con target_branch=
+    master, la API ya no lo devuelve ni aunque el commit coincidiera."""
+    calls = {}
+
+    def fake_api_get(url, headers, params=None, debug=False):
+        calls["params"] = params
+        # la API filtra por targetRefName: solo devuelve PRs a master
+        if params.get("searchCriteria.targetRefName") == "refs/heads/master":
+            return {"value": [
+                {"pullRequestId": 7, "title": "el bueno",
+                 "lastMergeCommit": {"commitId": "aacda92c"},
+                 "targetRefName": "refs/heads/master"}]}
+        return {"value": [
+            {"pullRequestId": 360315, "title": "Se sube la version",
+             "lastMergeCommit": {"commitId": "2aa909bd"},
+             "targetRefName": "refs/heads/feature/feature-minsaitPruebasCD"}]}
+
+    monkeypatch.setattr(rdc, "api_get", fake_api_get)
+    pr = rdc.find_pr_for_commit("o", "p", "r", "aacda92c", {}, False,
+                                target_branch="master")
+    assert pr["pullRequestId"] == 7
+    assert calls["params"]["searchCriteria.targetRefName"] == \
+        "refs/heads/master"
+    # sin rama → sin filtro, escanea todo
+    pr = rdc.find_pr_for_commit("o", "p", "r", "2aa909bd", {}, False)
+    assert pr["pullRequestId"] == 360315
+    assert "searchCriteria.targetRefName" not in calls["params"]
+
+
+def test_find_pr_for_commit_paginacion(monkeypatch):
+    """El PR correcto esta en la pagina 2 del scan."""
+    page0 = {"value": [{"pullRequestId": i,
+                        "lastMergeCommit": {"commitId": f"c{i}"}}
+                       for i in range(200)]}
+    pages = {
+        0: page0,
+        200: {"value": [{"pullRequestId": 999,
+                         "lastMergeCommit": {"commitId": "aacda92c"}}]},
+    }
+
+    def fake_api_get(url, headers, params=None, debug=False):
+        return pages.get(params.get("$skip", 0), {"value": []})
+
+    monkeypatch.setattr(rdc, "api_get", fake_api_get)
+    pr = rdc.find_pr_for_commit("o", "p", "r", "aacda92c", {}, False)
+    assert pr["pullRequestId"] == 999
 
 
 def test_classify_git_artifacts():
@@ -520,9 +573,11 @@ def test_release_block_pr_por_commit_del_repo_fuente(monkeypatch):
     usa."""
     seen = {}
 
-    def fake_pr(org, project, repo_id, commit, headers, debug):
+    def fake_pr(org, project, repo_id, commit, headers, debug,
+                target_branch=""):
         seen["repo_id"] = repo_id
         seen["commit"] = commit
+        seen["target_branch"] = target_branch
         return None
 
     _mock_apis(monkeypatch, build=_build_detail(
@@ -532,6 +587,32 @@ def test_release_block_pr_por_commit_del_repo_fuente(monkeypatch):
     rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master", False)
     assert seen["repo_id"] == "r-src"
     assert seen["commit"] == "9dad7445abcd1234"
+    # sin Git source artifact → sin filtro de rama
+    assert seen["target_branch"] == ""
+
+
+def test_release_block_pr_con_rama_del_source_artifact(monkeypatch):
+    """Con Git source artifact (branch master), el scan de PRs filtra
+    por targetRefName=refs/heads/master."""
+    seen = {}
+
+    def fake_pr(org, project, repo_id, commit, headers, debug,
+                target_branch=""):
+        seen["target_branch"] = target_branch
+        seen["commit"] = commit
+        return None
+
+    art = _build_artifact(commit="f228b069")
+    git_art = _git_artifact(commit="aacda92cbd18e796", branch="master")
+    detail = _release(artifacts=[art, git_art])
+    _mock_apis(monkeypatch)
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    monkeypatch.setattr(rdc, "find_pr_for_commit", fake_pr)
+    rdc.release_block("o", "p", _release(artifacts=[art, git_art]),
+                      "cd", {}, None, {}, "master", False)
+    assert seen["target_branch"] == "master"
+    assert seen["commit"] == "aacda92cbd18e796"
 
 
 def test_release_block_pr_buscado_en_repo_fuente(monkeypatch):
@@ -539,8 +620,10 @@ def test_release_block_pr_buscado_en_repo_fuente(monkeypatch):
     pipelines-projects."""
     seen = {}
 
-    def fake_pr(org, project, repo_id, commit, headers, debug):
+    def fake_pr(org, project, repo_id, commit, headers, debug,
+                target_branch=""):
         seen["repo_id"] = repo_id
+        seen["target_branch"] = target_branch
         return None
 
     _mock_apis(monkeypatch, build=_build_detail(pr_ref=""))
@@ -741,7 +824,8 @@ def test_release_block_commit_sigue_hasta_repo_componente(monkeypatch):
     build = _build_detail(source_version="9dad7445abcd1234")
     seen = {}
 
-    def fake_pr(org, project, repo_id, commit, headers, debug):
+    def fake_pr(org, project, repo_id, commit, headers, debug,
+                target_branch=""):
         seen["commit"] = commit
         return None
 

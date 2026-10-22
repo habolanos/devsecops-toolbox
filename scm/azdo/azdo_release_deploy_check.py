@@ -58,7 +58,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.13"
+__version__ = "1.0.14"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -70,6 +70,8 @@ API_VERSION_BUILD = "7.1"
 PROD_KEYWORDS = ("prod", "prd", "production")
 TOP_RELEASES = 50
 TOP_PR_SEARCH = 200
+MAX_PR_PAGES = 5      # hasta 5 paginas de PRs completados
+MAX_PR_SCAN = 1000    # tope del scan (releases viejos → PRs viejos)
 # Releases con mas de N dias se muestran tenues (ya no son validos)
 STALE_DAYS = 30
 
@@ -240,8 +242,10 @@ def extract_artifacts(rel: Dict) -> Tuple[Optional[Dict], List[Dict]]:
 
 def git_artifact_info(art: Optional[Dict]) -> Dict[str, str]:
     """Info del artifact tipo Git (el SOURCE artifact repository):
-    repo real del componente + el commit de los fuentes (version.id)."""
-    info = {"repo_id": "", "repo_name": "", "commit": "", "url": ""}
+    repo real del componente + el commit de los fuentes (version.id) +
+    la rama (branch/branches.id, ej: master)."""
+    info = {"repo_id": "", "repo_name": "", "commit": "", "url": "",
+            "branch": ""}
     if not art:
         return info
     ref = art.get("definitionReference", {}) or {}
@@ -253,6 +257,8 @@ def git_artifact_info(art: Optional[Dict]) -> Dict[str, str]:
     ver = ref.get("version") or {}
     info["commit"] = ver.get("id", "") \
         or (ref.get("sourceVersion") or {}).get("id", "") or ""
+    info["branch"] = (ref.get("branch") or {}).get("id", "") \
+        or (ref.get("branches") or {}).get("id", "")
     return info
 
 
@@ -388,28 +394,41 @@ def pr_matches_commit(pr: Optional[Dict], commit: str) -> bool:
 
 
 def find_pr_for_commit(org, project, repo_id, commit, headers,
-                       debug) -> Optional[Dict]:
+                       debug, target_branch: str = "") -> Optional[Dict]:
     """Busca el PR cuyo lastMergeCommit (commit definitivo en la rama
     destino) coincide con el commit del release.
 
-    lastMergeSourceCommit (head del branch origen) y
-    lastMergeTargetCommit (estado previo del destino) NO se comparan:
-    un PR 'parecido' puede compartirlos sin ser el que produjo el
-    commit del release.
+    - lastMergeSourceCommit (head del branch origen) y
+      lastMergeTargetCommit (estado previo del destino) NO se comparan:
+      un PR 'parecido' puede compartirlos sin ser el que produjo el
+      commit del release (caso real: PR a feature/ cuyo target previo
+      coincidia con el commit del release).
+    - target_branch (rama del source artifact, ej: master) filtra por
+      searchCriteria.targetRefName: solo PRs fusionados a esa rama.
+    - Paginado hasta MAX_PR_SCAN: releases viejos tienen PRs viejos.
     """
     if not repo_id or not commit:
         return None
     url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
            f"{quote(repo_id, safe='')}/pullrequests")
-    data = api_get(url, headers, {
-        "api-version": API_VERSION,
-        "searchCriteria.status": "completed",
-        "$top": TOP_PR_SEARCH,
-    }, debug)
-    for pr in (data or {}).get("value", []) or []:
-        c = pr_definitive_commit(pr)
-        if c and c.lower() == commit.lower():
-            return pr
+    base = {"api-version": API_VERSION,
+            "searchCriteria.status": "completed",
+            "$top": TOP_PR_SEARCH}
+    if target_branch:
+        base["searchCriteria.targetRefName"] = \
+            f"refs/heads/{target_branch}"
+    seen = 0
+    for page in range(MAX_PR_PAGES):
+        base["$skip"] = page * TOP_PR_SEARCH
+        data = api_get(url, headers, base, debug)
+        values = (data or {}).get("value", []) or []
+        for pr in values:
+            c = pr_definitive_commit(pr)
+            if c and c.lower() == commit.lower():
+                return pr
+        seen += len(values)
+        if len(values) < TOP_PR_SEARCH or seen >= MAX_PR_SCAN:
+            break
     return None
 
 
@@ -810,15 +829,18 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
 
     # PR: se determina a PARTIR DEL COMMIT del repositorio fuente (el
     # commit del source artifact Git) — scan de PRs completados en ese
-    # repo cuyo merge/lastMergeSource/lastMergeTarget commit coincida.
-    # El sourceBranch del build NO sirve: es el PR que disparo el CI en
-    # pipelines-projects, no el del componente.
+    # repo cuyo lastMergeCommit coincida, filtrando por la RAMA del
+    # source artifact (ej: master). El sourceBranch del build NO sirve:
+    # es el PR que disparo el CI en pipelines-projects.
+    src_branch = src_art.get("branch", "")
     pr = find_pr_for_commit(org, project, repo_id, release_commit,
-                            headers, debug)
+                            headers, debug,
+                            target_branch=src_branch)
     pr_def_commit = pr_definitive_commit(pr)
+    pr_label_repo = src_repo_name or "repo fuente"
     debug_dump(f"PR — release {rel.get('name')} "
-               f"[resuelto por commit {release_commit[:8]} en "
-               f"{src_repo_name or 'repo fuente'}]", pr, debug)
+               f"[commit {release_commit[:8]} en {pr_label_repo}, "
+               f"rama {src_branch or '—'}]", pr, debug)
 
     # Link copiable al pull request
     pr_url = ""
