@@ -54,7 +54,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -100,7 +100,8 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--top-releases", type=int, default=10,
                    help="Releases recientes a revisar por CD (default: 10)")
     p.add_argument("--threads", type=int, default=20,
-                   help="Hilos para detalles de CD (default: 20)")
+                   help="Workers paralelos: detalle de definiciones y "
+                        "análisis por CD (default: 20)")
     p.add_argument("--debug", action="store_true")
     return p.parse_args()
 
@@ -1038,8 +1039,30 @@ def main() -> int:
         _print(f"[red]❌ Ningún CD tiene artifact tipo Git en rama "
                f"{args.master_branch}.[/]")
         return 1
-    _print(f"[green]{len(master_cds)}[/] CDs con artifact Git "
-           f"{args.master_branch} — analizando releases…\n")
+
+    # ── Paso 1: listar TODOS los CDs candidatos antes de procesar ──
+    if RICH and console:
+        ct = Table(title=f"CDs con artifact Git en rama "
+                         f"{args.master_branch} ({len(master_cds)})",
+                   box=box.ROUNDED)
+        ct.add_column("#", justify="right", style="dim")
+        ct.add_column("CD PIPELINE", style="cyan", no_wrap=True)
+        ct.add_column("ID", style="dim", justify="right")
+        ct.add_column("REPO (artifact Git)", style="magenta")
+        ct.add_column("RAMA", style="green")
+        for i, (cd, detail) in enumerate(master_cds, 1):
+            gi = cd_master_git_artifact(detail, args.master_branch) or {}
+            ct.add_row(str(i), cd.get("name", ""), str(cd.get("id")),
+                       gi.get("repo_name", "?"), gi.get("branch", "?"))
+        console.print(ct)
+        console.print()
+    else:
+        print(f"\nCDs con artifact Git en rama {args.master_branch} "
+              f"({len(master_cds)}):")
+        for i, (cd, detail) in enumerate(master_cds, 1):
+            gi = cd_master_git_artifact(detail, args.master_branch) or {}
+            print(f"  {i:>3}. {cd.get('name')} (id {cd.get('id')}) "
+                  f"— {gi.get('repo_name', '?')} [{gi.get('branch', '?')}]")
 
     # 3. Repositorios del proyecto (spinner)
     if RICH and console:
@@ -1055,8 +1078,15 @@ def main() -> int:
         print(f"{len(repos)}")
     repos_by_id = {r.get("id"): r for r in repos}
 
-    # 4. Analisis por CD (barra de progreso)
-    cd_results = []
+    # 4. Analisis por CD EN PARALELO (barra de progreso)
+    #    cada worker resuelve releases + logs Validator + rollback del CD
+    cd_results = [None] * len(master_cds)
+
+    def _work(idx_cd):
+        idx, (cd, detail) = idx_cd
+        return idx, process_cd(org, project, cd, detail, args, headers,
+                               repos_by_id)
+
     if RICH and console:
         with Progress(
                 SpinnerColumn(),
@@ -1064,23 +1094,34 @@ def main() -> int:
                 BarColumn(),
                 TaskProgressColumn(),
                 console=console) as p:
-            t = p.add_task("Analizando releases pendientes de Production…",
+            t = p.add_task(f"Analizando {len(master_cds)} CDs "
+                           f"({args.threads} workers)…",
                            total=len(master_cds))
-            for cd, detail in master_cds:
-                p.update(t, description=(
-                    f"CD [cyan]{cd.get('name', '?')[:50]}[/]"))
-                res = process_cd(org, project, cd, detail, args, headers,
-                                 repos_by_id)
-                cd_results.append(res)
-                p.advance(t)
+            with ThreadPoolExecutor(
+                    max_workers=max(1, args.threads)) as ex:
+                futs = {ex.submit(_work, (i, cd_d))
+                        for i, cd_d in enumerate(master_cds)}
+                for fut in as_completed(futs):
+                    idx, res = fut.result()
+                    cd_results[idx] = res
+                    p.update(t, description=(
+                        f"✔ [cyan]{res['cd_name'][:50]}[/] — "
+                        f"{len(res['rows'])} pendiente(s)"))
+                    p.advance(t)
             p.update(t, description="✅ Análisis de CDs completado")
     else:
-        for i, (cd, detail) in enumerate(master_cds, 1):
-            print(f"[{i}/{len(master_cds)}] {cd.get('name', '?')}",
-                  flush=True)
-            cd_results.append(
-                process_cd(org, project, cd, detail, args, headers,
-                           repos_by_id))
+        print(f"Analizando {len(master_cds)} CDs "
+              f"({args.threads} workers)…", flush=True)
+        done = 0
+        with ThreadPoolExecutor(max_workers=max(1, args.threads)) as ex:
+            futs = {ex.submit(_work, (i, cd_d))
+                    for i, cd_d in enumerate(master_cds)}
+            for fut in as_completed(futs):
+                idx, res = fut.result()
+                cd_results[idx] = res
+                done += 1
+                print(f"  [{done}/{len(master_cds)}] {res['cd_name']} — "
+                      f"{len(res['rows'])} pendiente(s)", flush=True)
 
     rows = [r for c in cd_results for r in c["rows"]]
 
