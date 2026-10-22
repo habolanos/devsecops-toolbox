@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -201,6 +201,60 @@ def extract_primary_artifact(rel: Dict) -> Optional[Dict]:
         if a.get("type") == "Build":
             return a
     return arts[0]
+
+
+GIT_ARTIFACT_TYPES = ("git", "github", "externalgit", "tfvc")
+
+
+def extract_artifacts(rel: Dict) -> Tuple[Optional[Dict], List[Dict]]:
+    """Un release tiene 2+ artifacts: el del BUILD (CI) y el/los SOURCE
+    (tipo Git). Devuelve (build_art, [git_arts...])."""
+    build_art = None
+    git_arts = []
+    for a in rel.get("artifacts", []) or []:
+        t = (a.get("type") or "").lower()
+        if t == "build" and build_art is None:
+            build_art = a
+        elif t in GIT_ARTIFACT_TYPES:
+            git_arts.append(a)
+    if build_art is None:
+        arts = rel.get("artifacts", []) or []
+        if arts:
+            build_art = arts[0]
+    return build_art, git_arts
+
+
+def git_artifact_info(art: Optional[Dict]) -> Dict[str, str]:
+    """Info del artifact tipo Git (el SOURCE artifact repository):
+    repo real del componente + el commit de los fuentes (version.id)."""
+    info = {"repo_id": "", "repo_name": "", "commit": "", "url": ""}
+    if not art:
+        return info
+    ref = art.get("definitionReference", {}) or {}
+    repo = ref.get("repository") or {}
+    info["repo_id"] = repo.get("id", "") or ""
+    info["repo_name"] = repo.get("name", "") or ""
+    info["url"] = strip_userinfo(repo.get("url", "")
+                                 or repo.get("remoteUrl", "") or "")
+    ver = ref.get("version") or {}
+    info["commit"] = ver.get("id", "") \
+        or (ref.get("sourceVersion") or {}).get("id", "") or ""
+    return info
+
+
+def classify_git_artifacts(git_arts: List[Dict]) -> Tuple[Dict, Dict]:
+    """De los artifacts Git, separa el SOURCE (repo del componente) del
+    de PROPERTIES (nombre que contiene 'properties')."""
+    src, props = {}, {}
+    for ga in git_arts:
+        gi = git_artifact_info(ga)
+        if not gi["repo_name"] and not gi["commit"]:
+            continue
+        if "properties" in gi["repo_name"].lower():
+            props = props or gi
+        else:
+            src = src or gi
+    return src, props
 
 
 def artifact_info(art: Optional[Dict]) -> Dict[str, str]:
@@ -576,8 +630,11 @@ def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
         now = datetime.now(timezone.utc)
         for i, rel in enumerate(releases, 1):
             pst, pdate = release_prod_status(rel)
-            art = extract_primary_artifact(rel)
-            ai = artifact_info(art)
+            build_art, git_arts = extract_artifacts(rel)
+            ai = artifact_info(build_art)
+            src_art, _ = classify_git_artifacts(git_arts)
+            row_commit = (src_art.get("commit")
+                          or ai["commit"])[:8]
             prod_fmt = (f"[green]{pst}[/]" if pst in
                         ("succeeded", "partiallySucceeded")
                         else (f"[red]{pst}[/]" if pst else "—"))
@@ -591,18 +648,21 @@ def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
                       _fmt_date(rel.get("createdOn", "")),
                       status_fmt, prod_fmt,
                       _fmt_date(pdate), ai["build_number"] or "—",
-                      ai["commit"][:8] or "—",
+                      row_commit or "—",
                       style="dim" if stale else "")
         console.print(t)
     else:
         for i, rel in enumerate(releases, 1):
             pst, pdate = release_prod_status(rel)
-            art = extract_primary_artifact(rel)
-            ai = artifact_info(art)
+            build_art, git_arts = extract_artifacts(rel)
+            ai = artifact_info(build_art)
+            src_art, _ = classify_git_artifacts(git_arts)
+            row_commit = (src_art.get("commit")
+                          or ai["commit"])[:8]
             print(f"{i:>3}. {rel.get('name',''):<14} "
                   f"id={rel.get('id','')} {rel.get('status','')} "
                   f"prod={pst or '-'} {_fmt_date(pdate)} "
-                  f"commit={ai['commit'][:8] or '-'}")
+                  f"commit={row_commit or '-'}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -614,8 +674,12 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     """Arma el bloque de datos de un release para el comparativo."""
     rel_id = rel.get("id")
     detail = get_release_detail(org, project, rel_id, headers, debug) or rel
-    art = extract_primary_artifact(detail)
-    ai = artifact_info(art)
+    # El release trae 2+ artifacts: el del BUILD (CI) y el SOURCE
+    # (tipo Git = el artifact source repository, con el repo real del
+    # componente y el commit de los fuentes).
+    build_art, git_arts = extract_artifacts(detail)
+    ai = artifact_info(build_art)
+    src_art, props_art = classify_git_artifacts(git_arts)
 
     # El build es el que vincula todo. Su seccion 'Repositories'
     # (sourceRepositories) trae, por alias, el repo fuente del componente
@@ -632,9 +696,15 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     props_e = find_props_entry(entries) or {}
     build_repo = (build or {}).get("repository") or {}
 
-    src_repo_id = source_e.get("repo_id", "")
-    src_repo_name = source_e.get("repo_name", "")
-    src_url = source_e.get("url", "")
+    # SOURCE artifact (Git): repo del componente + commit de los fuentes
+    src_repo_id = src_art.get("repo_id", "")
+    src_repo_name = src_art.get("repo_name", "")
+    src_url = src_art.get("url", "")
+    release_commit = src_art.get("commit", "")
+    if not src_repo_id:
+        src_repo_id = source_e.get("repo_id", "")
+        src_repo_name = source_e.get("repo_name", "")
+        src_url = source_e.get("url", "")
 
     # changes del build (cache — se usan para resolver repo y commit)
     changes: List[Dict] = []
@@ -692,30 +762,39 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     # si no se resolvio, el artifact.name limpio.
     component = src_repo_name or cleaned or "N/A"
 
-    # Commit del RELEASE: el sourceVersion del artifact es el commit del
-    # REPO DEL CI (pipeline yaml). Se sigue buscando hasta el source del
-    # build cuyo repo hace match con el componente: ese es el commit real
-    # del release.
-    source_commit = ""
+    # Commit del RELEASE. Fuente autoritativa: el SOURCE artifact (Git)
+    # del release trae el commit de los fuentes del componente. Si no
+    # existe, se sigue buscando hasta el source del build cuyo repo
+    # hace match con el componente (entries → changes).
+    if not release_commit:
+        source_commit = ""
+        if src_repo_name:
+            for e in entries:
+                if (e["repo_name"].lower() == src_repo_name.lower()
+                        and e.get("commit")):
+                    source_commit = e["commit"]
+                    break
+        if not source_commit and src_repo_id:
+            for ch in changes:
+                if repo_id_from_location(ch.get("location", "")) == \
+                        src_repo_id:
+                    source_commit = ch.get("id", "") or ""
+                    break
+        release_commit = source_commit or ai["commit"]
+
+    # Commit de la compilacion del componente: el source del build cuyo
+    # repo tiene el MISMO NOMBRE del componente (entry 'sources'); se
+    # compara contra el commit del source artifact del release.
+    build_commit = ""
     if src_repo_name:
         for e in entries:
             if (e["repo_name"].lower() == src_repo_name.lower()
                     and e.get("commit")):
-                source_commit = e["commit"]
+                build_commit = e["commit"]
                 break
-    if not source_commit and src_repo_id:
-        for ch in changes:
-            if repo_id_from_location(ch.get("location", "")) == \
-                    src_repo_id:
-                source_commit = ch.get("id", "") or ""
-                break
-    release_commit = source_commit or ai["commit"]
-
-    # Commit de la compilacion del componente (para la comparacion
-    # contra el commit del source artifact del release).
-    build_commit = source_commit \
-        or (source_e.get("commit")
-            or (build or {}).get("sourceVersion", "") or "")
+    if not build_commit:
+        build_commit = (source_e.get("commit")
+                        or (build or {}).get("sourceVersion", "") or "")
 
     # Ruta del repo: entry 'sources' → repo resuelto por changes →
     # build.repository (self/YAML CI como ultimo recurso) → remoteUrl.
@@ -754,12 +833,11 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
                   f"{quote(src_repo_name, safe='')}"
                   f"/pullrequest/{pr['pullRequestId']}")
 
-    # Commit Properties = sourceVersion del repo de propiedades en el
-    # build (commit de la compilacion). Para el release a instalar, el
-    # commit del folder /{repo fuente} es el ULTIMO; para el rollback se
-    # listan los commits del folder y se toma el que coincide con la
-    # fecha de ejecucion del release.
-    props_commit = props_e.get("commit", "")
+    # Commit Properties: sourceVersion del repo de propiedades en el
+    # build (commit de la compilacion); si el release tambien trae un
+    # artifact Git para properties, su version como fallback.
+    props_commit = props_e.get("commit", "") \
+        or props_art.get("commit", "")
     props_rid = props_e.get("repo_id") or (props_repo or {}).get("id", "")
     props_folder_commit, props_folder, props_folder_mode = "", "", ""
     folder_candidates = [src_repo_name, cleaned] \
@@ -809,8 +887,8 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
         "artifact_commit_short": (ai["commit"] or "")[:8],
         "build_commit": build_commit,
         "commit_matches_build": bool(
-            ai["commit"] and build_commit
-            and ai["commit"].lower() == build_commit.lower()),
+            release_commit and build_commit
+            and release_commit.lower() == build_commit.lower()),
         "pr": pr,
         "pr_ref": pr_ref,
         "pr_url": pr_url,
@@ -897,9 +975,9 @@ def print_block(b: Dict[str, Any], org_project_label: str,
     if b.get("build_commit"):
         ok = b["commit_matches_build"]
         lines.append(
-            f"Commit build {b['build_commit'][:8]}: "
-            + ("[green]✔ coincide con artifact[/]" if ok else
-               "[red]✘ difiere del artifact[/]"))
+            f"Commit sources (build) {b['build_commit'][:8]}: "
+            + ("[green]✔ coincide con el release[/]" if ok else
+               "[red]✘ difiere del release[/]"))
     if RICH and console:
         console.print(Panel("\n".join(lines), box=box.ROUNDED))
     else:

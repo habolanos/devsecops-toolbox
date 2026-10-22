@@ -383,7 +383,96 @@ def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
                         if props_folder_commit else [])
 
 
-def test_release_block_fields(monkeypatch):
+def _git_artifact(repo_name="oms-com-order", commit="7ab55d31",
+                  repo_id="r-oms", primary=False):
+    """Artifact SOURCE (tipo Git) del release: repo real + commit."""
+    return {
+        "type": "Git", "alias": repo_name, "isPrimary": primary,
+        "definitionReference": {
+            "repository": {"id": repo_id, "name": repo_name},
+            "version": {"id": commit},
+        },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# extract_artifacts / git_artifact_info / classify
+# ═══════════════════════════════════════════════════════════════════════════
+def test_extract_artifacts_build_y_source():
+    rel = _release(artifacts=[_build_artifact(), _git_artifact()])
+    build_art, git_arts = rdc.extract_artifacts(rel)
+    assert build_art["type"] == "Build"
+    assert len(git_arts) == 1 and git_arts[0]["type"] == "Git"
+    # sin build → fallback al primero
+    rel2 = _release(artifacts=[_git_artifact()])
+    build_art2, _ = rdc.extract_artifacts(rel2)
+    assert build_art2["type"] == "Git"
+
+
+def test_git_artifact_info():
+    gi = rdc.git_artifact_info(_git_artifact())
+    assert gi["repo_id"] == "r-oms"
+    assert gi["repo_name"] == "oms-com-order"
+    assert gi["commit"] == "7ab55d31"
+    assert rdc.git_artifact_info(None)["commit"] == ""
+
+
+def test_classify_git_artifacts():
+    git_arts = [_git_artifact(repo_name="properties", commit="1ae6cb",
+                              repo_id="props1"),
+                _git_artifact()]
+    src, props = rdc.classify_git_artifacts(git_arts)
+    assert src["repo_name"] == "oms-com-order"
+    assert props["repo_name"] == "properties"
+
+
+def test_release_block_con_source_artifact(monkeypatch):
+    """Release con 2 artifacts (Build + Git source): el commit del
+    release viene del SOURCE artifact (Git), no del build/CI, y el repo
+    del componente del artifact. Del build se toman los commits de
+    sources y properties."""
+    git_arts = [_git_artifact()]
+    detail = _release(artifacts=[_build_artifact(commit="cf6e2244ci"),
+                                 _git_artifact()])
+    pr = {"pullRequestId": 4210,
+          "lastMergeCommit": {"commitId": "7ab55d31"}}
+    _mock_apis(monkeypatch, pr_by_id=pr)
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    # build: sources y properties con sus commits de compilacion
+    build = {"sourceVersion": "cf6e2244ci",
+             "sourceBranch": "refs/pull/4210/merge",
+             "repository": {"id": "ci-repo", "name": "pipelines-projects"},
+             "sourceRepositories": [
+                 {"alias": "self",
+                  "repository": {"id": "ci-repo",
+                                 "name": "pipelines-projects"},
+                  "sourceVersion": "cf6e2244ci"},
+                 {"alias": "sources",
+                  "repository": {"id": "r-oms", "name": "oms-com-order"},
+                  "sourceVersion": "7ab55d31",
+                  "sourceBranch": "refs/pull/4210/merge"},
+                 {"alias": "properties",
+                  "repository": {"id": "props1", "name": "properties"},
+                  "sourceVersion": "1ae6cb17"}]}
+    monkeypatch.setattr(rdc, "get_build", lambda *a, **k: build)
+    rel = _release(artifacts=[_build_artifact(commit="cf6e2244ci"),
+                              _git_artifact()])
+    b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
+                          False)
+    # commit del release = source artifact (Git)
+    assert b["commit"] == "7ab55d31"
+    assert b["artifact_commit"] == "cf6e2244ci"   # commit del CI (build art)
+    # repo del componente desde el artifact Git
+    assert b["src_repo_name"] == "oms-com-order"
+    # commit sources del build comparado con el del release
+    assert b["build_commit"] == "7ab55d31"
+    assert b["commit_matches_build"] is True
+    # commit properties de la compilacion
+    assert b["props_commit"] == "1ae6cb17"
+    # PR con el commit del source artifact
+    assert b["pr"] is pr
+    assert b["pr_commit_matches"] is True
     pr = {"pullRequestId": 42, "title": "feat",
           "lastMergeCommit": {"commitId": "9dad7445abcd1234"}}
     _mock_apis(monkeypatch, pr_by_id=pr)
@@ -610,11 +699,20 @@ def test_clean_component_name(raw, expected):
 
 
 def test_release_block_commit_mismatch(monkeypatch):
-    _mock_apis(monkeypatch,
-               build=_build_detail(source_version="diferente"))
-    rel = _release(artifacts=[_build_artifact()])
+    """El commit del release (source artifact Git) difiere del commit del
+    source en el build → comparacion en rojo."""
+    detail = _release(artifacts=[
+        _build_artifact(),
+        _git_artifact(commit="otro-distinto")])
+    _mock_apis(monkeypatch)
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    rel = _release(artifacts=[_build_artifact(),
+                              _git_artifact(commit="otro-distinto")])
     b = rdc.release_block("o", "p", rel, "cd", {}, None, {}, "master",
                           False)
+    assert b["commit"] == "otro-distinto"          # source artifact manda
+    assert b["build_commit"] == "9dad7445abcd1234"  # sources del build
     assert b["commit_matches_build"] is False
 
 
@@ -645,8 +743,9 @@ def test_release_block_commit_sigue_hasta_repo_componente(monkeypatch):
     assert b["artifact_commit_short"] == "aaaaciii"
     # el PR se busca con el commit del componente
     assert seen["commit"] == "9dad7445abcd1234"
-    # comparacion: commit del artifact (CI) vs commit del componente
-    assert b["commit_matches_build"] is False
+    # comparacion: commit del release (componente) vs sources del build
+    assert b["build_commit"] == "9dad7445abcd1234"
+    assert b["commit_matches_build"] is True
 
 
 def test_print_block_commit_artifact_ci(monkeypatch):
