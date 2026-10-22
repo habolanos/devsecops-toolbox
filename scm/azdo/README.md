@@ -1197,7 +1197,8 @@ que se va a instalar sea coherente con su rollback antes del despliegue.
 #### Flujo
 
 1. Lista los últimos releases del pipeline (columna `PROD` marca los
-   environments con nombre prod/prd/production) y pregunta:
+   environments con nombre prod/prd/production; columna `COMMIT` = commit
+   del artifact source repository) y pregunta:
    - **¿Cuál release se va a INSTALAR?** (número de lista, `Release-N` o id)
    - **¿Cuál es el release de ROLLBACK?** (no permite repetir el anterior)
 2. Por cada release consulta el **artifact primario tipo Build**:
@@ -1228,21 +1229,24 @@ que se va a instalar sea coherente con su rollback antes del despliegue.
    es `refs/pull/{id}/merge|head` → consulta el PR por id en el repo
    fuente y muestra su **commit definitivo**
    (`lastMergeCommit`/`lastMergeSourceCommit`), contrastado con el commit
-   del release (`Commit definitivo del PR: <sha> ✔/✘`). Si no hay ref de
-   PR, hace fallback al scan de PRs completados que coincidan con el
-   commit.
+   del release (`Commit definitivo del PR: <sha> ✔/✘`) y el **link
+   copiable** (`URL Pull Request: …/_git/{repo}/pullrequest/{id}`). Si
+   no hay ref de PR, hace fallback al scan de PRs completados que
+   coincidan con el commit. El commit de la compilación se toma del
+   source del build cuyo repo tiene el **mismo nombre del componente**.
 5. Lee la variable **`RELASE_ID`** (o `RELEASE_ID`) del release a instalar y
    la compara contra el release de rollback (por id numérico, con/sin ceros a
    la izquierda, o por nombre `Release-N`) → se muestra **en verde** si
    coincide, en rojo si no.
-6. **Commit Properties**: del `build.sourceRepositories` toma el
-   `sourceVersion` del repo de propiedades — alias `properties` o nombre
-   que lo contenga — (commit de la compilación) y lo contrasta con el
-   último commit del folder `/{artifact.name}` dentro de ese repo
-   (`searchCriteria.itemPath`) → línea
-   `Commit Properties Folder /{componente}: <sha> ✔/✘`. Si el build no
-   expone `sourceRepositories`, autodetecta el repo cuyo nombre contenga
-   `properties` (o `--properties-repo`).
+6. **Commit Properties** (folder del repo fuente en el repo de
+   propiedades): para el release a instalar toma el **último** commit
+   del folder `/{repo fuente}`; para el **rollback** lista los commits
+   del folder y toma el que coincide con la **fecha de ejecución** del
+   release (último commit en o antes de `createdOn`). Si el build expone
+   el `sourceVersion` del repo properties (commit de la compilación), se
+   contrasta con el del folder (✔/✘). El repo de propiedades se
+   identifica desde el build; si no, autodetecta el repo cuyo nombre
+   contenga `properties` (o `--properties-repo`).
 7. Los releases con **más de 30 días** (`STALE_DAYS`) se muestran en
    color tenue en la tabla de selección (ya no son válidos).
 8. Imprime el comparativo en el formato de evidencia (componente,
@@ -1373,6 +1377,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-21 | 1.9.11 | **Opción 47: commit del build por nombre de componente, URL del PR, Commit Properties por fecha y columna COMMIT** — el commit de la compilación se toma del source del build cuyo repo tiene el mismo nombre del componente; nueva línea `URL Pull Request` copiable; `Commit Properties` del install = último commit del folder `/{repo fuente}`, del rollback = el commit que coincide con la fecha de ejecución del release (último en o antes de `createdOn`); columna `COMMIT` (artifact source repository) en la tabla de releases. azdo_release_deploy_check v1.0.8. Tests: 74 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.10 | **Opción 47: changes multi-repo** — en builds multi-checkout, `builds/{id}/changes` trae commits de varios repos; el loop hacía `break` en el primer match (caía en el repo del CI). Ahora recolecta todos los repoIds del commit, prefiere uno que no sea el repo del YAML CI, y si solo existe el del CI cae a la resolución por prefijo. azdo_release_deploy_check v1.0.7. Tests: 70 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.9 | **Opción 47: el alias `sources` puede ser el repo del CI** — caso real: `sourceRepositories` traía `sources`→`pipelines-projects` (repo del YAML); ahora `find_source_entry` excluye `definitionReference.repository` (el repo del CI) en todos sus pases y solo lo acepta como último recurso (YAML dentro del repo del componente). azdo_release_deploy_check v1.0.6. Tests: 68 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |
 | 2026-10-21 | 1.9.8 | **Opción 47: repo por prefijo `_{repo}-{stack}-CI`** — `find_source_entry` ya no cae a un repo arbitrario (elegía `pipelines-projects` cuando no había match); fallback final: el repo se resuelve como el prefijo `-` más largo del `artifact.name` limpio presente en los repos del proyecto. `Nombre del componente` = repo resuelto; el `artifact.name` limpio queda como anotación `(CI: …)`. El folder de properties prueba cada prefijo del nombre. azdo_release_deploy_check v1.0.5. Tests: 66 | `scm/azdo/azdo_release_deploy_check.py`, `scm/tests/unit/test_azdo_release_deploy_check.py` |

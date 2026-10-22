@@ -57,7 +57,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -361,9 +361,10 @@ def find_pr_for_commit(org, project, repo_id, commit, headers,
     return None
 
 
-def last_commit_in_path(org, project, repo_id, path, branch, headers,
-                        debug) -> Optional[Dict]:
-    """Ultimo commit que toco el folder `path` en `branch`."""
+def folder_commits(org, project, repo_id, path, branch, headers,
+                   debug, top: int = 100) -> List[Dict]:
+    """Lista los commits que tocaron el folder `path` en `branch`
+    (mas reciente primero)."""
     url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
            f"{quote(repo_id, safe='')}/commits")
     data = api_get(url, headers, {
@@ -371,10 +372,28 @@ def last_commit_in_path(org, project, repo_id, path, branch, headers,
         "searchCriteria.itemPath": path,
         "searchCriteria.itemVersion.version": branch,
         "searchCriteria.itemVersion.versionType": "branch",
-        "$top": 1,
+        "$top": top,
     }, debug)
-    commits = (data or {}).get("value", []) if data else []
-    return commits[0] if commits else None
+    return (data or {}).get("value", []) if data else []
+
+
+def commit_matching_date(commits: List[Dict],
+                         date_iso: str) -> Optional[Dict]:
+    """De la lista de commits (mas reciente primero), el 'ultimo' commit
+    en o antes de la fecha dada (fecha de ejecucion del release de
+    rollback). Si ninguno es anterior, el mas antiguo disponible."""
+    if not commits:
+        return None
+    target = _parse_iso(date_iso)
+    if not target:
+        return commits[0]
+    best, best_d = None, None
+    for c in commits:
+        d = _parse_iso((c.get("author") or {}).get("date", "")
+                       or (c.get("committer") or {}).get("date", ""))
+        if d and d <= target and (best_d is None or d > best_d):
+            best, best_d = c, d
+    return best or commits[-1]
 
 
 def find_properties_repo(repos: List[Dict], hint: str) -> Optional[Dict]:
@@ -553,6 +572,7 @@ def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
         t.add_column("PROD", justify="center")
         t.add_column("PROD FECHA", style="green", no_wrap=True)
         t.add_column("BUILD", style="cyan", no_wrap=True)
+        t.add_column("COMMIT", style="magenta", no_wrap=True)
         now = datetime.now(timezone.utc)
         for i, rel in enumerate(releases, 1):
             pst, pdate = release_prod_status(rel)
@@ -571,21 +591,26 @@ def print_releases_table(releases: List[Dict], tz_note: str = "") -> None:
                       _fmt_date(rel.get("createdOn", "")),
                       status_fmt, prod_fmt,
                       _fmt_date(pdate), ai["build_number"] or "—",
+                      ai["commit"][:8] or "—",
                       style="dim" if stale else "")
         console.print(t)
     else:
         for i, rel in enumerate(releases, 1):
             pst, pdate = release_prod_status(rel)
+            art = extract_primary_artifact(rel)
+            ai = artifact_info(art)
             print(f"{i:>3}. {rel.get('name',''):<14} "
                   f"id={rel.get('id','')} {rel.get('status','')} "
-                  f"prod={pst or '-'} {_fmt_date(pdate)}")
+                  f"prod={pst or '-'} {_fmt_date(pdate)} "
+                  f"commit={ai['commit'][:8] or '-'}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # REPORTE COMPARATIVO
 # ═══════════════════════════════════════════════════════════════════════════════
 def release_block(org, project, rel, defn_name, headers, props_repo,
-                  repos_by_name, branch, debug) -> Dict[str, Any]:
+                  repos_by_name, branch, debug,
+                  props_date_match: bool = False) -> Dict[str, Any]:
     """Arma el bloque de datos de un release para el comparativo."""
     rel_id = rel.get("id")
     detail = get_release_detail(org, project, rel_id, headers, debug) or rel
@@ -610,10 +635,6 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     src_repo_id = source_e.get("repo_id", "")
     src_repo_name = source_e.get("repo_name", "")
     src_url = source_e.get("url", "")
-    # Commit de la compilacion del repo fuente (entry 'sources'); fallback
-    # al sourceVersion global del build.
-    build_commit = (source_e.get("commit")
-                    or (build or {}).get("sourceVersion", "") or "")
 
     # Sin sourceRepositories: resolver el repo fuente buscando el commit
     # del release entre los 'changes' del build. OJO: en builds
@@ -666,6 +687,20 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     # si no se resolvio, el artifact.name limpio.
     component = src_repo_name or cleaned or "N/A"
 
+    # Commit de la compilacion del componente: el source del build cuyo
+    # repo tiene el MISMO NOMBRE del componente; se compara contra el
+    # commit del source artifact del release.
+    build_commit = ""
+    if src_repo_name:
+        for e in entries:
+            if (e["repo_name"].lower() == src_repo_name.lower()
+                    and e.get("commit")):
+                build_commit = e["commit"]
+                break
+    if not build_commit:
+        build_commit = (source_e.get("commit")
+                        or (build or {}).get("sourceVersion", "") or "")
+
     # Ruta del repo: entry 'sources' → repo resuelto por changes →
     # build.repository (self/YAML CI como ultimo recurso) → remoteUrl.
     repo_entry = repos_by_name.get((src_repo_name or "").lower()) \
@@ -696,21 +731,40 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     prc = pr_commit_info(pr)
     pr_def_commit = prc["merge"] or prc["source"]
 
+    # Link copiable al pull request
+    pr_url = ""
+    if pr and pr.get("pullRequestId") and src_repo_name:
+        pr_url = (f"{org}/{quote(project, safe='')}/_git/"
+                  f"{quote(src_repo_name, safe='')}"
+                  f"/pullrequest/{pr['pullRequestId']}")
+
     # Commit Properties = sourceVersion del repo de propiedades en el
-    # build (commit de la compilacion); se contrasta con el ultimo
-    # commit del folder con el nombre del repo fuente/componente.
+    # build (commit de la compilacion). Para el release a instalar, el
+    # commit del folder /{repo fuente} es el ULTIMO; para el rollback se
+    # listan los commits del folder y se toma el que coincide con la
+    # fecha de ejecucion del release.
     props_commit = props_e.get("commit", "")
     props_rid = props_e.get("repo_id") or (props_repo or {}).get("id", "")
-    props_folder_commit, props_folder = "", ""
+    props_folder_commit, props_folder, props_folder_mode = "", "", ""
     folder_candidates = [src_repo_name, cleaned] \
         + repo_prefix_candidates(cleaned)[1:] \
         + [ai["artifact_name"]]
     if props_rid:
         for folder in dict.fromkeys(
                 n for n in folder_candidates if n and n != "N/A"):
-            c = last_commit_in_path(org, project, props_rid,
-                                    f"/{folder}", branch, headers,
-                                    debug)
+            commits = folder_commits(org, project, props_rid,
+                                     f"/{folder}", branch, headers,
+                                     debug)
+            if not commits:
+                continue
+            if props_date_match:
+                release_date = (detail.get("createdOn")
+                                or rel.get("createdOn") or "")
+                c = commit_matching_date(commits, release_date)
+                props_folder_mode = "a la fecha del release"
+            else:
+                c = commits[0]
+                props_folder_mode = "último"
             if c and c.get("commitId"):
                 props_folder_commit = c["commitId"]
                 props_folder = folder
@@ -740,6 +794,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
             and ai["commit"].lower() == build_commit.lower()),
         "pr": pr,
         "pr_ref": pr_ref,
+        "pr_url": pr_url,
         "pr_commit": pr_def_commit,
         "pr_commit_short": (pr_def_commit or "")[:8],
         "pr_commit_matches": pr_matches_commit(pr, ai["commit"]),
@@ -747,6 +802,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
         "props_folder_commit": props_folder_commit,
         "props_match": props_match,
         "props_folder": props_folder or component,
+        "props_folder_mode": props_folder_mode,
         "repo_url": repo_url,
         "variables": release_variables(detail),
         "excepto_a": (release_variables(detail).get("EXCEPTO_A")
@@ -774,18 +830,24 @@ def print_block(b: Dict[str, Any], org_project_label: str,
     lines.append(b["url"])
     lines.append(f"No. compilación: {b['build_number'] or 'N/A'}")
     lines.append(f"Commit Release: {b['commit_short'] or 'N/A'}")
-    lines.append(f"Commit Properties: {b['props_commit'] or 'N/A'}")
     folder_commit = b.get("props_folder_commit") or ""
-    if folder_commit:
-        if b.get("props_commit"):
-            mark = ("[green]✔ coincide con compilación[/]"
-                    if b.get("props_match")
-                    else "[red]✘ difiere de la compilación[/]")
-        else:
-            mark = "[dim](build sin commit de compilación)[/]"
+    mode = b.get("props_folder_mode", "")
+    if b.get("props_commit"):
+        lines.append(f"Commit Properties: {b['props_commit']}")
+    elif folder_commit:
+        lines.append(
+            f"Commit Properties: {folder_commit} "
+            f"[dim](folder /{b.get('props_folder', '')}, "
+            f"{mode})[/]")
+    else:
+        lines.append("Commit Properties: N/A")
+    if folder_commit and b.get("props_commit"):
+        mark = ("[green]✔ coincide con compilación[/]"
+                if b.get("props_match")
+                else "[red]✘ difiere de la compilación[/]")
         lines.append(
             f"Commit Properties Folder /{b.get('props_folder', '')}: "
-            f"{folder_commit} {mark}")
+            f"{folder_commit} ({mode}) {mark}")
     lines.append(f"Ruta del Repositorio en Azure: {b['repo_url'] or 'N/A'}")
     lines.append(f"Excepto a: {b['excepto_a']}")
     if release_id_var:
@@ -798,6 +860,8 @@ def print_block(b: Dict[str, Any], org_project_label: str,
         pr_title = pr.get("title", "")[:60]
         lines.append(
             f"PR asociado: #{pr.get('pullRequestId')} {pr_title}")
+        if b.get("pr_url"):
+            lines.append(f"URL Pull Request: {b['pr_url']}")
         match = ("[green]✔ coincide con el release[/]"
                  if b.get("pr_commit_matches")
                  else "[red]✘ difiere del commit del release[/]")
@@ -871,9 +935,12 @@ def main() -> int:
     b_install = release_block(org, project, rel_install, defn_name,
                               headers, props_repo, repos_by_name,
                               args.branch, args.debug)
+    # rollback: el commit del folder en properties se toma por fecha de
+    # ejecucion del release (no el ultimo)
     b_rollback = release_block(org, project, rel_rollback, defn_name,
                                headers, props_repo, repos_by_name,
-                               args.branch, args.debug)
+                               args.branch, args.debug,
+                               props_date_match=True)
 
     # RELASE_ID / RELEASE_ID del release a instalar vs rollback
     rel_var = (b_install["variables"].get("RELASE_ID")

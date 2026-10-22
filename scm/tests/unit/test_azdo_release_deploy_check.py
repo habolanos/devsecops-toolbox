@@ -23,12 +23,12 @@ import azdo_release_deploy_check as rdc  # noqa: E402
 # Fixtures de datos
 # ═══════════════════════════════════════════════════════════════════════════
 def _release(rel_id=61949, name="Release-382", envs=None, artifacts=None,
-             variables=None):
+             variables=None, createdOn="2026-10-15T10:00:00Z"):
     return {
         "id": rel_id,
         "name": name,
         "status": "active",
-        "createdOn": "2026-10-15T10:00:00Z",
+        "createdOn": createdOn,
         "environments": envs if envs is not None else [],
         "artifacts": artifacts if artifacts is not None else [],
         "variables": variables or {},
@@ -234,21 +234,43 @@ def test_find_pr_for_commit_no_match(monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# last_commit_in_path / find_properties_repo
+# folder_commits / commit por fecha / find_properties_repo
 # ═══════════════════════════════════════════════════════════════════════════
-def test_last_commit_in_path(monkeypatch):
+def test_folder_commits(monkeypatch):
     calls = {}
 
     def fake_get(url, headers, params=None, debug=False):
         calls["params"] = params
-        return {"value": [{"commitId": "a16b06c8"}]}
+        return {"value": [{"commitId": "a16b06c8"},
+                          {"commitId": "ffffff"}]}
 
     monkeypatch.setattr(rdc, "api_get", fake_get)
-    c = rdc.last_commit_in_path("o", "p", "repo-1",
-                              "/wms-sys-originalorder", "master", {}, False)
-    assert c["commitId"] == "a16b06c8"
-    assert calls["params"]["searchCriteria.itemPath"] == "/wms-sys-originalorder"
+    commits = rdc.folder_commits("o", "p", "repo-1",
+                                 "/wms-sys-originalorder", "master",
+                                 {}, False)
+    assert commits[0]["commitId"] == "a16b06c8"
+    assert calls["params"]["searchCriteria.itemPath"] == \
+        "/wms-sys-originalorder"
     assert calls["params"]["searchCriteria.itemVersion.version"] == "master"
+
+
+def test_commit_matching_date():
+    commits = [
+        {"commitId": "n1", "author": {"date": "2026-10-21T10:00:00Z"}},
+        {"commitId": "n2", "author": {"date": "2026-10-10T10:00:00Z"}},
+        {"commitId": "n3", "author": {"date": "2026-10-01T10:00:00Z"}},
+        {"commitId": "n4", "author": {"date": "2026-09-01T10:00:00Z"}},
+    ]
+    # release ejecutado el 2026-10-07 → el ultimo commit en o antes: n4?
+    # no: n3 es 2026-10-01 <= 10-07 → n3
+    assert rdc.commit_matching_date(commits, "2026-10-07T00:00:00Z")["commitId"] == "n3"
+    # exactamente en la fecha del commit → ese commit
+    assert rdc.commit_matching_date(commits, "2026-10-10T10:00:00Z")["commitId"] == "n2"
+    # fecha anterior a todos → el mas antiguo disponible
+    assert rdc.commit_matching_date(commits, "2026-01-01T00:00:00Z")["commitId"] == "n4"
+    # sin fecha → el ultimo (HEAD)
+    assert rdc.commit_matching_date(commits, "")["commitId"] == "n1"
+    assert rdc.commit_matching_date([], "2026-10-07T00:00:00Z") is None
 
 
 def test_find_properties_repo():
@@ -356,9 +378,9 @@ def _mock_apis(monkeypatch, pr=None, props_folder_commit="a16b06c8",
                         lambda *a, **k: pr_by_id)
     monkeypatch.setattr(rdc, "get_build_changes", lambda *a, **k: [])
     monkeypatch.setattr(rdc, "get_repository", lambda *a, **k: None)
-    monkeypatch.setattr(rdc, "last_commit_in_path",
-                        lambda *a, **k: {"commitId": props_folder_commit}
-                        if props_folder_commit else None)
+    monkeypatch.setattr(rdc, "folder_commits",
+                        lambda *a, **k: [{"commitId": props_folder_commit}]
+                        if props_folder_commit else [])
 
 
 def test_release_block_fields(monkeypatch):
@@ -386,6 +408,8 @@ def test_release_block_fields(monkeypatch):
     # PR resuelto por ref refs/pull/521334/merge del sourceBranch
     assert b["pr"] is pr
     assert b["pr_ref"] == "refs/pull/521334/merge"
+    assert b["pr_url"] == ("https://dev.azure.com/o/proj/_git/"
+                           "wms-sys-originalorder/pullrequest/42")
     assert b["pr_commit"] == "9dad7445abcd1234"
     assert b["pr_commit_matches"] is True
     assert "releaseId=61949" in b["url"]
@@ -782,11 +806,12 @@ def _block(**kw):
         "commit": "9dad7445abcd", "commit_short": "9dad7445",
         "build_commit": "9dad7445abcd", "commit_matches_build": True,
         "component_matches_build_repo": True,
-        "pr": None, "pr_ref": "", "pr_commit": "",
+        "pr": None, "pr_ref": "", "pr_url": "", "pr_commit": "",
         "pr_commit_short": "", "pr_commit_matches": False,
         "props_commit": "a16b06c8",
         "props_folder_commit": "a16b06c8", "props_match": True,
         "props_folder": "wms-sys-originalorder",
+        "props_folder_mode": "último",
         "repo_url": "http://repo", "variables": {},
         "excepto_a": "N/A",
     }
@@ -820,5 +845,76 @@ def test_print_block_relase_id_verde(monkeypatch):
 def test_print_block_pr_line(monkeypatch):
     buf = _capture_plain(monkeypatch)
     pr = {"pullRequestId": 42, "title": "feat: cosa"}
-    rdc.print_block(_block(pr=pr), "org")
+    rdc.print_block(_block(pr=pr, pr_url="https://dev.azure.com/o/p/_git/"
+                                         "wms-sys-originalorder/pullrequest/42"),
+                    "org")
     assert "PR asociado: #42" in buf.getvalue()
+    assert "URL Pull Request: https://dev.azure.com/o/p/_git/" \
+           "wms-sys-originalorder/pullrequest/42" in buf.getvalue()
+
+
+def test_print_block_props_desde_folder(monkeypatch):
+    """Sin commit de compilacion, Commit Properties muestra el commit
+    del folder con su modo (ultimo / a la fecha del release)."""
+    buf = _capture_plain(monkeypatch)
+    rdc.print_block(_block(props_commit="",
+                           props_folder_mode="a la fecha del release"),
+                    "org")
+    out = buf.getvalue()
+    assert "Commit Properties: a16b06c8" in out
+    assert "(folder /wms-sys-originalorder, a la fecha del release)" in out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# release_block — commit de properties por fecha (rollback)
+# ═══════════════════════════════════════════════════════════════════════════
+def test_release_block_rollback_commit_por_fecha(monkeypatch):
+    """props_date_match=True: toma el commit del folder que coincide con
+    la fecha de creacion del release, no el ultimo."""
+    folder_log = [
+        {"commitId": "n1", "author": {"date": "2026-10-21T10:00:00Z"}},
+        {"commitId": "n2", "author": {"date": "2026-10-08T10:00:00Z"}},
+        {"commitId": "n3", "author": {"date": "2026-10-05T10:00:00Z"}},
+    ]
+    seen = {}
+
+    def fake_folder_commits(org, project, rid, path, branch, headers,
+                            debug, top=100):
+        seen["path"] = path
+        return folder_log
+
+    _mock_apis(monkeypatch, props_folder_commit="")
+    monkeypatch.setattr(rdc, "folder_commits", fake_folder_commits)
+    rel = _release(rel_id=61276, name="Release-39",
+                   createdOn="2026-10-07T10:00:00Z",
+                   artifacts=[_build_artifact()])
+    detail = _release(rel_id=61276, name="Release-39",
+                      createdOn="2026-10-07T10:00:00Z",
+                      artifacts=[_build_artifact()])
+    monkeypatch.setattr(rdc, "get_release_detail",
+                        lambda *a, **k: detail)
+    # props_repo presente para que consulte el folder
+    props = {"id": "props-1", "name": "properties"}
+    b = rdc.release_block("o", "p", rel, "cd", {}, props, {}, "master",
+                          False, props_date_match=True)
+    assert seen["path"] == "/wms-sys-originalorder"
+    assert b["props_folder_commit"] == "n3"   # 2026-10-05 <= 10-07
+    assert b["props_folder_mode"] == "a la fecha del release"
+
+
+def test_release_block_install_commit_ultimo(monkeypatch):
+    """props_date_match=False (default): toma el ultimo commit del
+    folder."""
+    folder_log = [
+        {"commitId": "n1", "author": {"date": "2026-10-21T10:00:00Z"}},
+        {"commitId": "n2", "author": {"date": "2026-10-05T10:00:00Z"}},
+    ]
+    _mock_apis(monkeypatch, props_folder_commit="")
+    monkeypatch.setattr(rdc, "folder_commits",
+                        lambda *a, **k: folder_log)
+    rel = _release(artifacts=[_build_artifact()])
+    b = rdc.release_block("o", "p", rel, "cd", {},
+                          {"id": "props-1", "name": "properties"}, {},
+                          "master", False)
+    assert b["props_folder_commit"] == "n1"
+    assert b["props_folder_mode"] == "último"
