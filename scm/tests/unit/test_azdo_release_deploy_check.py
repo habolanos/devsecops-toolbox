@@ -209,17 +209,25 @@ def test_find_pr_for_commit_matches_last_merge(monkeypatch):
     assert pr["pullRequestId"] == 99
 
 
-def test_find_pr_for_commit_target_or_source(monkeypatch):
+def test_find_pr_for_commit_solo_merge_commit(monkeypatch):
+    """SOLO el lastMergeCommit (commit definitivo en la rama destino)
+    asocia un PR con el release. source/target NO cuentan: un PR
+    'parecido' (caso real #360315) no debe ganar."""
     prs = {"value": [
-        {"pullRequestId": 7,
-         "lastMergeTargetCommit": {"commitId": "abc123"},
-         "lastMergeSourceCommit": {"commitId": "xyz"}},
+        {"pullRequestId": 360315, "title": "Se sube la version",
+         "lastMergeCommit": {"commitId": "2aa909bd"},
+         "lastMergeTargetCommit": {"commitId": "aacda92c"},
+         "lastMergeSourceCommit": {"commitId": "aacda92c"}},
+        {"pullRequestId": 7, "title": "el bueno",
+         "lastMergeCommit": {"commitId": "aacda92c"}},
     ]}
     monkeypatch.setattr(rdc, "api_get", lambda *a, **k: prs)
-    assert rdc.find_pr_for_commit("o", "p", "r", "abc123", {},
-                                  False)["pullRequestId"] == 7
-    assert rdc.find_pr_for_commit("o", "p", "r", "xyz", {},
-                                  False)["pullRequestId"] == 7
+    pr = rdc.find_pr_for_commit("o", "p", "r", "aacda92c", {}, False)
+    assert pr["pullRequestId"] == 7          # por merge, no por target
+    assert rdc.find_pr_for_commit("o", "p", "r", "2aa909bd", {},
+                                  False)["pullRequestId"] == 360315
+    assert rdc.find_pr_for_commit("o", "p", "r", "noexiste", {},
+                                  False) is None
 
 
 def test_find_pr_for_commit_no_match(monkeypatch):
@@ -903,22 +911,22 @@ def test_find_props_entry():
 # ═══════════════════════════════════════════════════════════════════════════
 # PR — commit definitivo
 # ═══════════════════════════════════════════════════════════════════════════
-def test_pr_commit_info():
+def test_pr_definitive_commit():
     pr = {"lastMergeCommit": {"commitId": "m1"},
           "lastMergeSourceCommit": {"commitId": "s1"},
           "lastMergeTargetCommit": {"commitId": "t1"}}
-    info = rdc.pr_commit_info(pr)
-    assert info == {"merge": "m1", "source": "s1", "target": "t1"}
-    assert rdc.pr_commit_info(None) == {"merge": "", "source": "",
-                                        "target": ""}
+    assert rdc.pr_definitive_commit(pr) == "m1"
+    assert rdc.pr_definitive_commit(None) == ""
+    assert rdc.pr_definitive_commit({}) == ""
 
 
 def test_pr_matches_commit():
     pr = {"lastMergeCommit": {"commitId": "AAA"},
-          "lastMergeSourceCommit": {"commitId": "BBB"}}
-    assert rdc.pr_matches_commit(pr, "aaa") is True
-    assert rdc.pr_matches_commit(pr, "BBB") is True
-    assert rdc.pr_matches_commit(pr, "ccc") is False
+          "lastMergeSourceCommit": {"commitId": "BBB"},
+          "lastMergeTargetCommit": {"commitId": "CCC"}}
+    assert rdc.pr_matches_commit(pr, "aaa") is True    # solo merge
+    assert rdc.pr_matches_commit(pr, "BBB") is False   # source no cuenta
+    assert rdc.pr_matches_commit(pr, "CCC") is False   # target no cuenta
     assert rdc.pr_matches_commit(pr, "") is False
     assert rdc.pr_matches_commit(None, "aaa") is False
 

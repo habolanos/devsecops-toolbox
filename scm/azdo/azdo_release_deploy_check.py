@@ -58,7 +58,7 @@ except ImportError:
     RICH = False
     console = None
 
-__version__ = "1.0.12"
+__version__ = "1.0.13"
 __author__ = "Harold Adrian"
 
 DEFAULT_ORG_URL = "https://dev.azure.com/Coppel-Retail"
@@ -69,7 +69,7 @@ API_VERSION_DEF = "7.2-preview.4"
 API_VERSION_BUILD = "7.1"
 PROD_KEYWORDS = ("prod", "prd", "production")
 TOP_RELEASES = 50
-TOP_PR_SEARCH = 60
+TOP_PR_SEARCH = 200
 # Releases con mas de N dias se muestran tenues (ya no son validos)
 STALE_DAYS = 30
 
@@ -372,34 +372,30 @@ def get_repositories(org, project, headers, debug) -> List[Dict]:
     return data.get("value", []) if data else []
 
 
-def pr_commit_info(pr: Optional[Dict]) -> Dict[str, str]:
-    """Commit 'definitivo' del PR: merge commit (destino) y ultimo commit
-    del source branch."""
-    pr = pr or {}
-    return {
-        "merge": (pr.get("lastMergeCommit") or {}).get("commitId", "")
-                 or "",
-        "source": (pr.get("lastMergeSourceCommit") or {})
-                  .get("commitId", "") or "",
-        "target": (pr.get("lastMergeTargetCommit") or {})
-                  .get("commitId", "") or "",
-    }
+def pr_definitive_commit(pr: Optional[Dict]) -> str:
+    """Commit definitivo del PR = lastMergeCommit: el commit que
+    aterrizo en la rama destino. Ese (y solo ese) es el que un release
+    puede apuntar."""
+    return ((pr or {}).get("lastMergeCommit") or {}).get("commitId", "") \
+        or ""
 
 
 def pr_matches_commit(pr: Optional[Dict], commit: str) -> bool:
     if not pr or not commit:
         return False
-    c = commit.lower()
-    info = pr_commit_info(pr)
-    return any(v and v.lower() == c for v in info.values())
+    c = pr_definitive_commit(pr)
+    return bool(c and c.lower() == commit.lower())
 
 
 def find_pr_for_commit(org, project, repo_id, commit, headers,
                        debug) -> Optional[Dict]:
-    """Busca el PR cuyo merge commit coincide con el commit del release.
+    """Busca el PR cuyo lastMergeCommit (commit definitivo en la rama
+    destino) coincide con el commit del release.
 
-    Compara lastMergeCommit / lastMergeTargetCommit /
-    lastMergeSourceCommit de los PRs completados mas recientes.
+    lastMergeSourceCommit (head del branch origen) y
+    lastMergeTargetCommit (estado previo del destino) NO se comparan:
+    un PR 'parecido' puede compartirlos sin ser el que produjo el
+    commit del release.
     """
     if not repo_id or not commit:
         return None
@@ -411,11 +407,9 @@ def find_pr_for_commit(org, project, repo_id, commit, headers,
         "$top": TOP_PR_SEARCH,
     }, debug)
     for pr in (data or {}).get("value", []) or []:
-        for key in ("lastMergeCommit", "lastMergeTargetCommit",
-                    "lastMergeSourceCommit"):
-            c = (pr.get(key) or {}).get("commitId", "")
-            if c and c.lower() == commit.lower():
-                return pr
+        c = pr_definitive_commit(pr)
+        if c and c.lower() == commit.lower():
+            return pr
     return None
 
 
@@ -821,8 +815,7 @@ def release_block(org, project, rel, defn_name, headers, props_repo,
     # pipelines-projects, no el del componente.
     pr = find_pr_for_commit(org, project, repo_id, release_commit,
                             headers, debug)
-    prc = pr_commit_info(pr)
-    pr_def_commit = prc["merge"] or prc["source"]
+    pr_def_commit = pr_definitive_commit(pr)
     debug_dump(f"PR — release {rel.get('name')} "
                f"[resuelto por commit {release_commit[:8]} en "
                f"{src_repo_name or 'repo fuente'}]", pr, debug)
