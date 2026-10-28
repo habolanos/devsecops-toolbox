@@ -1404,6 +1404,86 @@ python azdo_prod_preinstall_validator.py --pat "$PAT"
 
 ---
 
+### 15 · Permission & Access Auditor — opción 49 — `azdo_permission_audit.py`
+
+**Objetivo:** auditoría de **solo lectura** de permisos efectivos a nivel
+organización/proyecto/usuario sobre los recursos securizables — responde
+"¿por qué un usuario que cambió de rol sigue pudiendo editar pipelines CD?"
+explicando el **origen** de cada permiso (grupo heredante o ACE directa).
+
+#### Recursos auditados
+
+| Recurso | Namespace | Alcance |
+|---|---|---|
+| CD Release Pipelines | `ReleaseManagement` | proyecto + cada pipeline |
+| CI Build Pipelines | `Build` | proyecto + cada pipeline |
+| Repositorios Git | `Git Repositories` | proyecto + cada repo |
+| Nivel Proyecto | `Project` | permisos del proyecto |
+
+#### Cómo funciona
+
+1. **Contexto**: `projectId` → scope descriptor del proyecto → usuarios y
+   grupos del proyecto (Graph API paginado).
+2. **Membresías** (paralelo con `--threads`): grupos transitivos por usuario
+   (`direction=up`) y miembros por grupo (`direction=down`) — cadena de
+   herencia completa (incluye usuarios "fantasma" no listados en el
+   proyecto pero con acceso residual vía grupos o ACEs).
+3. **ACLs**: `accesscontrollists/{ns}` con `token=raíz&recurse=true&
+   includeExtendedInfo=true` → ACEs efectivas e heredadas por token.
+4. **Identidades**: `subjectdescriptors` traduce identityDescriptor (ACE)
+   → sujeto (usuario/grupo); se resuelven nombres vía Graph.
+5. **Matriz efectiva** usuario×recurso: directo ∪ heredado de sus grupos,
+   deny precede, cada bit con origen (`directa` | `grupo:<nombre>`).
+
+#### Salidas
+
+- **Vista por USUARIO**: usuario, email, grupos, recursos con acceso por
+  tipo (CD/CI/REPO/PROYECTO), permisos clave, flag de esperado.
+- **Vista por RECURSO**: cada pipeline/repo — qué usuarios pueden tocarlo,
+  permiso máximo, vía de acceso y alertas de no-esperados.
+- **`--user <email>`**: cadena de herencia + tabla recurso×permiso×origen.
+- **`--compare a,b`**: diff de permisos efectivos entre dos usuarios con
+  el origen que explica la diferencia.
+- **`--expected-users`**: archivo o lista de emails — marca `⚠ NO ESPERADO`.
+- JSON + HTML + Excel siempre en `outcome/` (rutas al final).
+
+#### Argumentos
+
+| Flag | Default | Descripción |
+|---|---|---|
+| `--user` | — | Deep dive de un usuario (email/nombre/descriptor) |
+| `--compare` | — | `'a@x.com,b@x.com'` — diff entre dos usuarios |
+| `--expected-users` | — | Archivo o lista CSV de emails permitidos |
+| `--namespaces` | `release,build,git,project` | Acotar namespaces |
+| `--definition-id` / `--repo` | — | Acotar a un pipeline/repo |
+| `--threads` | `10` | Hilos para membresías/resolución |
+| `--debug` | off | Errores HTTP |
+
+#### Scopes de PAT (solo lectura)
+
+Graph (read) · Security (read) · Identity (read) · Release (read) ·
+Build (read) · Code (read).
+
+Documentación completa en `docs/permision_azdo/`.
+
+#### Ejemplo
+
+```bash
+# auditoría masiva (ambas vistas)
+python azdo_permission_audit.py --pat "$PAT"
+
+# por qué sigue editando este usuario
+python azdo_permission_audit.py --pat "$PAT" --user exrol@dominio.com
+
+# quién puede tocar el CD 1403
+python azdo_permission_audit.py --pat "$PAT" --definition-id 1403
+
+# comparar dos usuarios
+python azdo_permission_audit.py --pat "$PAT" --compare "a@x.com,b@x.com"
+```
+
+---
+
 ## API REST de Azure DevOps
 
 | Recurso | Versión API |
@@ -1492,6 +1572,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-10-27 | 1.9.30 | **Opción 49: Permission & Access Auditor** — auditoría de solo lectura de permisos efectivos (CD/CI/repos/proyecto): Graph API (usuarios, grupos, membresías transitivas) + Security ACLs (`recurse`+`includeExtendedInfo`) → matriz usuario×recurso con origen de cada permiso (grupo heredante / ACE directa). Vistas por usuario y por recurso, `--user` deep dive, `--compare a,b`, `--expected-users`. azdo_permission_audit v1.0.0. Tests: 21 | `scm/azdo/azdo_permission_audit.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_permission_audit.py`, `docs/permision_azdo/`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-22 | 1.9.29 | **Opción 48: criterio final — trigger refs/heads/master + Production sin ejecutar** — `release_is_candidate` se simplifica a: la rama trigger del release (artifact Git fuente) es master Y el stage Production aún no se ejecutó (sin status terminal ni deploySteps). Sin verificación de PR por API en el filtro → el listado es más rápido | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.9) |
 | 2026-10-22 | 1.9.28 | **Opción 48: criterios del listado — PR target master + release en vuelo** — `release_is_candidate` (compartido por listado y `process_cd`): Production no instalado + release en vuelo (Production/Validator en progreso o no ejecutado, o sin ejecutar en SCM Inspection/develop/QA/Staging) + PR con `targetRefName` refs/heads/master verificado por API (fallback: rama del artifact Git). El listado muestra solo releases elegibles; workers reciben `eligible_ids` | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.8) |
 | 2026-10-22 | 1.9.27 | **Opción 48: listado inicial por release + rutas de archivos al final** — el primer listado muestra una fila por cada RELEASE que cumple los criterios (pendiente de Production + artifact Git fuente en master): CD, release, build id, commit git, repo, rama. La exportación JSON/HTML/Excel corre al final (rutas absolutas visibles tras el resumen) | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.7), `scm/azdo/azdo_default_export.py` (v1.0.2) |

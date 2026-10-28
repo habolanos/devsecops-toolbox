@@ -405,6 +405,16 @@ TOOLS: Dict = {
         "group":       "release",
         "status":      "ready",
     },
+    "49": {
+        "name":        "Permission & Access Auditor",
+        "description": "Auditoría de solo lectura de permisos efectivos en org/proyecto/usuario sobre CD (ReleaseManagement), CI (Build), repos (Git) y nivel Proyecto. Vista por usuario + por recurso, --user deep dive, --compare A B, --expected-users. Explica de dónde viene cada permiso (grupo heredante o ACE directa).",
+        "path":        "azdo_permission_audit.py",
+        "args":        ["--pat", "--org", "--project", "--user", "--compare",
+                        "--expected-users", "--namespaces", "--definition-id",
+                        "--repo", "--threads", "--debug"],
+        "group":       "security",
+        "status":      "ready",
+    },
     "40": {
         "name":        "Health Probe Masivo Validator",
         "description": "Validación masiva de health probes en K8s desde AZDO - Mapeo de stages, pruebas de conectividad, reportería ejecutiva",
