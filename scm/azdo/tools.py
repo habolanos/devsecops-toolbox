@@ -2322,7 +2322,7 @@ def run_tool(tool_key: str):
 
     # ── Parámetros específicos por herramienta ────────────────────────────────
     if "--release-id" in tool_args:
-        print(f"{Colors.BOLD}Release Definition ID (obligatorio):{Colors.ENDC} ", end="")
+        print(f"{Colors.BOLD}Release ID (número del release, obligatorio):{Colors.ENDC} ", end="")
         val = input().strip()
         if not val or not val.isdigit():
             print(f"{Colors.RED}❌ El Release ID es obligatorio y debe ser un número entero.{Colors.ENDC}")
@@ -2367,7 +2367,10 @@ def run_tool(tool_key: str):
 
     if "--branch" in tool_args:
         cfg_branch = config_get(cfg, "tools", "pr_master_checker", "target_branch", default="master")
-        val = prompt("Branch destino (develop/QA/release/*/master/all, comas para varias)", default=cfg_branch)
+        branch_label = "Rama del repo de properties (default master)" \
+            if tool_key == "50" \
+            else "Branch destino (develop/QA/release/*/master/all, comas para varias)"
+        val = prompt(branch_label, default=cfg_branch)
         extra += ["--branch", val]
 
     if "--branches" in tool_args:

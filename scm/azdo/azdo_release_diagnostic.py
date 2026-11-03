@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -187,9 +187,10 @@ def extract_artifacts(rel: Dict) -> Tuple[Optional[Dict], List[Dict]]:
 
 
 def build_artifact_info(art: Optional[Dict]) -> Dict[str, str]:
-    """Build artifact: build_id, build_number, branch (refs/pull/N/merge)."""
+    """Build artifact: build_id, build_number, branch (refs/pull/N/merge),
+    artifact_name y ci_repo_name (repo del YAML CI — NUNCA el componente)."""
     info = {"build_id": "", "build_number": "", "branch": "",
-            "artifact_name": ""}
+            "artifact_name": "", "ci_repo_name": ""}
     if not art:
         return info
     ref = art.get("definitionReference", {}) or {}
@@ -197,6 +198,7 @@ def build_artifact_info(art: Optional[Dict]) -> Dict[str, str]:
     info["build_id"] = str(ver.get("id", "") or "")
     info["build_number"] = ver.get("name", "") or ""
     info["artifact_name"] = (art.get("name") or art.get("alias") or "")
+    info["ci_repo_name"] = (ref.get("repository") or {}).get("name", "")
     info["branch"] = (ref.get("branch") or {}).get("id", "") \
         or (ref.get("branches") or {}).get("id", "")
     return info
@@ -364,6 +366,73 @@ def relase_id_matches_rollback(value: str, rollback_name: str,
             or v.lower() == (rollback_name or "").lower())
 
 
+# ── Resolución del repo fuente (cadena de la opción 47) ──
+def get_build(org, project, build_id, headers, debug) -> Optional[Dict]:
+    url = (f"{org}/{quote(project, safe='')}/_apis/build/builds/"
+           f"{build_id}")
+    return api_get(url, headers, {"api-version": API_VERSION}, debug)
+
+
+def build_source_entries(build: Optional[Dict]) -> List[Dict[str, str]]:
+    """build.sourceRepositories → {alias, repo_id, repo_name, url,
+    commit, branch}."""
+    out = []
+    for sr in (build or {}).get("sourceRepositories", []) or []:
+        repo = sr.get("repository") or {}
+        out.append({
+            "alias": (sr.get("alias") or repo.get("alias") or "").lower(),
+            "repo_id": repo.get("id", "") or "",
+            "repo_name": repo.get("name", "") or "",
+            "url": strip_userinfo(repo.get("url", "")
+                                  or repo.get("remoteUrl", "") or ""),
+            "commit": sr.get("sourceVersion", "") or "",
+            "branch": (sr.get("sourceBranch") or sr.get("ref")
+                       or sr.get("refName") or ""),
+        })
+    return out
+
+
+def clean_component_name(name: str) -> str:
+    """artifact.name suele ser '_repo-xxx-CI': limpia '_' y -CI/-CD."""
+    n = (name or "").strip().lstrip("_")
+    n = re.sub(r"-CI$|-CD$", "", n, flags=re.IGNORECASE)
+    return n or (name or "")
+
+
+def repo_prefix_candidates(name: str) -> List[str]:
+    parts = [p for p in (name or "").split("-") if p]
+    return ["-".join(parts[:i]) for i in range(len(parts), 0, -1)]
+
+
+def resolve_repo_by_prefix(cleaned: str, repos_by_name: Dict) \
+        -> Optional[Dict]:
+    for cand in repo_prefix_candidates(cleaned):
+        hit = repos_by_name.get(cand.lower())
+        if hit:
+            return hit
+    return None
+
+
+def find_source_entry(entries: List[Dict], artifact_name: str,
+                      exclude: str = "") -> Optional[Dict]:
+    """Repo fuente del componente en sourceRepositories del build."""
+    pool = [e for e in entries
+            if e["repo_name"].lower() != (exclude or "").lower()]
+    for e in pool:
+        if e["repo_name"].lower() == (artifact_name or "").lower():
+            return e
+    for e in pool:
+        if e["alias"] in ("sources", "source"):
+            return e
+    cleaned = clean_component_name(artifact_name)
+    if cleaned:
+        for cand in repo_prefix_candidates(cleaned):
+            for e in pool:
+                if e["repo_name"].lower() == cand.lower():
+                    return e
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Log del stage Validator (patrón de la opción 48) + parsers nuevos
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -511,8 +580,34 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         src_gi = git_artifact_info(source_git_artifact(git_arts))
     else:
         src_gi = src_art
+
+    # ── Resolución del repo fuente (cadena de la opción 47): si el Git
+    # source artifact no trae repo, se resuelve via build.sourceRepositories
+    # → prefijo del artifact.name contra los repos del proyecto ──
+    repos_by_name = {r.get("name", "").lower(): r for r in repos}
+    if not src_gi["repo_name"] and bi["build_id"]:
+        build = get_build(org, project, bi["build_id"], headers,
+                          args.debug)
+        entries = build_source_entries(build)
+        source_e = find_source_entry(entries, bi["artifact_name"],
+                                     exclude=bi["ci_repo_name"]) or {}
+        if source_e.get("repo_name"):
+            src_gi["repo_id"] = source_e["repo_id"]
+            src_gi["repo_name"] = source_e["repo_name"]
+            src_gi["url"] = source_e["url"]
+            if not src_gi["commit"]:
+                src_gi["commit"] = source_e["commit"]
+    if not src_gi["repo_name"]:
+        cleaned = clean_component_name(bi["artifact_name"])
+        hit = resolve_repo_by_prefix(cleaned, repos_by_name)
+        if hit and (hit.get("name", "").lower()
+                    != bi["ci_repo_name"].lower()):
+            src_gi["repo_id"] = hit.get("id", "") or ""
+            src_gi["repo_name"] = hit.get("name", "") or ""
+            src_gi["url"] = strip_userinfo(
+                hit.get("remoteUrl", "") or hit.get("webUrl", ""))
     component = src_gi["repo_name"] \
-        or (bi["artifact_name"] or "component").lstrip("_")
+        or clean_component_name(bi["artifact_name"]) or "component"
     vars_ = release_variables(detail)
 
     out: Dict[str, Any] = {
@@ -576,6 +671,8 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         out["props_commit_var"] and out["props_folder_commit"]
         and out["props_commit_var"].lower()
         == out["props_folder_commit"].lower())
+    out["props_evaluable"] = bool(out["props_commit_var"]
+                                  and out["props_folder_commit"])
     return out
 
 
@@ -594,13 +691,21 @@ def build_checks(install: Dict[str, Any],
         else None,
         "detail": (f"PR #{install['pr'].get('pullRequestId')}"
                    if install.get("pr") else "PR no encontrado")})
+    props_ok = None
+    props_detail = f"folder /{install['props_folder_path']}"
+    if install["props_evaluable"]:
+        props_ok = install["props_match"]
+    elif not install["props_commit_var"]:
+        props_detail += " — variable commitPropertiesRollback vacía"
+    else:
+        props_detail += " — folder sin commits (¿nombre incorrecto?)"
     checks.append({
         "check": "commitPropertiesRollback == folder properties",
         "install": _short(install["props_commit_var"]) or "—",
         "rollback": _short((rollback or {}).get("props_commit_var",
                                                "")) or "—",
-        "ok": install["props_match"],
-        "detail": f"folder /{install['props_folder_path']}"})
+        "ok": props_ok,
+        "detail": props_detail})
     rid_ok = None
     if install["relase_id_var"] and rollback:
         rid_ok = relase_id_matches_rollback(
@@ -611,15 +716,21 @@ def build_checks(install: Dict[str, Any],
         "install": install["relase_id_var"] or "—",
         "rollback": str((rollback or {}).get("release_id", "—")),
         "ok": rid_ok, "detail": "variable vs release rollback"})
+    img_ok = None
+    img_detail = f"prod: {install['prod_image'] or '—'}"
+    if install["install_image"] and install["prod_image"]:
+        if install["install_image"] != install["prod_image"]:
+            img_ok = True
+        else:
+            img_detail += " (misma imagen en install y prod)"
+    elif install["install_image"]:
+        img_detail += " — imagen de producción no detectada en el log"
     checks.append({
         "check": "Imagen install ≠ producción (cambio real)",
         "install": install["install_image"] or "—",
         "rollback": (rollback or {}).get("install_image", "") or "—",
-        "ok": (bool(install["install_image"])
-               and install["install_image"]
-               != install["prod_image"]) if install["install_image"]
-        else None,
-        "detail": f"prod: {install['prod_image'] or '—'}"})
+        "ok": img_ok,
+        "detail": img_detail})
     return checks
 
 

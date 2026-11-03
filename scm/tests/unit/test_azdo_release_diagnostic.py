@@ -180,7 +180,8 @@ def _install(props_match=True, relase_id="63042"):
             "props_folder_commit": "e244302b8646",
             "props_folder_path": "ps-om-com-availability",
             "props_commit": "e244302b8646",
-            "props_match": props_match}
+            "props_match": props_match,
+            "props_evaluable": True}
 
 
 def _rollback():
@@ -220,6 +221,36 @@ def test_build_checks_props_mismatch():
     props_c = next(c for c in checks
                    if c["check"].startswith("commitProperties"))
     assert props_c["ok"] is False
+
+
+def test_check_props_no_evaluable_sin_folder_commit():
+    """Folder sin commits → N/A, no ✘."""
+    i = _install()
+    i["props_evaluable"] = False
+    i["props_folder_commit"] = ""
+    checks = rd.build_checks(i, _rollback())
+    c = next(c for c in checks
+             if c["check"].startswith("commitProperties"))
+    assert c["ok"] is None
+    assert "sin commits" in c["detail"]
+
+
+def test_check_imagen_misma_en_install_y_prod_no_falla():
+    """install==prod (fallback del regex) → N/A, no ✘."""
+    i = _install()
+    i["prod_image"] = i["install_image"]
+    checks = rd.build_checks(i, _rollback())
+    c = next(c for c in checks if c["check"].startswith("Imagen"))
+    assert c["ok"] is None
+    assert "misma imagen" in c["detail"]
+
+
+def test_check_imagen_sin_prod_no_falla():
+    i = _install()
+    i["prod_image"] = ""
+    checks = rd.build_checks(i, _rollback())
+    c = next(c for c in checks if c["check"].startswith("Imagen"))
+    assert c["ok"] is None
 
 
 def test_verdict():
