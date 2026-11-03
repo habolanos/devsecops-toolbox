@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -879,9 +879,20 @@ def print_props_commits(install: Dict[str, Any],
                 t.add_row(tag, f"/{r['props_folder_path']}", "—", "—",
                           "—", "[dim]sin commits[/]")
             for c in rows:
-                mark = "[green]◀[/]" if c["picked"] else ""
-                t.add_row(tag, f"/{r['props_folder_path']}",
-                          c["commitId"], c["author"], c["date"], mark)
+                if c["picked"]:
+                    t.add_row(
+                        f"[bold]{tag}[/]",
+                        f"[bold]/{r['props_folder_path']}[/]",
+                        f"[bold green]{c['commitId']}[/]",
+                        f"[bold green]{c['author']}[/]",
+                        f"[bold green]{c['date']}[/]",
+                        "[green]◀ ELEGIDO[/]")
+                else:
+                    t.add_row(f"[dim]{tag}[/]",
+                              f"/{r['props_folder_path']}",
+                              f"[dim]{c['commitId']}[/]",
+                              f"[dim]{c['author']}[/]",
+                              f"[dim]{c['date']}[/]", "")
         console.print(t)
     else:
         for tag, r in (("INSTALL", install),
@@ -889,7 +900,7 @@ def print_props_commits(install: Dict[str, Any],
             if not r:
                 continue
             for c in r.get("props_folder_commits") or []:
-                mark = " ◀" if c["picked"] else ""
+                mark = "  ◀ ELEGIDO" if c["picked"] else ""
                 print(f"  [{tag}] /{r['props_folder_path']} "
                       f"{c['commitId']} {c['author']} {c['date']}{mark}")
 

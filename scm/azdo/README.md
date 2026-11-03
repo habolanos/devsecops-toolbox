@@ -1621,6 +1621,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-11-03 | 1.9.35 | **Opción 50: commits elegidos resaltados** — el commit elegido por lado se imprime en verde bold con `◀ ELEGIDO`, resto atenuado | `scm/azdo/azdo_release_diagnostic.py` (v1.0.4) |
 | 2026-11-03 | 1.9.34 | **Opción 50: listado de commits de properties** — nueva sección antes del comparativo con los últimos 15 commits del folder `/<componente>` (PATH/COMMIT/USUARIO/FECHA) para install y rollback, marcando el commit elegido | `scm/azdo/azdo_release_diagnostic.py` (v1.0.3) |
 | 2026-11-03 | 1.9.33 | **Opción 50: props del rollback por fecha + PR del rollback** — `Commit properties Rollback` usa `commit_matching_date` (folder vigente a la fecha del release de rollback, igual que la 47); el detalle del check PR muestra el PR de cada lado | `scm/azdo/azdo_release_diagnostic.py` (v1.0.2) |
 | 2026-11-03 | 1.9.32 | **Opción 50: correcciones de diagnóstico** — resolución completa del repo fuente (build `sourceRepositories` + prefix-match, igual que la 47): arregla componente/folder/PR cuando el artifact Git no trae repo; checks N/A en vez de ✘ sin evidencia (folder sin commits, imagen igual o ausente); prompts del launcher corregidos para release-id y branch-properties | `scm/azdo/azdo_release_diagnostic.py` (v1.0.1), `scm/azdo/tools.py` |
