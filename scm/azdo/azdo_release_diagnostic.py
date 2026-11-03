@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -356,6 +356,34 @@ def folder_commits(org, project, repo_id, path, branch, headers,
     return (data or {}).get("value", []) if data else []
 
 
+def _parse_iso(s: str) -> Optional[Any]:
+    from datetime import datetime
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def commit_matching_date(commits: List[Dict],
+                         date_iso: str) -> Optional[Dict]:
+    """Último commit del folder en o antes de la fecha dada (fecha del
+    release de rollback). Si ninguno es anterior → el más antiguo."""
+    if not commits:
+        return None
+    target = _parse_iso(date_iso)
+    if not target:
+        return commits[0]
+    best, best_d = None, None
+    for c in commits:
+        d = _parse_iso((c.get("author") or {}).get("date", "")
+                       or (c.get("committer") or {}).get("date", ""))
+        if d and d <= target and (best_d is None or d > best_d):
+            best, best_d = c, d
+    return best or commits[-1]
+
+
 def relase_id_matches_rollback(value: str, rollback_name: str,
                                rollback_id) -> bool:
     v = (value or "").strip()
@@ -569,8 +597,11 @@ def aggregate_validator(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════════════
 def diagnose_release(org: str, project: str, rel: Dict, headers,
                      args, props_repo: Optional[Dict],
-                     repos: List[Dict]) -> Dict[str, Any]:
-    """Extrae TODA la info diagnóstica de un release."""
+                     repos: List[Dict],
+                     props_by_date: bool = False) -> Dict[str, Any]:
+    """Extrae TODA la info diagnóstica de un release.
+    `props_by_date=True` (rollback): el commit del folder properties es
+    el vigente a la fecha del release — lo que realmente aplicaría."""
     detail = get_release_detail(org, project, rel.get("id"), headers,
                                 args.debug) or rel
     build_art, git_arts = extract_artifacts(detail)
@@ -657,12 +688,15 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
     # ── Properties repo: folder <componente> ──
     out["props_folder_commit"] = ""
     out["props_folder_path"] = component
+    out["created_on"] = detail.get("createdOn", "")
     if props_repo:
         commits = folder_commits(org, project, props_repo.get("id", ""),
                                  f"/{component}", args.branch, headers,
                                  args.debug)
-        if commits:
-            out["props_folder_commit"] = commits[0].get("commitId", "")
+        pick = (commit_matching_date(commits, out["created_on"])
+                if props_by_date else (commits[0] if commits else None))
+        if pick:
+            out["props_folder_commit"] = pick.get("commitId", "")
     # props_commit efectivo: variable → log → folder
     out["props_commit"] = (out["props_commit_var"]
                            or out["props_commit_log"]
@@ -689,8 +723,12 @@ def build_checks(install: Dict[str, Any],
         "rollback": _short((rollback or {}).get("pr_commit", "")) or "—",
         "ok": install["pr_matches"] if install["pr_commit"]
         else None,
-        "detail": (f"PR #{install['pr'].get('pullRequestId')}"
-                   if install.get("pr") else "PR no encontrado")})
+        "detail": (f"install PR #{install['pr'].get('pullRequestId')}"
+                   if install.get("pr") else "install: PR no encontrado")
+        + (" | "
+           + (f"rollback PR #{(rollback or {}).get('pr', {}).get('pullRequestId')}"
+              if rollback and rollback.get("pr")
+              else ("rollback: PR no encontrado" if rollback else "")))})
     props_ok = None
     props_detail = f"folder /{install['props_folder_path']}"
     if install["props_evaluable"]:
@@ -882,7 +920,8 @@ def main() -> int:
                                     args.debug)
         if rb_rel:
             rollback = diagnose_release(org, project, rb_rel, headers,
-                                        args, props_repo, repos)
+                                        args, props_repo, repos,
+                                        props_by_date=True)
         else:
             _print(f"  [yellow]⚠ RELEASE_ID={rb_id} no resuelve un "
                    f"release[/]")
