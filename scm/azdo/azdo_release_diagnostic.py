@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -697,6 +697,17 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
                 if props_by_date else (commits[0] if commits else None))
         if pick:
             out["props_folder_commit"] = pick.get("commitId", "")
+        out["props_folder_commits"] = [{
+            "commitId": c.get("commitId", ""),
+            "author": (c.get("author") or {}).get("name", "")
+            or (c.get("committer") or {}).get("name", ""),
+            "date": ((c.get("author") or {}).get("date", "")
+                     or (c.get("committer") or {}).get("date", ""))[:19],
+            "picked": bool(pick and c.get("commitId")
+                           == pick.get("commitId"))}
+            for c in commits[:15]]
+    else:
+        out["props_folder_commits"] = []
     # props_commit efectivo: variable → log → folder
     out["props_commit"] = (out["props_commit_var"]
                            or out["props_commit_log"]
@@ -850,6 +861,39 @@ def print_compare(install: Dict[str, Any],
                   f"| {mark} | {c['detail']}")
 
 
+def print_props_commits(install: Dict[str, Any],
+                        rollback: Optional[Dict[str, Any]]) -> None:
+    """Listado de commits del folder /<componente> en repo properties
+    (install y rollback), con el commit elegido marcado."""
+    _print("\n[bold]═══ Listado Properties de componente ═══[/]")
+    if RICH and console:
+        t = Table(box=box.ROUNDED)
+        for col in ("LADO", "PATH", "COMMIT", "USUARIO", "FECHA", "ELEGIDO"):
+            t.add_column(col)
+        for tag, r in (("INSTALL", install),
+                       ("ROLLBACK", rollback)):
+            if not r:
+                continue
+            rows = r.get("props_folder_commits") or []
+            if not rows:
+                t.add_row(tag, f"/{r['props_folder_path']}", "—", "—",
+                          "—", "[dim]sin commits[/]")
+            for c in rows:
+                mark = "[green]◀[/]" if c["picked"] else ""
+                t.add_row(tag, f"/{r['props_folder_path']}",
+                          c["commitId"], c["author"], c["date"], mark)
+        console.print(t)
+    else:
+        for tag, r in (("INSTALL", install),
+                       ("ROLLBACK", rollback)):
+            if not r:
+                continue
+            for c in r.get("props_folder_commits") or []:
+                mark = " ◀" if c["picked"] else ""
+                print(f"  [{tag}] /{r['props_folder_path']} "
+                      f"{c['commitId']} {c['author']} {c['date']}{mark}")
+
+
 def print_snapshot(install: Dict[str, Any],
                    rollback: Optional[Dict[str, Any]]) -> None:
     def _line(r, tag):
@@ -931,6 +975,7 @@ def main() -> int:
 
     # ── comparativo ──
     print_snapshot(install, rollback)
+    print_props_commits(install, rollback)
     checks = build_checks(install, rollback)
     print_compare(install, rollback, checks)
     ok, nfail = verdict(checks)

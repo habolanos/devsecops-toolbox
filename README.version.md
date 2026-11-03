@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.33`** — 2026-11-03
+**`1.9.34`** — 2026-11-03
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-03 | **1.9.34** | **Opción 50: listado de commits de properties** — nueva sección "Listado Properties de componente" antes del comparativo: tabla LADO/PATH/COMMIT/USUARIO/FECHA con los últimos 15 commits del folder `/<componente>` en el repo properties para install y rollback, marcando con ◀ el commit elegido (último para install, por fecha para rollback). azdo_release_diagnostic v1.0.3. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.33** | **Opción 50: props del rollback por fecha + PR del rollback visible** — el `Commit properties Rollback` ahora usa `commit_matching_date` sobre la fecha del release de rollback (commit del folder vigente entonces — lo que realmente aplicaría), no el último commit como el install; el check de PR muestra el PR de cada lado (`install PR #N | rollback PR #N`). azdo_release_diagnostic v1.0.2. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.32** | **Opción 50: correcciones tras corrida real** — (1) resolución del repo fuente completa de la opción 47 (build `sourceRepositories` → `find_source_entry` → prefix-match `_{repo}-{stack}-CI`): el Git source artifact sin `repo_name` ya no muestra el nombre del CI como componente — arregla el folder properties y el lookup del PR; (2) checks N/A (no ✘) cuando no hay evidencia evaluable: folder properties sin commits, imagen install==prod o sin imagen prod en log; (3) prompts del launcher corregidos (`Release ID` no "Release Definition ID", `--branch` de la 50 = "rama del repo properties"). azdo_release_diagnostic v1.0.1. Tests: 41 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.31** | **Opción 50: Release Diagnostic & Folio** — diagnóstico install↔rollback por `--release-id`: artifacts (build+git source), build↔PR commit, log del Validator (imágenes install/prod, excepto-a, kubectl apply→delete, props commit), variables `commitPropertiesRollback`/`RELEASE_ID`, folder `/<componente>` en repo properties, rollback completo, comparativo con veredicto TODO EN ORDEN/REVISAR, y folio Service Desk literal + `.txt`/JSON/HTML/Excel en outcome/. Reutiliza extractores de la opción 47 y validator_task_logs de la 48. azdo_release_diagnostic v1.0.0. Tests: 23 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `docs/features/feat_diagnostic_release/`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
