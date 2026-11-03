@@ -1484,6 +1484,55 @@ python azdo_permission_audit.py --pat "$PAT" --compare "a@x.com,b@x.com"
 
 ---
 
+### 16 · Release Diagnostic & Folio — opción 50 — `azdo_release_diagnostic.py`
+
+**Objetivo:** a partir de **un `--release-id`** diagnosticar la coherencia
+install↔rollback y generar el **folio Service Desk** copiable.
+
+#### Qué hace
+
+1. **Artifacts**: Build artifact (`build_id`, `build_number`, rama
+   `refs/pull/N/merge`) + **Git source** (repo componente, commit, branch).
+2. **Build ↔ PR**: `lastMergeCommit` del PR == commit del git source
+   (fallback: scan de PRs completados por targetRefName).
+3. **Log del stage Validator** (todas las tareas del último intento):
+   **imagen a instalar / en producción** (`image actual|nueva`,
+   `IMAGE_ACTUAL/NUEVA`, hosts de registry), **excepto-a**, detección de
+   `kubectl apply` → instrucción *apply→delete*, y
+   `commitPropertiesRollback` impreso en log.
+4. **Variables**: `commitPropertiesRollback` y `RELEASE_ID`/`RELASE_ID`.
+5. **Properties repo**: último commit del folder `/<componente>` (nombre
+   del git source) en el repo properties → vs `commitPropertiesRollback`.
+6. **Rollback**: repite todo sobre el release apuntado por `RELEASE_ID`.
+7. **Comparativo lado a lado**: checks + veredicto `TODO EN ORDEN` /
+   `REVISAR N`.
+8. **Folio**: bloque literal (componente, URLs `_releaseProgress`,
+   commits, build, properties, folio `N/A`, excepto, rollback o nota
+   release-0, instrucción kubectl) + `.txt` en `outcome/` + exports
+   JSON/HTML/Excel.
+
+#### Argumentos
+
+| Flag | Default | Descripción |
+|---|---|---|
+| `--release-id` | requerido | Release a diagnosticar |
+| `--validator-stage` | `Validator` | Stage validador |
+| `--properties-repo` | autodetect | Hint del repo de properties |
+| `--branch` | `master` | Rama del repo properties |
+| `--debug` | off | Errores HTTP |
+
+Documentación en `docs/features/feat_diagnostic_release/`.
+
+#### Ejemplo
+
+```bash
+python azdo_release_diagnostic.py --pat "$PAT" --release-id 62650
+```
+
+Exit code: `0` si TODO EN ORDEN, `1` si hay ítems a revisar.
+
+---
+
 ## API REST de Azure DevOps
 
 | Recurso | Versión API |
@@ -1572,6 +1621,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-11-03 | 1.9.31 | **Opción 50: Release Diagnostic & Folio** — diagnóstico install↔rollback por `--release-id`: artifacts (build+git source), build↔PR commit, log del Validator (imágenes install/prod, excepto-a, kubectl apply→delete, props commit en log), variables `commitPropertiesRollback`/`RELEASE_ID`, commit del folder `/<componente>` en repo properties, mismo diagnóstico del rollback, comparativo lado a lado con veredicto, y **folio Service Desk** en formato literal + `.txt`/JSON/HTML/Excel. Reutiliza extractores de la opción 47 y `validator_task_logs` de la 48. azdo_release_diagnostic v1.0.0. Tests: 23 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `docs/features/feat_diagnostic_release/`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-27 | 1.9.30 | **Opción 49: Permission & Access Auditor** — auditoría de solo lectura de permisos efectivos (CD/CI/repos/proyecto): Graph API (usuarios, grupos, membresías transitivas) + Security ACLs (`recurse`+`includeExtendedInfo`) → matriz usuario×recurso con origen de cada permiso (grupo heredante / ACE directa). Vistas por usuario y por recurso, `--user` deep dive, `--compare a,b`, `--expected-users`. azdo_permission_audit v1.0.0. Tests: 21 | `scm/azdo/azdo_permission_audit.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_permission_audit.py`, `docs/permision_azdo/`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-10-22 | 1.9.29 | **Opción 48: criterio final — trigger refs/heads/master + Production sin ejecutar** — `release_is_candidate` se simplifica a: la rama trigger del release (artifact Git fuente) es master Y el stage Production aún no se ejecutó (sin status terminal ni deploySteps). Sin verificación de PR por API en el filtro → el listado es más rápido | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.9) |
 | 2026-10-22 | 1.9.28 | **Opción 48: criterios del listado — PR target master + release en vuelo** — `release_is_candidate` (compartido por listado y `process_cd`): Production no instalado + release en vuelo (Production/Validator en progreso o no ejecutado, o sin ejecutar en SCM Inspection/develop/QA/Staging) + PR con `targetRefName` refs/heads/master verificado por API (fallback: rama del artifact Git). El listado muestra solo releases elegibles; workers reciben `eligible_ids` | `scm/azdo/azdo_prod_preinstall_validator.py` (v1.0.8) |

@@ -405,6 +405,16 @@ TOOLS: Dict = {
         "group":       "release",
         "status":      "ready",
     },
+    "50": {
+        "name":        "Release Diagnostic & Folio",
+        "description": "Diagnóstico install↔rollback a partir de un release-id: artifacts (build+git source), build↔PR commit, log del Validator (imágenes, excepto-a, kubectl apply), variables commitPropertiesRollback/RELEASE_ID, properties folder, y folio Service Desk copiable.",
+        "path":        "azdo_release_diagnostic.py",
+        "args":        ["--release-id", "--pat", "--org", "--project",
+                        "--validator-stage", "--properties-repo",
+                        "--branch", "--debug"],
+        "group":       "release",
+        "status":      "ready",
+    },
     "49": {
         "name":        "Permission & Access Auditor",
         "description": "Auditoría de solo lectura de permisos efectivos en org/proyecto/usuario sobre CD (ReleaseManagement), CI (Build), repos (Git) y nivel Proyecto. Vista por usuario + por recurso, --user deep dive, --compare A B, --expected-users. Explica de dónde viene cada permiso (grupo heredante o ACE directa).",
