@@ -25,6 +25,7 @@ Autor: Harold Adrian
 
 import argparse
 import base64
+import json
 import re
 import sys
 from pathlib import Path
@@ -67,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.13"
+__version__ = "1.0.14"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -290,6 +291,31 @@ def release_tasks(rel: Dict) -> List[Dict[str, str]]:
                     out.append({"stage": env.get("name", ""),
                                 "name": t.get("name", "task"),
                                 "status": t.get("status", "")})
+    return out
+
+
+def stage_tasks_snapshot(rel: Dict,
+                         stages=("validator", "production")
+                         ) -> List[Dict[str, Any]]:
+    """Definición de las tasks de los stages dados (Validator/Production)
+    desde deployPhasesSnapshot.workflowTasks — incluye inputs/script."""
+    out = []
+    wanted = {s.lower() for s in stages}
+    for env in rel.get("environments", []) or []:
+        en = (env.get("name", "") or "").lower().replace(" ", "")
+        if en not in wanted:
+            continue
+        for ph in env.get("deployPhasesSnapshot", []) or []:
+            for wt in ph.get("workflowTasks", []) or []:
+                inputs = wt.get("inputs") or {}
+                script = (inputs.get("script") or "")
+                out.append({
+                    "stage": env.get("name", ""),
+                    "name": wt.get("name", "") or wt.get("taskId", ""),
+                    "version": str(wt.get("version", "")),
+                    "enabled": wt.get("enabled", True),
+                    "script": script,
+                    "inputs": inputs})
     return out
 
 
@@ -696,6 +722,7 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         "variables": vars_,
         "variables_prod": env_variables(detail, "Production"),
         "tasks": release_tasks(detail),
+        "stage_tasks": stage_tasks_snapshot(detail),
         "url": f"{org}/{quote(project, safe='')}/_releaseProgress"
                f"?_a=release-pipeline-progress&releaseId="
                f"{detail.get('id')}",
@@ -1022,33 +1049,62 @@ def print_vars_compare(install: Dict[str, Any],
                 print(f"  [{scope}] {k} | {a} | {b}")
 
 
+def _task_cell(t: Optional[Dict]) -> str:
+    """Celda con contenido de la task: version + script/inputs."""
+    if not t:
+        return "—"
+    script = " ".join((t.get("script") or "").split())
+    if not script:
+        script = json.dumps(t.get("inputs") or {}, sort_keys=True)
+    script = script[:400] + ("…" if len(script) > 400 else "")
+    return f"v{t['version']} | {script}"
+
+
+def _task_signature(t: Optional[Dict]) -> Tuple[str, str]:
+    if not t:
+        return ("", "")
+    return (t.get("version", ""),
+            json.dumps(t.get("inputs") or {}, sort_keys=True))
+
+
 def print_tasks_compare(install: Dict[str, Any],
                         rollback: Optional[Dict[str, Any]]) -> None:
-    """Tasks por stage: comparativo install↔rollback con AMBOS."""
+    """Tasks de Validator y Production: comparativo de contenido
+    (versión + inputs/script) install↔rollback."""
     _print("\n[bold]═══ Comparativo Tasks "
            "Install ↔ Rollback ═══[/]")
-    ti = {(t["stage"], t["name"]): t["status"]
-          for t in install.get("tasks") or []}
-    tr = {(t["stage"], t["name"]): t["status"]
-          for t in (rollback or {}).get("tasks") or []}
+    ti = {(t["stage"], t["name"]): t
+          for t in install.get("stage_tasks") or []}
+    tr = {(t["stage"], t["name"]): t
+          for t in (rollback or {}).get("stage_tasks") or []}
     keys = sorted(set(ti) | set(tr))
+    if not keys:
+        _print("[dim]Sin tasks de Validator/Production en el "
+               "snapshot.[/]")
+        return
     if RICH and console:
         t = Table(box=box.ROUNDED)
-        for col in ("STAGE", "TASK", "INSTALL", "ROLLBACK"):
+        for col in ("STAGE", "TASK", "INSTALL", "ROLLBACK", "ESTADO"):
             t.add_column(col, overflow="fold")
         for st, name in keys:
-            a, b = _ambos(ti.get((st, name), "—"),
-                          tr.get((st, name), "—"))
-            diff = a != b and not a.startswith("AMBOS")
-            t.add_row(st, name if not diff else f"[bold]{name}[/]",
-                      a if not diff else f"[yellow]{a}[/]",
-                      b if not diff else f"[yellow]{b}[/]")
+            a, b = ti.get((st, name)), tr.get((st, name))
+            same = _task_signature(a) == _task_signature(b)
+            estado = ("[green]IGUAL[/]" if same else
+                      "[yellow]DIFIERE[/]")
+            t.add_row(st, name if same else f"[bold]{name}[/]",
+                      _task_cell(a) if same
+                      else f"[yellow]{_task_cell(a)}[/]",
+                      _task_cell(b) if same
+                      else f"[yellow]{_task_cell(b)}[/]",
+                      estado)
         console.print(t)
     else:
         for st, name in keys:
-            a, b = _ambos(ti.get((st, name), "—"),
-                          tr.get((st, name), "—"))
-            print(f"  [{st}] {name} | {a} | {b}")
+            a, b = ti.get((st, name)), tr.get((st, name))
+            same = _task_signature(a) == _task_signature(b)
+            print(f"  [{st}] {name} | {_task_cell(a)} | "
+                  f"{_task_cell(b)} | "
+                  f"{'IGUAL' if same else 'DIFIERE'}")
 
 
 def print_snapshot(install: Dict[str, Any],
