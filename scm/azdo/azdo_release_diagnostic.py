@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.23"
+__version__ = "1.0.24"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -849,7 +849,7 @@ def build_checks(install: Dict[str, Any],
     checks = []
     rb = rollback or {}
     checks.append({
-        "check": "Build",
+        "check": "Artifact Build",
         "install": _ambos(
             f"{install['build_number']} (id {install['build_id']})",
             f"{rb.get('build_number', '—')} (id "
