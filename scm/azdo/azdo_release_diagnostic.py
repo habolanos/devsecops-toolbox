@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.18"
+__version__ = "1.0.19"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -753,6 +753,10 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
                                 src_gi["commit"], headers, args.debug,
                                 target_branch=args.branch)
     out["pr"] = pr
+    out["pr_url"] = (
+        f"{org}/{quote(project, safe='')}/_git/"
+        f"{src_gi['repo_name']}/pullrequest/"
+        f"{pr.get('pullRequestId')}") if pr else ""
     out["pr_commit"] = pr_definitive_commit(pr)
     out["pr_matches"] = bool(out["pr_commit"]
                              and out["pr_commit"].lower()
@@ -920,7 +924,7 @@ def build_folio(install: Dict[str, Any],
         f"* Commit: {install['git_commit']}",
         f"* Version Build: {install['build_number']}",
         f"* Commit properties deploy: {install['props_commit']}",
-        "* Folio PR master : N/A",
+        f"* Folio PR master : {install.get('pr_url') or 'N/A'}",
         f"Excepto a: {install['excepto']}",
         "Rollback:",
     ]
@@ -935,6 +939,7 @@ def build_folio(install: Dict[str, Any],
             f"• Version Build: {rollback['build_number']}",
             f"• Commit properties Rollback : "
             f"{rollback['props_commit']}",
+            f"• Folio PR master : {rollback.get('pr_url') or 'N/A'}",
         ]
     else:
         lines += [
@@ -945,6 +950,7 @@ def build_folio(install: Dict[str, Any],
             "• Commit Rollback Release: N/A",
             "• Version Build: N/A",
             "• Commit properties Rollback : N/A",
+            "• Folio PR master : N/A",
         ]
     if install.get("kubectl_apply"):
         lines.append("Actualizar kubectl apply se cambia el comando "
