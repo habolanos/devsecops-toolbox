@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -493,7 +493,8 @@ def validator_log_texts(rel: Dict, validator_env: Optional[Dict],
     return texts, errors
 
 
-def extract_images_from_log(text: str) -> Dict[str, str]:
+def extract_images_from_log(text: str,
+                            fallback: bool = True) -> Dict[str, str]:
     """{install_image, prod_image} del texto de un log.
     Patrones: 'image actual/nueva', 'IMAGE_ACTUAL/NUEVA=',
     líneas 'set image'/'kubectl apply' con host de registry conocido."""
@@ -527,7 +528,7 @@ def extract_images_from_log(text: str) -> Dict[str, str]:
             out["prod_image"] = m.group(1).strip()
             break
     # fallback: primeras imágenes del registry en el log
-    if not out["install_image"]:
+    if fallback and not out["install_image"]:
         hosts = IMAGE_HOST_RE.findall(text)
         if hosts:
             out["install_image"] = hosts[0]
@@ -578,6 +579,14 @@ def aggregate_validator(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
     """Une los parsers sobre TODOS los logs del Validator."""
     out = {"install_image": "", "prod_image": "", "excepto": "N/A",
            "kubectl_apply": False, "props_commit_log": ""}
+    # pasada 1: solo patrones explícitos (Imagen nueva/actual) — evita que
+    # un task de manifest con la imagen actual gane el fallback primero
+    for _, text in texts:
+        img = extract_images_from_log(text, fallback=False)
+        out["install_image"] = out["install_image"] \
+            or img["install_image"]
+        out["prod_image"] = out["prod_image"] or img["prod_image"]
+    # pasada 2: fallback por hosts + resto de parsers
     for _, text in texts:
         img = extract_images_from_log(text)
         out["install_image"] = out["install_image"] \

@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.38`** — 2026-11-03
+**`1.9.39`** — 2026-11-03
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-03 | **1.9.39** | **Opción 50: fix extracción de imágenes del Validator** — `aggregate_validator` ahora corre 2 pasadas: primero solo patrones explícitos (`Imagen actual:`/`Imagen nueva:`, `IMAGE_ACTUAL/NUEVA`) y después el fallback por hosts — evitaba que un task de manifest con la imagen actual (`:2.1.2`) ganara sobre el `Imagen nueva :2.2.0` explícito del task 'Validar images', reportando falsamente install==prod. azdo_release_diagnostic v1.0.8. Tests: 28 | `scm/azdo/azdo_release_diagnostic.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.38** | **Opción 50: listado vuelve a folder-only** — revertido el repo-HEAD para install: el listado muestra solo commits que tocan `/<componente>` (install→último, rollback→por fecha); `props_commit` vuelve a var→log→folder. azdo_release_diagnostic v1.0.7. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.37** | **Opción 50: AMBOS en comparativo** — cuando un valor es idéntico en install y rollback la celda muestra `AMBOS: v` / `—` en vez de duplicarlo. azdo_release_diagnostic v1.0.6. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.36** | **Opción 50: fix semántica properties** — el listado consultaba solo `itemPath=/<componente>` (último commit del folder, feb-2025, idéntico ambos lados); corregido: **install lista commits del repo properties (HEAD del día = lo que el deploy realmente checkout)** y **rollback lista commits del folder vigentes a su fecha**; `props_commit` del folio usa repo-HEAD para install y folder@fecha para rollback; el check sigue comparando `commitPropertiesRollback` vs folder. PATH del listado distingue `repo master (HEAD)` vs `/<componente>`. azdo_release_diagnostic v1.0.5. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

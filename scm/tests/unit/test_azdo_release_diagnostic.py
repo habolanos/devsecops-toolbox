@@ -120,6 +120,29 @@ def test_extract_images_fallback_hosts():
     assert "pkg.dev" in img["install_image"]
 
 
+def test_extract_images_formato_real_validar_images():
+    """Formato real del task 'Validar images' (Imagen actual/nueva)."""
+    text = (" Imagen actual : artifact.coppel.io/cs/app:2.1.2\n"
+            " Imagen nueva  : artifact.coppel.io/cs/app:2.2.0\n")
+    img = rd.extract_images_from_log(text)
+    assert img["install_image"].endswith(":2.2.0")
+    assert img["prod_image"].endswith(":2.1.2")
+
+
+def test_aggregate_prefiere_patron_explicito_sobre_fallback():
+    """Un task de manifest con la imagen actual NO debe ganar sobre el
+    'Imagen nueva' explícito de 'Validar images'."""
+    texts = [
+        ("manifest task", "aplicando artifact.coppel.io/cs/app:2.1.2"),
+        ("Validar images",
+         " Imagen actual : artifact.coppel.io/cs/app:2.1.2\n"
+         " Imagen nueva  : artifact.coppel.io/cs/app:2.2.0\n"),
+    ]
+    agg = rd.aggregate_validator(texts)
+    assert agg["install_image"].endswith(":2.2.0")
+    assert agg["prod_image"].endswith(":2.1.2")
+
+
 def test_extract_images_none():
     assert rd.extract_images_from_log("sin imagenes") == {
         "install_image": "", "prod_image": ""}
