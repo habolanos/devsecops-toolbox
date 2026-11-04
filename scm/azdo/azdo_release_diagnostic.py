@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.19"
+__version__ = "1.0.20"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -1246,6 +1246,195 @@ def print_snapshot(install: Dict[str, Any],
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# HTML report "pro" (todas las secciones)
+# ═══════════════════════════════════════════════════════════════════════════════
+def build_html_report(install: Dict[str, Any],
+                      rollback: Optional[Dict[str, Any]],
+                      checks: List[Dict], folio: str,
+                      org: str, project: str, ok: bool,
+                      nfail: int) -> str:
+    """HTML standalone estilizado con todas las secciones."""
+    from html import escape as esc
+    from datetime import datetime
+    rb = rollback or {}
+
+    def mark(v):
+        if v is True:
+            return '<span class="ok">✔</span>'
+        if v is False:
+            return '<span class="bad">✘</span>'
+        return '<span class="na">—</span>'
+
+    def table(headers, rows):
+        h = "".join(f"<th>{esc(str(x))}</th>" for x in headers)
+        body = ""
+        for r in rows:
+            cells, picked = (r if isinstance(r, tuple)
+                             else (r, False))
+            cls = ' class="picked"' if picked else ""
+            body += (f"<tr{cls}>" + "".join(
+                f"<td>{c}</td>" for c in cells) + "</tr>")
+        return (f"<table><thead><tr>{h}</tr></thead>"
+                f"<tbody>{body}</tbody></table>")
+
+    secs = []
+    secs.append(table(
+        ["LADO", "RELEASE", "ID", "STAGES"],
+        [["INSTALL", esc(install["release_name"]),
+          str(install["release_id"]),
+          esc(" → ".join(f"{n}:{s or '?'}"
+                         for n, s in install["stages"]))]] +
+        ([["ROLLBACK", esc(rb.get("release_name", "")),
+           str(rb.get("release_id", "")),
+           esc(" → ".join(f"{n}:{s or '?'}"
+                          for n, s in rb.get("stages", [])))]]
+         if rollback else [])))
+
+    # properties merged
+    merged: Dict[str, Dict] = {}
+    order: List[str] = []
+    for tag, r in (("INSTALL", install), ("ROLLBACK", rollback)):
+        if not r:
+            continue
+        path = r.get("props_list_path") \
+            or f"/{r['props_folder_path']}"
+        for c in r.get("props_list") or []:
+            cid = c["commitId"]
+            if cid not in merged:
+                merged[cid] = {"lados": [], "picked": [],
+                               **{k: c[k] for k in
+                                  ("commitId", "author", "date")},
+                               "path": path}
+                order.append(cid)
+            merged[cid]["lados"].append(tag)
+            if c["picked"]:
+                merged[cid]["picked"].append(tag)
+    prows = []
+    for cid in order:
+        m = merged[cid]
+        lado = "AMBOS" if len(set(m["lados"])) > 1 else m["lados"][0]
+        el = ("◀ AMBOS" if len(set(m["picked"])) > 1
+              else (f"◀ {m['picked'][0]}" if m["picked"] else ""))
+        prows.append(([lado, esc(m["path"]),
+                       f'<code>{esc(m["commitId"])}</code>',
+                       esc(m["author"]), esc(m["date"]),
+                       f'<span class="ok">{esc(el)}</span>' if el
+                       else ""], bool(m["picked"])))
+    secs.append(table(
+        ["LADO", "PATH", "COMMIT", "USUARIO", "FECHA", "ELEGIDO"],
+        prows or [["—", "—", "—", "—", "—", "sin commits"]]))
+
+    crow = []
+    for c in checks:
+        cls = "bad" if c["ok"] is False else ("ok" if c["ok"] else "na")
+        crow.append([esc(c["check"]), esc(str(c["install"])),
+                     esc(str(c["rollback"])),
+                     f'<span class="{cls}">{mark(c["ok"])}</span>',
+                     esc(c["detail"])])
+    secs.append(table(["CHECK", "INSTALL", "ROLLBACK", "RESULTADO",
+                       "DETALLE"], crow))
+
+    vrow = []
+    for scope, vi, vr in (
+            ("Release", install.get("variables") or {},
+             rb.get("variables") or {}),
+            ("Production", install.get("variables_prod") or {},
+             rb.get("variables_prod") or {})):
+        for k in sorted(set(vi) | set(vr)):
+            a, b = _ambos(vi.get(k, "—"), vr.get(k, "—"))
+            diff = a != b and not a.startswith("AMBOS")
+            vrow.append([esc(scope),
+                         f"<strong>{esc(k)}</strong>" if diff
+                         else esc(k),
+                         (f'<span class="diff">{esc(a)}</span>'
+                          if diff else esc(a)),
+                         (f'<span class="diff">{esc(b)}</span>'
+                          if diff else esc(b))])
+    secs.append(table(["SCOPE", "VARIABLE", "INSTALL", "ROLLBACK"],
+                      vrow or [["Release", "—", "—", "—"]]))
+
+    ti = {(t["stage"], t["name"]): t
+          for t in install.get("stage_tasks") or []}
+    tr = {(t["stage"], t["name"]): t
+          for t in rb.get("stage_tasks") or []}
+    trow = []
+    for st, name in sorted(set(ti) | set(tr)):
+        a, b = ti.get((st, name)), tr.get((st, name))
+        same = _task_signature(a) == _task_signature(b)
+        est = ('<span class="ok">IGUAL</span>' if same
+               else '<span class="diff">DIFIERE</span>')
+        trow.append([esc(st), esc(name),
+                     f"<code>{esc(_task_cell_full(a))}</code>",
+                     f"<code>{esc(_task_cell_full(b))}</code>", est])
+    secs.append(table(["STAGE", "TASK", "INSTALL", "ROLLBACK",
+                       "ESTADO"],
+                      trow or [["Validator", "—", "—", "—", "—"]]))
+
+    prow = []
+    pm: Dict[Any, Dict] = {}
+    po: List[Any] = []
+    for tag, r in (("INSTALL", install), ("ROLLBACK", rollback)):
+        if not r:
+            continue
+        for p in r.get("prs_list") or []:
+            pid = p["id"]
+            if pid not in pm:
+                pm[pid] = {**p, "lados": [], "picks": []}
+                po.append(pid)
+            pm[pid]["lados"].append(tag)
+            if p["picked"]:
+                pm[pid]["picks"].append(tag)
+    for pid in po:
+        m = pm[pid]
+        lado = "AMBOS" if len(set(m["lados"])) > 1 else m["lados"][0]
+        el = ("◀ AMBOS" if len(set(m["picks"])) > 1
+              else (f"◀ {m['picks'][0]}" if m["picks"] else ""))
+        prow.append(([lado, f"#{m['id']}", esc(m["title"]),
+                      esc(m["author"]), esc(m["date"]),
+                      f"<code>{esc(_short(m['commit'], 10))}</code>",
+                      (f'<a href="{esc(m.get("url", ""))}">'
+                       f'{esc(m.get("url", ""))}</a>'),
+                      (f'<span class="ok">{esc(el)}</span>' if el
+                       else "")], bool(m["picks"])))
+    secs.append(table(
+        ["LADO", "PR", "TÍTULO", "AUTOR", "FECHA", "COMMIT", "URL",
+         "ELEGIDO"],
+        prow or [["—", "—", "—", "—", "—", "—", "—", "sin PRs"]]))
+
+    titles = ["Snapshot de stages", "Listado Properties de componente",
+              "Comparativo Install ↔ Rollback",
+              "Comparativo Variables Install ↔ Rollback",
+              "Comparativo Tasks Install ↔ Rollback",
+              "Comparativo Pull Request Install ↔ Rollback"]
+    body = "".join(f"<h2>{esc(t)}</h2>{s}"
+                   for t, s in zip(titles, secs))
+    badge = ('<span class="badge ok">✅ TODO EN ORDEN</span>' if ok
+             else f'<span class="badge bad">⚠ REVISAR '
+                  f'{nfail} ítem(s)</span>')
+    return f"""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<title>Release Diagnostic — {install['release_name']}</title><style>
+body{{font-family:Segoe UI,Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}}
+h1{{color:#38bdf8;margin:0}} h2{{color:#7dd3fc;border-bottom:1px solid #334155;padding-bottom:4px;margin-top:28px}}
+.sub{{color:#94a3b8;margin:4px 0 16px}}
+table{{border-collapse:collapse;width:100%;margin:12px 0;background:#1e293b;border-radius:8px;overflow:hidden}}
+th{{background:#334155;color:#7dd3fc;text-align:left;padding:8px 10px;font-size:12px;text-transform:uppercase}}
+td{{padding:7px 10px;border-top:1px solid #334155;font-size:13px;vertical-align:top;word-break:break-all}}
+tr.picked td{{background:#14532d33}}
+.ok{{color:#4ade80;font-weight:bold}} .bad{{color:#f87171;font-weight:bold}}
+.na{{color:#64748b}} .diff{{color:#fbbf24;font-weight:bold}}
+.badge{{display:inline-block;padding:6px 14px;border-radius:6px;font-weight:bold;margin:12px 0}}
+.badge.ok{{background:#14532d}} .badge.bad{{background:#7f1d1d}}
+code{{background:#0f172a;padding:1px 6px;border-radius:4px;font-size:12px}}
+a{{color:#38bdf8}} .folio{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:16px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px;line-height:1.6}}
+</style></head><body>
+<h1>🚀 Release Diagnostic &amp; Folio</h1>
+<div class="sub">Org: {esc(org)} · Proyecto: {esc(project)} · {esc(install["component"])} · generado {datetime.now():%Y-%m-%d %H:%M} · v{__version__}</div>
+{badge}{body}
+<h2>Folio (copiar a Service Desk)</h2><div class="folio">{esc(folio)}</div>
+</body></html>"""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 def main() -> int:
@@ -1344,6 +1533,11 @@ def main() -> int:
         outdir = get_output_dir("outcome")
         folio_path = outdir / f"release_diagnostic_{args.release_id}.txt"
         folio_path.write_text(folio + "\n", encoding="utf-8")
+        html_path = outdir / f"release_diagnostic_{args.release_id}.html"
+        html_path.write_text(
+            build_html_report(install, rollback, checks, folio,
+                              org, project, ok, nfail),
+            encoding="utf-8")
         write_default_reports(
             "release_diagnostic", __version__, rows,
             metadata={"organization": org, "project": project,
@@ -1357,8 +1551,10 @@ def main() -> int:
             title="Release Diagnostic", excel=True)
         try:
             print(f"   📄 FOLIO: {folio_path.resolve()}")
+            print(f"   📄 HTML PRO: {html_path.resolve()}")
         except UnicodeEncodeError:
             print(f"   [OK] FOLIO: {folio_path.resolve()}")
+            print(f"   [OK] HTML PRO: {html_path.resolve()}")
     except Exception as e:
         if args.debug:
             print(f"[DEBUG] export: {e}")
