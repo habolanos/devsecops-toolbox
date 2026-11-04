@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.21"
+__version__ = "1.0.22"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -1206,13 +1206,12 @@ def print_prs_compare(install: Dict[str, Any],
         rows.append({**m, "lado": lado, "elegido": elegido})
     if RICH and console:
         t = Table(box=box.ROUNDED)
-        for col in ("LADO", "PR", "TÍTULO", "AUTOR", "FECHA", "COMMIT",
+        for col in ("PR", "TÍTULO", "AUTOR", "FECHA", "COMMIT",
                     "URL", "ELEGIDO"):
             t.add_column(col, overflow="fold")
         for c in rows:
             if c["elegido"]:
-                t.add_row(f"[bold]{c['lado']}[/]",
-                          f"[bold]#{c['id']}[/]",
+                t.add_row(f"[bold]#{c['id']}[/]",
                           f"[bold green]{c['title']}[/]",
                           f"[bold green]{c['author']}[/]",
                           f"[bold green]{c['date']}[/]",
@@ -1220,7 +1219,7 @@ def print_prs_compare(install: Dict[str, Any],
                           f"[bold green]{c['url']}[/]",
                           f"[green]{c['elegido']}[/]")
             else:
-                t.add_row(f"[dim]{c['lado']}[/]", f"#{c['id']}",
+                t.add_row(f"#{c['id']}",
                           f"[dim]{c['title']}[/]",
                           f"[dim]{c['author']}[/]",
                           f"[dim]{c['date']}[/]",
@@ -1229,7 +1228,7 @@ def print_prs_compare(install: Dict[str, Any],
         console.print(t)
     else:
         for c in rows:
-            print(f"  [{c['lado']}] #{c['id']} {c['title']} "
+            print(f"  #{c['id']} {c['title']} "
                   f"{c['author']} {c['date']} "
                   f"{_short(c['commit'], 10)} {c['url']} {c['elegido']}")
 
@@ -1389,7 +1388,7 @@ def build_html_report(install: Dict[str, Any],
         lado = "AMBOS" if len(set(m["lados"])) > 1 else m["lados"][0]
         el = ("◀ AMBOS" if len(set(m["picks"])) > 1
               else (f"◀ {m['picks'][0]}" if m["picks"] else ""))
-        prow.append(([lado, f"#{m['id']}", esc(m["title"]),
+        prow.append(([f"#{m['id']}", esc(m["title"]),
                       esc(m["author"]), esc(m["date"]),
                       f"<code>{esc(_short(m['commit'], 10))}</code>",
                       (f'<a href="{esc(m.get("url", ""))}">'
@@ -1397,9 +1396,9 @@ def build_html_report(install: Dict[str, Any],
                       (f'<span class="ok">{esc(el)}</span>' if el
                        else "")], bool(m["picks"])))
     secs.append(table(
-        ["LADO", "PR", "TÍTULO", "AUTOR", "FECHA", "COMMIT", "URL",
+        ["PR", "TÍTULO", "AUTOR", "FECHA", "COMMIT", "URL",
          "ELEGIDO"],
-        prow or [["—", "—", "—", "—", "—", "—", "—", "sin PRs"]]))
+        prow or [["—", "—", "—", "—", "—", "—", "sin PRs"]]))
 
     titles = ["Snapshot de stages", "Listado Properties de componente",
               "Comparativo Install ↔ Rollback",
