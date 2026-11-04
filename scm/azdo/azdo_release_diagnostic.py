@@ -69,7 +69,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.25"
+__version__ = "1.0.26"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -1162,7 +1162,8 @@ def _rich_diff(a: str, b: str) -> Tuple[str, str]:
     sa, sb = _diff_spans(a, b)
 
     def fmt(spans):
-        return "".join(f"[red]{resc(t)}[/]" if d else resc(t)
+        return "".join(f"[red]{resc(t)}[/]" if d
+                       else f"[yellow]{resc(t)}[/]"
                        for t, d in spans)
     return fmt(sa), fmt(sb)
 
@@ -1174,7 +1175,8 @@ def _html_diff(a: str, b: str) -> Tuple[str, str]:
 
     def fmt(spans):
         return "".join(
-            f'<span class="bad">{hesc(t)}</span>' if d else hesc(t)
+            f'<span class="bad">{hesc(t)}</span>' if d
+            else f'<span class="diff">{hesc(t)}</span>'
             for t, d in spans)
     return fmt(sa), fmt(sb)
 
@@ -1210,10 +1212,15 @@ def print_tasks_compare(install: Dict[str, Any],
             same = _task_signature(a) == _task_signature(b)
             estado = ("[green]IGUAL[/]" if same else
                       "[yellow]DIFIERE[/]")
-            # contenido completo solo cuando difiere, con la parte
-            # distinta en rojo
-            ca, cb = ("—", "—") if same else _rich_diff(
-                _task_cell(a), _task_cell(b))
+            # contenido completo solo cuando difiere; si la celda
+            # (script) es idéntica, el diff está en otro input →
+            # mostrar el JSON de inputs para ver la diferencia real
+            ca, cb = "—", "—"
+            if not same:
+                ta, tb = _task_cell(a), _task_cell(b)
+                if ta == tb:
+                    ta, tb = _task_signature(a)[1], _task_signature(b)[1]
+                ca, cb = _rich_diff(ta, tb)
             t.add_row(st, name if same else f"[bold]{name}[/]",
                       ca, cb, estado)
         console.print(t)
@@ -1415,8 +1422,10 @@ def build_html_report(install: Dict[str, Any],
         if same:
             ca = cb = f"<code>{esc(_task_cell_full(a))}</code>"
         else:
-            da, db = _html_diff(_task_cell_full(a),
-                                _task_cell_full(b))
+            ta, tb = _task_cell_full(a), _task_cell_full(b)
+            if ta == tb:
+                ta, tb = _task_signature(a)[1], _task_signature(b)[1]
+            da, db = _html_diff(ta, tb)
             ca, cb = f"<code>{da}</code>", f"<code>{db}</code>"
         trow.append([esc(st), esc(name), ca, cb, est])
     secs.append(table(["STAGE", "TASK", "INSTALL", "ROLLBACK",
