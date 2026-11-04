@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.11"
+__version__ = "1.0.12"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -261,6 +261,18 @@ def stage_env(rel: Dict, stage_name: str) -> Optional[Dict]:
 def stage_snapshot(rel: Dict) -> List[Tuple[str, str]]:
     return [(e.get("name", "?"), e.get("status", ""))
             for e in rel.get("environments", []) or []]
+
+
+def env_variables(rel: Dict, stage_name: str) -> Dict[str, str]:
+    """Variables con scope al stage (environments[].variables)."""
+    env = stage_env(rel, stage_name) or {}
+    out = {}
+    for name, v in (env.get("variables") or {}).items():
+        if isinstance(v, dict):
+            out[name.upper()] = str(v.get("value", "") or "")
+        else:
+            out[name.upper()] = str(v)
+    return out
 
 
 def release_variables(rel: Dict) -> Dict[str, str]:
@@ -664,6 +676,7 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         "relase_id_var": vars_.get("RELEASE_ID")
         or vars_.get("RELASE_ID") or "",
         "variables": vars_,
+        "variables_prod": env_variables(detail, "Production"),
         "url": f"{org}/{quote(project, safe='')}/_releaseProgress"
                f"?_a=release-pipeline-progress&releaseId="
                f"{detail.get('id')}",
@@ -966,24 +979,28 @@ def print_vars_compare(install: Dict[str, Any],
     """Variables del release: comparativo install↔rollback con AMBOS."""
     _print("\n[bold]═══ Comparativo Variables "
            "Install ↔ Rollback ═══[/]")
-    vi = install.get("variables") or {}
-    vr = (rollback or {}).get("variables") or {}
-    keys = sorted(set(vi) | set(vr))
+    scopes = [("Release", install.get("variables") or {},
+               (rollback or {}).get("variables") or {}),
+              ("Production", install.get("variables_prod") or {},
+               (rollback or {}).get("variables_prod") or {})]
     if RICH and console:
         t = Table(box=box.ROUNDED)
-        for col in ("VARIABLE", "INSTALL", "ROLLBACK"):
+        for col in ("SCOPE", "VARIABLE", "INSTALL", "ROLLBACK"):
             t.add_column(col, overflow="fold")
-        for k in keys:
-            a, b = _ambos(vi.get(k, "—"), vr.get(k, "—"))
-            diff = a != b and not a.startswith("AMBOS")
-            t.add_row(k if not diff else f"[bold]{k}[/]",
-                      a if not diff else f"[yellow]{a}[/]",
-                      b if not diff else f"[yellow]{b}[/]")
+        for scope, vi, vr in scopes:
+            for k in sorted(set(vi) | set(vr)):
+                a, b = _ambos(vi.get(k, "—"), vr.get(k, "—"))
+                diff = a != b and not a.startswith("AMBOS")
+                t.add_row(scope,
+                          k if not diff else f"[bold]{k}[/]",
+                          a if not diff else f"[yellow]{a}[/]",
+                          b if not diff else f"[yellow]{b}[/]")
         console.print(t)
     else:
-        for k in keys:
-            a, b = _ambos(vi.get(k, "—"), vr.get(k, "—"))
-            print(f"  {k} | {a} | {b}")
+        for scope, vi, vr in scopes:
+            for k in sorted(set(vi) | set(vr)):
+                a, b = _ambos(vi.get(k, "—"), vr.get(k, "—"))
+                print(f"  [{scope}] {k} | {a} | {b}")
 
 
 def print_snapshot(install: Dict[str, Any],
