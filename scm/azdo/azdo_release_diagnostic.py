@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.12"
+__version__ = "1.0.13"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -272,6 +272,24 @@ def env_variables(rel: Dict, stage_name: str) -> Dict[str, str]:
             out[name.upper()] = str(v.get("value", "") or "")
         else:
             out[name.upper()] = str(v)
+    return out
+
+
+def release_tasks(rel: Dict) -> List[Dict[str, str]]:
+    """Tasks ejecutadas por stage (último intento de cada environment):
+    [{stage, name, status}]."""
+    out = []
+    for env in rel.get("environments", []) or []:
+        steps = env.get("deploySteps", []) or []
+        if not steps:
+            continue
+        step = max(steps, key=lambda s: s.get("attempt", 0))
+        for ph in step.get("releaseDeployPhases", []) or []:
+            for job in ph.get("deploymentJobs", []) or []:
+                for t in job.get("tasks", []) or []:
+                    out.append({"stage": env.get("name", ""),
+                                "name": t.get("name", "task"),
+                                "status": t.get("status", "")})
     return out
 
 
@@ -677,6 +695,7 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         or vars_.get("RELASE_ID") or "",
         "variables": vars_,
         "variables_prod": env_variables(detail, "Production"),
+        "tasks": release_tasks(detail),
         "url": f"{org}/{quote(project, safe='')}/_releaseProgress"
                f"?_a=release-pipeline-progress&releaseId="
                f"{detail.get('id')}",
@@ -1003,6 +1022,35 @@ def print_vars_compare(install: Dict[str, Any],
                 print(f"  [{scope}] {k} | {a} | {b}")
 
 
+def print_tasks_compare(install: Dict[str, Any],
+                        rollback: Optional[Dict[str, Any]]) -> None:
+    """Tasks por stage: comparativo install↔rollback con AMBOS."""
+    _print("\n[bold]═══ Comparativo Tasks "
+           "Install ↔ Rollback ═══[/]")
+    ti = {(t["stage"], t["name"]): t["status"]
+          for t in install.get("tasks") or []}
+    tr = {(t["stage"], t["name"]): t["status"]
+          for t in (rollback or {}).get("tasks") or []}
+    keys = sorted(set(ti) | set(tr))
+    if RICH and console:
+        t = Table(box=box.ROUNDED)
+        for col in ("STAGE", "TASK", "INSTALL", "ROLLBACK"):
+            t.add_column(col, overflow="fold")
+        for st, name in keys:
+            a, b = _ambos(ti.get((st, name), "—"),
+                          tr.get((st, name), "—"))
+            diff = a != b and not a.startswith("AMBOS")
+            t.add_row(st, name if not diff else f"[bold]{name}[/]",
+                      a if not diff else f"[yellow]{a}[/]",
+                      b if not diff else f"[yellow]{b}[/]")
+        console.print(t)
+    else:
+        for st, name in keys:
+            a, b = _ambos(ti.get((st, name), "—"),
+                          tr.get((st, name), "—"))
+            print(f"  [{st}] {name} | {a} | {b}")
+
+
 def print_snapshot(install: Dict[str, Any],
                    rollback: Optional[Dict[str, Any]]) -> None:
     def _line(r, tag):
@@ -1088,6 +1136,7 @@ def main() -> int:
     checks = build_checks(install, rollback)
     print_compare(install, rollback, checks)
     print_vars_compare(install, rollback)
+    print_tasks_compare(install, rollback)
     ok, nfail = verdict(checks)
     _print(f"\n[bold]{'[green]✅ TODO EN ORDEN[/]' if ok else f'[red]⚠ REVISAR {nfail} ítem(s)[/]'}[/]")
 
