@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.16"
+__version__ = "1.0.17"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -375,6 +375,19 @@ def find_pr_for_commit(org, project, repo_id, commit, headers, debug,
         if len(values) < top:
             break
     return None
+
+
+def list_master_prs(org, project, repo_id, headers, debug,
+                    branch: str = "master", top: int = 50) -> List[Dict]:
+    """PRs completados hacia `branch` del repo (más recientes primero)."""
+    url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
+           f"{quote(repo_id, safe='')}/pullrequests")
+    data = api_get(url, headers, {
+        "api-version": API_VERSION,
+        "searchCriteria.status": "completed",
+        "searchCriteria.targetRefName": f"refs/heads/{branch}",
+        "$top": top}, debug)
+    return (data or {}).get("value", []) if data else []
 
 
 def get_repositories(org, project, headers, debug) -> List[Dict]:
@@ -744,6 +757,24 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
     out["pr_matches"] = bool(out["pr_commit"]
                              and out["pr_commit"].lower()
                              == (src_gi["commit"] or "").lower())
+
+    # ── listado de PRs a master del repo (elegido = el del git commit) ──
+    out["prs_list"] = []
+    if src_gi["repo_id"]:
+        for p in list_master_prs(org, project, src_gi["repo_id"],
+                                 headers, args.debug,
+                                 branch=args.branch, top=15):
+            cid = pr_definitive_commit(p)
+            out["prs_list"].append({
+                "id": p.get("pullRequestId"),
+                "title": (p.get("title") or "")[:70],
+                "author": ((p.get("createdBy") or {})
+                           .get("displayName", "")),
+                "date": (p.get("closedDate") or "")[:19],
+                "commit": cid,
+                "picked": bool(cid and src_gi["commit"]
+                               and cid.lower()
+                               == src_gi["commit"].lower())})
 
     # ── Log del Validator ──
     venv = stage_env(detail, args.validator_stage)
@@ -1139,6 +1170,59 @@ def print_tasks_compare(install: Dict[str, Any],
                   f"{'IGUAL' if same else 'DIFIERE'}")
 
 
+def print_prs_compare(install: Dict[str, Any],
+                      rollback: Optional[Dict[str, Any]]) -> None:
+    """PRs a master del repo, fusionados por PR id — LADO=AMBOS."""
+    _print("\n[bold]═══ Comparativo Pull Request "
+           "Install ↔ Rollback ═══[/]")
+    merged: Dict[Any, Dict] = {}
+    order: List[Any] = []
+    for tag, r in (("INSTALL", install), ("ROLLBACK", rollback)):
+        if not r:
+            continue
+        for p in r.get("prs_list") or []:
+            pid = p["id"]
+            if pid not in merged:
+                merged[pid] = {**p, "lados": [], "picks": []}
+                order.append(pid)
+            merged[pid]["lados"].append(tag)
+            if p["picked"]:
+                merged[pid]["picks"].append(tag)
+    rows = []
+    for pid in order:
+        m = merged[pid]
+        lado = "AMBOS" if len(set(m["lados"])) > 1 else m["lados"][0]
+        elegido = ("◀ AMBOS" if len(set(m["picks"])) > 1
+                   else (f"◀ {m['picks'][0]}" if m["picks"] else ""))
+        rows.append({**m, "lado": lado, "elegido": elegido})
+    if RICH and console:
+        t = Table(box=box.ROUNDED)
+        for col in ("LADO", "PR", "TÍTULO", "AUTOR", "FECHA", "COMMIT",
+                    "ELEGIDO"):
+            t.add_column(col, overflow="fold")
+        for c in rows:
+            if c["elegido"]:
+                t.add_row(f"[bold]{c['lado']}[/]",
+                          f"[bold]#{c['id']}[/]",
+                          f"[bold green]{c['title']}[/]",
+                          f"[bold green]{c['author']}[/]",
+                          f"[bold green]{c['date']}[/]",
+                          f"[bold green]{_short(c['commit'], 10)}[/]",
+                          f"[green]{c['elegido']}[/]")
+            else:
+                t.add_row(f"[dim]{c['lado']}[/]", f"#{c['id']}",
+                          f"[dim]{c['title']}[/]",
+                          f"[dim]{c['author']}[/]",
+                          f"[dim]{c['date']}[/]",
+                          f"[dim]{_short(c['commit'], 10)}[/]", "")
+        console.print(t)
+    else:
+        for c in rows:
+            print(f"  [{c['lado']}] #{c['id']} {c['title']} "
+                  f"{c['author']} {c['date']} "
+                  f"{_short(c['commit'], 10)} {c['elegido']}")
+
+
 def print_snapshot(install: Dict[str, Any],
                    rollback: Optional[Dict[str, Any]]) -> None:
     def _line(r, tag):
@@ -1225,6 +1309,7 @@ def main() -> int:
     print_compare(install, rollback, checks)
     print_vars_compare(install, rollback)
     print_tasks_compare(install, rollback)
+    print_prs_compare(install, rollback)
     ok, nfail = verdict(checks)
     _print(f"\n[bold]{'[green]✅ TODO EN ORDEN[/]' if ok else f'[red]⚠ REVISAR {nfail} ítem(s)[/]'}[/]")
 
