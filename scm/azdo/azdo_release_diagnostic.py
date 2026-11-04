@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.15"
+__version__ = "1.0.16"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -918,6 +918,36 @@ def build_folio(install: Dict[str, Any],
     return "\n".join(lines)
 
 
+def _task_cell_full(t: Optional[Dict]) -> str:
+    """Contenido completo de la task para export (sin truncar)."""
+    if not t:
+        return "—"
+    script = (t.get("script") or "").strip()
+    if not script:
+        script = json.dumps(t.get("inputs") or {}, sort_keys=True)
+    return f"v{t['version']} | {script}"
+
+
+def export_task_rows(install: Dict[str, Any],
+                     rollback: Optional[Dict[str, Any]]) -> List[Dict]:
+    """Filas de export del comparativo de tasks — contenido COMPLETO
+    (en archivos sí se imprime, también de las iguales)."""
+    ti = {(t["stage"], t["name"]): t
+          for t in install.get("stage_tasks") or []}
+    tr = {(t["stage"], t["name"]): t
+          for t in (rollback or {}).get("stage_tasks") or []}
+    rows = []
+    for st, name in sorted(set(ti) | set(tr)):
+        a, b = ti.get((st, name)), tr.get((st, name))
+        same = _task_signature(a) == _task_signature(b)
+        rows.append({"check": f"Task {st} / {name}",
+                     "install": _task_cell_full(a),
+                     "rollback": _task_cell_full(b),
+                     "resultado": "IGUAL" if same else "DIFIERE",
+                     "detalle": ""})
+    return rows
+
+
 def export_check_rows(checks: List[Dict]) -> List[Dict]:
     return [{"check": c["check"], "install": c["install"],
              "rollback": c["rollback"],
@@ -1211,6 +1241,7 @@ def main() -> int:
     try:
         from azdo_default_export import write_default_reports
         rows = export_check_rows(checks)
+        rows += export_task_rows(install, rollback)
         rows.append({"check": "Folio", "install": folio[:120],
                      "rollback": "", "resultado": "OK" if ok
                      else "REVISAR", "detalle": ""})
