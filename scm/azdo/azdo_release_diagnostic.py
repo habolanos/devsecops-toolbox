@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -384,6 +384,20 @@ def commit_matching_date(commits: List[Dict],
     return best or commits[-1]
 
 
+def repo_commits(org, project, repo_id, branch, headers,
+                 debug, top: int = 100) -> List[Dict]:
+    """Commits del repo (sin itemPath) — el historial completo de la
+    rama, lo que el deploy toma al hacer checkout del repo properties."""
+    url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
+           f"{quote(repo_id, safe='')}/commits")
+    data = api_get(url, headers, {
+        "api-version": API_VERSION,
+        "searchCriteria.itemVersion.version": branch,
+        "searchCriteria.itemVersion.versionType": "branch",
+        "$top": top}, debug)
+    return (data or {}).get("value", []) if data else []
+
+
 def relase_id_matches_rollback(value: str, rollback_name: str,
                                rollback_id) -> bool:
     v = (value or "").strip()
@@ -690,14 +704,28 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
     out["props_folder_path"] = component
     out["created_on"] = detail.get("createdOn", "")
     if props_repo:
-        commits = folder_commits(org, project, props_repo.get("id", ""),
-                                 f"/{component}", args.branch, headers,
-                                 args.debug)
-        pick = (commit_matching_date(commits, out["created_on"])
-                if props_by_date else (commits[0] if commits else None))
-        if pick:
-            out["props_folder_commit"] = pick.get("commitId", "")
-        out["props_folder_commits"] = [{
+        # check: commit del folder (var vs folder, nivel folder)
+        fcs = folder_commits(org, project, props_repo.get("id", ""),
+                             f"/{component}", args.branch, headers,
+                             args.debug)
+        fpick = (commit_matching_date(fcs, out["created_on"])
+                 if props_by_date else (fcs[0] if fcs else None))
+        if fpick:
+            out["props_folder_commit"] = fpick.get("commitId", "")
+        # listado: install → commits del repo (commit del día, HEAD);
+        # rollback → commits del folder vigentes a su fecha
+        if props_by_date:
+            commits, pick, label = fcs, fpick, f"/{component}"
+        else:
+            commits = repo_commits(org, project,
+                                   props_repo.get("id", ""),
+                                   args.branch, headers, args.debug)
+            pick = commits[0] if commits else None
+            label = f"repo {args.branch} (HEAD)"
+            out["props_repo_head"] = pick.get("commitId", "") if pick \
+                else ""
+        out["props_list_path"] = label
+        out["props_list"] = [{
             "commitId": c.get("commitId", ""),
             "author": (c.get("author") or {}).get("name", "")
             or (c.get("committer") or {}).get("name", ""),
@@ -707,11 +735,16 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
                            == pick.get("commitId"))}
             for c in commits[:15]]
     else:
-        out["props_folder_commits"] = []
-    # props_commit efectivo: variable → log → folder
-    out["props_commit"] = (out["props_commit_var"]
-                           or out["props_commit_log"]
-                           or out["props_folder_commit"])
+        out["props_list"], out["props_list_path"] = [], ""
+    # props_commit efectivo: install → HEAD del repo (commit del día);
+    # rollback → commit del folder vigente a su fecha; fallback var/log
+    out["props_commit"] = (
+        out.get("props_repo_head") or out["props_folder_commit"]
+        if props_by_date is False
+        else out["props_folder_commit"] or out["props_commit_var"])
+    out["props_commit"] = (out["props_commit"]
+                           or out["props_commit_var"]
+                           or out["props_commit_log"])
     out["props_match"] = bool(
         out["props_commit_var"] and out["props_folder_commit"]
         and out["props_commit_var"].lower()
@@ -874,22 +907,24 @@ def print_props_commits(install: Dict[str, Any],
                        ("ROLLBACK", rollback)):
             if not r:
                 continue
-            rows = r.get("props_folder_commits") or []
+            rows = r.get("props_list") or []
+            path = r.get("props_list_path") \
+                or f"/{r['props_folder_path']}"
             if not rows:
-                t.add_row(tag, f"/{r['props_folder_path']}", "—", "—",
+                t.add_row(tag, path, "—", "—",
                           "—", "[dim]sin commits[/]")
             for c in rows:
                 if c["picked"]:
                     t.add_row(
                         f"[bold]{tag}[/]",
-                        f"[bold]/{r['props_folder_path']}[/]",
+                        f"[bold]{path}[/]",
                         f"[bold green]{c['commitId']}[/]",
                         f"[bold green]{c['author']}[/]",
                         f"[bold green]{c['date']}[/]",
                         "[green]◀ ELEGIDO[/]")
                 else:
                     t.add_row(f"[dim]{tag}[/]",
-                              f"/{r['props_folder_path']}",
+                              f"{path}",
                               f"[dim]{c['commitId']}[/]",
                               f"[dim]{c['author']}[/]",
                               f"[dim]{c['date']}[/]", "")
@@ -899,9 +934,11 @@ def print_props_commits(install: Dict[str, Any],
                        ("ROLLBACK", rollback)):
             if not r:
                 continue
-            for c in r.get("props_folder_commits") or []:
+            path = r.get("props_list_path") \
+                or f"/{r['props_folder_path']}"
+            for c in r.get("props_list") or []:
                 mark = "  ◀ ELEGIDO" if c["picked"] else ""
-                print(f"  [{tag}] /{r['props_folder_path']} "
+                print(f"  [{tag}] {path} "
                       f"{c['commitId']} {c['author']} {c['date']}{mark}")
 
 
