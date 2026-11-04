@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -384,20 +384,6 @@ def commit_matching_date(commits: List[Dict],
     return best or commits[-1]
 
 
-def repo_commits(org, project, repo_id, branch, headers,
-                 debug, top: int = 100) -> List[Dict]:
-    """Commits del repo (sin itemPath) — el historial completo de la
-    rama, lo que el deploy toma al hacer checkout del repo properties."""
-    url = (f"{org}/{quote(project, safe='')}/_apis/git/repositories/"
-           f"{quote(repo_id, safe='')}/commits")
-    data = api_get(url, headers, {
-        "api-version": API_VERSION,
-        "searchCriteria.itemVersion.version": branch,
-        "searchCriteria.itemVersion.versionType": "branch",
-        "$top": top}, debug)
-    return (data or {}).get("value", []) if data else []
-
-
 def relase_id_matches_rollback(value: str, rollback_name: str,
                                rollback_id) -> bool:
     v = (value or "").strip()
@@ -712,18 +698,9 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
                  if props_by_date else (fcs[0] if fcs else None))
         if fpick:
             out["props_folder_commit"] = fpick.get("commitId", "")
-        # listado: install → commits del repo (commit del día, HEAD);
-        # rollback → commits del folder vigentes a su fecha
-        if props_by_date:
-            commits, pick, label = fcs, fpick, f"/{component}"
-        else:
-            commits = repo_commits(org, project,
-                                   props_repo.get("id", ""),
-                                   args.branch, headers, args.debug)
-            pick = commits[0] if commits else None
-            label = f"repo {args.branch} (HEAD)"
-            out["props_repo_head"] = pick.get("commitId", "") if pick \
-                else ""
+        # listado: solo commits que tocan el folder /<componente>;
+        # install → el último; rollback → el vigente a su fecha
+        commits, pick, label = fcs, fpick, f"/{component}"
         out["props_list_path"] = label
         out["props_list"] = [{
             "commitId": c.get("commitId", ""),
@@ -736,15 +713,10 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
             for c in commits[:15]]
     else:
         out["props_list"], out["props_list_path"] = [], ""
-    # props_commit efectivo: install → HEAD del repo (commit del día);
-    # rollback → commit del folder vigente a su fecha; fallback var/log
-    out["props_commit"] = (
-        out.get("props_repo_head") or out["props_folder_commit"]
-        if props_by_date is False
-        else out["props_folder_commit"] or out["props_commit_var"])
-    out["props_commit"] = (out["props_commit"]
-                           or out["props_commit_var"]
-                           or out["props_commit_log"])
+    # props_commit efectivo: variable → log → folder
+    out["props_commit"] = (out["props_commit_var"]
+                           or out["props_commit_log"]
+                           or out["props_folder_commit"])
     out["props_match"] = bool(
         out["props_commit_var"] and out["props_folder_commit"]
         and out["props_commit_var"].lower()
