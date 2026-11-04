@@ -25,6 +25,7 @@ Autor: Harold Adrian
 
 import argparse
 import base64
+import difflib
 import json
 import re
 import sys
@@ -68,7 +69,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.24"
+__version__ = "1.0.25"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -1132,14 +1133,50 @@ def print_vars_compare(install: Dict[str, Any],
 
 
 def _task_cell(t: Optional[Dict]) -> str:
-    """Celda con contenido de la task: version + script/inputs."""
+    """Celda con contenido de la task: version + script/inputs
+    (completo, sin truncar)."""
     if not t:
         return "—"
     script = " ".join((t.get("script") or "").split())
     if not script:
         script = json.dumps(t.get("inputs") or {}, sort_keys=True)
-    script = script[:400] + ("…" if len(script) > 400 else "")
     return f"v{t['version']} | {script}"
+
+
+def _diff_spans(a: str, b: str):
+    """Char-diff: ([(text,es_diff)] de a, [(text,es_diff)] de b)."""
+    sm = difflib.SequenceMatcher(None, a, b)
+    sa, sb = [], []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        sa.append((a[i1:i2], tag != "equal"))
+        sb.append((b[j1:j2], tag != "equal"))
+    return sa, sb
+
+
+def _rich_diff(a: str, b: str) -> Tuple[str, str]:
+    """Markup Rich: partes iguales normales, dif en rojo."""
+    try:
+        from rich.markup import escape as resc
+    except ImportError:
+        resc = lambda s: s
+    sa, sb = _diff_spans(a, b)
+
+    def fmt(spans):
+        return "".join(f"[red]{resc(t)}[/]" if d else resc(t)
+                       for t, d in spans)
+    return fmt(sa), fmt(sb)
+
+
+def _html_diff(a: str, b: str) -> Tuple[str, str]:
+    """HTML: partes iguales normales, dif en <span class='bad'>."""
+    from html import escape as hesc
+    sa, sb = _diff_spans(a, b)
+
+    def fmt(spans):
+        return "".join(
+            f'<span class="bad">{hesc(t)}</span>' if d else hesc(t)
+            for t, d in spans)
+    return fmt(sa), fmt(sb)
 
 
 def _task_signature(t: Optional[Dict]) -> Tuple[str, str]:
@@ -1173,20 +1210,21 @@ def print_tasks_compare(install: Dict[str, Any],
             same = _task_signature(a) == _task_signature(b)
             estado = ("[green]IGUAL[/]" if same else
                       "[yellow]DIFIERE[/]")
-            # contenido solo cuando difiere; si es igual basta el estado
-            ca = _task_cell(a) if not same else "—"
-            cb = _task_cell(b) if not same else "—"
+            # contenido completo solo cuando difiere, con la parte
+            # distinta en rojo
+            ca, cb = ("—", "—") if same else _rich_diff(
+                _task_cell(a), _task_cell(b))
             t.add_row(st, name if same else f"[bold]{name}[/]",
-                      ca if same else f"[yellow]{ca}[/]",
-                      cb if same else f"[yellow]{cb}[/]",
-                      estado)
+                      ca, cb, estado)
         console.print(t)
     else:
         for st, name in keys:
             a, b = ti.get((st, name)), tr.get((st, name))
             same = _task_signature(a) == _task_signature(b)
-            ca = _task_cell(a) if not same else "—"
-            cb = _task_cell(b) if not same else "—"
+            if same:
+                ca = cb = "—"
+            else:
+                ca, cb = _task_cell(a), _task_cell(b)
             print(f"  [{st}] {name} | {ca} | {cb} | "
                   f"{'IGUAL' if same else 'DIFIERE'}")
 
@@ -1374,9 +1412,13 @@ def build_html_report(install: Dict[str, Any],
         same = _task_signature(a) == _task_signature(b)
         est = ('<span class="ok">IGUAL</span>' if same
                else '<span class="diff">DIFIERE</span>')
-        trow.append([esc(st), esc(name),
-                     f"<code>{esc(_task_cell_full(a))}</code>",
-                     f"<code>{esc(_task_cell_full(b))}</code>", est])
+        if same:
+            ca = cb = f"<code>{esc(_task_cell_full(a))}</code>"
+        else:
+            da, db = _html_diff(_task_cell_full(a),
+                                _task_cell_full(b))
+            ca, cb = f"<code>{da}</code>", f"<code>{db}</code>"
+        trow.append([esc(st), esc(name), ca, cb, est])
     secs.append(table(["STAGE", "TASK", "INSTALL", "ROLLBACK",
                        "ESTADO"],
                       trow or [["Validator", "—", "—", "—", "—"]]))
