@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.17"
+__version__ = "1.0.18"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -772,6 +772,9 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
                            .get("displayName", "")),
                 "date": (p.get("closedDate") or "")[:19],
                 "commit": cid,
+                "url": (f"{org}/{quote(project, safe='')}/_git/"
+                        f"{src_gi['repo_name']}/pullrequest/"
+                        f"{p.get('pullRequestId')}"),
                 "picked": bool(cid and src_gi["commit"]
                                and cid.lower()
                                == src_gi["commit"].lower())})
@@ -1198,7 +1201,7 @@ def print_prs_compare(install: Dict[str, Any],
     if RICH and console:
         t = Table(box=box.ROUNDED)
         for col in ("LADO", "PR", "TÍTULO", "AUTOR", "FECHA", "COMMIT",
-                    "ELEGIDO"):
+                    "URL", "ELEGIDO"):
             t.add_column(col, overflow="fold")
         for c in rows:
             if c["elegido"]:
@@ -1208,19 +1211,21 @@ def print_prs_compare(install: Dict[str, Any],
                           f"[bold green]{c['author']}[/]",
                           f"[bold green]{c['date']}[/]",
                           f"[bold green]{_short(c['commit'], 10)}[/]",
+                          f"[bold green]{c['url']}[/]",
                           f"[green]{c['elegido']}[/]")
             else:
                 t.add_row(f"[dim]{c['lado']}[/]", f"#{c['id']}",
                           f"[dim]{c['title']}[/]",
                           f"[dim]{c['author']}[/]",
                           f"[dim]{c['date']}[/]",
-                          f"[dim]{_short(c['commit'], 10)}[/]", "")
+                          f"[dim]{_short(c['commit'], 10)}[/]",
+                          f"[dim]{c['url']}[/]", "")
         console.print(t)
     else:
         for c in rows:
             print(f"  [{c['lado']}] #{c['id']} {c['title']} "
                   f"{c['author']} {c['date']} "
-                  f"{_short(c['commit'], 10)} {c['elegido']}")
+                  f"{_short(c['commit'], 10)} {c['url']} {c['elegido']}")
 
 
 def print_snapshot(install: Dict[str, Any],
