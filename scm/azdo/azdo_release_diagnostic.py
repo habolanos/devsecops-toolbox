@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.14"
+__version__ = "1.0.15"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -1091,19 +1091,21 @@ def print_tasks_compare(install: Dict[str, Any],
             same = _task_signature(a) == _task_signature(b)
             estado = ("[green]IGUAL[/]" if same else
                       "[yellow]DIFIERE[/]")
+            # contenido solo cuando difiere; si es igual basta el estado
+            ca = _task_cell(a) if not same else "—"
+            cb = _task_cell(b) if not same else "—"
             t.add_row(st, name if same else f"[bold]{name}[/]",
-                      _task_cell(a) if same
-                      else f"[yellow]{_task_cell(a)}[/]",
-                      _task_cell(b) if same
-                      else f"[yellow]{_task_cell(b)}[/]",
+                      ca if same else f"[yellow]{ca}[/]",
+                      cb if same else f"[yellow]{cb}[/]",
                       estado)
         console.print(t)
     else:
         for st, name in keys:
             a, b = ti.get((st, name)), tr.get((st, name))
             same = _task_signature(a) == _task_signature(b)
-            print(f"  [{st}] {name} | {_task_cell(a)} | "
-                  f"{_task_cell(b)} | "
+            ca = _task_cell(a) if not same else "—"
+            cb = _task_cell(b) if not same else "—"
+            print(f"  [{st}] {name} | {ca} | {cb} | "
                   f"{'IGUAL' if same else 'DIFIERE'}")
 
 
