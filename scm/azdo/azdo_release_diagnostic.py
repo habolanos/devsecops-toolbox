@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -890,50 +890,74 @@ def print_compare(install: Dict[str, Any],
 
 def print_props_commits(install: Dict[str, Any],
                         rollback: Optional[Dict[str, Any]]) -> None:
-    """Listado de commits del folder /<componente> en repo properties
-    (install y rollback), con el commit elegido marcado."""
+    """Listado de commits del folder /<componente> en repo properties,
+    fusionado por commitId: el mismo commit en install y rollback →
+    una sola fila con LADO=AMBOS."""
     _print("\n[bold]═══ Listado Properties de componente ═══[/]")
+
+    # merge por commitId: {cid: {commit, author, date, lado, picked_lados}}
+    merged: Dict[str, Dict] = {}
+    order: List[str] = []
+    for tag, r in (("INSTALL", install), ("ROLLBACK", rollback)):
+        if not r:
+            continue
+        path = r.get("props_list_path") \
+            or f"/{r['props_folder_path']}"
+        for c in r.get("props_list") or []:
+            cid = c["commitId"]
+            if cid not in merged:
+                merged[cid] = {"commitId": cid, "path": path,
+                               "author": c["author"], "date": c["date"],
+                               "lados": [], "picked": []}
+                order.append(cid)
+            merged[cid]["lados"].append(tag)
+            if c["picked"]:
+                merged[cid]["picked"].append(tag)
+
+    rows = []
+    for cid in order:
+        m = merged[cid]
+        lado = "AMBOS" if len(set(m["lados"])) > 1 else m["lados"][0]
+        if m["picked"]:
+            elegido = ("◀ AMBOS" if len(set(m["picked"])) > 1
+                       else f"◀ {m['picked'][0]}")
+            picked = True
+        else:
+            elegido, picked = "", False
+        rows.append({**m, "lado": lado, "elegido": elegido,
+                     "picked": picked})
+
+    if not rows and not (install.get("props_list")
+                         or (rollback or {}).get("props_list")):
+        rows = []
+
     if RICH and console:
         t = Table(box=box.ROUNDED)
         for col in ("LADO", "PATH", "COMMIT", "USUARIO", "FECHA", "ELEGIDO"):
             t.add_column(col, overflow="fold")
-        for tag, r in (("INSTALL", install),
-                       ("ROLLBACK", rollback)):
-            if not r:
-                continue
-            rows = r.get("props_list") or []
-            path = r.get("props_list_path") \
-                or f"/{r['props_folder_path']}"
-            if not rows:
-                t.add_row(tag, path, "—", "—",
-                          "—", "[dim]sin commits[/]")
-            for c in rows:
-                if c["picked"]:
-                    t.add_row(
-                        f"[bold]{tag}[/]",
-                        f"[bold]{path}[/]",
-                        f"[bold green]{c['commitId']}[/]",
-                        f"[bold green]{c['author']}[/]",
-                        f"[bold green]{c['date']}[/]",
-                        "[green]◀ ELEGIDO[/]")
-                else:
-                    t.add_row(f"[dim]{tag}[/]",
-                              f"{path}",
-                              f"[dim]{c['commitId']}[/]",
-                              f"[dim]{c['author']}[/]",
-                              f"[dim]{c['date']}[/]", "")
+        for tag, r in (("INSTALL", install), ("ROLLBACK", rollback)):
+            if r and not (r.get("props_list") or []):
+                t.add_row(tag, r.get("props_list_path") or
+                          f"/{r['props_folder_path']}",
+                          "—", "—", "—", "[dim]sin commits[/]")
+        for c in rows:
+            if c["picked"]:
+                t.add_row(f"[bold]{c['lado']}[/]", f"[bold]{c['path']}[/]",
+                          f"[bold green]{c['commitId']}[/]",
+                          f"[bold green]{c['author']}[/]",
+                          f"[bold green]{c['date']}[/]",
+                          f"[green]{c['elegido']}[/]")
+            else:
+                t.add_row(f"[dim]{c['lado']}[/]", c["path"],
+                          f"[dim]{c['commitId']}[/]",
+                          f"[dim]{c['author']}[/]", f"[dim]{c['date']}[/]",
+                          "")
         console.print(t)
     else:
-        for tag, r in (("INSTALL", install),
-                       ("ROLLBACK", rollback)):
-            if not r:
-                continue
-            path = r.get("props_list_path") \
-                or f"/{r['props_folder_path']}"
-            for c in r.get("props_list") or []:
-                mark = "  ◀ ELEGIDO" if c["picked"] else ""
-                print(f"  [{tag}] {path} "
-                      f"{c['commitId']} {c['author']} {c['date']}{mark}")
+        for c in rows:
+            mark = f"  {c['elegido']}" if c["picked"] else ""
+            print(f"  [{c['lado']}] {c['path']} "
+                  f"{c['commitId']} {c['author']} {c['date']}{mark}")
 
 
 def print_snapshot(install: Dict[str, Any],
