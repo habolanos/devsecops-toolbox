@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.20"
+__version__ = "1.0.21"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -1405,9 +1405,27 @@ def build_html_report(install: Dict[str, Any],
               "Comparativo Install ↔ Rollback",
               "Comparativo Variables Install ↔ Rollback",
               "Comparativo Tasks Install ↔ Rollback",
-              "Comparativo Pull Request Install ↔ Rollback"]
-    body = "".join(f"<h2>{esc(t)}</h2>{s}"
-                   for t, s in zip(titles, secs))
+              "Comparativo Pull Request Install ↔ Rollback",
+              "Folio (copiar a Service Desk)"]
+    secs.append(f'<div class="folio">{esc(folio)}</div>')
+    # tabs: una sola tabla visible según la selección del usuario
+    nav = "".join(
+        f'<button class="tab{" active" if i == 0 else ""}" '
+        f'data-s="s{i}" onclick="sel(this)">{esc(t)}</button>'
+        for i, t in enumerate(titles))
+    body = (f'<div class="tabs">{nav}</div>' + "".join(
+        f'<div class="section" id="s{i}"'
+        f'{" style=display:none" if i else ""}>'
+        f"<h2>{esc(t)}</h2>{s}</div>"
+        for i, (t, s) in enumerate(zip(titles, secs))))
+    js = ("<script>function sel(b){"
+          "document.querySelectorAll('.section').forEach("
+          "e=>e.style.display='none');"
+          "document.querySelectorAll('.tab').forEach("
+          "e=>e.classList.remove('active'));"
+          "document.getElementById(b.dataset.s)"
+          ".style.display='block';"
+          "b.classList.add('active');}</script>")
     badge = ('<span class="badge ok">✅ TODO EN ORDEN</span>' if ok
              else f'<span class="badge bad">⚠ REVISAR '
                   f'{nfail} ítem(s)</span>')
@@ -1426,11 +1444,15 @@ tr.picked td{{background:#14532d33}}
 .badge.ok{{background:#14532d}} .badge.bad{{background:#7f1d1d}}
 code{{background:#0f172a;padding:1px 6px;border-radius:4px;font-size:12px}}
 a{{color:#38bdf8}} .folio{{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:16px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px;line-height:1.6}}
+.tabs{{margin:16px 0;flex-wrap:wrap;display:flex;gap:6px}}
+.tab{{background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:13px}}
+.tab:hover{{color:#e2e8f0}}
+.tab.active{{background:#0ea5e9;color:#0f172a;font-weight:bold}}
 </style></head><body>
 <h1>🚀 Release Diagnostic &amp; Folio</h1>
 <div class="sub">Org: {esc(org)} · Proyecto: {esc(project)} · {esc(install["component"])} · generado {datetime.now():%Y-%m-%d %H:%M} · v{__version__}</div>
 {badge}{body}
-<h2>Folio (copiar a Service Desk)</h2><div class="folio">{esc(folio)}</div>
+{js}
 </body></html>"""
 
 
