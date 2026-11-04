@@ -229,7 +229,8 @@ def _rollback():
 
 def test_build_checks_all_ok():
     checks = rd.build_checks(_install(), _rollback())
-    pr_c = next(c for c in checks if c["check"].startswith("Build"))
+    pr_c = next(c for c in checks
+                if c["check"].startswith("Artifact Git Source"))
     assert pr_c["ok"] is True
     props_c = next(c for c in checks
                    if c["check"].startswith("commitProperties"))

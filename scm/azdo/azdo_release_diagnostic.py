@@ -68,7 +68,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.22"
+__version__ = "1.0.23"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -848,10 +848,22 @@ def build_checks(install: Dict[str, Any],
     """Checks de coherencia install↔rollback."""
     checks = []
     rb = rollback or {}
+    checks.append({
+        "check": "Build",
+        "install": _ambos(
+            f"{install['build_number']} (id {install['build_id']})",
+            f"{rb.get('build_number', '—')} (id "
+            f"{rb.get('build_id', '—')})")[0],
+        "rollback": _ambos(
+            f"{install['build_number']} (id {install['build_id']})",
+            f"{rb.get('build_number', '—')} (id "
+            f"{rb.get('build_id', '—')})")[1],
+        "ok": None,
+        "detail": "build number + id del artifact"})
     pr_i, pr_r = _ambos(_short(install["pr_commit"]),
                         _short(rb.get("pr_commit", "")))
     checks.append({
-        "check": "Build ↔ commit del PR (git source)",
+        "check": "Artifact Git Source commit del PR",
         "install": pr_i,
         "rollback": pr_r,
         "ok": install["pr_matches"] if install["pr_commit"]
