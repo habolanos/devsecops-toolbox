@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.10"
+__version__ = "1.0.11"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -663,6 +663,7 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         "props_commit_var": vars_.get("COMMITPROPERTIESROLLBACK", ""),
         "relase_id_var": vars_.get("RELEASE_ID")
         or vars_.get("RELASE_ID") or "",
+        "variables": vars_,
         "url": f"{org}/{quote(project, safe='')}/_releaseProgress"
                f"?_a=release-pipeline-progress&releaseId="
                f"{detail.get('id')}",
@@ -960,6 +961,31 @@ def print_props_commits(install: Dict[str, Any],
                   f"{c['commitId']} {c['author']} {c['date']}{mark}")
 
 
+def print_vars_compare(install: Dict[str, Any],
+                       rollback: Optional[Dict[str, Any]]) -> None:
+    """Variables del release: comparativo install↔rollback con AMBOS."""
+    _print("\n[bold]═══ Comparativo Variables "
+           "Install ↔ Rollback ═══[/]")
+    vi = install.get("variables") or {}
+    vr = (rollback or {}).get("variables") or {}
+    keys = sorted(set(vi) | set(vr))
+    if RICH and console:
+        t = Table(box=box.ROUNDED)
+        for col in ("VARIABLE", "INSTALL", "ROLLBACK"):
+            t.add_column(col, overflow="fold")
+        for k in keys:
+            a, b = _ambos(vi.get(k, "—"), vr.get(k, "—"))
+            diff = a != b and not a.startswith("AMBOS")
+            t.add_row(k if not diff else f"[bold]{k}[/]",
+                      a if not diff else f"[yellow]{a}[/]",
+                      b if not diff else f"[yellow]{b}[/]")
+        console.print(t)
+    else:
+        for k in keys:
+            a, b = _ambos(vi.get(k, "—"), vr.get(k, "—"))
+            print(f"  {k} | {a} | {b}")
+
+
 def print_snapshot(install: Dict[str, Any],
                    rollback: Optional[Dict[str, Any]]) -> None:
     def _line(r, tag):
@@ -1044,6 +1070,7 @@ def main() -> int:
     print_props_commits(install, rollback)
     checks = build_checks(install, rollback)
     print_compare(install, rollback, checks)
+    print_vars_compare(install, rollback)
     ok, nfail = verdict(checks)
     _print(f"\n[bold]{'[green]✅ TODO EN ORDEN[/]' if ok else f'[red]⚠ REVISAR {nfail} ítem(s)[/]'}[/]")
 
