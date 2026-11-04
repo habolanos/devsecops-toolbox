@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -874,7 +874,7 @@ def print_compare(install: Dict[str, Any],
         t = Table(box=box.ROUNDED)
         for col in ("CHECK", "INSTALL", "ROLLBACK", "RESULTADO",
                     "DETALLE"):
-            t.add_column(col)
+            t.add_column(col, overflow="fold")
         for c in checks:
             mark = ("[green]✔[/]" if c["ok"] else
                     ("[red]✘[/]" if c["ok"] is False else "[dim]—[/]"))
@@ -896,7 +896,7 @@ def print_props_commits(install: Dict[str, Any],
     if RICH and console:
         t = Table(box=box.ROUNDED)
         for col in ("LADO", "PATH", "COMMIT", "USUARIO", "FECHA", "ELEGIDO"):
-            t.add_column(col)
+            t.add_column(col, overflow="fold")
         for tag, r in (("INSTALL", install),
                        ("ROLLBACK", rollback)):
             if not r:

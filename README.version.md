@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.39`** — 2026-11-03
+**`1.9.40`** — 2026-11-03
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-03 | **1.9.40** | **Opción 50: tablas sin truncado** — columnas con `overflow="fold"` en listado properties y comparativo: la URL de imagen y tokens largos se envuelven en vez de cortarse con `…`. azdo_release_diagnostic v1.0.9. Tests: 28 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.39** | **Opción 50: fix extracción de imágenes del Validator** — `aggregate_validator` ahora corre 2 pasadas: primero solo patrones explícitos (`Imagen actual:`/`Imagen nueva:`, `IMAGE_ACTUAL/NUEVA`) y después el fallback por hosts — evitaba que un task de manifest con la imagen actual (`:2.1.2`) ganara sobre el `Imagen nueva :2.2.0` explícito del task 'Validar images', reportando falsamente install==prod. azdo_release_diagnostic v1.0.8. Tests: 28 | `scm/azdo/azdo_release_diagnostic.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.38** | **Opción 50: listado vuelve a folder-only** — revertido el repo-HEAD para install: el listado muestra solo commits que tocan `/<componente>` (install→último, rollback→por fecha); `props_commit` vuelve a var→log→folder. azdo_release_diagnostic v1.0.7. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.37** | **Opción 50: AMBOS en comparativo** — cuando un valor es idéntico en install y rollback la celda muestra `AMBOS: v` / `—` en vez de duplicarlo. azdo_release_diagnostic v1.0.6. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

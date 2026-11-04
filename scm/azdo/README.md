@@ -1621,6 +1621,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-11-03 | 1.9.40 | **Opción 50: tablas sin truncado** — `overflow="fold"`: URLs de imagen y tokens largos se envuelven completos, sin `…` | `scm/azdo/azdo_release_diagnostic.py` (v1.0.9) |
 | 2026-11-03 | 1.9.39 | **Opción 50: fix imágenes del Validator** — 2 pasadas en aggregate: patrones explícitos (`Imagen nueva/actual`) antes que el fallback por hosts; evitaba que un task con la imagen actual reportara falsamente install==prod | `scm/azdo/azdo_release_diagnostic.py` (v1.0.8) |
 | 2026-11-03 | 1.9.38 | **Opción 50: listado folder-only** — solo commits que tocan `/<componente>` en ambos lados (install→último, rollback→por fecha) | `scm/azdo/azdo_release_diagnostic.py` (v1.0.7) |
 | 2026-11-03 | 1.9.37 | **Opción 50: AMBOS en comparativo** — valor idéntico en ambos lados → `AMBOS: v` / `—` | `scm/azdo/azdo_release_diagnostic.py` (v1.0.6) |
