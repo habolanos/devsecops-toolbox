@@ -1621,6 +1621,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-11-03 | 1.9.37 | **Opción 50: AMBOS en comparativo** — valor idéntico en ambos lados → `AMBOS: v` / `—` | `scm/azdo/azdo_release_diagnostic.py` (v1.0.6) |
 | 2026-11-03 | 1.9.36 | **Opción 50: fix semántica properties** — install lista commits del repo (HEAD del día, lo que el deploy checkout), rollback lista commits del folder a su fecha; `Commit properties deploy` = repo HEAD; el check sigue vs folder | `scm/azdo/azdo_release_diagnostic.py` (v1.0.5) |
 | 2026-11-03 | 1.9.35 | **Opción 50: commits elegidos resaltados** — el commit elegido por lado se imprime en verde bold con `◀ ELEGIDO`, resto atenuado | `scm/azdo/azdo_release_diagnostic.py` (v1.0.4) |
 | 2026-11-03 | 1.9.34 | **Opción 50: listado de commits de properties** — nueva sección antes del comparativo con los últimos 15 commits del folder `/<componente>` (PATH/COMMIT/USUARIO/FECHA) para install y rollback, marcando el commit elegido | `scm/azdo/azdo_release_diagnostic.py` (v1.0.3) |

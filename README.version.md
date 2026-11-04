@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.36`** — 2026-11-03
+**`1.9.37`** — 2026-11-03
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-03 | **1.9.37** | **Opción 50: AMBOS en comparativo** — cuando un valor es idéntico en install y rollback la celda muestra `AMBOS: v` / `—` en vez de duplicarlo. azdo_release_diagnostic v1.0.6. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.36** | **Opción 50: fix semántica properties** — el listado consultaba solo `itemPath=/<componente>` (último commit del folder, feb-2025, idéntico ambos lados); corregido: **install lista commits del repo properties (HEAD del día = lo que el deploy realmente checkout)** y **rollback lista commits del folder vigentes a su fecha**; `props_commit` del folio usa repo-HEAD para install y folder@fecha para rollback; el check sigue comparando `commitPropertiesRollback` vs folder. PATH del listado distingue `repo master (HEAD)` vs `/<componente>`. azdo_release_diagnostic v1.0.5. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.35** | **Opción 50: commits elegidos resaltados** — en el listado de properties el commit elegido por lado se imprime en verde bold con `◀ ELEGIDO` y el resto atenuado, para distinguirlo visualmente. azdo_release_diagnostic v1.0.4. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.34** | **Opción 50: listado de commits de properties** — nueva sección "Listado Properties de componente" antes del comparativo: tabla LADO/PATH/COMMIT/USUARIO/FECHA con los últimos 15 commits del folder `/<componente>` en el repo properties para install y rollback, marcando con ◀ el commit elegido (último para install, por fecha para rollback). azdo_release_diagnostic v1.0.3. Tests: 26 | `scm/azdo/azdo_release_diagnostic.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |

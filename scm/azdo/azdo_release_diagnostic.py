@@ -67,7 +67,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -757,14 +757,24 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
 # ═══════════════════════════════════════════════════════════════════════════════
 # Comparativo y folio
 # ═══════════════════════════════════════════════════════════════════════════════
+def _ambos(a: str, b: str) -> Tuple[str, str]:
+    """Si el valor es igual en install y rollback → 'AMBOS: v' / '—';
+    si difiere → (a, b)."""
+    a, b = a or "—", b or "—"
+    return (f"AMBOS: {a}", "—") if a == b else (a, b)
+
+
 def build_checks(install: Dict[str, Any],
                  rollback: Optional[Dict[str, Any]]) -> List[Dict]:
     """Checks de coherencia install↔rollback."""
     checks = []
+    rb = rollback or {}
+    pr_i, pr_r = _ambos(_short(install["pr_commit"]),
+                        _short(rb.get("pr_commit", "")))
     checks.append({
         "check": "Build ↔ commit del PR (git source)",
-        "install": _short(install["pr_commit"]) or "—",
-        "rollback": _short((rollback or {}).get("pr_commit", "")) or "—",
+        "install": pr_i,
+        "rollback": pr_r,
         "ok": install["pr_matches"] if install["pr_commit"]
         else None,
         "detail": (f"install PR #{install['pr'].get('pullRequestId')}"
@@ -783,9 +793,10 @@ def build_checks(install: Dict[str, Any],
         props_detail += " — folder sin commits (¿nombre incorrecto?)"
     checks.append({
         "check": "commitPropertiesRollback == folder properties",
-        "install": _short(install["props_commit_var"]) or "—",
-        "rollback": _short((rollback or {}).get("props_commit_var",
-                                               "")) or "—",
+        "install": _ambos(_short(install["props_commit_var"]),
+                          _short(rb.get("props_commit_var", "")))[0],
+        "rollback": _ambos(_short(install["props_commit_var"]),
+                           _short(rb.get("props_commit_var", "")))[1],
         "ok": props_ok,
         "detail": props_detail})
     rid_ok = None
@@ -809,8 +820,10 @@ def build_checks(install: Dict[str, Any],
         img_detail += " — imagen de producción no detectada en el log"
     checks.append({
         "check": "Imagen install ≠ producción (cambio real)",
-        "install": install["install_image"] or "—",
-        "rollback": (rollback or {}).get("install_image", "") or "—",
+        "install": _ambos(install["install_image"],
+                          rb.get("install_image", ""))[0],
+        "rollback": _ambos(install["install_image"],
+                           rb.get("install_image", ""))[1],
         "ok": img_ok,
         "detail": img_detail})
     return checks
