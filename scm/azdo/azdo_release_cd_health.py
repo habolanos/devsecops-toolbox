@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.33"
+__version__ = "1.8.34"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1405,11 +1405,18 @@ def main():
         print(f"\nTotal: {total_defs} | Score promedio: {avg}/100 | Tiempo: {elapsed:.2f}s\n")
 
     # ── 6. Exportar ───────────────────────────────────────────────────────────
+    # stages/stages_norm como "develop / QA / Production" (formato del
+    # inventory CD), no repr de lista Python en Excel
+    exp_rows = [{**r,
+                 "stages": " / ".join(r["stages"]),
+                 "stages_norm": " / ".join(r["stages_norm"])}
+                for r in rows]
     # ── Salida por defecto: JSON + HTML en outcome/ ──
     try:
         from azdo_default_export import write_default_reports
         write_default_reports(
-            "release_cd_health", globals().get("__version__", "1.0.0"), rows,
+            "release_cd_health", globals().get("__version__", "1.0.0"),
+            exp_rows,
             organization=args.org, project=args.project,
             title="Release CD Health", excel=True)
     except Exception:
@@ -1417,7 +1424,7 @@ def main():
 
     if args.output:
         fp = export_results(
-            rows, args.output,
+            exp_rows, args.output,
             os.path.dirname(os.path.abspath(__file__)),
             tz_name,
             org=args.org, project=args.project,
