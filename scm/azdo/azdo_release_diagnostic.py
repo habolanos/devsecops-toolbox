@@ -69,7 +69,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.28"
+__version__ = "1.0.29"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -815,20 +815,10 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         fcs = folder_commits(org, project, props_repo_id,
                              f"/{component}", props_branch, headers,
                              args.debug)
-        # el elegido: el commit de properties del propio release
-        # (lo que realmente se desplegó); fallback folder-latest /
-        # por-fecha según lado
-        fpick = None
-        if pa["commit"]:
-            fpick = next((c for c in fcs
-                          if c.get("commitId", "").lower()
-                          == pa["commit"].lower()), None) \
-                or {"commitId": pa["commit"],
-                    "author": {"name": "(commit del artifact)"},
-                    "committer": {"date": ""}}
-        else:
-            fpick = (commit_matching_date(fcs, out["created_on"])
-                     if props_by_date else (fcs[0] if fcs else None))
+        # el elegido: install → último commit del folder (lo que el
+        # deploy checkout hoy); rollback → el vigente a su fecha.
+        fpick = (commit_matching_date(fcs, out["created_on"])
+                 if props_by_date else (fcs[0] if fcs else None))
         if fpick:
             out["props_folder_commit"] = fpick.get("commitId", "")
         commits, pick, label = fcs, fpick, f"/{component}"
@@ -934,6 +924,21 @@ def build_checks(install: Dict[str, Any],
                            _short(rb.get("props_commit_var", "")))[1],
         "ok": props_ok,
         "detail": props_detail})
+    # contraste del log del Validator (task 'Obtener commit Properties')
+    # vs el último commit del folder — lo que el Validator registró
+    log_i, log_r = _ambos(_short(install.get("props_commit_log", "")),
+                          _short(rb.get("props_commit_log", "")))
+    log_ok = None
+    if install.get("props_commit_log") and install["props_folder_commit"]:
+        log_ok = (install["props_commit_log"].lower()
+                  == install["props_folder_commit"].lower())
+    checks.append({
+        "check": "commit properties (log Validator) == folder",
+        "install": log_i,
+        "rollback": log_r,
+        "ok": log_ok,
+        "detail": "commit que el Validator registró vs último del "
+                  "folder"})
     rid_ok = None
     if install["relase_id_var"] and rollback:
         rid_ok = relase_id_matches_rollback(
