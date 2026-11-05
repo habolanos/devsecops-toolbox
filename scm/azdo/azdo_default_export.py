@@ -24,7 +24,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 # Asegurar que scm/ (padre de azdo/) está en sys.path para importar
 # export_manager / utils cuando el script se ejecuta directo.
@@ -79,9 +79,15 @@ def _html_report(tool_name: str, version: str, rows: List[Dict],
         f'<div class="stat-k">{esc(k)}</div></div>'
         for k, v in sum_items.items())
     head_html = "".join(f"<th>{esc(c)}</th>" for c in columns)
-    body_html = "".join(
-        "<tr>" + "".join(f"<td>{esc(row.get(c))}</td>" for c in columns) + "</tr>"
-        for row in rows)
+    # Data embebida como JSON + render paginado en el cliente — antes se
+    # volcaban TODAS las filas como <tr> en el DOM y el navegador colapsaba
+    # con listados grandes (cientos de defs × ~20 columnas).
+    data_js = json.dumps(
+        [[("" if row.get(c) is None else str(row.get(c)))
+          for c in columns] for row in rows],
+        ensure_ascii=False, default=str)
+    data_js = (data_js.replace("<", "\\u003c").replace(">", "\\u003e")
+               .replace("&", "\\u0026"))
     page_title = esc(title)
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
@@ -115,13 +121,40 @@ padding:8px 12px;width:320px;margin-bottom:12px;font-size:13px}}
 <div class="sub">Generado automaticamente por DevSecOps Toolbox - {esc(tool_name)} v{esc(version)}</div>
 <div class="meta">{meta_html}</div>
 <div class="stats">{sum_html}</div>
+.pager{{display:flex;gap:8px;align-items:center;margin:10px 0;font-size:12px;
+color:var(--dim)}}
+.pager button{{background:var(--card);border:1px solid var(--line);color:var(--txt);
+border-radius:6px;padding:4px 12px;cursor:pointer}}
+.pager button:disabled{{opacity:.4;cursor:default}}
+</style></head><body>
+<h1>{page_title}</h1>
+<div class="sub">Generado automaticamente por DevSecOps Toolbox - {esc(tool_name)} v{esc(version)}</div>
+<div class="meta">{meta_html}</div>
+<div class="stats">{sum_html}</div>
 <input id="q" placeholder="Filtrar..." onkeyup="filtrar()">
+<div class="pager">
+<button onclick="page(-1)" id="prev">◀ Ant</button>
+<span id="pinfo"></span>
+<button onclick="page(1)" id="next">Sig ▶</button>
+</div>
 <div class="wrap"><table id="t"><thead><tr>{head_html}</tr></thead>
-<tbody>{body_html}</tbody></table></div>
+<tbody id="tb"></tbody></table></div>
 <script>
-function filtrar(){{const q=document.getElementById('q').value.toLowerCase();
-document.querySelectorAll('#t tbody tr').forEach(r=>{{
-r.style.display=r.textContent.toLowerCase().includes(q)?'':'none';}});}}
+const DATA={data_js};const PAGE=200;let cur=0,view=DATA;
+const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function render(){{
+const q=document.getElementById('q').value.toLowerCase();
+view=q?DATA.filter(r=>r.join(' ').toLowerCase().includes(q)):DATA;
+const pages=Math.max(1,Math.ceil(view.length/PAGE));
+cur=Math.min(cur,pages-1);
+const rows=view.slice(cur*PAGE,(cur+1)*PAGE);
+document.getElementById('tb').innerHTML=rows.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('');
+document.getElementById('pinfo').textContent=`Pagina ${{cur+1}}/${{pages}} — ${{view.length}} filas`;
+document.getElementById('prev').disabled=cur===0;
+document.getElementById('next').disabled=cur>=pages-1;}}
+function filtrar(){{cur=0;render();}}
+function page(d){{cur+=d;render();}}
+render();
 </script></body></html>"""
 
 

@@ -39,8 +39,10 @@ class TestWriteDefaultReports:
         out = write_default_reports(
             "t", "1", [{"v": "<b>x</b>"}], quiet=True)
         content = Path(out["html"]).read_text(encoding="utf-8")
-        assert "&lt;b&gt;" in content
+        # las filas van embebidas como JSON con < > & escapados a unicode
+        assert "\\u003cb\\u003e" in content
         assert "function filtrar" in content
+        assert "const DATA=" in content
 
     def test_non_serializable_values(self, outdir):
         from datetime import datetime
