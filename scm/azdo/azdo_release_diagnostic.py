@@ -69,7 +69,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.27"
+__version__ = "1.0.28"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -730,6 +730,9 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
         "props_artifact_commit": git_artifact_info(
             next((a for a in git_arts if is_properties_artifact(a)),
                  None))["commit"],
+        "props_art": git_artifact_info(
+            next((a for a in git_arts if is_properties_artifact(a)),
+                 None)),
         "props_commit_var": vars_.get("COMMITPROPERTIESROLLBACK", ""),
         "relase_id_var": vars_.get("RELEASE_ID")
         or vars_.get("RELASE_ID") or "",
@@ -794,20 +797,40 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
     out.update(vinfo)
 
     # ── Properties repo: folder <componente> ──
+    # Fuente de verdad: el artifact PROPERTIES del propio release
+    # (repo + rama configurados en el CD + commit desplegado), no el
+    # repo autodetectado ni la rama por defecto.
     out["props_folder_commit"] = ""
     out["props_folder_path"] = component
     out["created_on"] = detail.get("createdOn", "")
-    if props_repo:
-        # check: commit del folder (var vs folder, nivel folder)
-        fcs = folder_commits(org, project, props_repo.get("id", ""),
-                             f"/{component}", args.branch, headers,
+    pa = out["props_art"]
+    props_repo_id = pa["repo_id"] or (props_repo or {}).get("id", "")
+    props_branch = (pa["branch"].rsplit("/", 1)[-1]
+                    or args.branch)
+    props_repo_name = (pa["repo_name"]
+                       or (props_repo or {}).get("name", ""))
+    out["props_repo_name"] = props_repo_name
+    out["props_branch"] = props_branch
+    if props_repo_id:
+        fcs = folder_commits(org, project, props_repo_id,
+                             f"/{component}", props_branch, headers,
                              args.debug)
-        fpick = (commit_matching_date(fcs, out["created_on"])
-                 if props_by_date else (fcs[0] if fcs else None))
+        # el elegido: el commit de properties del propio release
+        # (lo que realmente se desplegó); fallback folder-latest /
+        # por-fecha según lado
+        fpick = None
+        if pa["commit"]:
+            fpick = next((c for c in fcs
+                          if c.get("commitId", "").lower()
+                          == pa["commit"].lower()), None) \
+                or {"commitId": pa["commit"],
+                    "author": {"name": "(commit del artifact)"},
+                    "committer": {"date": ""}}
+        else:
+            fpick = (commit_matching_date(fcs, out["created_on"])
+                     if props_by_date else (fcs[0] if fcs else None))
         if fpick:
             out["props_folder_commit"] = fpick.get("commitId", "")
-        # listado: solo commits que tocan el folder /<componente>;
-        # install → el último; rollback → el vigente a su fecha
         commits, pick, label = fcs, fpick, f"/{component}"
         out["props_list_path"] = label
         out["props_list"] = [{
@@ -819,6 +842,14 @@ def diagnose_release(org: str, project: str, rel: Dict, headers,
             "picked": bool(pick and c.get("commitId")
                            == pick.get("commitId"))}
             for c in commits[:15]]
+        # si el commit elegido (del artifact) no está en el top-15 del
+        # folder, se agrega una fila propia al inicio
+        if pick and not any(c["picked"] for c in out["props_list"]):
+            out["props_list"].insert(0, {
+                "commitId": pick.get("commitId", ""),
+                "author": "(commit del artifact)",
+                "date": "",
+                "picked": True})
     else:
         out["props_list"], out["props_list_path"] = [], ""
     # props_commit efectivo: variable → log → folder
@@ -1048,7 +1079,12 @@ def print_props_commits(install: Dict[str, Any],
     """Listado de commits del folder /<componente> en repo properties,
     fusionado por commitId: el mismo commit en install y rollback →
     una sola fila con LADO=AMBOS."""
-    _print("\n[bold]═══ Listado Properties de componente ═══[/]")
+    repo_lbl = ""
+    if install.get("props_repo_name"):
+        repo_lbl = (f" — {install['props_repo_name']}"
+                    f"@{install.get('props_branch', '')}")
+    _print(f"\n[bold]═══ Listado Properties de componente"
+           f"{repo_lbl} ═══[/]")
 
     # merge por commitId: {cid: {commit, author, date, lado, picked_lados}}
     merged: Dict[str, Dict] = {}
@@ -1475,7 +1511,11 @@ def build_html_report(install: Dict[str, Any],
          "ELEGIDO"],
         prow or [["—", "—", "—", "—", "—", "—", "sin PRs"]]))
 
-    titles = ["Snapshot de stages", "Listado Properties de componente",
+    titles = ["Snapshot de stages",
+              (f"Listado Properties de componente"
+               + (f" — {install['props_repo_name']}"
+                  f"@{install.get('props_branch', '')}"
+                  if install.get("props_repo_name") else "")),
               "Comparativo Install ↔ Rollback",
               "Comparativo Variables Install ↔ Rollback",
               "Comparativo Tasks Install ↔ Rollback",
