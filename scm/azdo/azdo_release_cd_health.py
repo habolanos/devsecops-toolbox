@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1411,7 +1411,7 @@ def main():
         write_default_reports(
             "release_cd_health", globals().get("__version__", "1.0.0"), rows,
             organization=args.org, project=args.project,
-            title="Release CD Health")
+            title="Release CD Health", excel=True)
     except Exception:
         pass
 

@@ -1621,6 +1621,7 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-11-05 | 1.9.59 | **Opción 3: fix Excel faltante** — `write_default_reports` sin `excel=True` → no salía `.xlsx`; restaurado por defecto en `outcome/` | `scm/azdo/azdo_release_cd_health.py` (v1.8.33) |
 | 2026-11-03 | 1.9.41 | **Opción 50: listado sin duplicados** — merge por commitId → `LADO=AMBOS`, `◀ AMBOS/INSTALL/ROLLBACK` según lado elegido | `scm/azdo/azdo_release_diagnostic.py` (v1.0.10) |
 | 2026-11-03 | 1.9.40 | **Opción 50: tablas sin truncado** — `overflow="fold"`: URLs de imagen y tokens largos se envuelven completos, sin `…` | `scm/azdo/azdo_release_diagnostic.py` (v1.0.9) |
 | 2026-11-03 | 1.9.39 | **Opción 50: fix imágenes del Validator** — 2 pasadas en aggregate: patrones explícitos (`Imagen nueva/actual`) antes que el fallback por hosts; evitaba que un task con la imagen actual reportara falsamente install==prod | `scm/azdo/azdo_release_diagnostic.py` (v1.0.8) |

@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.58`** — 2026-11-03
+**`1.9.59`** — 2026-11-03
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-05 | **1.9.59** | **Opción 3: fix Excel faltante** — `write_default_reports` se llamaba sin `excel=True` → solo generaba JSON+HTML; restaurado el `.xlsx` por defecto en `outcome/`. azdo_release_cd_health v1.8.33 | `scm/azdo/azdo_release_cd_health.py`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.42** | Opcion 50: comparativo de variables — nueva seccion "Comparativo Variables Install↔Rollback" con todas las variables del release por lado, AMBOS cuando coinciden y resaltado de diferencias. v1.0.11 |
 | 2026-11-03 | **1.9.41** | **Opción 50: listado properties sin duplicados** — merge por commitId: el mismo commit en install y rollback → una sola fila `LADO=AMBOS` y `◀ AMBOS`/`◀ INSTALL`/`◀ ROLLBACK` según en qué lado(s) fue elegido. azdo_release_diagnostic v1.0.10. Tests: 28 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-03 | **1.9.40** | **Opción 50: tablas sin truncado** — columnas con `overflow="fold"` en listado properties y comparativo: la URL de imagen y tokens largos se envuelven en vez de cortarse con `…`. azdo_release_diagnostic v1.0.9. Tests: 28 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
