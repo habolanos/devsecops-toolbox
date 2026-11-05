@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.34"
+__version__ = "1.8.35"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1409,7 +1409,11 @@ def main():
     # inventory CD), no repr de lista Python en Excel
     exp_rows = [{**r,
                  "stages": " / ".join(r["stages"]),
-                 "stages_norm": " / ".join(r["stages_norm"])}
+                 "stages_norm": " / ".join(r["stages_norm"]),
+                 "stages_raw": json.dumps(r["stages"],
+                                          ensure_ascii=False),
+                 "stages_norm_raw": json.dumps(r["stages_norm"],
+                                               ensure_ascii=False)}
                 for r in rows]
     # ── Salida por defecto: JSON + HTML en outcome/ ──
     try:
