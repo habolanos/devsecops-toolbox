@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.36"
+__version__ = "1.8.37"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -148,6 +148,9 @@ def get_args() -> argparse.Namespace:
                    help="Ordenar tabla por (default: score desc)")
     p.add_argument("--debug", action="store_true",
                    help="Mostrar errores HTTP detallados")
+    p.add_argument("--stage-history", action="store_true",
+                   help="Resolver fecha de inserción de SCM Inspection/"
+                        "Validator vía historial de revisiones (lento)")
     p.add_argument("--diagram", action="store_true",
                    help="Imprime diagrama ASCII de stages por pipeline en consola")
     return p.parse_args()
@@ -282,6 +285,40 @@ def stage_profile(definition: Dict, stage_name: str) -> Dict[str, Any]:
     tasks = env_workflow_tasks(env) if env else []
     return {"present": bool(env), "tasks": len(tasks),
             "sha": tasks_sha(tasks) if tasks else ""}
+
+
+def get_def_revisions(org, project, def_id, headers,
+                      debug) -> List[Dict]:
+    """Historial de revisiones de la definición CD."""
+    url = (f"{vsrm(org)}/{quote(project, safe='')}"
+           f"/_apis/release/definitions/{def_id}/revisions")
+    data = api_get(url, headers, {"api-version": API_VERSION}, debug)
+    return (data or {}).get("value", []) if data else []
+
+
+def get_def_at_revision(org, project, def_id, rev, headers,
+                        debug) -> Optional[Dict]:
+    """Snapshot de la definición en una revisión puntual."""
+    url = (f"{vsrm(org)}/{quote(project, safe='')}"
+           f"/_apis/release/definitions/{def_id}")
+    return api_get(url, headers, {"api-version": API_VERSION,
+                                  "revision": rev}, debug)
+
+
+def stage_since(org, project, def_id, target, headers, debug,
+                max_rev: int = 100) -> str:
+    """Fecha de inserción del stage: primera revisión (más vieja→nueva)
+    cuyo snapshot contiene el stage. Hasta `max_rev` revisiones."""
+    revs = get_def_revisions(org, project, def_id, headers, debug)
+    if not revs:
+        return ""
+    revs = sorted(revs, key=lambda r: r.get("revision", 0))[:max_rev]
+    for rev in revs:
+        snap = get_def_at_revision(org, project, def_id,
+                                   rev.get("revision"), headers, debug)
+        if snap and stage_env_by_name(snap, target):
+            return (rev.get("changedDate") or "")[:10]
+    return ""
 
 
 def detect_prod_stage(stages: List[Dict]) -> Optional[str]:
@@ -535,6 +572,7 @@ def process_pipeline(
     org: str, project: str,
     headers: Dict,
     top: int, debug: bool,
+    stage_history: bool = False,
 ) -> Optional[Dict]:
     def_id = summary["id"]
     name   = summary.get("name", f"pipeline-{def_id}")
@@ -602,6 +640,12 @@ def process_pipeline(
         "validator":        "✅" if val["present"] else "—",
         "validator_tasks":  val["tasks"],
         "validator_sha":    val["sha"],
+        "scm_insp_since":   (stage_since(
+            org, project, def_id, "SCM Inspection", headers, debug)
+            if stage_history and scm["present"] else "—"),
+        "validator_since":  (stage_since(
+            org, project, def_id, "Validator", headers, debug)
+            if stage_history and val["present"] else "—"),
         "is_disabled":      is_disabled,
     }
 
@@ -1400,7 +1444,9 @@ def main():
                     prog.advance(task)
     else:
         for s in summaries:
-            r = process_pipeline(s, args.org, args.project, headers, args.top, args.debug)
+            r = process_pipeline(s, args.org, args.project, headers,
+                                 args.top, args.debug,
+                                 getattr(args, "stage_history", False))
             if r:
                 rows.append(r)
 
