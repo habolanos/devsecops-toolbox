@@ -69,7 +69,7 @@ try:
 except ImportError:
     requests = None
 
-__version__ = "1.0.29"
+__version__ = "1.0.30"
 __author__ = "Harold Adrian"
 
 API_VERSION = "7.1"
@@ -1099,29 +1099,33 @@ def print_props_commits(install: Dict[str, Any],
             continue
         path = r.get("props_list_path") \
             or f"/{r['props_folder_path']}"
+        log_c = (r.get("props_commit_log")
+                 or r.get("props_commit_var") or "").lower()
         for c in r.get("props_list") or []:
             cid = c["commitId"]
             if cid not in merged:
                 merged[cid] = {"commitId": cid, "path": path,
                                "author": c["author"], "date": c["date"],
-                               "lados": [], "picked": []}
+                               "lados": [], "picked": [],
+                               "elegido": []}
                 order.append(cid)
             merged[cid]["lados"].append(tag)
             if c["picked"]:
                 merged[cid]["picked"].append(tag)
+            if cid and cid.lower() == log_c:
+                merged[cid]["elegido"].append(tag)
 
     rows = []
     for cid in order:
         m = merged[cid]
         lado = "AMBOS" if len(set(m["lados"])) > 1 else m["lados"][0]
-        if m["picked"]:
-            elegido = ("◀ AMBOS" if len(set(m["picked"])) > 1
-                       else f"◀ {m['picked'][0]}")
-            picked = True
-        else:
-            elegido, picked = "", False
+        real = ("◀ AMBOS" if len(set(m["picked"])) > 1
+                else (f"◀ {m['picked'][0]}" if m["picked"] else ""))
+        elegido = ("◀ AMBOS" if len(set(m["elegido"])) > 1
+                   else (f"◀ {m['elegido'][0]}" if m["elegido"] else ""))
         rows.append({**m, "lado": lado, "elegido": elegido,
-                     "picked": picked})
+                     "real": real,
+                     "picked": bool(m["picked"] or m["elegido"])})
 
     if not rows and not (install.get("props_list")
                          or (rollback or {}).get("props_list")):
@@ -1129,31 +1133,34 @@ def print_props_commits(install: Dict[str, Any],
 
     if RICH and console:
         t = Table(box=box.ROUNDED)
-        for col in ("LADO", "PATH", "COMMIT", "USUARIO", "FECHA", "ELEGIDO"):
+        for col in ("LADO", "PATH", "COMMIT", "USUARIO", "FECHA",
+                    "ELEGIDO", "REAL"):
             t.add_column(col, overflow="fold")
         for tag, r in (("INSTALL", install), ("ROLLBACK", rollback)):
             if r and not (r.get("props_list") or []):
                 t.add_row(tag, r.get("props_list_path") or
                           f"/{r['props_folder_path']}",
-                          "—", "—", "—", "[dim]sin commits[/]")
+                          "—", "—", "—", "[dim]sin commits[/]", "")
         for c in rows:
             if c["picked"]:
                 t.add_row(f"[bold]{c['lado']}[/]", f"[bold]{c['path']}[/]",
                           f"[bold green]{c['commitId']}[/]",
                           f"[bold green]{c['author']}[/]",
                           f"[bold green]{c['date']}[/]",
-                          f"[green]{c['elegido']}[/]")
+                          f"[yellow]{c['elegido']}[/]",
+                          f"[green]{c['real']}[/]")
             else:
                 t.add_row(f"[dim]{c['lado']}[/]", c["path"],
                           f"[dim]{c['commitId']}[/]",
                           f"[dim]{c['author']}[/]", f"[dim]{c['date']}[/]",
-                          "")
+                          "", "")
         console.print(t)
     else:
         for c in rows:
-            mark = f"  {c['elegido']}" if c["picked"] else ""
+            marks = (f"  {c['elegido']}" if c["elegido"] else "") \
+                    + (f"  {c['real']}" if c["real"] else "")
             print(f"  [{c['lado']}] {c['path']} "
-                  f"{c['commitId']} {c['author']} {c['date']}{mark}")
+                  f"{c['commitId']} {c['author']} {c['date']}{marks}")
 
 
 def print_vars_compare(install: Dict[str, Any],
@@ -1407,10 +1414,13 @@ def build_html_report(install: Dict[str, Any],
             continue
         path = r.get("props_list_path") \
             or f"/{r['props_folder_path']}"
+        log_c = (r.get("props_commit_log")
+                 or r.get("props_commit_var") or "").lower()
         for c in r.get("props_list") or []:
             cid = c["commitId"]
             if cid not in merged:
                 merged[cid] = {"lados": [], "picked": [],
+                               "elegido": [],
                                **{k: c[k] for k in
                                   ("commitId", "author", "date")},
                                "path": path}
@@ -1418,20 +1428,27 @@ def build_html_report(install: Dict[str, Any],
             merged[cid]["lados"].append(tag)
             if c["picked"]:
                 merged[cid]["picked"].append(tag)
+            if cid and cid.lower() == log_c:
+                merged[cid]["elegido"].append(tag)
     prows = []
     for cid in order:
         m = merged[cid]
         lado = "AMBOS" if len(set(m["lados"])) > 1 else m["lados"][0]
-        el = ("◀ AMBOS" if len(set(m["picked"])) > 1
-              else (f"◀ {m['picked'][0]}" if m["picked"] else ""))
+        real = ("◀ AMBOS" if len(set(m["picked"])) > 1
+                else (f"◀ {m['picked'][0]}" if m["picked"] else ""))
+        el = ("◀ AMBOS" if len(set(m["elegido"])) > 1
+              else (f"◀ {m['elegido'][0]}" if m["elegido"] else ""))
         prows.append(([lado, esc(m["path"]),
                        f'<code>{esc(m["commitId"])}</code>',
                        esc(m["author"]), esc(m["date"]),
                        f'<span class="ok">{esc(el)}</span>' if el
-                       else ""], bool(m["picked"])))
+                       else "",
+                       f'<span class="ok">{esc(real)}</span>' if real
+                       else ""],
+                      bool(m["picked"] or m["elegido"])))
     secs.append(table(
-        ["LADO", "PATH", "COMMIT", "USUARIO", "FECHA", "ELEGIDO"],
-        prows or [["—", "—", "—", "—", "—", "sin commits"]]))
+        ["LADO", "PATH", "COMMIT", "USUARIO", "FECHA", "ELEGIDO", "REAL"],
+        prows or [["—", "—", "—", "—", "—", "sin commits", "—"]]))
 
     crow = []
     for c in checks:
