@@ -1621,6 +1621,10 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-11-05 | 1.9.64 | **Opción 50: properties del artifact + contraste Validator** — repo/rama del propio artifact de properties (no autodetect/master fijo); install elegido = último commit folder, rollback = por fecha; check "commit properties (log Validator) == folder"; header `repo@rama` | `scm/azdo/azdo_release_diagnostic.py` (v1.0.29) |
+| 2026-11-05 | 1.9.63 | **Opción 50: variables Production + tasks/PRs + folio PR** — comparativo variables con scope Production; comparativo Tasks Validator/Production por contenido (IGUAL/DIFIERE con diff rojo); comparativo PRs a master (AMBOS, URL, elegido); folio con URL del PR; filas Release y Artifact Build | `scm/azdo/azdo_release_diagnostic.py` (v1.0.12–v1.0.24) |
+| 2026-11-05 | 1.9.62 | **Opción 3: columnas raw + HTML paginado** — `stages_raw`/`stages_norm_raw` preservan el valor crudo; `_html_report` pagina 200 filas/página cliente-side — ya no colapsa el navegador | `scm/azdo/azdo_release_cd_health.py` (v1.8.35), `scm/azdo/azdo_default_export.py` (v1.0.3) |
+| 2026-11-05 | 1.9.61 | **Opción 3: stages en formato inventory** — `stages`/`stages_norm` exportados `develop / QA` en vez de repr de lista | `scm/azdo/azdo_release_cd_health.py` (v1.8.34) |
 | 2026-11-05 | 1.9.59 | **Opción 3: fix Excel faltante** — `write_default_reports` sin `excel=True` → no salía `.xlsx`; restaurado por defecto en `outcome/` | `scm/azdo/azdo_release_cd_health.py` (v1.8.33) |
 | 2026-11-03 | 1.9.41 | **Opción 50: listado sin duplicados** — merge por commitId → `LADO=AMBOS`, `◀ AMBOS/INSTALL/ROLLBACK` según lado elegido | `scm/azdo/azdo_release_diagnostic.py` (v1.0.10) |
 | 2026-11-03 | 1.9.40 | **Opción 50: tablas sin truncado** — `overflow="fold"`: URLs de imagen y tokens largos se envuelven completos, sin `…` | `scm/azdo/azdo_release_diagnostic.py` (v1.0.9) |
