@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.35"
+__version__ = "1.8.36"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -245,6 +245,43 @@ def normalize_name(name: str) -> str:
 
 def normalize_stages_tuple(names: List[str]) -> Tuple[str, ...]:
     return tuple(normalize_name(n) for n in names)
+
+
+def stage_env_by_name(definition: Dict, target: str) -> Optional[Dict]:
+    """Environment del stage por nombre normalizado."""
+    t = normalize_name(target)
+    for env in definition.get("environments", []) or []:
+        if normalize_name(env.get("name", "")) == t:
+            return env
+    return None
+
+
+def env_workflow_tasks(env: Optional[Dict]) -> List[Dict]:
+    """Tasks del stage (deployPhases[].workflowTasks[])."""
+    out = []
+    for ph in (env or {}).get("deployPhases", []) or []:
+        out.extend(ph.get("workflowTasks", []) or [])
+    return out
+
+
+def tasks_sha(tasks: List[Dict]) -> str:
+    """Sha256(8) del contenido normalizado de las tasks — mismo sha =
+    misma 'versión' del stage (taskId/nombre + version + inputs)."""
+    import hashlib
+    norm = [{"name": t.get("name") or t.get("taskId", ""),
+             "version": str(t.get("version", "")),
+             "inputs": t.get("inputs") or {}}
+            for t in tasks]
+    blob = json.dumps(norm, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:8]
+
+
+def stage_profile(definition: Dict, stage_name: str) -> Dict[str, Any]:
+    """Perfil del stage: presente?, n tasks, sha de contenido."""
+    env = stage_env_by_name(definition, stage_name)
+    tasks = env_workflow_tasks(env) if env else []
+    return {"present": bool(env), "tasks": len(tasks),
+            "sha": tasks_sha(tasks) if tasks else ""}
 
 
 def detect_prod_stage(stages: List[Dict]) -> Optional[str]:
@@ -532,6 +569,8 @@ def process_pipeline(
     r_emoji, r_label = get_rating(score_data["total"], rel_info["prod_ever_deployed"])
 
     is_disabled = bool(detail.get("isDisabled", False))
+    scm = stage_profile(detail, "SCM Inspection")
+    val = stage_profile(detail, "Validator")
 
     return {
         "id":               def_id,
@@ -557,6 +596,12 @@ def process_pipeline(
         "rating_label":     r_label,
         "consistency":      CONS_UNIQUE,   # se completa en el paso global
         "cons_detail":      "",
+        "scm_inspection":   "✅" if scm["present"] else "—",
+        "scm_insp_tasks":   scm["tasks"],
+        "scm_insp_sha":     scm["sha"],
+        "validator":        "✅" if val["present"] else "—",
+        "validator_tasks":  val["tasks"],
+        "validator_sha":    val["sha"],
         "is_disabled":      is_disabled,
     }
 
