@@ -250,6 +250,9 @@ def normalize_stages_tuple(names: List[str]) -> Tuple[str, ...]:
     return tuple(normalize_name(n) for n in names)
 
 
+_DEBUG_ONCE = [True]
+
+
 def stage_env_by_name(definition: Dict, target: str) -> Optional[Dict]:
     """Environment del stage por nombre normalizado."""
     t = normalize_name(target)
@@ -288,6 +291,10 @@ def stage_profile(definition: Dict, stage_name: str) -> Dict[str, Any]:
     if env:
         created = (env.get("createdOn") or env.get("modifiedOn")
                    or "")[:10]
+        if not created and _DEBUG_ONCE[0]:
+            print(f"[DEBUG] env '{stage_name}' keys: "
+                  f"{sorted(env.keys())}")
+            _DEBUG_ONCE[0] = False
     return {"present": bool(env), "tasks": len(tasks),
             "sha": tasks_sha(tasks) if tasks else "",
             "created": created}
