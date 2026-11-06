@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.44"
+__version__ = "1.8.45"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -148,9 +148,6 @@ def get_args() -> argparse.Namespace:
                    help="Ordenar tabla por (default: score desc)")
     p.add_argument("--debug", action="store_true",
                    help="Mostrar errores HTTP detallados")
-    p.add_argument("--stage-history", action="store_true",
-                   help="Resolver fecha de inserción de SCM Inspection/"
-                        "Validator vía historial de revisiones (lento)")
     p.add_argument("--diagram", action="store_true",
                    help="Imprime diagrama ASCII de stages por pipeline en consola")
     return p.parse_args()
@@ -281,80 +278,12 @@ def tasks_sha(tasks: List[Dict]) -> str:
 
 def stage_profile(definition: Dict, stage_name: str) -> Dict[str, Any]:
     """Perfil del stage: presente?, n tasks, sha de contenido,
-    createdOn del environment (fecha de inserción del stage)."""
+    sha de contenido."""
     env = stage_env_by_name(definition, stage_name)
     tasks = env_workflow_tasks(env) if env else []
-    created = ""
-    if env:
-        created = (env.get("createdOn") or env.get("modifiedOn")
-                   or "")[:10]
     return {"present": bool(env), "tasks": len(tasks),
-            "sha": tasks_sha(tasks) if tasks else "",
-            "created": created}
+            "sha": tasks_sha(tasks) if tasks else ""}
 
-
-def get_def_revisions(org, project, def_id, headers,
-                      debug) -> List[Dict]:
-    """Historial de revisiones de la definición CD.
-    El endpoint devuelve un ARRAY plano (no {value:[]})."""
-    url = (f"{vsrm_base(org)}/{quote(project, safe='')}"
-           f"/_apis/release/definitions/{def_id}/revisions")
-    data = api_get(url, headers, {"api-version": API_VERSION}, debug)
-    if isinstance(data, list):
-        return data
-    return (data or {}).get("value", []) if data else []
-
-
-def get_def_at_revision(org, project, def_id, rev, headers,
-                        debug) -> Optional[Dict]:
-    """Snapshot de la definición en una revisión puntual."""
-    url = (f"{vsrm_base(org)}/{quote(project, safe='')}"
-           f"/_apis/release/definitions/{def_id}")
-    return api_get(url, headers, {"api-version": API_VERSION,
-                                  "revision": rev}, debug)
-
-
-def stage_since(org, project, def_id, target, headers, debug,
-                max_rev: int = 300) -> str:
-    """Fecha de inserción del stage: búsqueda binaria sobre revisiones
-    (snapshot por apiUrl, fallback ?revision=)."""
-    revs = get_def_revisions(org, project, def_id, headers, debug)
-    if not revs:
-        if debug:
-            print(f"[DEBUG] stage_since: sin revisiones def {def_id}")
-        return ""
-    revs = sorted(revs, key=lambda r: r.get("revision", 0))[:max_rev]
-    if debug:
-        print(f"[DEBUG] stage_since '{target}': "
-              f"{len(revs)} revisiones def {def_id}")
-
-    def snap(i):
-        url = revs[i].get("apiUrl") or revs[i].get("detailsUrl")
-        if url:
-            return api_get(url, headers, {"api-version": API_VERSION},
-                           debug)
-        return get_def_at_revision(org, project, def_id,
-                                   revs[i].get("revision"),
-                                   headers, debug)
-
-    def has_stage(i):
-        s = snap(i)
-        return bool(s and stage_env_by_name(s, target))
-
-    # si ya existe en la revisión más vieja conocida → esa fecha
-    if has_stage(0):
-        return (revs[0].get("changedDate") or "")[:10]
-    # si ni la más nueva lo tiene → no encontrado en el historial
-    if not has_stage(len(revs) - 1):
-        return ""
-    lo, hi = 0, len(revs) - 1
-    while hi - lo > 1:
-        mid = (lo + hi) // 2
-        if has_stage(mid):
-            hi = mid
-        else:
-            lo = mid
-    return (revs[hi].get("changedDate") or "")[:10]
 
 
 def detect_prod_stage(stages: List[Dict]) -> Optional[str]:
@@ -608,7 +537,6 @@ def process_pipeline(
     org: str, project: str,
     headers: Dict,
     top: int, debug: bool,
-    stage_history: bool = False,
 ) -> Optional[Dict]:
     def_id = summary["id"]
     name   = summary.get("name", f"pipeline-{def_id}")
@@ -646,16 +574,9 @@ def process_pipeline(
     scm = stage_profile(detail, "SCM Inspection")
     val = stage_profile(detail, "Validator")
 
-    def _since(target: str, prof: Dict) -> str:
-        if prof["created"]:
-            return prof["created"]
-        if not (stage_history and prof["present"]):
-            return "—"
-        try:
-            return stage_since(org, project, def_id, target,
-                               headers, debug) or "—"
-        except Exception:
-            return "—"
+    is_disabled = bool(detail.get("isDisabled", False))
+    scm = stage_profile(detail, "SCM Inspection")
+    val = stage_profile(detail, "Validator")
 
     return {
         "id":               def_id,
@@ -687,8 +608,6 @@ def process_pipeline(
         "validator":        "✅" if val["present"] else "—",
         "validator_tasks":  val["tasks"],
         "validator_sha":    val["sha"],
-        "scm_insp_since":   _since("SCM Inspection", scm),
-        "validator_since":  _since("Validator", val),
         "is_disabled":      is_disabled,
     }
 
@@ -1475,7 +1394,6 @@ def main():
                         process_pipeline,
                         s, args.org, args.project, headers, args.top,
                         args.debug,
-                        getattr(args, "stage_history", False),
                     ): s.get("name", s["id"])
                     for s in summaries
                 }
@@ -1490,8 +1408,7 @@ def main():
     else:
         for s in summaries:
             r = process_pipeline(s, args.org, args.project, headers,
-                                 args.top, args.debug,
-                                 getattr(args, "stage_history", False))
+                                 args.top, args.debug)
             if r:
                 rows.append(r)
 
