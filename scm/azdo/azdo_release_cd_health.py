@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.42"
+__version__ = "1.8.43"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -653,6 +653,17 @@ def process_pipeline(
     scm = stage_profile(detail, "SCM Inspection")
     val = stage_profile(detail, "Validator")
 
+    def _since(target: str, prof: Dict) -> str:
+        if prof["created"]:
+            return prof["created"]
+        if not (stage_history and prof["present"]):
+            return "—"
+        try:
+            return stage_since(org, project, def_id, target,
+                               headers, debug) or "—"
+        except Exception:
+            return "—"
+
     return {
         "id":               def_id,
         "name":             name,
@@ -683,14 +694,8 @@ def process_pipeline(
         "validator":        "✅" if val["present"] else "—",
         "validator_tasks":  val["tasks"],
         "validator_sha":    val["sha"],
-        "scm_insp_since":   (scm["created"]
-            or (stage_since(org, project, def_id, "SCM Inspection",
-                            headers, debug)
-                if stage_history and scm["present"] else "—")),
-        "validator_since":  (val["created"]
-            or (stage_since(org, project, def_id, "Validator",
-                            headers, debug)
-                if stage_history and val["present"] else "—")),
+        "scm_insp_since":   _since("SCM Inspection", scm),
+        "validator_since":  _since("Validator", val),
         "is_disabled":      is_disabled,
     }
 
