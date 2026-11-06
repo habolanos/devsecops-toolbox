@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.38"
+__version__ = "1.8.39"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -289,10 +289,13 @@ def stage_profile(definition: Dict, stage_name: str) -> Dict[str, Any]:
 
 def get_def_revisions(org, project, def_id, headers,
                       debug) -> List[Dict]:
-    """Historial de revisiones de la definición CD."""
+    """Historial de revisiones de la definición CD.
+    El endpoint devuelve un ARRAY plano (no {value:[]})."""
     url = (f"{vsrm(org)}/{quote(project, safe='')}"
            f"/_apis/release/definitions/{def_id}/revisions")
     data = api_get(url, headers, {"api-version": API_VERSION}, debug)
+    if isinstance(data, list):
+        return data
     return (data or {}).get("value", []) if data else []
 
 
@@ -311,8 +314,13 @@ def stage_since(org, project, def_id, target, headers, debug,
     (snapshot por apiUrl, fallback ?revision=)."""
     revs = get_def_revisions(org, project, def_id, headers, debug)
     if not revs:
+        if debug:
+            print(f"[DEBUG] stage_since: sin revisiones def {def_id}")
         return ""
     revs = sorted(revs, key=lambda r: r.get("revision", 0))[:max_rev]
+    if debug:
+        print(f"[DEBUG] stage_since '{target}': "
+              f"{len(revs)} revisiones def {def_id}")
 
     def snap(i):
         url = revs[i].get("apiUrl") or revs[i].get("detailsUrl")
