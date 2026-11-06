@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.41"
+__version__ = "1.8.42"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1475,7 +1475,9 @@ def main():
                 futures = {
                     exe.submit(
                         process_pipeline,
-                        s, args.org, args.project, headers, args.top, args.debug,
+                        s, args.org, args.project, headers, args.top,
+                        args.debug,
+                        getattr(args, "stage_history", False),
                     ): s.get("name", s["id"])
                     for s in summaries
                 }
