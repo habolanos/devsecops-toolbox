@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.40"
+__version__ = "1.8.41"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -304,7 +304,7 @@ def get_def_revisions(org, project, def_id, headers,
                       debug) -> List[Dict]:
     """Historial de revisiones de la definición CD.
     El endpoint devuelve un ARRAY plano (no {value:[]})."""
-    url = (f"{vsrm(org)}/{quote(project, safe='')}"
+    url = (f"{vsrm_base(org)}/{quote(project, safe='')}"
            f"/_apis/release/definitions/{def_id}/revisions")
     data = api_get(url, headers, {"api-version": API_VERSION}, debug)
     if isinstance(data, list):
@@ -315,7 +315,7 @@ def get_def_revisions(org, project, def_id, headers,
 def get_def_at_revision(org, project, def_id, rev, headers,
                         debug) -> Optional[Dict]:
     """Snapshot de la definición en una revisión puntual."""
-    url = (f"{vsrm(org)}/{quote(project, safe='')}"
+    url = (f"{vsrm_base(org)}/{quote(project, safe='')}"
            f"/_apis/release/definitions/{def_id}")
     return api_get(url, headers, {"api-version": API_VERSION,
                                   "revision": rev}, debug)
