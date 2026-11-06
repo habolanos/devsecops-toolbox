@@ -186,7 +186,7 @@ TOOLS: Dict = {
         "name":        "Release CD Health",
         "description": "Score de salud de Release Pipelines CD: recencia + estabilidad + consistencia",
         "path":        "azdo_release_cd_health.py",
-        "args":        ["--pat", "--org", "--project", "--repo", "--sort", "--diagram"],
+        "args":        ["--pat", "--org", "--project", "--repo", "--sort", "--diagram", "--stage-history"],
         "group":       "release",
         "status":      "ready",
     },
@@ -2446,6 +2446,11 @@ def run_tool(tool_key: str):
         val = input().strip().upper()
         if val in ("NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"):
             extra += ["--severity", val]
+
+    if "--stage-history" in tool_args:
+        print(f"{Colors.BOLD}¿Resolver fecha de inserción de SCM Inspection/Validator vía revisiones? (lento) (s/n) [n]:{Colors.ENDC} ", end="")
+        if input().strip().lower() == "s":
+            extra.append("--stage-history")
 
     if "--diagram" in tool_args:
         cfg_diag = config_get(cfg, "tools", "release_cd_health", "diagram", default=False)

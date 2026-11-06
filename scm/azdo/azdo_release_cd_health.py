@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.37"
+__version__ = "1.8.38"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -306,19 +306,41 @@ def get_def_at_revision(org, project, def_id, rev, headers,
 
 
 def stage_since(org, project, def_id, target, headers, debug,
-                max_rev: int = 100) -> str:
-    """Fecha de inserción del stage: primera revisión (más vieja→nueva)
-    cuyo snapshot contiene el stage. Hasta `max_rev` revisiones."""
+                max_rev: int = 300) -> str:
+    """Fecha de inserción del stage: búsqueda binaria sobre revisiones
+    (snapshot por apiUrl, fallback ?revision=)."""
     revs = get_def_revisions(org, project, def_id, headers, debug)
     if not revs:
         return ""
     revs = sorted(revs, key=lambda r: r.get("revision", 0))[:max_rev]
-    for rev in revs:
-        snap = get_def_at_revision(org, project, def_id,
-                                   rev.get("revision"), headers, debug)
-        if snap and stage_env_by_name(snap, target):
-            return (rev.get("changedDate") or "")[:10]
-    return ""
+
+    def snap(i):
+        url = revs[i].get("apiUrl") or revs[i].get("detailsUrl")
+        if url:
+            return api_get(url, headers, {"api-version": API_VERSION},
+                           debug)
+        return get_def_at_revision(org, project, def_id,
+                                   revs[i].get("revision"),
+                                   headers, debug)
+
+    def has_stage(i):
+        s = snap(i)
+        return bool(s and stage_env_by_name(s, target))
+
+    # si ya existe en la revisión más vieja conocida → esa fecha
+    if has_stage(0):
+        return (revs[0].get("changedDate") or "")[:10]
+    # si ni la más nueva lo tiene → no encontrado en el historial
+    if not has_stage(len(revs) - 1):
+        return ""
+    lo, hi = 0, len(revs) - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if has_stage(mid):
+            hi = mid
+        else:
+            lo = mid
+    return (revs[hi].get("changedDate") or "")[:10]
 
 
 def detect_prod_stage(stages: List[Dict]) -> Optional[str]:
