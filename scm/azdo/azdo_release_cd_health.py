@@ -96,7 +96,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-__version__ = "1.8.39"
+__version__ = "1.8.40"
 __author__ = "Harold Adrian"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -280,11 +280,17 @@ def tasks_sha(tasks: List[Dict]) -> str:
 
 
 def stage_profile(definition: Dict, stage_name: str) -> Dict[str, Any]:
-    """Perfil del stage: presente?, n tasks, sha de contenido."""
+    """Perfil del stage: presente?, n tasks, sha de contenido,
+    createdOn del environment (fecha de inserción del stage)."""
     env = stage_env_by_name(definition, stage_name)
     tasks = env_workflow_tasks(env) if env else []
+    created = ""
+    if env:
+        created = (env.get("createdOn") or env.get("modifiedOn")
+                   or "")[:10]
     return {"present": bool(env), "tasks": len(tasks),
-            "sha": tasks_sha(tasks) if tasks else ""}
+            "sha": tasks_sha(tasks) if tasks else "",
+            "created": created}
 
 
 def get_def_revisions(org, project, def_id, headers,
@@ -670,12 +676,14 @@ def process_pipeline(
         "validator":        "✅" if val["present"] else "—",
         "validator_tasks":  val["tasks"],
         "validator_sha":    val["sha"],
-        "scm_insp_since":   (stage_since(
-            org, project, def_id, "SCM Inspection", headers, debug)
-            if stage_history and scm["present"] else "—"),
-        "validator_since":  (stage_since(
-            org, project, def_id, "Validator", headers, debug)
-            if stage_history and val["present"] else "—"),
+        "scm_insp_since":   (scm["created"]
+            or (stage_since(org, project, def_id, "SCM Inspection",
+                            headers, debug)
+                if stage_history and scm["present"] else "—")),
+        "validator_since":  (val["created"]
+            or (stage_since(org, project, def_id, "Validator",
+                            headers, debug)
+                if stage_history and val["present"] else "—")),
         "is_disabled":      is_disabled,
     }
 
