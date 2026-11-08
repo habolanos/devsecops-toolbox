@@ -186,20 +186,59 @@ class TestAzdoStep(unittest.TestCase):
         step.ask = MagicMock(side_effect=[
             "Coppel-Retail",
             "myproject",
+            "",
             "mypat123"
         ])
         result = step.run()
         self.assertEqual(result["organization_url"], "https://dev.azure.com/Coppel-Retail")
         self.assertEqual(result["organization"], "Coppel-Retail")
         self.assertEqual(result["project"], "myproject")
+        self.assertEqual(result["projects"], ["myproject"])
         self.assertEqual(result["pat"], "mypat123")
         self.assertTrue(result["enabled"])
+
+    def test_run_projects_with_extras(self):
+        step = AzdoStep(self.console, self.template)
+        step.ask = MagicMock(side_effect=[
+            "Coppel-Retail",
+            "myproject",
+            "ProjB, ProjC",
+            "mypat123"
+        ])
+        result = step.run()
+        self.assertEqual(result["project"], "myproject")
+        self.assertEqual(result["projects"], ["myproject", "ProjB", "ProjC"])
+
+    def test_run_projects_dedup_and_sanitize(self):
+        step = AzdoStep(self.console, self.template)
+        step.ask = MagicMock(side_effect=[
+            "Coppel-Retail",
+            "myproject",
+            "myproject, <TU_OTRO>, , ProjB",
+            "mypat123"
+        ])
+        result = step.run()
+        self.assertEqual(result["projects"], ["myproject", "ProjB"])
+
+    def test_run_projects_default_from_template(self):
+        template = {"azdo": dict(self.template["azdo"],
+                                 projects=["existingA", "existingB"])}
+        step = AzdoStep(self.console, template)
+        step.ask = MagicMock(side_effect=[
+            "Coppel-Retail",
+            "existingA",
+            "existingB",
+            "mypat123"
+        ])
+        result = step.run()
+        self.assertEqual(result["projects"], ["existingA", "existingB"])
 
     def test_run_preserves_template_defaults(self):
         step = AzdoStep(self.console, self.template)
         step.ask = MagicMock(side_effect=[
             "Coppel-Retail",
             "myproject",
+            "",
             "mypat123"
         ])
         result = step.run()
@@ -211,6 +250,7 @@ class TestAzdoStep(unittest.TestCase):
         step.ask = MagicMock(side_effect=[
             "https://dev.azure.com/Coppel-Retail",
             "myproject",
+            "",
             "mypat123"
         ])
         result = step.run()

@@ -1,7 +1,7 @@
 """
 DevSecOps Toolbox - AZDO Step
 
-Hidrata la seccion 'azdo' de config.json: organization, project, pat.
+Hidrata la seccion 'azdo' de config.json: organization, project, projects, pat.
 """
 
 import re
@@ -35,6 +35,15 @@ class AzdoStep(WizardStep):
             "Project name",
             default=template.get("project", "")
         )
+        existing_projects = [
+            p.strip() for p in template.get("projects", [])
+            if isinstance(p, str) and p.strip() and "<TU_" not in p
+        ]
+        extra_default = ", ".join(p for p in existing_projects if p != project)
+        extra_projects = self.ask(
+            "Proyectos adicionales (separados por coma, Enter para ninguno)",
+            default=extra_default
+        )
         pat = self.ask(
             "PAT token",
             password=True
@@ -43,10 +52,17 @@ class AzdoStep(WizardStep):
         org_name = self._normalize_org_name(org_input)
         org_url = f"https://dev.azure.com/{org_name}"
 
+        projects = []
+        for p in [project] + (extra_projects or "").split(","):
+            p = p.strip()
+            if p and "<TU_" not in p and p not in projects:
+                projects.append(p)
+
         result = dict(template)
         result["organization_url"] = org_url
         result["organization"] = org_name
         result["project"] = project
+        result["projects"] = projects
         result["pat"] = pat
         result["enabled"] = True
 

@@ -38,6 +38,8 @@
     "organization_url": "https://dev.azure.com/<TU_ORGANIZACION>",
     "organization": "<TU_ORGANIZACION>",
     "project": "<TU_PROYECTO>",
+    "projects": ["<TU_PROYECTO>"],
+    "_projects_info": "Lista de proyectos AzDO disponibles. 'project' es el default; si 'projects' tiene más de uno, el menú muestra un selector al lanzar herramientas. El PAT debe tener acceso a todos los proyectos listados (misma organización).",
     "pat": "<TU_PAT_TOKEN>",
     
     "pat_permissions": {

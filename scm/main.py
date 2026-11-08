@@ -469,6 +469,9 @@ def prepare_env_for_platform(platform_key: str) -> Dict[str, str]:
             env["AZDO_ORG_URL"] = platform_config["organization_url"]
         if platform_config.get("project"):
             env["AZDO_PROJECT"] = platform_config["project"]
+        azdo_projects = platform_config.get("projects")
+        if isinstance(azdo_projects, list) and azdo_projects:
+            env["AZDO_PROJECTS"] = ",".join(str(p) for p in azdo_projects)
         if platform_config.get("pat"):
             env["AZDO_PAT"] = platform_config["pat"]
         defaults = platform_config.get("defaults", {})

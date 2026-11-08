@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CICD Inventory Reporter v1.0.0
+CICD Inventory Reporter v1.0.1
 Genera inventario completo de repos, CI pipelines (YAML builds) y CD pipelines (classic releases)
 en Azure DevOps, con relación Repo ↔ CI ↔ CD.
 
@@ -71,6 +71,8 @@ except ImportError:
         return str(p.resolve())
 # -------------------------------------------------------------------
 
+__version__ = "1.0.1"
+
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 # ==========================================================
@@ -80,6 +82,31 @@ DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECTS = ["Compras.RMI"]
 API_VERSION = "7.1"
 DEFAULT_WORKERS = 30
+
+CONFIG_FILE = Path(__file__).resolve().parent.parent / "config.json"
+
+
+def load_projects_from_config(path=None):
+    """Proyectos AzDO desde scm/config.json.
+
+    Orden: `azdo.projects` (lista) → `azdo.project` (string) → DEFAULT_PROJECTS.
+    """
+    cfg_path = Path(path) if path else CONFIG_FILE
+    try:
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            azdo = cfg.get("azdo", {}) or {}
+            projects = azdo.get("projects")
+            if isinstance(projects, list):
+                projects = [str(p).strip() for p in projects if str(p).strip()]
+                if projects:
+                    return projects
+            single = azdo.get("project")
+            if isinstance(single, str) and single.strip():
+                return [single.strip()]
+    except (json.JSONDecodeError, OSError):
+        pass
+    return list(DEFAULT_PROJECTS)
 
 # 🔒 LÍMITE GLOBAL (None = sin límite)
 GLOBAL_LIMIT = None
@@ -763,7 +790,7 @@ Ejemplos:
     parser.add_argument("--org", default=DEFAULT_ORG,
                        help=f"Organización Azure DevOps (default: {DEFAULT_ORG})")
     parser.add_argument("--project", "-p", nargs="+", default=None,
-                       help=f"Proyecto(s) a analizar (default: {DEFAULT_PROJECTS})")
+                       help="Proyecto(s) a analizar (default: azdo.projects en scm/config.json)")
     parser.add_argument("--limit", type=int, default=None,
                        help="Límite de items por categoría (default: sin límite)")
     parser.add_argument("--output", "-o", default=None,
@@ -785,7 +812,7 @@ Ejemplos:
     tee = setup_logging("cicd_inventory")
     
     # Configurar proyectos
-    projects = args.project if args.project else DEFAULT_PROJECTS
+    projects = args.project if args.project else load_projects_from_config()
     
     # Configurar límite global
     if args.limit:

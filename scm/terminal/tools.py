@@ -139,6 +139,9 @@ def prepare_env_from_config() -> Dict[str, str]:
         env.setdefault("AZDO_ORG", azdo_config["organization"])
     if azdo_config.get("project"):
         env.setdefault("AZDO_PROJECT", azdo_config["project"])
+    azdo_projects = azdo_config.get("projects")
+    if isinstance(azdo_projects, list) and azdo_projects:
+        env.setdefault("AZDO_PROJECTS", ",".join(str(p) for p in azdo_projects))
 
     return env
 

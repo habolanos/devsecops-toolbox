@@ -976,6 +976,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-11-08 | **1.9.76** | Multi-proyecto AzDO: `azdo.projects` (lista) en config.json + selector en launcher + `AZDO_PROJECTS` env; `cicd_inventory` lee proyectos desde config |
 | 2026-06-19 | **1.6.12** | Interactive live search with fuzzy matching, real-time filtering, cross-platform support |
 | 2026-06-19 | **1.6.11** | Multiple Release IDs support, case-insensitive confirmation, Rich integration |
 | 2026-06-18 | **1.6.10** | Azure DevOps Pipeline Updater & Rollback System + Config consolidado |

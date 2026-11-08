@@ -75,7 +75,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.51"
+__version__ = "1.8.52"
 __author__      = "Harold Adrian"
 __description__ = "Launcher unificado de herramientas Azure DevOps"
 
@@ -604,6 +604,53 @@ def config_get(cfg: Dict, *keys, default=""):
     return val if val is not None else default
 
 
+def configured_projects(cfg: Dict) -> List[str]:
+    """Lista de proyectos AzDO configurados (azdo.projects + azdo.project).
+
+    `azdo.project` es el default y se antepone si no está en `azdo.projects`.
+    Retorna lista sanitizada (strings no vacíos, sin duplicados).
+    """
+    default = config_get(cfg, "azdo", "project", default="")
+    raw = config_get(cfg, "azdo", "projects", default=[])
+    projects = [p.strip() for p in raw
+                if isinstance(p, str) and p.strip()] if isinstance(raw, list) else []
+    if isinstance(default, str) and default.strip():
+        default = default.strip()
+        if default not in projects:
+            projects.insert(0, default)
+    return projects
+
+
+def select_project(cfg: Dict) -> str:
+    """Resuelve el proyecto AzDO a usar.
+
+    - Sin lista o un solo proyecto → retorna `azdo.project` (o el único de la lista).
+    - Más de un proyecto → menú numerado; Enter = `azdo.project`, número = selección,
+      texto libre = nombre de proyecto no listado.
+    - stdin no interactivo → default sin preguntar.
+    """
+    default = config_get(cfg, "azdo", "project", default="")
+    default = default.strip() if isinstance(default, str) else ""
+    projects = configured_projects(cfg)
+
+    if len(projects) <= 1:
+        return default or (projects[0] if projects else "")
+    if not sys.stdin.isatty():
+        return default or projects[0]
+
+    print(f"{Colors.BOLD}Proyectos AzDO disponibles:{Colors.ENDC}")
+    for i, proj in enumerate(projects, 1):
+        marker = f" {Colors.DIM}(default){Colors.ENDC}" if proj == default else ""
+        print(f"  {Colors.CYAN}[{i}]{Colors.ENDC} {proj}{marker}")
+    fallback = default or projects[0]
+    choice = input(f"{Colors.BOLD}Seleccione proyecto (número o nombre) [{fallback}]:{Colors.ENDC} ").strip()
+    if not choice:
+        return fallback
+    if choice.isdigit() and 1 <= int(choice) <= len(projects):
+        return projects[int(choice) - 1]
+    return choice
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # VENV
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -724,7 +771,7 @@ def ask_common_params(cfg: dict, tool_key: str = "") -> dict:
     Si los tres valores existen en config.json, se usan directamente sin preguntar.
     """
     cfg_org = config_get(cfg, "azdo", "organization_url", default="")
-    cfg_project = config_get(cfg, "azdo", "project", default="")
+    cfg_project = select_project(cfg)
     cfg_pat = config_get(cfg, "azdo", "pat", default="")
     
     # Si los tres valores estan en config, usarlos directamente sin preguntar
@@ -1328,9 +1375,9 @@ def run_tool(tool_key: str):
         org = prompt("Organización", default=cfg_org)
         if not org.startswith("https://"):
             org = f"https://dev.azure.com/{org}"
-        
-        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default=""))
-        
+
+        project = prompt("Proyecto", default=select_project(cfg))
+
         print(f"{Colors.BOLD}Release IDs origen (obligatorio, máx 50, separados por coma):{Colors.ENDC} ", end="")
         source_release_ids_input = input().strip()
         if not source_release_ids_input:
@@ -1423,9 +1470,9 @@ def run_tool(tool_key: str):
         if not org.startswith("https://"):
             org = f"https://dev.azure.com/{org}"
         
-        project = prompt("Proyecto", default=config_get(cfg, "azdo", "project", default=""))
-        
-        backup_file = prompt("Archivo de backup (ruta o nombre)", 
+        project = prompt("Proyecto", default=select_project(cfg))
+
+        backup_file = prompt("Archivo de backup (ruta o nombre)",
                             default=tool_defaults.get("backup_file", ""),
                             required=True)
         if not backup_file:
@@ -1915,7 +1962,7 @@ def run_tool(tool_key: str):
                 cfg_org = config_get(cfg, "azdo", "organization_url", default="")
                 if cfg_org.startswith("https://"):
                     cfg_org = cfg_org.split('/')[-1]
-                cfg_project = config_get(cfg, "azdo", "project", default="")
+                cfg_project = select_project(cfg)
                 cfg_pat = config_get(cfg, "azdo", "pat", default="")
 
                 print(f"{Colors.DIM}Organización: {cfg_org} (precargado){Colors.ENDC}")

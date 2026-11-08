@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.75`** — 2026-11-03
+**`1.9.77`** — 2026-11-08
 
 ---
 
@@ -15,6 +15,8 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-08 | **1.9.77** | **Setup wizard: hidrata `azdo.projects`** — AzdoStep ahora pregunta proyectos adicionales (coma-separados, default = `projects` existentes sin el default) y escribe `projects` hidratado en config.json; antes el placeholder `["<TU_PROYECTO>"]` quedaba stale y ConfigValidator lo rechazaba. setup v1.8.33. Tests: 71 | `scm/setup/steps/azdo_step.py`, `scm/setup/test_setup_wizard.py`, `scm/setup/__init__.py`, `README.version.md`, `VERSION` |
+| 2026-11-08 | **1.9.76** | **Multi-proyecto AzDO** — nuevo `azdo.projects` (lista) en config.json; `azdo.project` sigue como default. El launcher muestra selector numerado con >1 proyecto (Enter=default, texto libre=nombre no listado); helpers `select_project`/`configured_projects` (tools.py v1.8.52); `AZDO_PROJECTS` (CSV) exportado por main.py y terminal/tools.py; `cicd_inventory` v1.0.1 usa `azdo.projects` como default de `--project`. Tests: 22 | `scm/azdo/tools.py`, `scm/config.json.template`, `scm/main.py`, `scm/terminal/tools.py`, `scm/azdo/cicd_inventory.py`, `scm/tests/unit/test_azdo_projects_config.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-05 | **1.9.64** | **Opción 50: properties corregido + contraste Validator** — repo/rama del listado ahora salen del artifact properties del propio release (no autodetect ni master fijo); install elegido = último commit del folder, rollback = por fecha; nuevo check "commit properties (log Validator) == folder"; header muestra `repo@rama`. azdo_release_diagnostic v1.0.29 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-05 | **1.9.63** | **Opción 50: variables scope Production + comparativo de tasks/PRs + folio PR** — comparativo de variables incluye scope Production (environments[].variables); nueva sección Comparativo Tasks Validator/Production por contenido (version+script/inputs, IGUAL/DIFIERE); nueva sección Comparativo Pull Request a master (merge por PR id, LADO=AMBOS, URL, ◀ elegido); folio incluye URL del PR en install y rollback; fila Release y Artifact Build en el comparativo. azdo_release_diagnostic v1.0.12–v1.0.24 | `scm/azdo/azdo_release_diagnostic.py`, `scm/azdo/tools.py`, `scm/tests/unit/test_azdo_release_diagnostic.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
 | 2026-11-05 | **1.9.62** | **Opción 3: columnas raw + export paginado** — exports agregan `stages_raw`/`stages_norm_raw` (valor crudo del stage sin perder); `write_default_reports` genera HTML con paginación cliente-side (200 filas/página) + filtro sobre la data — ya no colapsa el navegador con listados grandes. azdo_release_cd_health v1.8.35, azdo_default_export v1.0.3 | `scm/azdo/azdo_release_cd_health.py`, `scm/azdo/azdo_default_export.py`, `README.version.md`, `VERSION` |

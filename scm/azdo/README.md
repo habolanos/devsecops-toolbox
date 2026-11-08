@@ -86,6 +86,7 @@ Edita `scm/config.json` con tus valores reales. **Este archivo está en `.gitign
     "organization_url": "https://dev.azure.com/<TU_ORGANIZACION>",
     "organization": "<TU_ORGANIZACION>",
     "project": "<TU_PROYECTO>",
+    "projects": ["<TU_PROYECTO>", "<PROYECTO_ADICIONAL>"],
     "pat": "<TU_PAT_TOKEN>",
     
     "pat_permissions": {
@@ -110,6 +111,14 @@ Edita `scm/config.json` con tus valores reales. **Este archivo está en `.gitign
   }
 }
 ```
+
+> **`projects` (multi-proyecto):** `project` sigue siendo el default. Si `projects`
+> tiene más de un proyecto, el launcher muestra un selector numerado al ejecutar
+> cualquier herramienta (Enter = default, número = selección, texto libre = nombre
+> no listado). Además se exporta `AZDO_PROJECTS` (CSV) a los subprocesos.
+> `cicd_inventory.py` usa `azdo.projects` como default de `--project`.
+> Requisito: todos los proyectos deben estar en la **misma organización** y el PAT
+> debe tener acceso a ellos.
 
 ### 3. Permisos del PAT por herramienta
 
@@ -1621,6 +1630,8 @@ API Reference: [Azure DevOps REST API v7.2](https://learn.microsoft.com/en-us/re
 
 | Fecha | Versión | Cambio | Archivos afectados |
 |---|---|---|---|
+| 2026-11-08 | 1.9.77 | **Setup wizard hidrata `azdo.projects`** — AzdoStep pregunta proyectos adicionales (coma-separados) y escribe `projects` hidratado; el placeholder `["<TU_PROYECTO>"]` ya no queda stale en config.json generado. setup v1.8.33. Tests: 71 | `scm/setup/steps/azdo_step.py`, `scm/setup/test_setup_wizard.py` |
+| 2026-11-08 | 1.9.76 | **Multi-proyecto AzDO** — nuevo `azdo.projects` (lista) en config.json; `azdo.project` sigue como default. El launcher muestra selector numerado cuando hay >1 proyecto (Enter=default, texto libre=nombre); `select_project`/`configured_projects` en tools.py v1.8.52; `AZDO_PROJECTS` (CSV) exportado por main.py y terminal/tools.py; `cicd_inventory` v1.0.1 usa `azdo.projects` como default de `--project`. Tests: 22 | `scm/azdo/tools.py`, `scm/config.json.template`, `scm/main.py`, `scm/terminal/tools.py`, `scm/azdo/cicd_inventory.py`, `scm/tests/unit/test_azdo_projects_config.py` |
 | 2026-11-05 | 1.9.64 | **Opción 50: properties del artifact + contraste Validator** — repo/rama del propio artifact de properties (no autodetect/master fijo); install elegido = último commit folder, rollback = por fecha; check "commit properties (log Validator) == folder"; header `repo@rama` | `scm/azdo/azdo_release_diagnostic.py` (v1.0.29) |
 | 2026-11-05 | 1.9.63 | **Opción 50: variables Production + tasks/PRs + folio PR** — comparativo variables con scope Production; comparativo Tasks Validator/Production por contenido (IGUAL/DIFIERE con diff rojo); comparativo PRs a master (AMBOS, URL, elegido); folio con URL del PR; filas Release y Artifact Build | `scm/azdo/azdo_release_diagnostic.py` (v1.0.12–v1.0.24) |
 | 2026-11-05 | 1.9.62 | **Opción 3: columnas raw + HTML paginado** — `stages_raw`/`stages_norm_raw` preservan el valor crudo; `_html_report` pagina 200 filas/página cliente-side — ya no colapsa el navegador | `scm/azdo/azdo_release_cd_health.py` (v1.8.35), `scm/azdo/azdo_default_export.py` (v1.0.3) |
