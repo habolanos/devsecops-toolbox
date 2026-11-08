@@ -9,6 +9,7 @@ Cubre:
 import importlib.util
 import io
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -189,3 +190,133 @@ class TestLoadProjectsFromConfig:
     def test_sanitiza_lista(self, inventory_mod, tmp_path):
         cfg = self._write_cfg(tmp_path, {"projects": ["P1", "", "  ", "P2"]})
         assert inventory_mod.load_projects_from_config(cfg) == ["P1", "P2"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Cache scoping por proyecto
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.fixture(scope="module")
+def cd_detailed_mod():
+    try:
+        return _load_module("cd_detailed_test", AZDO_DIR / "cicd_inventory_cd_detailed.py")
+    except ImportError:
+        pytest.skip("cicd_inventory_cd_detailed.py no importable (deps faltantes)")
+
+
+@pytest.fixture(scope="module")
+def ci_detailed_mod():
+    try:
+        return _load_module("ci_detailed_test", AZDO_DIR / "cicd_inventory_ci_detailed.py")
+    except ImportError:
+        pytest.skip("cicd_inventory_ci_detailed.py no importable (deps faltantes)")
+
+
+@pytest.fixture(scope="module")
+def prod_deploy_mod():
+    try:
+        return _load_module("prod_deploy_test", AZDO_DIR / "cicd_inventory_prod_deploy.py")
+    except ImportError:
+        pytest.skip("cicd_inventory_prod_deploy.py no importable (deps faltantes)")
+
+
+@pytest.fixture(scope="module")
+def health_score_mod():
+    try:
+        return _load_module("health_score_test", AZDO_DIR / "cicd_inventory_health_score.py")
+    except ImportError:
+        pytest.skip("cicd_inventory_health_score.py no importable (deps faltantes)")
+
+
+@pytest.fixture(scope="module")
+def pipeline_status_mod():
+    try:
+        return _load_module("pipeline_status_test", AZDO_DIR / "cicd_pipeline_status.py")
+    except ImportError:
+        pytest.skip("cicd_pipeline_status.py no importable (deps faltantes)")
+
+
+class TestProjectCacheKey:
+
+    @pytest.mark.parametrize("value,expected", [
+        ("Compras.RMI", "Compras.RMI"),
+        ("Cadena_de_Suministros", "Cadena_de_Suministros"),
+        ("My Project", "My_Project"),
+        ("", "default"),
+        (None, "default"),
+    ])
+    def test_slug(self, cd_detailed_mod, value, expected):
+        assert cd_detailed_mod._project_cache_key(value) == expected
+
+
+class TestCacheScoping:
+
+    def test_save_y_find_mismo_proyecto(self, cd_detailed_mod, tmp_path, monkeypatch):
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        data = {"metadata": {"project": "ProjA"}, "rows": [{"id": 1}]}
+        path = cd_detailed_mod._save_cache(data, project="ProjA")
+        assert f"ProjA_raw_" in path.name
+        assert cd_detailed_mod._find_latest_cache("ProjA") == path
+
+    def test_find_otro_proyecto_no_match(self, cd_detailed_mod, tmp_path, monkeypatch):
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        data = {"metadata": {"project": "ProjA"}, "rows": []}
+        cd_detailed_mod._save_cache(data, project="ProjA")
+        assert cd_detailed_mod._find_latest_cache("ProjB") is None
+
+    def test_find_devuelve_mas_reciente_del_proyecto(
+            self, cd_detailed_mod, tmp_path, monkeypatch):
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        cache_dir = tmp_path / ".cache"
+        cache_dir.mkdir(parents=True)
+        name = cd_detailed_mod.SCRIPT_NAME
+        f1 = cache_dir / f"{name}_ProjA_raw_20250101_000000.json"
+        f2 = cache_dir / f"{name}_ProjA_raw_20250102_000000.json"
+        f1.write_text("{}", encoding="utf-8")
+        f2.write_text("{}", encoding="utf-8")
+        os.utime(f1, (1000, 1000))
+        os.utime(f2, (2000, 2000))
+        assert cd_detailed_mod._find_latest_cache("ProjA") == f2
+
+    def test_ci_detailed_scoped(self, ci_detailed_mod, tmp_path, monkeypatch):
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        data = {"metadata": {"project": "Compras.RMI"}, "rows": []}
+        path = ci_detailed_mod._save_cache(data, project="Compras.RMI")
+        assert "Compras.RMI_raw_" in path.name
+        assert ci_detailed_mod._find_latest_cache("Compras.RMI") == path
+        assert ci_detailed_mod._find_latest_cache("Cadena_de_Suministros") is None
+
+    def test_prod_deploy_lee_cache_cd_del_proyecto(
+            self, cd_detailed_mod, prod_deploy_mod, tmp_path, monkeypatch):
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        data = {"metadata": {"project": "ProjA"}, "rows": [{"id": 1}]}
+        path = cd_detailed_mod._save_cache(data, project="ProjA")
+        assert prod_deploy_mod._find_cd_cache("ProjA") == path
+        assert prod_deploy_mod._find_cd_cache("ProjB") is None
+
+    def test_health_score_lee_cache_ci_cd_del_proyecto(
+            self, ci_detailed_mod, cd_detailed_mod, health_score_mod,
+            tmp_path, monkeypatch):
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        data = {"metadata": {"project": "ProjA"}, "rows": []}
+        ci_path = ci_detailed_mod._save_cache(data, project="ProjA")
+        cd_path = cd_detailed_mod._save_cache(data, project="ProjA")
+        assert health_score_mod._find_latest_cache(
+            "cicd_inventory_ci_detailed", "ProjA") == ci_path
+        assert health_score_mod._find_latest_cache(
+            "cicd_inventory_cd_detailed", "ProjA") == cd_path
+        assert health_score_mod._find_latest_cache(
+            "cicd_inventory_ci_detailed", "ProjB") is None
+
+    def test_pipeline_status_scoped(self, pipeline_status_mod, tmp_path, monkeypatch):
+        monkeypatch.setenv("DEVSECOPS_OUTPUT_DIR", str(tmp_path))
+        path = pipeline_status_mod._save_cache([], "Org", "ProjA", 30)
+        assert "ProjA_raw_" in path.name
+        assert pipeline_status_mod._find_latest_cache("ProjA") == path
+        assert pipeline_status_mod._find_latest_cache("ProjB") is None
+
+    def test_azdo_parser_cache_scoped_por_org_proyecto(self):
+        src = (AZDO_DIR / "health-probe-masive" / "azdo_parser.py").read_text(
+            encoding="utf-8")
+        assert "_cache_slug(self.org)" in src
+        assert "_cache_slug(self.project)" in src

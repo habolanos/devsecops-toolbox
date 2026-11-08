@@ -82,7 +82,7 @@ except ImportError:
     requests = _types.SimpleNamespace(get=None, HTTPError=Exception)  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
-__version__ = "1.8.32"
+__version__ = "1.8.33"
 __author__      = "Harold Adrian"
 SCRIPT_NAME     = "cicd_pipeline_status"
 CACHE_TTL_HOURS = 24
@@ -559,10 +559,16 @@ def print_plain_table(rows: List[Dict], elapsed: float, inactive_days: int):
 # ═══════════════════════════════════════════════════════════════════════════════
 # CACHE
 # ═══════════════════════════════════════════════════════════════════════════════
-def _find_latest_cache() -> Optional[Path]:
+def _project_cache_key(project: str) -> str:
+    """Slug filename-safe del proyecto para scoping de cache por proyecto."""
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in (project or "default"))
+
+
+def _find_latest_cache(project: str = "") -> Optional[Path]:
     output_dir = get_output_dir("outcome")
     cache_dir  = Path(str(output_dir)) / ".cache"
-    files      = sorted(glob.glob(str(cache_dir / f"{SCRIPT_NAME}_raw_*.json")), reverse=True)
+    key        = _project_cache_key(project)
+    files      = sorted(glob.glob(str(cache_dir / f"{SCRIPT_NAME}_{key}_raw_*.json")), reverse=True)
     return Path(files[0]) if files else None
 
 
@@ -583,7 +589,8 @@ def _save_cache(rows: List[Dict], org: str, project: str, inactive_days: int) ->
     cache_dir  = output_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     ts         = datetime.now().strftime("%Y%m%d_%H%M%S")
-    cache_path = cache_dir / f"{SCRIPT_NAME}_raw_{ts}.json"
+    key        = _project_cache_key(project)
+    cache_path = cache_dir / f"{SCRIPT_NAME}_{key}_raw_{ts}.json"
     payload    = {
         "metadata": {
             "script":        SCRIPT_NAME,
@@ -1001,7 +1008,7 @@ def main():
 
     # ── Cache check ──────────────────────────────────────────────────────────
     cache_used = False
-    cache_path = _find_latest_cache()
+    cache_path = _find_latest_cache(args.project)
 
     if args.use_cache_only:
         if cache_path and _cache_is_fresh(cache_path):
@@ -1041,9 +1048,17 @@ def main():
     # ── Cargar desde cache si aplica ─────────────────────────────────────────
     if cache_used and cache_path:
         data  = _load_cache(cache_path)
-        rows  = data.get("rows", [])
-        msg   = f"📦 Cache cargado: {cache_path.name} ({len(rows)} pipelines)"
-        (console.print(f"[dim]{msg}[/]\n") if console else print(msg))
+        if data.get("metadata", {}).get("project") != args.project:
+            msg = "⚠️  Cache corresponde a otro proyecto — se ignora."
+            (console.print(f"[yellow]{msg}[/]\n") if console else print(msg))
+            if args.use_cache_only:
+                return
+            cache_used = False
+            cache_path = None
+        else:
+            rows  = data.get("rows", [])
+            msg   = f"📦 Cache cargado: {cache_path.name} ({len(rows)} pipelines)"
+            (console.print(f"[dim]{msg}[/]\n") if console else print(msg))
 
     # ── CI ───────────────────────────────────────────────────────────────────
     if not cache_used and args.type in ("ci", "all"):

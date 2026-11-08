@@ -20,6 +20,11 @@ from .models import DeploymentInput, StageInfo
 logger = logging.getLogger(__name__)
 
 
+def _cache_slug(value: str) -> str:
+    """Slug filename-safe para scoping de cache por org/proyecto."""
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in (value or "default"))
+
+
 class AzDOParser:
     """Parser para Azure DevOps REST API"""
     
@@ -55,8 +60,11 @@ class AzDOParser:
                 time.sleep(wait_time)
     
     def _get_cache_path(self, definition_id: int) -> str:
-        """Obtiene ruta de caché para una definición"""
-        return os.path.join(self.cache_dir, f"azdo_release_{definition_id}.json")
+        """Obtiene ruta de caché para una definición (scoped por org/proyecto)."""
+        return os.path.join(
+            self.cache_dir,
+            f"azdo_release_{_cache_slug(self.org)}_{_cache_slug(self.project)}_{definition_id}.json"
+        )
     
     def _is_cache_valid(self, cache_path: str) -> bool:
         """Verifica si caché es válido (< 24h)"""

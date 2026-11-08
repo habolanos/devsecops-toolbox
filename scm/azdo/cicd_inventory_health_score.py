@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Pipeline Health Score Report v1.0.0
+Pipeline Health Score Report v1.0.1
 Orquestador de salud de pipelines CI/CD con scoring multi-dimensional basado en DORA/SRE.
 
 Genera 1 Excel con 3 pestañas:
@@ -78,6 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
+__version__ = "1.0.1"
 SCRIPT_NAME = "cicd_inventory_health_score"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -192,11 +193,17 @@ def safe_az_get(url, headers, params=None):
         return {}
 
 
-def _find_latest_cache(pattern_key: str):
-    """Busca archivo cache más reciente por patrón de nombre."""
+def _project_cache_key(project: str) -> str:
+    """Slug filename-safe del proyecto para scoping de cache por proyecto."""
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in (project or "default"))
+
+
+def _find_latest_cache(pattern_key: str, project: str = ""):
+    """Busca archivo cache más reciente por patrón de nombre y proyecto."""
     output_dir = get_output_dir("outcome")
     cache_dir = output_dir / ".cache"
-    pattern = str(cache_dir / f"{pattern_key}_raw_*.json")
+    key = _project_cache_key(project)
+    pattern = str(cache_dir / f"{pattern_key}_{key}_raw_*.json")
     files = glob.glob(pattern)
     if not files:
         return None
@@ -217,11 +224,12 @@ def _load_cache(cache_path):
         return json.load(f)
 
 
-def _save_cache(data, prefix):
+def _save_cache(data, prefix, project=""):
     output_dir = get_output_dir("outcome")
     cache_dir = output_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{prefix}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    key = _project_cache_key(project)
+    cache_path = cache_dir / f"{prefix}_{key}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(cache_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
     return cache_path
@@ -2089,12 +2097,15 @@ def main():
         # ============================================
         ci_base_data = []
         if not args.force_refresh:
-            cache_path = _find_latest_cache("cicd_inventory_ci_detailed")
+            cache_path = _find_latest_cache("cicd_inventory_ci_detailed", args.project)
             if cache_path and _cache_is_fresh(cache_path):
                 print(f"📦 CI Cache encontrado: {cache_path.name}")
                 data = _load_cache(cache_path)
-                ci_base_data = data.get("rows", [])
-                cache_ci_used = True
+                if data.get("metadata", {}).get("project") == args.project:
+                    ci_base_data = data.get("rows", [])
+                    cache_ci_used = True
+                else:
+                    print("⚠️  CI cache corresponde a otro proyecto — se ignora.")
             else:
                 print("📭 CI Cache no encontrado o > 24h")
         
@@ -2145,7 +2156,7 @@ def main():
             _save_cache({
                 "metadata": {"script": "cicd_inventory_health_score_ci", "org": args.org, "project": args.project, "generated_at": datetime.now(timezone.utc).isoformat(), "count": len(ci_base_data)},
                 "rows": ci_base_data,
-            }, "cicd_inventory_health_score_ci")
+            }, "cicd_inventory_health_score_ci", args.project)
             print("💾 CI cache guardado")
         
         # ============================================
@@ -2153,12 +2164,15 @@ def main():
         # ============================================
         cd_base_data = []
         if not args.force_refresh:
-            cache_path = _find_latest_cache("cicd_inventory_cd_detailed")
+            cache_path = _find_latest_cache("cicd_inventory_cd_detailed", args.project)
             if cache_path and _cache_is_fresh(cache_path):
                 print(f"📦 CD Cache encontrado: {cache_path.name}")
                 data = _load_cache(cache_path)
-                cd_base_data = data.get("rows", [])
-                cache_cd_used = True
+                if data.get("metadata", {}).get("project") == args.project:
+                    cd_base_data = data.get("rows", [])
+                    cache_cd_used = True
+                else:
+                    print("⚠️  CD cache corresponde a otro proyecto — se ignora.")
             else:
                 print("📭 CD Cache no encontrado o > 24h")
         
@@ -2202,7 +2216,7 @@ def main():
             _save_cache({
                 "metadata": {"script": "cicd_inventory_health_score_cd", "org": args.org, "project": args.project, "generated_at": datetime.now(timezone.utc).isoformat(), "count": len(cd_base_data)},
                 "rows": cd_base_data,
-            }, "cicd_inventory_health_score_cd")
+            }, "cicd_inventory_health_score_cd", args.project)
             print("💾 CD cache guardado")
         
         # ============================================

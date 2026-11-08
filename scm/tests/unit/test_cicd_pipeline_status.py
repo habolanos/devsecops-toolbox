@@ -374,11 +374,11 @@ class TestCacheFunctions:
 
     @pytest.mark.unit
     def test_save_cache_filename_format(self, tmp_path):
-        """El nombre del archivo de cache sigue el patrón esperado."""
+        """El nombre del archivo de cache sigue el patrón esperado (scoped por proyecto)."""
         rows = []
         with patch("scm.azdo.cicd_pipeline_status.get_output_dir", return_value=tmp_path):
             saved_path = _save_cache(rows, "org", "proj", 90)
-        assert saved_path.name.startswith(f"{SCRIPT_NAME}_raw_")
+        assert saved_path.name.startswith(f"{SCRIPT_NAME}_proj_raw_")
         assert saved_path.suffix == ".json"
 
     @pytest.mark.unit

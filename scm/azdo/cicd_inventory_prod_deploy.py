@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CD Prod Deploy Tracker v1.0.0
+CD Prod Deploy Tracker v1.0.1
 Rastrea el último despliegue exitoso a Producción por pipeline CD.
 Lee cache CD existente y consulta APIs de releases para obtener fechas, artefactos y vigencia.
 
@@ -86,6 +86,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
+__version__ = "1.0.1"
 SCRIPT_NAME = "cicd_inventory_prod_deploy"
 CD_CACHE_SCRIPT = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
@@ -210,10 +211,16 @@ def safe_az_get(url, headers, params=None):
 # CACHE
 # ==========================================================
 
-def _find_latest_cache():
+def _project_cache_key(project: str) -> str:
+    """Slug filename-safe del proyecto para scoping de cache por proyecto."""
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in (project or "default"))
+
+
+def _find_latest_cache(project=""):
     output_dir = get_output_dir("outcome")
     cache_dir = output_dir / ".cache"
-    pattern = str(cache_dir / f"{SCRIPT_NAME}_raw_*.json")
+    key = _project_cache_key(project)
+    pattern = str(cache_dir / f"{SCRIPT_NAME}_{key}_raw_*.json")
     files = glob.glob(pattern)
     if not files:
         return None
@@ -221,11 +228,12 @@ def _find_latest_cache():
     return Path(files[0])
 
 
-def _find_cd_cache():
-    """Busca el cache del script CD detailed."""
+def _find_cd_cache(project=""):
+    """Busca el cache del script CD detailed para este proyecto."""
     output_dir = get_output_dir("outcome")
     cache_dir = output_dir / ".cache"
-    pattern = str(cache_dir / f"{CD_CACHE_SCRIPT}_raw_*.json")
+    key = _project_cache_key(project)
+    pattern = str(cache_dir / f"{CD_CACHE_SCRIPT}_{key}_raw_*.json")
     files = glob.glob(pattern)
     if not files:
         return None
@@ -246,11 +254,12 @@ def _load_cache(cache_path):
         return json.load(f)
 
 
-def _save_cache(data, script_name=SCRIPT_NAME):
+def _save_cache(data, script_name=SCRIPT_NAME, project=""):
     output_dir = get_output_dir("outcome")
     cache_dir = output_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{script_name}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    key = _project_cache_key(project)
+    cache_path = cache_dir / f"{script_name}_{key}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(cache_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
     return cache_path
@@ -857,13 +866,16 @@ def main():
         # PASO 1: Verificar cache propio
         # ============================================
         if not args.force_refresh and not args.skip_cache:
-            cache_path = _find_latest_cache()
+            cache_path = _find_latest_cache(args.project)
             if cache_path and _cache_is_fresh(cache_path):
                 print(f"📦 Cache encontrado: {cache_path.name} (fresh)")
-                # Verificar que el deadline coincide
+                # Verificar que el deadline y el proyecto coinciden
                 data = _load_cache(cache_path)
                 cached_deadline = data.get("metadata", {}).get("deadline", "")
-                if cached_deadline == str(deadline_date):
+                cached_project = data.get("metadata", {}).get("project", "")
+                if cached_project != args.project:
+                    print("⚠️  Cache corresponde a otro proyecto — se ignora.")
+                elif cached_deadline == str(deadline_date):
                     print("⏭️  Mismo deadline — generando outputs desde cache...")
                     rows = data.get("rows", [])
                     cache_used = True
@@ -878,14 +890,17 @@ def main():
             # ============================================
             # PASO 2: Cargar datos base desde cache CD
             # ============================================
-            cd_cache_path = _find_cd_cache()
+            cd_cache_path = _find_cd_cache(args.project)
             if not cd_cache_path:
-                print("❌ No se encontró cache CD. Ejecutar herramienta 15 (CD Inventory) primero.")
-                print("   Comando: python cicd_inventory_cd_detailed.py --org {org} --project {project}")
+                print(f"❌ No se encontró cache CD para {args.project}. Ejecutar herramienta 15 (CD Inventory) primero.")
+                print(f"   Comando: python cicd_inventory_cd_detailed.py --org {args.org} --project {args.project}")
                 sys.exit(1)
 
             print(f"📦 Cache CD encontrado: {cd_cache_path.name}")
             cd_data = _load_cache(cd_cache_path)
+            if cd_data.get("metadata", {}).get("project") != args.project:
+                print("❌ Cache CD corresponde a otro proyecto — re-ejecutar herramienta 15.")
+                sys.exit(1)
             cd_rows = cd_data.get("rows", [])
 
             if not cd_rows:
@@ -956,7 +971,7 @@ def main():
                 },
                 "rows": rows,
             }
-            cache_path = _save_cache(cache_data)
+            cache_path = _save_cache(cache_data, project=args.project)
             print(f"💾 Cache guardado: {cache_path.name}")
 
         # ============================================

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CD Pipeline Detailed Inventory v1.0.5
+CD Pipeline Detailed Inventory v1.0.6
 Inventario detallado de pipelines CD (Release Definitions) con ambientes, estados y obsolescencia.
 
 Uso:
@@ -78,6 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
+__version__ = "1.0.6"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -198,10 +199,16 @@ def safe_az_get(url, headers, params=None):
 # CACHE
 # ==========================================================
 
-def _find_latest_cache():
+def _project_cache_key(project: str) -> str:
+    """Slug filename-safe del proyecto para scoping de cache por proyecto."""
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in (project or "default"))
+
+
+def _find_latest_cache(project=""):
     output_dir = get_output_dir("outcome")
     cache_dir = output_dir / ".cache"
-    pattern = str(cache_dir / f"{SCRIPT_NAME}_raw_*.json")
+    key = _project_cache_key(project)
+    pattern = str(cache_dir / f"{SCRIPT_NAME}_{key}_raw_*.json")
     files = glob.glob(pattern)
     if not files:
         return None
@@ -222,11 +229,12 @@ def _load_cache(cache_path):
         return json.load(f)
 
 
-def _save_cache(data, script_name=SCRIPT_NAME):
+def _save_cache(data, script_name=SCRIPT_NAME, project=""):
     output_dir = get_output_dir("outcome")
     cache_dir = output_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{script_name}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    key = _project_cache_key(project)
+    cache_path = cache_dir / f"{script_name}_{key}_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(cache_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
     return cache_path
@@ -747,21 +755,27 @@ def main():
     try:
         # Verificación previa de cache
         if not args.force_refresh and not args.skip_cache:
-            cache_path = _find_latest_cache()
+            cache_path = _find_latest_cache(args.project)
             if cache_path and _cache_is_fresh(cache_path):
                 print(f"📦 Cache encontrado: {cache_path.name} (fresh)")
                 print("⏭️  Saltando llamadas API — generando outputs desde cache...")
                 data = _load_cache(cache_path)
-                rows = data.get("rows", [])
-                cache_used = True
+                if data.get("metadata", {}).get("project") == args.project:
+                    rows = data.get("rows", [])
+                    cache_used = True
+                else:
+                    print("⚠️  Cache corresponde a otro proyecto — se ignora.")
             else:
                 print("📭 Cache no encontrado o > 24h. Consultando APIs...")
         elif args.use_cache_only:
-            cache_path = _find_latest_cache()
+            cache_path = _find_latest_cache(args.project)
             if cache_path and _cache_is_fresh(cache_path):
                 data = _load_cache(cache_path)
-                rows = data.get("rows", [])
-                cache_used = True
+                if data.get("metadata", {}).get("project") == args.project:
+                    rows = data.get("rows", [])
+                    cache_used = True
+                else:
+                    print("⚠️  Cache corresponde a otro proyecto — se ignora.")
             else:
                 print("❌ Cache no disponible para modo --use-cache-only")
                 sys.exit(1)
@@ -834,7 +848,7 @@ def main():
                 },
                 "rows": rows,
             }
-            cache_path = _save_cache(cache_data)
+            cache_path = _save_cache(cache_data, project=args.project)
             print(f"💾 Cache guardado: {cache_path.name}")
         
         # Filtrar por variable si se especificó
