@@ -976,6 +976,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-11-09 | **1.9.79** | Opción 15: columnas de agentes por stage (`agents` + `agentPerStage_<stage>`) en CD Detailed Inventory |
 | 2026-11-08 | **1.9.78** | Cache de inventories AzDO scoped por proyecto (filename + metadata.project) — evita reusar cache de otro proyecto |
 | 2026-11-08 | **1.9.77** | Setup wizard hidrata `azdo.projects` (proyectos adicionales coma-separados) |
 | 2026-11-08 | **1.9.76** | Multi-proyecto AzDO: `azdo.projects` (lista) en config.json + selector en launcher + `AZDO_PROJECTS` env; `cicd_inventory` lee proyectos desde config |

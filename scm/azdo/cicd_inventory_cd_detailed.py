@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CD Pipeline Detailed Inventory v1.0.6
+CD Pipeline Detailed Inventory v1.0.7
 Inventario detallado de pipelines CD (Release Definitions) con ambientes, estados y obsolescencia.
 
 Uso:
@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -280,6 +280,53 @@ def _variables_to_string(var_list):
     return "; ".join(f"{v['name']}={v['value']}" for v in var_list)
 
 
+def _get_queue_map(headers, org, project):
+    """Mapa queueId → nombre de agent queue del proyecto.
+
+    GET /_apis/distributedtask/queues — 1 llamada por ejecución; las queues
+    son vistas por-proyecto de los agent pools de la organización.
+    """
+    url = f"https://dev.azure.com/{org}/{project}/_apis/distributedtask/queues"
+    data = safe_az_get(url, headers)
+    items = data.get("value", []) if isinstance(data, dict) else []
+    return {str(q.get("id")): q.get("name", f"queueId:{q.get('id')}")
+            for q in items if q.get("id") is not None}
+
+
+def _stage_agents(envs, queue_map):
+    """Agentes (agent queue) usados por stage.
+
+    Para cada environment toma deployPhases[].deploymentInput.queueId
+    (o .queue.id/.name según versión de API) y resuelve el nombre con
+    queue_map. Stages sin fase con agente → 'Server-side'.
+
+    Retorna (lista [(nombre_stage, label)], lista única de agentes).
+    """
+    per_stage = []
+    unique = []
+    for env in envs or []:
+        names = []
+        for phase in env.get("deployPhases") or []:
+            dinput = phase.get("deploymentInput") or {}
+            qobj = dinput.get("queue") or {}
+            qid = dinput.get("queueId") or qobj.get("id")
+            qname = (qobj.get("name") or queue_map.get(str(qid))
+                     if qid else None)
+            if qid and not qname:
+                qname = f"queueId:{qid}"
+            if qname and qname not in names:
+                names.append(qname)
+        if names:
+            label = " / ".join(names)
+            for n in names:
+                if n not in unique:
+                    unique.append(n)
+        else:
+            label = "Server-side" if env.get("deployPhases") else "-"
+        per_stage.append((env.get("name", "?"), label))
+    return per_stage, unique
+
+
 def _count_stage_tasks(envs):
     """Cuenta tareas por stage: environments[].deployPhases[].workflowTasks[].
 
@@ -385,8 +432,9 @@ def _release_stage_stats(def_envs, releases):
     return stats
 
 
-def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100):
-    """Fetch detalles de un pipeline CD: ambientes, releases, variables."""
+def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
+                       queue_map=None):
+    """Fetch detalles de un pipeline CD: ambientes, releases, variables, agentes."""
     def_id = definition.get("id")
     name = definition.get("name", "")
 
@@ -417,6 +465,7 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100):
 
     stage_tasks, total_tasks = _count_stage_tasks(envs)
     stage_stats = _release_stage_stats(envs, releases)
+    stage_agents, unique_agents = _stage_agents(envs, queue_map or {})
 
     result = {
         "id": def_id,
@@ -427,6 +476,7 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100):
         "modifiedOn": definition.get("modifiedOn", ""),
         "stagesCount": len(envs),
         "stages": " / ".join(env_names),
+        "agents": " / ".join(unique_agents),
         "totalTasks": total_tasks,
         "totalReleasesAnalyzed": len(releases),
         "lastReleaseDate": last_rel_date,
@@ -440,6 +490,10 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100):
     # Agregar cada variable como columna individual (var_<name>)
     for v in var_list:
         result[f"var_{v['name']}"] = v["value"]
+
+    # Agente(s) por stage como columna individual (agentPerStage_<stage>)
+    for stage_name, agent_label in stage_agents:
+        result[f"agentPerStage_{stage_name}"] = agent_label
 
     # Agregar conteo de tareas por stage como columna individual (tasksPerStage_<stage>)
     for stage_name, n_tasks in stage_tasks:
@@ -784,7 +838,9 @@ def main():
 
         if not rows:
             headers = get_headers(args.pat)
-            
+            queue_map = _get_queue_map(headers, args.org, args.project)
+            api_calls += 1
+
             print("🔍 Cargando release definitions...")
             if RICH_AVAILABLE:
                 tee.pause_terminal()
@@ -811,7 +867,7 @@ def main():
                 with _progress_context() as progress:
                     task = progress.add_task("Procesando CD pipelines", total=total)
                     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases): d for d in definitions}
+                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map): d for d in definitions}
                         for future in as_completed(futures):
                             try:
                                 result = future.result()
@@ -825,7 +881,7 @@ def main():
                 tee.resume_terminal()
             else:
                 with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases): d for d in definitions}
+                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map): d for d in definitions}
                     for i, future in enumerate(as_completed(futures), 1):
                         try:
                             result = future.result()

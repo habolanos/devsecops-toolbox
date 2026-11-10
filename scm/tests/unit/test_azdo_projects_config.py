@@ -320,3 +320,79 @@ class TestCacheScoping:
             encoding="utf-8")
         assert "_cache_slug(self.org)" in src
         assert "_cache_slug(self.project)" in src
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Agentes por stage (CD Detailed Inventory)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestStageAgents:
+
+    def test_resuelve_queue_id_a_nombre(self, cd_detailed_mod):
+        envs = [{"name": "QA", "deployPhases": [
+            {"deploymentInput": {"queueId": 7}}]}]
+        per_stage, unique = cd_detailed_mod._stage_agents(envs, {"7": "Pool-QA"})
+        assert per_stage == [("QA", "Pool-QA")]
+        assert unique == ["Pool-QA"]
+
+    def test_queue_object_variant(self, cd_detailed_mod):
+        envs = [{"name": "Prod", "deployPhases": [
+            {"deploymentInput": {"queue": {"id": 3, "name": "Pool-Prod"}}}]}]
+        per_stage, unique = cd_detailed_mod._stage_agents(envs, {})
+        assert per_stage == [("Prod", "Pool-Prod")]
+        assert unique == ["Pool-Prod"]
+
+    def test_queue_desconocida_usa_id(self, cd_detailed_mod):
+        envs = [{"name": "Dev", "deployPhases": [
+            {"deploymentInput": {"queueId": 99}}]}]
+        per_stage, _ = cd_detailed_mod._stage_agents(envs, {})
+        assert per_stage == [("Dev", "queueId:99")]
+
+    def test_stage_sin_agente_es_server_side(self, cd_detailed_mod):
+        envs = [{"name": "Gate", "deployPhases": [{"type": "runOnServer"}]}]
+        per_stage, unique = cd_detailed_mod._stage_agents(envs, {})
+        assert per_stage == [("Gate", "Server-side")]
+        assert unique == []
+
+    def test_dedup_multi_fases_y_stages(self, cd_detailed_mod):
+        envs = [
+            {"name": "QA", "deployPhases": [
+                {"deploymentInput": {"queueId": 1}},
+                {"deploymentInput": {"queueId": 1}},
+                {"deploymentInput": {"queueId": 2}},
+            ]},
+            {"name": "Prod", "deployPhases": [
+                {"deploymentInput": {"queueId": 2}}]},
+        ]
+        qmap = {"1": "Pool-A", "2": "Pool-B"}
+        per_stage, unique = cd_detailed_mod._stage_agents(envs, qmap)
+        assert per_stage == [("QA", "Pool-A / Pool-B"), ("Prod", "Pool-B")]
+        assert unique == ["Pool-A", "Pool-B"]
+
+    def test_sin_deploy_phases(self, cd_detailed_mod):
+        per_stage, _ = cd_detailed_mod._stage_agents([{"name": "X"}], {})
+        assert per_stage == [("X", "-")]
+
+    def test_get_queue_map(self, cd_detailed_mod):
+        payload = {"value": [{"id": 7, "name": "Pool-QA"},
+                             {"id": 8, "name": "Pool-Prod"}]}
+        with patch.object(cd_detailed_mod, "safe_az_get", return_value=payload):
+            qmap = cd_detailed_mod._get_queue_map({}, "Org", "Proj")
+        assert qmap == {"7": "Pool-QA", "8": "Pool-Prod"}
+
+    def test_fetch_row_incluye_agents(self, cd_detailed_mod):
+        detail = {"environments": [
+            {"name": "QA", "deployPhases": [{"deploymentInput": {"queueId": 7}}]}],
+            "variables": {}}
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": []}
+
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            row = cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 1, "name": "pipe"}, {}, "Org", "Proj",
+                queue_map={"7": "Pool-QA"})
+        assert row["agents"] == "Pool-QA"
+        assert row["agentPerStage_QA"] == "Pool-QA"

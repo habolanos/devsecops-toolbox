@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.78`** — 2026-11-08
+**`1.9.79`** — 2026-11-09
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-09 | **1.9.79** | **Opción 15: columna de agentes por stage** — nuevo campo `agents` (agent queues únicas del pipeline) + columnas dinámicas `agentPerStage_<stage>` resueltas desde `deployPhases[].deploymentInput.queueId`/`.queue` vía `/_apis/distributedtask/queues` (1 llamada por ejecución, queueId→nombre); stages sin agente → `Server-side`. cd_detailed v1.0.7. Tests: 43 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-08 | **1.9.78** | **Cache de inventories scoped por proyecto** — al correr CD Detailed Inventory con `--project` distinto se reusaba el cache del proyecto anterior (filename `{script}_raw_*.json` sin proyecto → saltaba APIs y generaba outputs con datos del otro proyecto). Ahora el filename incluye slug del proyecto (`{script}_{proyecto}_raw_*.json`) y el `metadata.project` se valida al cargar; aplica a caches propios y cross-script (prod_deploy y health_score leen el cache de ci/cd_detailed del proyecto correcto; azdo_parser scopea `azdo_release_{org}_{project}_{id}`). cd_detailed v1.0.6, ci_detailed v1.0.1, prod_deploy v1.0.1, health_score v1.0.1, pipeline_status v1.8.33. Tests: 35 | `scm/azdo/cicd_inventory_{cd,ci}_detailed.py`, `scm/azdo/cicd_inventory_prod_deploy.py`, `scm/azdo/cicd_inventory_health_score.py`, `scm/azdo/cicd_pipeline_status.py`, `scm/azdo/health-probe-masive/azdo_parser.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-08 | **1.9.77** | **Setup wizard: hidrata `azdo.projects`** — AzdoStep ahora pregunta proyectos adicionales (coma-separados, default = `projects` existentes sin el default) y escribe `projects` hidratado en config.json; antes el placeholder `["<TU_PROYECTO>"]` quedaba stale y ConfigValidator lo rechazaba. setup v1.8.33. Tests: 71 | `scm/setup/steps/azdo_step.py`, `scm/setup/test_setup_wizard.py`, `scm/setup/__init__.py`, `README.version.md`, `VERSION` |
 | 2026-11-08 | **1.9.76** | **Multi-proyecto AzDO** — nuevo `azdo.projects` (lista) en config.json; `azdo.project` sigue como default. El launcher muestra selector numerado con >1 proyecto (Enter=default, texto libre=nombre no listado); helpers `select_project`/`configured_projects` (tools.py v1.8.52); `AZDO_PROJECTS` (CSV) exportado por main.py y terminal/tools.py; `cicd_inventory` v1.0.1 usa `azdo.projects` como default de `--project`. Tests: 22 | `scm/azdo/tools.py`, `scm/config.json.template`, `scm/main.py`, `scm/terminal/tools.py`, `scm/azdo/cicd_inventory.py`, `scm/tests/unit/test_azdo_projects_config.py`, `scm/azdo/README.md`, `README.version.md`, `VERSION` |
