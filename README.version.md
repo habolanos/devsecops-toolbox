@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.82`** — 2026-11-24
+**`1.9.83`** — 2026-11-24
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-24 | **1.9.83** | **Opción 15: inventario por task (atributos + inputs)** — nuevo export `cicd_inventory_cd_detailed_tasks_*.{json,csv,xlsx}`: una fila por workflowTask con todos sus atributos (`enabled`/`condition`/`alwaysRun`/`continueOnError`/`timeout`/`retryCount`/`refName`/`taskId`/`definitionType`/`taskOrder`/`phaseType`) + `inputsJson` completo e inputs aplanados `input_<key>`; se guarda en el cache scoped por proyecto y respeta el filtro `--var-*`. cd_detailed v1.0.9. Tests: 55 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.82** | **Opción 15: atributos de tasks por stage** — nuevas columnas `taskNamesPerStage_<stage>` (nombres, ` [disabled]` si `enabled=False`), `taskVersionsPerStage_<stage>` (`"3.* / 2.*"`) y `taskDetailPerStage_<stage>` (`"name@version"`) desde `deployPhases[].workflowTasks[]` — ya venía en el full definition, 0 llamadas API extra. cd_detailed v1.0.8. Tests: 49 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.81** | **Fix: TUI no aparecía en instalaciones nuevas** — quien descargaba el repo veía el menú clásico porque `textual` no estaba en `pyproject.toml` deps (solo `rich`/`requests`/`pyyaml`) y el auto-instalador de `main.py` solo procesaba `requirements.txt` cuando `rich` faltaba. Ahora `_ensure_textual()` instala `textual>=8.2.0,<9.0` de forma independiente dentro de `_try_run_tui()` antes del import, y pyproject lo declara para `pip install .`. main.py v1.8.38. Tests: 61 | `pyproject.toml`, `scm/main.py`, `scm/tests/unit/test_main.py`, `README.version.md`, `VERSION` |
 | 2026-11-23 | **1.9.80** | **Terminal opción 11: GKE Failed Pods — Scale to Zero** — `gestor_pods_diario.sh` integrado al launcher como `gke-failed-pods-scaler.sh`: escanea contextos `gke_*` del kubeconfig buscando pods con falla activa (CrashLoop/ImagePull/Unschedulable/NotReady) y permite escalar su Deployment/StatefulSet a 0 con confirmaciones escritas. Mejoras: bitácora a outcome global con `result=`, clústeres descubiertos del kubeconfig (sin quemar listas en config.json; tabla embebida solo fallback), menús dinámicos, fix check de contexto, `timeout` opcional, args `--project`/`--env`/`--scan-only`, guard `source`. `prepare_env_from_config` inyecta `DEVSECOPS_OUTPUT_DIR`. tools.py v1.8.36. Tests: 33 | `scm/terminal/gke-failed-pods-scaler.sh`, `scm/terminal/tools.py`, `scm/terminal/README.md`, `scm/tests/unit/test_terminal_tools.py`, `README.version.md`, `VERSION` |

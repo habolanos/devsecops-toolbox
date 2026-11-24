@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -374,6 +374,47 @@ def _stage_task_details(envs):
     return rows
 
 
+def _stage_task_rows(envs, pipeline_name, def_id):
+    """Una fila por workflowTask: pipeline × stage × task.
+
+    Expone TODOS los atributos de la task (enabled, condition, alwaysRun,
+    continueOnError, timeout, retries, refName, taskId, definitionType) más
+    sus inputs: completos en `inputsJson` y aplanados como `input_<key>`
+    (columnas dinámicas en el DataFrame/export).
+    """
+    rows = []
+    for env in envs or []:
+        for phase in env.get("deployPhases") or []:
+            ptype = phase.get("type") or phase.get("phaseType") or ""
+            for idx, t in enumerate(phase.get("workflowTasks") or [], 1):
+                inputs = t.get("inputs") or {}
+                row = {
+                    "pipelineId": def_id,
+                    "pipeline": pipeline_name,
+                    "stage": env.get("name", "?"),
+                    "phaseType": ptype,
+                    "taskOrder": idx,
+                    "taskName": t.get("name") or t.get("refName")
+                                or t.get("taskId") or "?",
+                    "refName": t.get("refName", ""),
+                    "taskId": t.get("taskId", ""),
+                    "version": t.get("version", ""),
+                    "definitionType": t.get("definitionType", ""),
+                    "enabled": t.get("enabled"),
+                    "alwaysRun": t.get("alwaysRun"),
+                    "continueOnError": t.get("continueOnError"),
+                    "condition": t.get("condition", ""),
+                    "timeoutInMinutes": t.get("timeoutInMinutes"),
+                    "retryCountOnTaskFailure": t.get("retryCountOnTaskFailure"),
+                    "inputsJson": json.dumps(inputs, ensure_ascii=False),
+                }
+                for k, v in inputs.items():
+                    row[f"input_{k}"] = (v if isinstance(v, (str, int, float, bool))
+                                         else json.dumps(v, ensure_ascii=False))
+                rows.append(row)
+    return rows
+
+
 # ==========================================================
 # RELEASE STATS POR STAGE (conteo, frecuencia, tiempo entre stages)
 # ==========================================================
@@ -463,8 +504,11 @@ def _release_stage_stats(def_envs, releases):
 
 
 def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
-                       queue_map=None):
-    """Fetch detalles de un pipeline CD: ambientes, releases, variables, agentes."""
+                       queue_map=None, task_rows=None):
+    """Fetch detalles de un pipeline CD: ambientes, releases, variables, agentes.
+
+    Si `task_rows` es una lista, se le agregan las filas por task
+    (pipeline × stage × task con todos sus atributos e inputs)."""
     def_id = definition.get("id")
     name = definition.get("name", "")
 
@@ -531,6 +575,10 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
         result[f"taskNamesPerStage_{stage_name}"] = names
         result[f"taskVersionsPerStage_{stage_name}"] = versions
         result[f"taskDetailPerStage_{stage_name}"] = detail
+
+    # Inventario por task (fila por workflowTask con atributos + inputs)
+    if task_rows is not None:
+        task_rows.extend(_stage_task_rows(envs, name, def_id))
 
     # Agregar conteo de tareas por stage como columna individual (tasksPerStage_<stage>)
     for stage_name, n_tasks in stage_tasks:
@@ -782,6 +830,37 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
     return excel_path, csv_path
 
 
+def export_tasks(task_rows, output_dir, script_name=None):
+    """Exporta el inventario por task (pipeline × stage × task) a
+    cicd_inventory_cd_detailed_tasks_*.{json,csv,xlsx}."""
+    if not task_rows:
+        return None, None
+    script_name = script_name or f"{SCRIPT_NAME}_tasks"
+    df = pd.DataFrame(task_rows)
+    if not EXPORT_MANAGER_AVAILABLE:
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        excel_path = output_dir / f"{script_name}_{ts}.xlsx"
+        df.to_excel(excel_path, index=False, engine="openpyxl")
+        print(f"📊 Excel tasks: {excel_path.resolve()}")
+        csv_path = output_dir / f"{script_name}_{ts}.csv"
+        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        print(f"📄 CSV tasks:  {csv_path.resolve()}")
+        return excel_path, csv_path
+    manager = ExportManager(script_name, "1.0.5")
+    summary = {"total_tasks": len(task_rows)}
+    json_path = manager.export_json(task_rows, summary=summary)
+    if json_path:
+        print(f"📋 JSON tasks: {json_path}")
+    csv_path = manager.export_csv(task_rows)
+    if csv_path:
+        print(f"📄 CSV tasks:  {csv_path}")
+    excel_path = manager.export_excel(task_rows, sheet_name="CD Tasks",
+                                      summary=summary)
+    if excel_path:
+        print(f"📊 Excel tasks: {excel_path}")
+    return excel_path, csv_path
+
+
 # ==========================================================
 # RESUMEN RICH
 # ==========================================================
@@ -842,7 +921,8 @@ def main():
     api_calls = 0
     cache_used = False
     rows = []
-    
+    task_rows = []
+
     try:
         # Verificación previa de cache
         if not args.force_refresh and not args.skip_cache:
@@ -853,6 +933,7 @@ def main():
                 data = _load_cache(cache_path)
                 if data.get("metadata", {}).get("project") == args.project:
                     rows = data.get("rows", [])
+                    task_rows = data.get("task_rows", [])
                     cache_used = True
                 else:
                     print("⚠️  Cache corresponde a otro proyecto — se ignora.")
@@ -864,6 +945,7 @@ def main():
                 data = _load_cache(cache_path)
                 if data.get("metadata", {}).get("project") == args.project:
                     rows = data.get("rows", [])
+                    task_rows = data.get("task_rows", [])
                     cache_used = True
                 else:
                     print("⚠️  Cache corresponde a otro proyecto — se ignora.")
@@ -904,7 +986,7 @@ def main():
                 with _progress_context() as progress:
                     task = progress.add_task("Procesando CD pipelines", total=total)
                     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map): d for d in definitions}
+                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map, task_rows): d for d in definitions}
                         for future in as_completed(futures):
                             try:
                                 result = future.result()
@@ -918,7 +1000,7 @@ def main():
                 tee.resume_terminal()
             else:
                 with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map): d for d in definitions}
+                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map, task_rows): d for d in definitions}
                     for i, future in enumerate(as_completed(futures), 1):
                         try:
                             result = future.result()
@@ -940,6 +1022,7 @@ def main():
                     "count": len(rows),
                 },
                 "rows": rows,
+                "task_rows": task_rows,
             }
             cache_path = _save_cache(cache_data, project=args.project)
             print(f"💾 Cache guardado: {cache_path.name}")
@@ -954,13 +1037,17 @@ def main():
             else:
                 rows = [r for r in rows if r.get(var_key) is not None]
                 print(f"🔍 Filtro: var '{args.var_name}' existe → {len(rows)}/{before_count} pipelines")
-            
+            if task_rows:
+                keep_ids = {r.get("id") for r in rows}
+                task_rows = [t for t in task_rows if t.get("pipelineId") in keep_ids]
+
             if not rows:
                 print("⚠️  Ningún pipeline coincide con el filtro de variable")
                 return
         
         if rows:
             export_results(rows, output_dir)
+            export_tasks(task_rows, output_dir)
             try:
                 from azdo_default_export import write_default_reports
                 write_default_reports(

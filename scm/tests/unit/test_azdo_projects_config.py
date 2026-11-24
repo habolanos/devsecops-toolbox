@@ -464,3 +464,95 @@ class TestStageTaskDetails:
         assert row["taskVersionsPerStage_QA"] == "3.*"
         assert row["taskDetailPerStage_QA"] == "Copy yaml@3.*"
         assert row["tasksPerStage_QA"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Inventario por task — atributos e inputs completos (CD Detailed Inventory)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestStageTaskRows:
+
+    def test_fila_por_task_con_atributos(self, cd_detailed_mod):
+        envs = [{"name": "QA", "deployPhases": [{"type": "agentBasedDeployment",
+            "workflowTasks": [{
+                "name": "Copy yaml", "refName": "copyYaml", "taskId": "guid-1",
+                "version": "3.*", "enabled": True, "alwaysRun": False,
+                "continueOnError": False, "condition": "succeeded()",
+                "timeoutInMinutes": 0, "retryCountOnTaskFailure": 0,
+                "definitionType": "task",
+                "inputs": {"filePath": "$(System.DefaultWorkingDirectory)",
+                           "targetType": "inline", "script": "echo hi"},
+            }]}]}]
+        rows = cd_detailed_mod._stage_task_rows(envs, "pipe-A", 42)
+        assert len(rows) == 1
+        r = rows[0]
+        assert r["pipelineId"] == 42 and r["pipeline"] == "pipe-A"
+        assert r["stage"] == "QA" and r["phaseType"] == "agentBasedDeployment"
+        assert r["taskOrder"] == 1 and r["taskName"] == "Copy yaml"
+        assert r["refName"] == "copyYaml" and r["taskId"] == "guid-1"
+        assert r["version"] == "3.*" and r["enabled"] is True
+        assert r["condition"] == "succeeded()"
+        assert r["input_filePath"] == "$(System.DefaultWorkingDirectory)"
+        assert r["input_targetType"] == "inline"
+        assert r["input_script"] == "echo hi"
+        import json as _j
+        assert _j.loads(r["inputsJson"])["script"] == "echo hi"
+
+    def test_inputs_no_primitivos_serializados(self, cd_detailed_mod):
+        envs = [{"name": "X", "deployPhases": [{"workflowTasks": [{
+            "name": "T", "inputs": {"list": ["a", "b"], "num": 5}}]}]}]
+        r = cd_detailed_mod._stage_task_rows(envs, "p", 1)[0]
+        assert r["input_num"] == 5
+        assert r["input_list"] == '["a", "b"]'
+
+    def test_sin_inputs(self, cd_detailed_mod):
+        envs = [{"name": "X", "deployPhases": [{"workflowTasks": [
+            {"name": "T", "version": "1.*"}]}]}]
+        r = cd_detailed_mod._stage_task_rows(envs, "p", 1)[0]
+        assert r["inputsJson"] == "{}"
+        assert not any(k.startswith("input_") for k in r)
+
+    def test_multi_phase_task_order(self, cd_detailed_mod):
+        envs = [{"name": "Dev", "deployPhases": [
+            {"workflowTasks": [{"name": "A"}, {"name": "B"}]},
+            {"workflowTasks": [{"name": "C"}]},
+        ]}]
+        rows = cd_detailed_mod._stage_task_rows(envs, "p", 1)
+        assert [(r["taskName"], r["taskOrder"]) for r in rows] == [
+            ("A", 1), ("B", 2), ("C", 1)]
+
+    def test_fetch_acumula_task_rows(self, cd_detailed_mod):
+        detail = {"environments": [{"name": "QA", "deployPhases": [
+            {"workflowTasks": [{"name": "Copy yaml", "version": "3.*",
+                                "inputs": {"script": "ls"}}]}]}],
+            "variables": {}}
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": []}
+
+        task_rows = []
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 7, "name": "pipe-X"}, {}, "Org", "Proj",
+                queue_map={}, task_rows=task_rows)
+        assert len(task_rows) == 1
+        assert task_rows[0]["pipelineId"] == 7
+        assert task_rows[0]["taskName"] == "Copy yaml"
+        assert task_rows[0]["input_script"] == "ls"
+
+    def test_task_rows_opcional_no_rompe(self, cd_detailed_mod):
+        """Sin task_rows el comportamiento previo se mantiene."""
+        detail = {"environments": [{"name": "QA", "deployPhases": [
+            {"workflowTasks": [{"name": "T"}]}]}], "variables": {}}
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": []}
+
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            row = cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 1, "name": "pipe"}, {}, "Org", "Proj", queue_map={})
+        assert row["tasksPerStage_QA"] == 1

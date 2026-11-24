@@ -976,6 +976,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-11-24 | **1.9.83** | Opción 15: inventario por task — `cicd_inventory_cd_detailed_tasks_*` con atributos + `input_<key>` de cada workflowTask |
 | 2026-11-24 | **1.9.82** | Opción 15: atributos de tasks por stage (`taskNamesPerStage_`, `taskVersionsPerStage_`, `taskDetailPerStage_`) desde `workflowTasks` — marca ` [disabled]` |
 | 2026-11-24 | **1.9.81** | Fix TUI ausente en descargas nuevas: `textual` agregado a pyproject deps + `_ensure_textual()` auto-instala en `_try_run_tui()` (antes caía al menú clásico si `rich` ya estaba instalado) |
 | 2026-11-23 | **1.9.80** | Terminal opción 11: `gke-failed-pods-scaler.sh` (antes `gestor_pods_diario.sh`) — pods con falla activa → escalar a cero; clústeres descubiertos del kubeconfig, bitácora a outcome |
