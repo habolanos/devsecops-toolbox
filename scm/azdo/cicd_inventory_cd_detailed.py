@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.13"
+__version__ = "1.0.14"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -374,13 +374,13 @@ def _stage_task_details(envs):
     return rows
 
 
-def _stage_task_contents(envs, var_map=None):
-    """Contenido completo de las tasks por stage, en una sola columna.
+def _stage_task_columns(envs, var_map=None):
+    """Contenido de las tasks por stage como lista por task.
 
-    Por cada task: 'Nombre@version{input1=valor1; input2=valor2}' con las
-    referencias $(var) resueltas contra var_map + variables del stage
-    (enabled=False lleva sufijo ' [disabled]'). Las tasks se separan
-    con ' / '. Stage sin tasks → cadena vacía.
+    Devuelve [(stage_name, [task_str, ...])] donde cada task_str es
+    'Nombre@version{input1=valor1; input2=valor2}' con las referencias
+    $(var) resueltas contra var_map + variables del stage (enabled=False
+    lleva sufijo ' [disabled]'). Una entrada por workflowTask en orden.
     """
     var_map = var_map or {}
     rows = []
@@ -407,8 +407,16 @@ def _stage_task_contents(envs, var_map=None):
                     f"{k}={resolved[k] if isinstance(resolved[k], str) else json.dumps(resolved[k], ensure_ascii=False)}"
                     for k in sorted(resolved))
                 parts.append(f"{n}@{v}" + (f"{{{kv}}}" if kv else ""))
-        rows.append((env.get("name", "?"), " / ".join(parts)))
+        rows.append((env.get("name", "?"), parts))
     return rows
+
+
+def _stage_task_contents(envs, var_map=None):
+    """Contenido completo de las tasks por stage, en una sola columna.
+
+    Las tasks se separan con ' / '. Stage sin tasks → cadena vacía.
+    """
+    return [(n, " / ".join(p)) for n, p in _stage_task_columns(envs, var_map)]
 
 
 _MACRO_RE = re.compile(r"\$\(([^)]+)\)")
@@ -691,9 +699,13 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
         else:
             var_map[k.lower()] = vd
 
-    # Contenido completo de las tasks por stage (nombre@version{inputs})
-    for stage_name, content in _stage_task_contents(envs, var_map):
-        result[f"tasksContentPerStage_{stage_name}"] = content
+    # Contenido completo de las tasks por stage: columna combinada
+    # (tasksContentPerStage_<stage>) + una columna por task en orden
+    # (taskContent_<stage>_<N>) para lectura tabular sin mega-celdas
+    for stage_name, parts in _stage_task_columns(envs, var_map):
+        result[f"tasksContentPerStage_{stage_name}"] = " / ".join(parts)
+        for i, part in enumerate(parts, 1):
+            result[f"taskContent_{stage_name}_{i}"] = part
 
     # Inventario por task (fila por workflowTask con atributos + inputs)
     if task_rows is not None:

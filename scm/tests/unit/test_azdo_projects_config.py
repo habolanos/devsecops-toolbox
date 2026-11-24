@@ -725,6 +725,34 @@ class TestStageTaskContents:
                 {"id": 1, "name": "pipe"}, {}, "Org", "Proj", queue_map={})
         assert row["tasksContentPerStage_QA"] == "Copy yaml@3.*{filePath=/tmp/x}"
 
+    def test_columna_por_task_en_row(self, cd_detailed_mod):
+        detail = {"environments": [{"name": "QA", "deployPhases": [
+            {"workflowTasks": [
+                {"name": "A", "version": "1.*", "inputs": {"k": "v"}},
+                {"name": "B", "version": "2.*", "inputs": {}}]}]}],
+            "variables": {}}
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": []}
+
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            row = cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 1, "name": "pipe"}, {}, "Org", "Proj", queue_map={})
+        assert row["taskContent_QA_1"] == "A@1.*{k=v}"
+        assert row["taskContent_QA_2"] == "B@2.*"
+        assert "taskContent_QA_3" not in row
+        assert row["tasksContentPerStage_QA"] == "A@1.*{k=v} / B@2.*"
+
+    def test_stage_task_columns_devuelve_lista(self, cd_detailed_mod):
+        envs = [{"name": "X", "deployPhases": [{"workflowTasks": [
+            {"name": "A", "version": "1.*"},
+            {"name": "B", "version": "2.*"}]}]}]
+        name, parts = cd_detailed_mod._stage_task_columns(envs)[0]
+        assert name == "X"
+        assert parts == ["A@1.*", "B@2.*"]
+
 
 class TestTruncateForExcel:
 
