@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.11"
+__version__ = "1.0.12"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -906,6 +906,29 @@ def _add_charts_sheet(excel_path, rows):
 # EXPORT
 # ==========================================================
 
+_EXCEL_CELL_LIMIT = 32000  # Excel/openpyxl trunca celdas en 32767
+
+
+def _truncate_for_excel(rows, limit=_EXCEL_CELL_LIMIT):
+    """Devuelve rows con celdas str > limit recortadas (marcador '…[truncated]').
+
+    Solo para el xlsx: JSON/CSV conservan el valor completo. Evita el
+    UserWarning 'Cell contents too long' de pandas/openpyxl.
+    """
+    marker = "…[truncated]"
+    out = []
+    for r in rows:
+        if not any(isinstance(v, str) and len(v) > limit for v in r.values()):
+            out.append(r)
+            continue
+        r2 = dict(r)
+        for k, v in r2.items():
+            if isinstance(v, str) and len(v) > limit:
+                r2[k] = v[: limit - len(marker)] + marker
+        out.append(r2)
+    return out
+
+
 def export_results(rows, output_dir, script_name=SCRIPT_NAME):
 
     """Exporta resultados usando ExportManager centralizado con fallback."""
@@ -913,13 +936,13 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
     if not EXPORT_MANAGER_AVAILABLE:
         # Fallback a exportación manual con pandas
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        df = pd.DataFrame(rows)
         excel_path = output_dir / f"{script_name}_{ts}.xlsx"
-        df.to_excel(excel_path, index=False, engine="openpyxl")
+        pd.DataFrame(_truncate_for_excel(rows)).to_excel(
+            excel_path, index=False, engine="openpyxl")
         print(f"📊 Excel: {excel_path.resolve()}")
         _add_charts_sheet(str(excel_path), rows)
         csv_path = output_dir / f"{script_name}_{ts}.csv"
-        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        pd.DataFrame(rows).to_csv(csv_path, index=False, encoding="utf-8-sig")
         print(f"📄 CSV:  {csv_path.resolve()}")
         return excel_path, csv_path
     
@@ -940,8 +963,9 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
     if csv_path:
         print(f"📄 CSV:  {csv_path}")
     
-    # Exportar a Excel
-    excel_path = manager.export_excel(rows, sheet_name="CD Pipelines", summary=summary)
+    # Exportar a Excel (celdas >32k truncadas; CSV/JSON conservan todo)
+    excel_path = manager.export_excel(
+        _truncate_for_excel(rows), sheet_name="CD Pipelines", summary=summary)
     if excel_path:
         _add_charts_sheet(str(excel_path), rows)
         print(f"📊 Excel: {excel_path}")
@@ -959,7 +983,8 @@ def export_tasks(task_rows, output_dir, script_name=None):
     if not EXPORT_MANAGER_AVAILABLE:
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         excel_path = output_dir / f"{script_name}_{ts}.xlsx"
-        df.to_excel(excel_path, index=False, engine="openpyxl")
+        pd.DataFrame(_truncate_for_excel(task_rows)).to_excel(
+            excel_path, index=False, engine="openpyxl")
         print(f"📊 Excel tasks: {excel_path.resolve()}")
         csv_path = output_dir / f"{script_name}_{ts}.csv"
         df.to_csv(csv_path, index=False, encoding="utf-8-sig")
@@ -973,8 +998,8 @@ def export_tasks(task_rows, output_dir, script_name=None):
     csv_path = manager.export_csv(task_rows)
     if csv_path:
         print(f"📄 CSV tasks:  {csv_path}")
-    excel_path = manager.export_excel(task_rows, sheet_name="CD Tasks",
-                                      summary=summary)
+    excel_path = manager.export_excel(
+        _truncate_for_excel(task_rows), sheet_name="CD Tasks", summary=summary)
     if excel_path:
         print(f"📊 Excel tasks: {excel_path}")
     return excel_path, csv_path

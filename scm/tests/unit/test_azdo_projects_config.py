@@ -724,3 +724,19 @@ class TestStageTaskContents:
             row = cd_detailed_mod._fetch_cd_pipeline(
                 {"id": 1, "name": "pipe"}, {}, "Org", "Proj", queue_map={})
         assert row["tasksContentPerStage_QA"] == "Copy yaml@3.*{filePath=/tmp/x}"
+
+
+class TestTruncateForExcel:
+
+    def test_celda_larga_se_trunca_con_marcador(self, cd_detailed_mod):
+        rows = [{"a": "x" * 40000, "b": "corto"}]
+        out = cd_detailed_mod._truncate_for_excel(rows, limit=32000)
+        assert out[0]["a"].endswith("…[truncated]")
+        assert len(out[0]["a"]) <= 32000
+        assert out[0]["b"] == "corto"
+        # el original no se muta
+        assert len(rows[0]["a"]) == 40000
+
+    def test_celdas_cortas_intactas(self, cd_detailed_mod):
+        rows = [{"a": "normal"}]
+        assert cd_detailed_mod._truncate_for_excel(rows) == rows

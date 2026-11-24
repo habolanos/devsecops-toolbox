@@ -976,6 +976,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-11-24 | **1.9.86** | Opción 15: fix warning Excel — celdas >32k se truncan con `…[truncated]` solo en xlsx; JSON/CSV completos |
 | 2026-11-24 | **1.9.85** | Opción 15: `tasksContentPerStage_<stage>` — cada task del stage como `Nombre@ver{input=valor}` con `$(var)` resueltas |
 | 2026-11-24 | **1.9.84** | Opción 15: resuelve `$(var)` de inputs de tasks (groups + def + release + stage) en `inputRes_<key>`/`inputsResolvedJson` |
 | 2026-11-24 | **1.9.83** | Opción 15: inventario por task — `cicd_inventory_cd_detailed_tasks_*` con atributos + `input_<key>` de cada workflowTask |

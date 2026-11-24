@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.85`** — 2026-11-24
+**`1.9.86`** — 2026-11-24
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-24 | **1.9.86** | **Opción 15: fix warning Excel celda >32k** — `tasksContentPerStage_*`/`input_script` excedían el límite de 32,767 chars por celda (UserWarning 'Cell contents too long' y truncado silencioso). `_truncate_for_excel()` recorta a 32k con marcador `…[truncated]` solo para xlsx; JSON/CSV conservan el valor completo. cd_detailed v1.0.12. Tests: 73 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.85** | **Opción 15: contenido de tasks por stage** — `tasksContentPerStage_<stage>` lista cada task del stage como `Nombre@version{input=valor; ...}` con `$(var)` resueltas (group < def < release < stage) y marca ` [disabled]`; scripts viajan completos en la celda. cd_detailed v1.0.11. Tests: 71 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.84** | **Opción 15: resolución de `$(var)` en inputs** — los inputs de tasks guardan referencias (`input_secureFile = $(SECURE_FILE_NAME)`); ahora se resuelven contra variable groups (1 llamada `distributedtask/variablegroups`), vars de definición, vars del último release y vars de stage (precedencia group < def < release < stage). Columnas nuevas `inputsResolvedJson` + `inputRes_<key>` (solo si cambia); secretas (`null`) quedan sin resolver. cd_detailed v1.0.10. Tests: 65 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.83** | **Opción 15: inventario por task (atributos + inputs)** — nuevo export `cicd_inventory_cd_detailed_tasks_*.{json,csv,xlsx}`: una fila por workflowTask con todos sus atributos (`enabled`/`condition`/`alwaysRun`/`continueOnError`/`timeout`/`retryCount`/`refName`/`taskId`/`definitionType`/`taskOrder`/`phaseType`) + `inputsJson` completo e inputs aplanados `input_<key>`; se guarda en el cache scoped por proyecto y respeta el filtro `--var-*`. cd_detailed v1.0.9. Tests: 55 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
