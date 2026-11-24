@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.12"
+__version__ = "1.0.13"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -973,19 +973,30 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
     return excel_path, csv_path
 
 
-def export_tasks(task_rows, output_dir, script_name=None):
+TASKS_XLSX_MAX_ROWS = 20000
+
+
+def export_tasks(task_rows, output_dir, script_name=None, force_excel=False):
     """Exporta el inventario por task (pipeline × stage × task) a
-    cicd_inventory_cd_detailed_tasks_*.{json,csv,xlsx}."""
+    cicd_inventory_cd_detailed_tasks_*.{json,csv,xlsx}.
+
+    El xlsx se omite cuando hay > TASKS_XLSX_MAX_ROWS filas: escribir ~120k
+    filas × ~240 columnas con openpyxl tarda muchísimo (parece colgado).
+    `--tasks-excel` lo fuerza. CSV/JSON siempre se generan.
+    """
     if not task_rows:
         return None, None
     script_name = script_name or f"{SCRIPT_NAME}_tasks"
     df = pd.DataFrame(task_rows)
+    want_excel = force_excel or len(task_rows) <= TASKS_XLSX_MAX_ROWS
     if not EXPORT_MANAGER_AVAILABLE:
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        excel_path = output_dir / f"{script_name}_{ts}.xlsx"
-        pd.DataFrame(_truncate_for_excel(task_rows)).to_excel(
-            excel_path, index=False, engine="openpyxl")
-        print(f"📊 Excel tasks: {excel_path.resolve()}")
+        excel_path = None
+        if want_excel:
+            excel_path = output_dir / f"{script_name}_{ts}.xlsx"
+            pd.DataFrame(_truncate_for_excel(task_rows)).to_excel(
+                excel_path, index=False, engine="openpyxl")
+            print(f"📊 Excel tasks: {excel_path.resolve()}")
         csv_path = output_dir / f"{script_name}_{ts}.csv"
         df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         print(f"📄 CSV tasks:  {csv_path.resolve()}")
@@ -998,10 +1009,16 @@ def export_tasks(task_rows, output_dir, script_name=None):
     csv_path = manager.export_csv(task_rows)
     if csv_path:
         print(f"📄 CSV tasks:  {csv_path}")
-    excel_path = manager.export_excel(
-        _truncate_for_excel(task_rows), sheet_name="CD Tasks", summary=summary)
-    if excel_path:
-        print(f"📊 Excel tasks: {excel_path}")
+    excel_path = None
+    if want_excel:
+        excel_path = manager.export_excel(
+            _truncate_for_excel(task_rows), sheet_name="CD Tasks",
+            summary=summary)
+        if excel_path:
+            print(f"📊 Excel tasks: {excel_path}")
+    else:
+        print(f"⏭️  Excel de tasks omitido ({len(task_rows):,} filas > "
+              f"{TASKS_XLSX_MAX_ROWS:,}) — usar CSV/JSON o --tasks-excel")
     return excel_path, csv_path
 
 
@@ -1050,6 +1067,7 @@ def main():
     parser.add_argument("--force-refresh", action="store_true", help="Ignorar cache, consultar APIs")
     parser.add_argument("--skip-cache", action="store_true", help="Alias de --force-refresh")
     parser.add_argument("--use-cache-only", action="store_true", help="Solo cache, falla si no existe o > 24h")
+    parser.add_argument("--tasks-excel", action="store_true", help="Forzar Excel del inventario de tasks aunque supere %d filas" % TASKS_XLSX_MAX_ROWS)
     args = parser.parse_args()
     args.org = normalize_org(args.org)
 
@@ -1192,7 +1210,7 @@ def main():
         
         if rows:
             export_results(rows, output_dir)
-            export_tasks(task_rows, output_dir)
+            export_tasks(task_rows, output_dir, force_excel=args.tasks_excel)
             try:
                 from azdo_default_export import write_default_reports
                 write_default_reports(

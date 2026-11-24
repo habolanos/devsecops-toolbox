@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.86`** — 2026-11-24
+**`1.9.87`** — 2026-11-24
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-24 | **1.9.87** | **Opción 15: fix proceso "colgado"** — export_tasks escribía ~118k filas × ~240 cols a xlsx vía openpyxl (decenas de minutos). Ahora el xlsx de tasks se omite con >20k filas (`TASKS_XLSX_MAX_ROWS`) con nota; CSV/JSON siempre salen; flag `--tasks-excel` lo fuerza. cd_detailed v1.0.13. Tests: 73 | `scm/azdo/cicd_inventory_cd_detailed.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.86** | **Opción 15: fix warning Excel celda >32k** — `tasksContentPerStage_*`/`input_script` excedían el límite de 32,767 chars por celda (UserWarning 'Cell contents too long' y truncado silencioso). `_truncate_for_excel()` recorta a 32k con marcador `…[truncated]` solo para xlsx; JSON/CSV conservan el valor completo. cd_detailed v1.0.12. Tests: 73 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.85** | **Opción 15: contenido de tasks por stage** — `tasksContentPerStage_<stage>` lista cada task del stage como `Nombre@version{input=valor; ...}` con `$(var)` resueltas (group < def < release < stage) y marca ` [disabled]`; scripts viajan completos en la celda. cd_detailed v1.0.11. Tests: 71 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.84** | **Opción 15: resolución de `$(var)` en inputs** — los inputs de tasks guardan referencias (`input_secureFile = $(SECURE_FILE_NAME)`); ahora se resuelven contra variable groups (1 llamada `distributedtask/variablegroups`), vars de definición, vars del último release y vars de stage (precedencia group < def < release < stage). Columnas nuevas `inputsResolvedJson` + `inputRes_<key>` (solo si cambia); secretas (`null`) quedan sin resolver. cd_detailed v1.0.10. Tests: 65 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
