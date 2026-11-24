@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.84`** — 2026-11-24
+**`1.9.85`** — 2026-11-24
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-24 | **1.9.85** | **Opción 15: contenido de tasks por stage** — `tasksContentPerStage_<stage>` lista cada task del stage como `Nombre@version{input=valor; ...}` con `$(var)` resueltas (group < def < release < stage) y marca ` [disabled]`; scripts viajan completos en la celda. cd_detailed v1.0.11. Tests: 71 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.84** | **Opción 15: resolución de `$(var)` en inputs** — los inputs de tasks guardan referencias (`input_secureFile = $(SECURE_FILE_NAME)`); ahora se resuelven contra variable groups (1 llamada `distributedtask/variablegroups`), vars de definición, vars del último release y vars de stage (precedencia group < def < release < stage). Columnas nuevas `inputsResolvedJson` + `inputRes_<key>` (solo si cambia); secretas (`null`) quedan sin resolver. cd_detailed v1.0.10. Tests: 65 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.83** | **Opción 15: inventario por task (atributos + inputs)** — nuevo export `cicd_inventory_cd_detailed_tasks_*.{json,csv,xlsx}`: una fila por workflowTask con todos sus atributos (`enabled`/`condition`/`alwaysRun`/`continueOnError`/`timeout`/`retryCount`/`refName`/`taskId`/`definitionType`/`taskOrder`/`phaseType`) + `inputsJson` completo e inputs aplanados `input_<key>`; se guarda en el cache scoped por proyecto y respeta el filtro `--var-*`. cd_detailed v1.0.9. Tests: 55 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.82** | **Opción 15: atributos de tasks por stage** — nuevas columnas `taskNamesPerStage_<stage>` (nombres, ` [disabled]` si `enabled=False`), `taskVersionsPerStage_<stage>` (`"3.* / 2.*"`) y `taskDetailPerStage_<stage>` (`"name@version"`) desde `deployPhases[].workflowTasks[]` — ya venía en el full definition, 0 llamadas API extra. cd_detailed v1.0.8. Tests: 49 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |

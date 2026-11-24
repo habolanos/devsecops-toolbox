@@ -663,3 +663,64 @@ class TestStageTaskRowsResolved:
                 {"id": 1, "name": "pipe"}, {}, "Org", "Proj",
                 queue_map={}, task_rows=task_rows)
         assert task_rows[0]["inputRes_v"] == "cert-real.pem"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Contenido de tasks por stage (tasksContentPerStage_<stage>)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestStageTaskContents:
+
+    def test_script_task_content(self, cd_detailed_mod):
+        envs = [{"name": "QA", "deployPhases": [{"workflowTasks": [{
+            "name": "SCM Script", "version": "3.*",
+            "inputs": {"targetType": "inline", "script": "echo hi",
+                       "workingDirectory": ""}}]}]}]
+        _, content = cd_detailed_mod._stage_task_contents(envs)[0]
+        assert content.startswith("SCM Script@3.*{")
+        assert "script=echo hi" in content
+        assert "targetType=inline" in content
+
+    def test_valores_resueltos(self, cd_detailed_mod):
+        envs = [{"name": "V", "deployPhases": [{"workflowTasks": [{
+            "name": "Download secure file", "version": "1.*",
+            "inputs": {"secureFile": "$(SECURE_FILE_NAME)"}}]}]}]
+        _, content = cd_detailed_mod._stage_task_contents(
+            envs, {"secure_file_name": "cert.pem"})[0]
+        assert "secureFile=cert.pem" in content
+
+    def test_disabled_y_orden_inputs(self, cd_detailed_mod):
+        envs = [{"name": "X", "deployPhases": [{"workflowTasks": [{
+            "name": "T", "version": "1.*", "enabled": False,
+            "inputs": {"b": "2", "a": "1"}}]}]}]
+        _, content = cd_detailed_mod._stage_task_contents(envs)[0]
+        assert content == "T [disabled]@1.*{a=1; b=2}"
+
+    def test_task_sin_inputs_sin_llaves(self, cd_detailed_mod):
+        envs = [{"name": "X", "deployPhases": [{"workflowTasks": [
+            {"name": "T", "version": "1.*"}]}]}]
+        _, content = cd_detailed_mod._stage_task_contents(envs)[0]
+        assert content == "T@1.*"
+
+    def test_multi_task_separador(self, cd_detailed_mod):
+        envs = [{"name": "X", "deployPhases": [{"workflowTasks": [
+            {"name": "A", "version": "1.*", "inputs": {"k": "v"}},
+            {"name": "B", "version": "2.*", "inputs": {}}]}]}]
+        _, content = cd_detailed_mod._stage_task_contents(envs)[0]
+        assert content == "A@1.*{k=v} / B@2.*"
+
+    def test_fetch_row_incluye_tasks_content(self, cd_detailed_mod):
+        detail = {"environments": [{"name": "QA", "deployPhases": [
+            {"workflowTasks": [{"name": "Copy yaml", "version": "3.*",
+                                "inputs": {"filePath": "$(F)"}}]}]}],
+            "variables": {"F": {"value": "/tmp/x"}}}
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": []}
+
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            row = cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 1, "name": "pipe"}, {}, "Org", "Proj", queue_map={})
+        assert row["tasksContentPerStage_QA"] == "Copy yaml@3.*{filePath=/tmp/x}"

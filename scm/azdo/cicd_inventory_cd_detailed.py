@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.10"
+__version__ = "1.0.11"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -374,6 +374,43 @@ def _stage_task_details(envs):
     return rows
 
 
+def _stage_task_contents(envs, var_map=None):
+    """Contenido completo de las tasks por stage, en una sola columna.
+
+    Por cada task: 'Nombre@version{input1=valor1; input2=valor2}' con las
+    referencias $(var) resueltas contra var_map + variables del stage
+    (enabled=False lleva sufijo ' [disabled]'). Las tasks se separan
+    con ' / '. Stage sin tasks → cadena vacía.
+    """
+    var_map = var_map or {}
+    rows = []
+    for env in envs or []:
+        env_map = dict(var_map)
+        for vn, vd in (env.get("variables") or {}).items():
+            if isinstance(vd, dict):
+                env_map[vn.lower()] = (None if vd.get("isSecret")
+                                       else vd.get("value", ""))
+            else:
+                env_map[vn.lower()] = vd
+        parts = []
+        for phase in env.get("deployPhases") or []:
+            for t in phase.get("workflowTasks") or []:
+                n = t.get("name") or t.get("refName") or t.get("taskId") or "?"
+                if t.get("enabled") is False:
+                    n = f"{n} [disabled]"
+                v = t.get("version") or "?"
+                inputs = t.get("inputs") or {}
+                resolved = {k: (_resolve_macros(x, env_map)
+                                if isinstance(x, str) else x)
+                            for k, x in inputs.items()}
+                kv = "; ".join(
+                    f"{k}={resolved[k] if isinstance(resolved[k], str) else json.dumps(resolved[k], ensure_ascii=False)}"
+                    for k in sorted(resolved))
+                parts.append(f"{n}@{v}" + (f"{{{kv}}}" if kv else ""))
+        rows.append((env.get("name", "?"), " / ".join(parts)))
+    return rows
+
+
 _MACRO_RE = re.compile(r"\$\(([^)]+)\)")
 
 
@@ -639,21 +676,27 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
         result[f"taskVersionsPerStage_{stage_name}"] = versions
         result[f"taskDetailPerStage_{stage_name}"] = detail
 
+    # Mapa $(var) → valor (para resolver inputs de tasks).
+    # Precedencia: group < def-release < release instance (valor encolado
+    # real) < env vars (en _stage_task_rows/_stage_task_contents).
+    var_map = {}
+    for gid in source.get("variableGroups") or []:
+        for k, v in (group_vars or {}).get(gid, {}).items():
+            var_map[k.lower()] = v
+    var_map.update({v["name"].lower(): v["value"] for v in var_list})
+    for k, vd in (last_r.get("variables") or {}).items():
+        if isinstance(vd, dict):
+            var_map[k.lower()] = (None if vd.get("isSecret")
+                                  else vd.get("value", ""))
+        else:
+            var_map[k.lower()] = vd
+
+    # Contenido completo de las tasks por stage (nombre@version{inputs})
+    for stage_name, content in _stage_task_contents(envs, var_map):
+        result[f"tasksContentPerStage_{stage_name}"] = content
+
     # Inventario por task (fila por workflowTask con atributos + inputs)
     if task_rows is not None:
-        # Mapa $(var) → valor. Precedencia: group < def-release < release
-        # instance (valor encolado real) < env vars (en _stage_task_rows).
-        var_map = {}
-        for gid in source.get("variableGroups") or []:
-            for k, v in (group_vars or {}).get(gid, {}).items():
-                var_map[k.lower()] = v
-        var_map.update({v["name"].lower(): v["value"] for v in var_list})
-        for k, vd in (last_r.get("variables") or {}).items():
-            if isinstance(vd, dict):
-                var_map[k.lower()] = (None if vd.get("isSecret")
-                                      else vd.get("value", ""))
-            else:
-                var_map[k.lower()] = vd
         task_rows.extend(_stage_task_rows(envs, name, def_id, var_map))
 
     # Agregar conteo de tareas por stage como columna individual (tasksPerStage_<stage>)
