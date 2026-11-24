@@ -26,6 +26,7 @@ devsecops-toolbox/scm/terminal/
 │   └── cert_report_ssl_certs_gcp_components.sh
 ├── azdo_check_scm_inspection/        # Script 10 — Violaciones del stage SCM Inspection (AzDO)
 │   └── inspection_errors.sh
+├── gke-failed-pods-scaler.sh         # Script 11 — Pods con falla activa → escalar a cero (GKE)
 ├── config.json.template              # Plantilla de configuración
 └── outcome/                          # Carpeta de reportes exportados (.txt)
 ```
@@ -286,12 +287,59 @@ razón, detalle, task).
 > **Requisitos**: `bash` 4.3+, `curl`, `jq` 1.6+. El modo `--all` escanea las
 > pipelines en paralelo (`AZDO_CONCURRENCY`, `AZDO_REQUEST_DELAY_MS`).
 
+### Script 11 — `gke-failed-pods-scaler.sh` ⭐ Nuevo
+
+Escanea clústeres GKE buscando pods con **falla activa** (CrashLoopBackOff,
+ImagePullBackOff/ErrImagePull, CreateContainerConfigError/CreateContainerError,
+RunContainerError, InvalidImageName, contenedor terminado ≠ 0, Unschedulable,
+fase Failed/Unknown, Running+NotReady) y permite escalar el
+Deployment/StatefulSet dueño a **0 réplicas**. Los `restartCount` históricos
+nunca generan candidatos; solo fallas en curso.
+
+#### Uso
+
+```bash
+# Desde el launcher: opción 11 en Terminal Tools (menús guiados)
+# O directamente:
+bash gke-failed-pods-scaler.sh                            # interactivo
+bash gke-failed-pods-scaler.sh --project WMS --env DEV    # sin menús
+bash gke-failed-pods-scaler.sh --scan-only                # solo reporte
+```
+
+#### Descubrimiento de clústeres
+
+Los clústeres **no se configuran en config.json**: se descubren del kubeconfig
+(contextos `gke_*` creados por `gcloud container clusters get-credentials`).
+De cada contexto `gke_<project-id>_<region>_<cluster>` se deriva:
+
+- **Ambiente**: token `-dev-`/`-qa-`/`-stag-`/`-prod-` del project-id
+- **Proyecto**: project-id sin prefijo `cpl-` ni sufijo `-<env>-<fecha>`
+  (alias `cs-wms`→`WMS`, `cs-csc`→`CSC`, `cmanager`→`TMS`; equipos nuevos se
+  muestran con su clave)
+
+Si el kubeconfig no tiene contextos `gke_*` se usa la tabla embebida del
+script como fallback.
+
+#### Seguridad
+
+- Cada escalado a cero requiere escribir `ESCALAR-A-CERO`; el modo masivo
+  requiere `APAGAR-TODOS-<PROYECTO>-<AMBIENTE>`.
+- Solo candidatos con `spec.replicas > 0`; namespaces `kube-system` y
+  `gke-managed-system` siempre se excluyen.
+- **Bitácora**: cada intento queda en
+  `outcome/gke_failed_pods_scaler.log` con `result=ok|error`
+  (`DEVSECOPS_OUTPUT_DIR` → `global.output_dir` → `scm/outcome`).
+
+> **Requisitos**: `bash` 4+, `kubectl`, `jq` (y `timeout` opcional para
+> acotar el listado de pods).
+
 ---
 
 ## Historial de cambios
 
 | Fecha | Versión | Cambio | Archivos |
 |-------|---------|--------|---------|
+| 2026-11-23 | 1.0.9 | **Script 11: GKE Failed Pods — Scale to Zero** — `gestor_pods_diario.sh` renombrado a `gke-failed-pods-scaler.sh` y mejorado: bitácora al outcome global (era `/home/steven/` hardcodeado) con `result=ok|error`, clústeres descubiertos del kubeconfig (contextos `gke_*`, env/equipo derivados del project-id; tabla embebida solo como fallback), menús dinámicos por proyecto/ambiente, fix del check de contexto (`get-contexts -o name`), `timeout` opcional, args `--project`/`--env`/`--scan-only` para uso no interactivo, guard `source` para tests. Registrado como opción 11; `prepare_env_from_config` ahora inyecta `DEVSECOPS_OUTPUT_DIR` resuelto a todos los hijos. `tools.py` (terminal) v1.8.36. Tests en `test_terminal_tools.py`. | `gke-failed-pods-scaler.sh` (renombrado), `tools.py`, `README.md`, `scm/tests/unit/test_terminal_tools.py` |
 | 2026-10-09 | 1.0.8 | **Script 8: +PowerShell, AWS CLI v2 y Azure CLI** — El instalador `install-devops-tools.sh` agrega 3 pasos: PowerShell vía repo APT de Microsoft (`pwsh`), AWS CLI v2 vía instalador oficial zip (x86_64/aarch64) y Azure CLI vía `aka.ms/InstallAzureCLIDeb`. Validación final incluye las 3 herramientas. `tools.py` (terminal) v1.8.33. | `operation_setup_initial/install-devops-tools.sh`, `tools.py`, `README.md` |
 | 2026-10-04 | 1.0.7 | **Script 10: AzDO SCM Inspection Violations** — `inspection_errors.sh` registrado en el launcher (prompts: pipeline/`--all`, severidad, stage, `--release`, `--keep-logs`). El script ahora resuelve salida al outcome global (`DEVSECOPS_OUTPUT_DIR` → `global.output_dir` → `scm/outcome`) y lee credenciales de `config.json` (`azdo.pat`/`organization`/`project`) como fallback de las env vars. `prepare_env_from_config` también inyecta `AZDO_*` al hijo. Tests en `test_terminal_tools.py`. | `azdo_check_scm_inspection/inspection_errors.sh`, `tools.py`, `README.md` |
 | 2026-09-29 | 1.0.6 | **Cert backup/renew: salida única en outcome global** — `cert_backup_and_renew_tls_certs.sh` ahora agrupa `tls-backups/`, `update-certs-*.yaml` y `evidencia-*.html` en `<OUTCOME>/certs-<cluster>-<ts>/`. Resolución de `<OUTCOME>`: `DEVSECOPS_OUTPUT_DIR` → `scm/config.json` (`global.output_dir`) → `scm/outcome`. El submenú (v1.0.1) inyecta `DEVSECOPS_OUTPUT_DIR` resuelto al ejecutar standalone. | `operation_update_certs_on_gke_gcp/cert_backup_and_renew_tls_certs.sh`, `operation_update_certs_on_gke_gcp/tools.py`, `operation_update_certs_on_gke_gcp/README.md`, `tools.py` |

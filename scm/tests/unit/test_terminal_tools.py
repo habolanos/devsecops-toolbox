@@ -210,3 +210,111 @@ class TestCertManagerTools:
             assert cert_tools.resolve_outcome_dir() == "C:\\tmp\\custom_outcome"
         finally:
             os.environ.pop("DEVSECOPS_OUTPUT_DIR", None)
+
+
+@requires_tools
+class TestGkeFailedPodsScaler:
+    """Opción 11: GKE Failed Pods — Scale to Zero (gke-failed-pods-scaler.sh)."""
+
+    def test_opcion_11_registrada(self):
+        assert "11" in terminal_tools.SCRIPTS
+
+    def test_opcion_11_apunta_al_script_renombrado(self):
+        script = terminal_tools.SCRIPTS["11"]
+        assert script["path"] == "gke-failed-pods-scaler.sh"
+        assert script.get("type") == "shell"
+        assert script.get("status") == "ready"
+
+    def test_script_existe_y_nombre_viejo_no(self):
+        base = terminal_tools.BASE_DIR
+        assert (base / "gke-failed-pods-scaler.sh").exists()
+        assert not (base / "gestor_pods_diario.sh").exists()
+
+    def _content(self):
+        return (
+            terminal_tools.BASE_DIR / terminal_tools.SCRIPTS["11"]["path"]
+        ).read_text(encoding="utf-8")
+
+    def test_sin_ruta_home_hardcodeada(self):
+        assert "/home/" not in self._content()
+
+    def test_bitacora_en_outcome_global(self):
+        content = self._content()
+        assert "resolve_outcome_dir" in content
+        assert "DEVSECOPS_OUTPUT_DIR" in content
+        assert "global.output_dir" in content
+        assert 'ACTION_LOG="$OUTCOME_DIR/' in content
+
+    def test_clusters_descubiertos_desde_kubeconfig(self):
+        content = self._content()
+        assert "discover_clusters" in content
+        assert "config get-contexts -o name" in content
+        # tabla embebida solo como fallback
+        assert "DEFAULT_CLUSTERS_DATA" in content
+        # no debe leer listas de clusters desde config.json
+        assert "gke_pods" not in content
+
+    def test_confirmaciones_de_escalado_presentes(self):
+        content = self._content()
+        assert "ESCALAR-A-CERO" in content
+        assert "APAGAR-TODOS-" in content
+
+    def test_soporta_args_no_interactivos(self):
+        content = self._content()
+        for flag in ("--project", "--env", "--scan-only"):
+            assert flag in content
+
+    def test_sintaxis_bash(self):
+        import shutil
+        import subprocess
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash no disponible")
+        path = terminal_tools.BASE_DIR / terminal_tools.SCRIPTS["11"]["path"]
+        r = subprocess.run([bash, "-n", str(path)], capture_output=True)
+        assert r.returncode == 0, r.stderr.decode()
+
+    def test_discover_clusters_parses_contextos(self, tmp_path):
+        """Descubrimiento: contextos gke_* -> PROYECTO|AMBIENTE|CONTEXTO."""
+        import os
+        import shutil
+        import subprocess
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash no disponible")
+        fake = tmp_path / "bin"
+        fake.mkdir()
+        (fake / "kubectl").write_text(
+            "#!/usr/bin/env bash\n"
+            'if [ "$1" = "config" ] && [ "$2" = "get-contexts" ]; then\n'
+            "  echo gke_cpl-cs-wms-dev-30112023_us-central1_gke-cs-wms-dev-01\n"
+            "  echo gke_cpl-oms-stag-09042025_us-central1_gke-oms-stag-01\n"
+            "  echo gke_cpl-cmanager-qa-13072023_us-central1_gke-cmanager-qa-01\n"
+            "  echo docker-desktop\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        os.chmod(fake / "kubectl", 0o755)
+        script = terminal_tools.BASE_DIR / terminal_tools.SCRIPTS["11"]["path"]
+        env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}")
+        r = subprocess.run(
+            [bash, "-c", f'source "{script}"; printf \'%s\' "$CLUSTERS_DATA"'],
+            capture_output=True, text=True, env=env,
+        )
+        assert r.returncode == 0, r.stderr
+        out = r.stdout
+        assert "WMS|DEV|gke_cpl-cs-wms-dev-30112023" in out
+        assert "OMS|STAG|gke_cpl-oms-stag-09042025" in out
+        assert "TMS|QA|gke_cpl-cmanager-qa-13072023" in out
+        assert "docker-desktop" not in out
+
+    def test_prepare_env_inyecta_devsecops_output_dir(self):
+        import os
+        saved = os.environ.pop("DEVSECOPS_OUTPUT_DIR", None)
+        try:
+            env = terminal_tools.prepare_env_from_config()
+            assert env.get("DEVSECOPS_OUTPUT_DIR")
+            assert "outcome" in env["DEVSECOPS_OUTPUT_DIR"].lower()
+        finally:
+            if saved is not None:
+                os.environ["DEVSECOPS_OUTPUT_DIR"] = saved

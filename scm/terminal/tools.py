@@ -75,7 +75,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.35"
+__version__ = "1.8.36"
 __author__ = "Harold Adrian"
 __description__ = "Terminal Tools - Scripts Universales para Kubernetes"
 
@@ -142,6 +142,16 @@ def prepare_env_from_config() -> Dict[str, str]:
     azdo_projects = azdo_config.get("projects")
     if isinstance(azdo_projects, list) and azdo_projects:
         env.setdefault("AZDO_PROJECTS", ",".join(str(p) for p in azdo_projects))
+
+    # Outcome global para scripts que generan archivos de salida
+    out_dir = os.getenv("DEVSECOPS_OUTPUT_DIR") or (config.get("global") or {}).get("output_dir")
+    if out_dir:
+        out_path = Path(out_dir)
+        if not out_path.is_absolute():
+            out_path = SCM_ROOT / out_dir
+        env.setdefault("DEVSECOPS_OUTPUT_DIR", str(out_path.resolve()))
+    else:
+        env.setdefault("DEVSECOPS_OUTPUT_DIR", str((SCM_ROOT / "outcome").resolve()))
 
     return env
 
@@ -232,6 +242,14 @@ SCRIPTS = {
         "description": "Extrae violaciones del stage 'SCM Inspection' de release pipelines Azure DevOps (una pipeline o todas con --all). Requiere curl+jq; PAT desde AZDO_PAT o config.json azdo.pat. CSVs en outcome/.",
         "path": "azdo_check_scm_inspection/inspection_errors.sh",
         "args": ["inspection"],
+        "status": "ready",
+        "type": "shell"
+    },
+    "11": {
+        "name": "GKE Failed Pods — Scale to Zero",
+        "description": "Scans GKE clusters for pods with ACTIVE failures (CrashLoopBackOff, ImagePull, Unschedulable, NotReady) and optionally scales the owning Deployment/StatefulSet to 0 replicas. Clusters from config.json gcp.gke_pods.clusters; action log in outcome/.",
+        "path": "gke-failed-pods-scaler.sh",
+        "args": [],
         "status": "ready",
         "type": "shell"
     },
