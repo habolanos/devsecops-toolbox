@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -374,20 +374,77 @@ def _stage_task_details(envs):
     return rows
 
 
-def _stage_task_rows(envs, pipeline_name, def_id):
+_MACRO_RE = re.compile(r"\$\(([^)]+)\)")
+
+
+def _get_variable_group_vars(headers, org, project):
+    """Mapa groupId → {varname: value} para resolver referencias $(var).
+
+    GET /_apis/distributedtask/variablegroups — 1 llamada por ejecución; la
+    lista ya incluye las variables de cada grupo. Valores secretos → None
+    (la API los omite; la referencia queda sin resolver).
+    """
+    url = f"https://dev.azure.com/{org}/{project}/_apis/distributedtask/variablegroups"
+    data = safe_az_get(url, headers)
+    groups = data.get("value", []) if isinstance(data, dict) else []
+    out = {}
+    for g in groups:
+        gid = g.get("id")
+        if gid is None:
+            continue
+        vals = {}
+        for name, vd in (g.get("variables") or {}).items():
+            if isinstance(vd, dict):
+                vals[name] = None if vd.get("isSecret") else vd.get("value", "")
+            else:
+                vals[name] = vd
+        out[gid] = vals
+    return out
+
+
+def _resolve_macros(text, var_map):
+    """Reemplaza $(var) por su valor (lookup case-insensitive).
+
+    Variables sin entrada en var_map o con valor None (secretas) se dejan
+    tal cual para no fingir una resolución inexistente.
+    """
+    if not isinstance(text, str) or "$(" not in text:
+        return text
+
+    def _sub(m):
+        val = var_map.get(m.group(1).strip().lower())
+        return str(val) if val is not None else m.group(0)
+
+    return _MACRO_RE.sub(_sub, text)
+
+
+def _stage_task_rows(envs, pipeline_name, def_id, var_map=None):
     """Una fila por workflowTask: pipeline × stage × task.
 
     Expone TODOS los atributos de la task (enabled, condition, alwaysRun,
     continueOnError, timeout, retries, refName, taskId, definitionType) más
-    sus inputs: completos en `inputsJson` y aplanados como `input_<key>`
-    (columnas dinámicas en el DataFrame/export).
+    sus inputs: crudos en `inputsJson`/`input_<key>` y resueltos (referencias
+    $(var) contra variables release+stage+groups) en `inputsResolvedJson`;
+    `inputRes_<key>` solo aparece cuando la resolución cambia el valor.
     """
     rows = []
+    var_map = var_map or {}
     for env in envs or []:
+        # Mapa por stage: env vars pisan a release/group vars
+        env_map = dict(var_map)
+        for vn, vd in (env.get("variables") or {}).items():
+            if isinstance(vd, dict):
+                env_map[vn.lower()] = (None if vd.get("isSecret")
+                                       else vd.get("value", ""))
+            else:
+                env_map[vn.lower()] = vd
         for phase in env.get("deployPhases") or []:
             ptype = phase.get("type") or phase.get("phaseType") or ""
             for idx, t in enumerate(phase.get("workflowTasks") or [], 1):
                 inputs = t.get("inputs") or {}
+                resolved = {k: (_resolve_macros(v, env_map)
+                                if isinstance(v, str) else v)
+                            for k, v in inputs.items()}
                 row = {
                     "pipelineId": def_id,
                     "pipeline": pipeline_name,
@@ -407,10 +464,14 @@ def _stage_task_rows(envs, pipeline_name, def_id):
                     "timeoutInMinutes": t.get("timeoutInMinutes"),
                     "retryCountOnTaskFailure": t.get("retryCountOnTaskFailure"),
                     "inputsJson": json.dumps(inputs, ensure_ascii=False),
+                    "inputsResolvedJson": json.dumps(resolved, ensure_ascii=False),
                 }
                 for k, v in inputs.items():
                     row[f"input_{k}"] = (v if isinstance(v, (str, int, float, bool))
                                          else json.dumps(v, ensure_ascii=False))
+                    rv = resolved[k]
+                    if rv != v and isinstance(rv, str):
+                        row[f"inputRes_{k}"] = rv
                 rows.append(row)
     return rows
 
@@ -504,11 +565,13 @@ def _release_stage_stats(def_envs, releases):
 
 
 def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
-                       queue_map=None, task_rows=None):
+                       queue_map=None, task_rows=None, group_vars=None):
     """Fetch detalles de un pipeline CD: ambientes, releases, variables, agentes.
 
     Si `task_rows` es una lista, se le agregan las filas por task
-    (pipeline × stage × task con todos sus atributos e inputs)."""
+    (pipeline × stage × task con todos sus atributos e inputs).
+    `group_vars` ({groupId: {var: value}}) permite resolver $(var) de los
+    inputs contra los variable groups linkeados a la definición."""
     def_id = definition.get("id")
     name = definition.get("name", "")
 
@@ -578,7 +641,20 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
 
     # Inventario por task (fila por workflowTask con atributos + inputs)
     if task_rows is not None:
-        task_rows.extend(_stage_task_rows(envs, name, def_id))
+        # Mapa $(var) → valor. Precedencia: group < def-release < release
+        # instance (valor encolado real) < env vars (en _stage_task_rows).
+        var_map = {}
+        for gid in source.get("variableGroups") or []:
+            for k, v in (group_vars or {}).get(gid, {}).items():
+                var_map[k.lower()] = v
+        var_map.update({v["name"].lower(): v["value"] for v in var_list})
+        for k, vd in (last_r.get("variables") or {}).items():
+            if isinstance(vd, dict):
+                var_map[k.lower()] = (None if vd.get("isSecret")
+                                      else vd.get("value", ""))
+            else:
+                var_map[k.lower()] = vd
+        task_rows.extend(_stage_task_rows(envs, name, def_id, var_map))
 
     # Agregar conteo de tareas por stage como columna individual (tasksPerStage_<stage>)
     for stage_name, n_tasks in stage_tasks:
@@ -958,7 +1034,8 @@ def main():
         if not rows:
             headers = get_headers(args.pat)
             queue_map = _get_queue_map(headers, args.org, args.project)
-            api_calls += 1
+            group_vars = _get_variable_group_vars(headers, args.org, args.project)
+            api_calls += 2
 
             print("🔍 Cargando release definitions...")
             if RICH_AVAILABLE:
@@ -986,7 +1063,7 @@ def main():
                 with _progress_context() as progress:
                     task = progress.add_task("Procesando CD pipelines", total=total)
                     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map, task_rows): d for d in definitions}
+                        futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map, task_rows, group_vars): d for d in definitions}
                         for future in as_completed(futures):
                             try:
                                 result = future.result()
@@ -1000,7 +1077,7 @@ def main():
                 tee.resume_terminal()
             else:
                 with ThreadPoolExecutor(max_workers=args.workers) as executor:
-                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map, task_rows): d for d in definitions}
+                    futures = {executor.submit(_fetch_cd_pipeline, d, headers, args.org, args.project, args.max_releases, queue_map, task_rows, group_vars): d for d in definitions}
                     for i, future in enumerate(as_completed(futures), 1):
                         try:
                             result = future.result()

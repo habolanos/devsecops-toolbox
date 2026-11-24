@@ -556,3 +556,110 @@ class TestStageTaskRows:
             row = cd_detailed_mod._fetch_cd_pipeline(
                 {"id": 1, "name": "pipe"}, {}, "Org", "Proj", queue_map={})
         assert row["tasksPerStage_QA"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Resolución de $(var) en inputs — variable groups + stage vars
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestResolveMacros:
+
+    def test_resuelve_referencia(self, cd_detailed_mod):
+        out = cd_detailed_mod._resolve_macros(
+            "file=$(SECURE_FILE_NAME)", {"secure_file_name": "cert.pem"})
+        assert out == "file=cert.pem"
+
+    def test_case_insensitive(self, cd_detailed_mod):
+        out = cd_detailed_mod._resolve_macros(
+            "$(Secure_File_Name)", {"secure_file_name": "x"})
+        assert out == "x"
+
+    def test_desconocida_queda_literal(self, cd_detailed_mod):
+        assert cd_detailed_mod._resolve_macros("$(OTRA)", {}) == "$(OTRA)"
+
+    def test_secreta_none_queda_literal(self, cd_detailed_mod):
+        assert cd_detailed_mod._resolve_macros(
+            "$(PASS)", {"pass": None}) == "$(PASS)"
+
+    def test_sin_macro_no_toca(self, cd_detailed_mod):
+        assert cd_detailed_mod._resolve_macros("literal", {"a": 1}) == "literal"
+
+    def test_get_variable_group_vars(self, cd_detailed_mod):
+        payload = {"value": [
+            {"id": 851, "variables": {
+                "SCM_REPO_URL": {"value": "https://repo.git"},
+                "PAT": {"isSecret": True}}},
+            {"id": 223, "variables": {"DB": {"value": "db01"}}},
+        ]}
+        with patch.object(cd_detailed_mod, "safe_az_get", return_value=payload):
+            out = cd_detailed_mod._get_variable_group_vars({}, "Org", "Proj")
+        assert out[851]["SCM_REPO_URL"] == "https://repo.git"
+        assert out[851]["PAT"] is None
+        assert out[223]["DB"] == "db01"
+
+
+class TestStageTaskRowsResolved:
+
+    def test_input_res_genera_inputres(self, cd_detailed_mod):
+        envs = [{"name": "Validador", "deployPhases": [{"workflowTasks": [{
+            "name": "Download secure file",
+            "inputs": {"secureFile": "$(SECURE_FILE_NAME)", "retryCount": "8"},
+        }]}]}]
+        rows = cd_detailed_mod._stage_task_rows(
+            envs, "p", 1, {"secure_file_name": "cert.pem"})
+        r = rows[0]
+        assert r["input_secureFile"] == "$(SECURE_FILE_NAME)"   # crudo intacto
+        assert r["inputRes_secureFile"] == "cert.pem"           # resuelto
+        assert "inputRes_retryCount" not in r                   # sin cambio → sin col
+        import json as _j
+        assert _j.loads(r["inputsResolvedJson"])["secureFile"] == "cert.pem"
+
+    def test_env_var_pisa_release_var(self, cd_detailed_mod):
+        envs = [{"name": "Prod", "variables": {"X": {"value": "stage-value"}},
+                 "deployPhases": [{"workflowTasks": [
+                     {"name": "T", "inputs": {"v": "$(X)"}}]}]}]
+        r = cd_detailed_mod._stage_task_rows(
+            envs, "p", 1, {"x": "release-value"})[0]
+        assert r["inputRes_v"] == "stage-value"
+
+    def test_fetch_pasa_group_vars(self, cd_detailed_mod):
+        detail = {"environments": [{"name": "QA", "deployPhases": [
+            {"workflowTasks": [{"name": "T",
+                                "inputs": {"u": "$(SCM_REPO_URL)"}}]}]}],
+            "variables": {}, "variableGroups": [851]}
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": []}
+
+        task_rows = []
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 1, "name": "pipe"}, {}, "Org", "Proj",
+                queue_map={}, task_rows=task_rows,
+                group_vars={851: {"SCM_REPO_URL": "https://repo.git"}})
+        assert task_rows[0]["inputRes_u"] == "https://repo.git"
+
+    def test_release_vars_pisan_def_vars(self, cd_detailed_mod):
+        """Las variables del último release (valor encolado real) tienen
+        prioridad sobre las de la definición al resolver $(var)."""
+        detail = {
+            "environments": [{"name": "QA", "deployPhases": [
+                {"workflowTasks": [{"name": "T",
+                                    "inputs": {"v": "$(SECURE_FILE_NAME)"}}]}]}],
+            "variables": {"SECURE_FILE_NAME": {"value": ""}},
+        }
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": [
+                {"variables": {"SECURE_FILE_NAME": {"value": "cert-real.pem"}}}]}
+
+        task_rows = []
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 1, "name": "pipe"}, {}, "Org", "Proj",
+                queue_map={}, task_rows=task_rows)
+        assert task_rows[0]["inputRes_v"] == "cert-real.pem"
