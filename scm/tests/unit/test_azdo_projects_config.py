@@ -396,3 +396,71 @@ class TestStageAgents:
                 queue_map={"7": "Pool-QA"})
         assert row["agents"] == "Pool-QA"
         assert row["agentPerStage_QA"] == "Pool-QA"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Atributos de tasks por stage (CD Detailed Inventory)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestStageTaskDetails:
+
+    def test_names_versions_detail(self, cd_detailed_mod):
+        envs = [{"name": "QA", "deployPhases": [{"workflowTasks": [
+            {"name": "Copy yaml", "version": "3.*", "enabled": True},
+            {"name": "Bash", "version": "3.*", "enabled": True},
+        ]}]}]
+        rows = cd_detailed_mod._stage_task_details(envs)
+        stage, names, versions, detail = rows[0]
+        assert stage == "QA"
+        assert names == "Copy yaml / Bash"
+        assert versions == "3.* / 3.*"
+        assert detail == "Copy yaml@3.* / Bash@3.*"
+
+    def test_disabled_task_marcada(self, cd_detailed_mod):
+        envs = [{"name": "Prod", "deployPhases": [{"workflowTasks": [
+            {"name": "Gate", "version": "1.*", "enabled": False},
+        ]}]}]
+        _, names, _, detail = cd_detailed_mod._stage_task_details(envs)[0]
+        assert names == "Gate [disabled]"
+        assert detail == "Gate [disabled]@1.*"
+
+    def test_multi_fases_concatena(self, cd_detailed_mod):
+        envs = [{"name": "Dev", "deployPhases": [
+            {"workflowTasks": [{"name": "A", "version": "1.*"}]},
+            {"workflowTasks": [{"name": "B", "version": "2.*"}]},
+        ]}]
+        _, names, versions, _ = cd_detailed_mod._stage_task_details(envs)[0]
+        assert names == "A / B"
+        assert versions == "1.* / 2.*"
+
+    def test_name_fallback_refname_taskid(self, cd_detailed_mod):
+        envs = [{"name": "X", "deployPhases": [{"workflowTasks": [
+            {"refName": "copyYaml1", "version": "3.*"},
+            {"taskId": "abc-guid", "version": "1.*"},
+        ]}]}]
+        _, names, _, _ = cd_detailed_mod._stage_task_details(envs)[0]
+        assert names == "copyYaml1 / abc-guid"
+
+    def test_stage_sin_tasks_vacio(self, cd_detailed_mod):
+        envs = [{"name": "Empty", "deployPhases": [{"workflowTasks": []}]}]
+        _, names, versions, detail = cd_detailed_mod._stage_task_details(envs)[0]
+        assert names == "" and versions == "" and detail == ""
+
+    def test_fetch_row_incluye_columnas_tasks(self, cd_detailed_mod):
+        detail = {"environments": [{"name": "QA", "deployPhases": [
+            {"workflowTasks": [
+                {"name": "Copy yaml", "version": "3.*", "enabled": True}]}]}],
+            "variables": {}}
+
+        def fake_get(url, headers, params=None):
+            if "release/definitions/" in url:
+                return detail
+            return {"value": []}
+
+        with patch.object(cd_detailed_mod, "safe_az_get", side_effect=fake_get):
+            row = cd_detailed_mod._fetch_cd_pipeline(
+                {"id": 1, "name": "pipe"}, {}, "Org", "Proj", queue_map={})
+        assert row["taskNamesPerStage_QA"] == "Copy yaml"
+        assert row["taskVersionsPerStage_QA"] == "3.*"
+        assert row["taskDetailPerStage_QA"] == "Copy yaml@3.*"
+        assert row["tasksPerStage_QA"] == 1

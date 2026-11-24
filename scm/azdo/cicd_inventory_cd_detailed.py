@@ -78,7 +78,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -344,6 +344,36 @@ def _count_stage_tasks(envs):
     return per_stage, total
 
 
+def _stage_task_details(envs):
+    """Atributos de las workflowTasks por stage.
+
+    Recorre environments[].deployPhases[].workflowTasks[] (todas las fases:
+    agent job, agentless, deployment group) y por stage devuelve:
+      (nombre_stage, names, versions, detail)
+    donde names/versions/detail son strings "a / b / c" en el mismo orden:
+      - names:    nombre de cada task (name > refName > taskId); las
+                  deshabilitadas (enabled=False) llevan sufijo " [disabled]".
+      - versions: version de cada task ("3.*"), mismo orden que names.
+      - detail:   "nombre@version" por task.
+    Sin llamadas API extra: los objetos ya vienen en el full definition.
+    """
+    rows = []
+    for env in envs or []:
+        names, versions, details = [], [], []
+        for phase in env.get("deployPhases") or []:
+            for t in phase.get("workflowTasks") or []:
+                n = t.get("name") or t.get("refName") or t.get("taskId") or "?"
+                if t.get("enabled") is False:
+                    n = f"{n} [disabled]"
+                v = t.get("version") or "?"
+                names.append(n)
+                versions.append(v)
+                details.append(f"{n}@{v}")
+        rows.append((env.get("name", "?"), " / ".join(names),
+                     " / ".join(versions), " / ".join(details)))
+    return rows
+
+
 # ==========================================================
 # RELEASE STATS POR STAGE (conteo, frecuencia, tiempo entre stages)
 # ==========================================================
@@ -494,6 +524,13 @@ def _fetch_cd_pipeline(definition, headers, org, project, max_releases=100,
     # Agente(s) por stage como columna individual (agentPerStage_<stage>)
     for stage_name, agent_label in stage_agents:
         result[f"agentPerStage_{stage_name}"] = agent_label
+
+    # Tasks por stage: nombres, versiones y "name@version" (atributos de
+    # workflowTasks — enabled=False lleva sufijo " [disabled]")
+    for stage_name, names, versions, detail in _stage_task_details(envs):
+        result[f"taskNamesPerStage_{stage_name}"] = names
+        result[f"taskVersionsPerStage_{stage_name}"] = versions
+        result[f"taskDetailPerStage_{stage_name}"] = detail
 
     # Agregar conteo de tareas por stage como columna individual (tasksPerStage_<stage>)
     for stage_name, n_tasks in stage_tasks:
