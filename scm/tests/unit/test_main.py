@@ -795,3 +795,38 @@ class TestMainConstants:
         for key, value in STATUS_INDICATORS.items():
             assert isinstance(value, tuple)
             assert len(value) >= 2
+
+
+class TestTuiDependency:
+    """La TUI (interfaz mejorada) depende de `textual`: debe estar declarado
+    en pyproject y auto-instalarse antes del import en _try_run_tui."""
+
+    @pytest.mark.unit
+    def test_pyproject_declares_textual(self):
+        """textual debe ser dependencia del paquete (pip install .)."""
+        import tomllib
+        pyproject = Path(__file__).parent.parent.parent.parent / "pyproject.toml"
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        deps = data["project"]["dependencies"]
+        assert any(d.startswith("textual") for d in deps), deps
+
+    @pytest.mark.unit
+    def test_ensure_textual_exists(self):
+        from scm.main import _ensure_textual
+        assert callable(_ensure_textual)
+
+    @pytest.mark.unit
+    def test_ensure_textual_returns_true_when_installed(self):
+        """Con textual presente (env de tests) retorna True sin instalar."""
+        pytest.importorskip("textual")
+        from scm.main import _ensure_textual
+        assert _ensure_textual() is True
+
+    @pytest.mark.unit
+    def test_try_run_tui_llama_ensure_textual(self):
+        """_try_run_tui debe garantizar textual antes de importar la TUI."""
+        import inspect
+        from scm.main import _try_run_tui
+        src = inspect.getsource(_try_run_tui)
+        assert "_ensure_textual()" in src
+        assert src.index("_ensure_textual()") < src.index("import ToolboxApp")

@@ -83,7 +83,7 @@ if RICH_AVAILABLE:
 # ═══════════════════════════════════════════════════════════════════════════════
 # METADATA
 # ═══════════════════════════════════════════════════════════════════════════════
-__version__ = "1.8.37"
+__version__ = "1.8.38"
 __author__ = "Harold Adrian"
 __description__ = "DevSecOps Toolbox - Launcher Principal"
 
@@ -923,6 +923,29 @@ def _run_setup_wizard_if_needed():
             print(f"Wizard omitido: {e}")
 
 
+def _ensure_textual() -> bool:
+    """Verifica si textual está instalado; si no, lo instala automáticamente.
+
+    _ensure_rich() solo procesa requirements.txt cuando `rich` falta: si el
+    usuario ya tiene rich instalado, textual nunca se instala y la TUI cae
+    silenciosamente al menú clásico. Este check es independiente.
+    """
+    try:
+        import textual  # noqa: F401
+        return True
+    except ImportError:
+        pass
+
+    print("📦 Instalando textual para la TUI (interfaz mejorada)...")
+    pip_args = [sys.executable, "-m", "pip", "install", "-q", "textual>=8.2.0,<9.0"]
+    try:
+        subprocess.check_call(pip_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("✅ textual instalado correctamente.\n")
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def _try_run_tui() -> bool:
     """Intenta lanzar la TUI estilo k9s (Textual). Retorna True si corrió.
 
@@ -934,6 +957,10 @@ def _try_run_tui() -> bool:
     if not sys.stdout.isatty():
         print("⚠️  TUI requiere terminal interactiva (TTY) — usando menú clásico.\n",
               file=sys.stderr)
+        return False
+    if not _ensure_textual():
+        print("⚠️  TUI no disponible (no se pudo instalar textual) — usando menú clásico.\n")
+        print("    (instala textual: pip install 'textual>=8.2.0,<9.0')\n")
         return False
     try:
         from tui.app import ToolboxApp

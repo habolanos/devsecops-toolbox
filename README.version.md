@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.80`** — 2026-11-23
+**`1.9.81`** — 2026-11-24
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-24 | **1.9.81** | **Fix: TUI no aparecía en instalaciones nuevas** — quien descargaba el repo veía el menú clásico porque `textual` no estaba en `pyproject.toml` deps (solo `rich`/`requests`/`pyyaml`) y el auto-instalador de `main.py` solo procesaba `requirements.txt` cuando `rich` faltaba. Ahora `_ensure_textual()` instala `textual>=8.2.0,<9.0` de forma independiente dentro de `_try_run_tui()` antes del import, y pyproject lo declara para `pip install .`. main.py v1.8.38. Tests: 61 | `pyproject.toml`, `scm/main.py`, `scm/tests/unit/test_main.py`, `README.version.md`, `VERSION` |
 | 2026-11-23 | **1.9.80** | **Terminal opción 11: GKE Failed Pods — Scale to Zero** — `gestor_pods_diario.sh` integrado al launcher como `gke-failed-pods-scaler.sh`: escanea contextos `gke_*` del kubeconfig buscando pods con falla activa (CrashLoop/ImagePull/Unschedulable/NotReady) y permite escalar su Deployment/StatefulSet a 0 con confirmaciones escritas. Mejoras: bitácora a outcome global con `result=`, clústeres descubiertos del kubeconfig (sin quemar listas en config.json; tabla embebida solo fallback), menús dinámicos, fix check de contexto, `timeout` opcional, args `--project`/`--env`/`--scan-only`, guard `source`. `prepare_env_from_config` inyecta `DEVSECOPS_OUTPUT_DIR`. tools.py v1.8.36. Tests: 33 | `scm/terminal/gke-failed-pods-scaler.sh`, `scm/terminal/tools.py`, `scm/terminal/README.md`, `scm/tests/unit/test_terminal_tools.py`, `README.version.md`, `VERSION` |
 | 2026-11-09 | **1.9.79** | **Opción 15: columna de agentes por stage** — nuevo campo `agents` (agent queues únicas del pipeline) + columnas dinámicas `agentPerStage_<stage>` resueltas desde `deployPhases[].deploymentInput.queueId`/`.queue` vía `/_apis/distributedtask/queues` (1 llamada por ejecución, queueId→nombre); stages sin agente → `Server-side`. cd_detailed v1.0.7. Tests: 43 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-08 | **1.9.78** | **Cache de inventories scoped por proyecto** — al correr CD Detailed Inventory con `--project` distinto se reusaba el cache del proyecto anterior (filename `{script}_raw_*.json` sin proyecto → saltaba APIs y generaba outputs con datos del otro proyecto). Ahora el filename incluye slug del proyecto (`{script}_{proyecto}_raw_*.json`) y el `metadata.project` se valida al cargar; aplica a caches propios y cross-script (prod_deploy y health_score leen el cache de ci/cd_detailed del proyecto correcto; azdo_parser scopea `azdo_release_{org}_{project}_{id}`). cd_detailed v1.0.6, ci_detailed v1.0.1, prod_deploy v1.0.1, health_score v1.0.1, pipeline_status v1.8.33. Tests: 35 | `scm/azdo/cicd_inventory_{cd,ci}_detailed.py`, `scm/azdo/cicd_inventory_prod_deploy.py`, `scm/azdo/cicd_inventory_health_score.py`, `scm/azdo/cicd_pipeline_status.py`, `scm/azdo/health-probe-masive/azdo_parser.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
