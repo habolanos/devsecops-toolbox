@@ -15,7 +15,12 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 from zoneinfo import ZoneInfo
 
-__version__ = "1.8.34"
+__version__ = "1.8.35"
+
+# Por encima de este total de celdas el xlsx se escribe en modo
+# write-only (streaming): openpyxl no mantiene el workbook completo
+# en memoria, evitando OOM con datasets de millones de celdas.
+_XLSX_STREAM_CELLS = 2_000_000
 
 
 # --- Directorio de salida centralizado (DEVSECOPS_OUTPUT_DIR) ---
@@ -187,7 +192,37 @@ class ExportManager:
             
             # Crear DataFrame principal
             df_main = pd.DataFrame(data)
-            
+
+            # Dataset grande → streaming write-only (memoria constante);
+            # el pase de auto-width requeriría recargar todo el workbook.
+            if df_main.shape[0] * max(df_main.shape[1], 1) > _XLSX_STREAM_CELLS:
+                from openpyxl import Workbook
+                import math
+
+                def _dump(ws, df):
+                    ws.append(list(df.columns))
+                    for row in df.itertuples(index=False, name=None):
+                        ws.append([
+                            "" if isinstance(v, float) and (
+                                math.isnan(v) or math.isinf(v)) else v
+                            for v in row
+                        ])
+
+                wb = Workbook(write_only=True)
+                _dump(wb.create_sheet(title=sheet_name), df_main)
+                if include_metadata_sheet and metadata:
+                    _dump(wb.create_sheet(title="Metadata"), pd.DataFrame({
+                        "Property": list(metadata.keys()),
+                        "Value": [str(v) for v in metadata.values()],
+                    }))
+                if include_summary_sheet and summary:
+                    _dump(wb.create_sheet(title="Summary"), pd.DataFrame({
+                        "Metric": list(summary.keys()),
+                        "Value": [str(v) for v in summary.values()],
+                    }))
+                wb.save(filepath)
+                return str(filepath)
+
             # Crear ExcelWriter
             with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
                 # Hoja principal

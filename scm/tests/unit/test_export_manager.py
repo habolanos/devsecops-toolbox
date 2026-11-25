@@ -87,3 +87,49 @@ class TestExportDefault:
         assert payload["summary"]["s"] == 2
         assert payload["summary"]["total"] == 1
         assert payload["data"] == [{"id": 1}]
+
+
+class TestExportExcelStreaming:
+    """Datasets grandes → openpyxl write-only (memoria constante)."""
+
+    def test_streaming_genera_xlsx_valido(self, manager, monkeypatch, tmp_path):
+        monkeypatch.setattr("scm.export_manager._XLSX_STREAM_CELLS", 4)
+        pytest.importorskip("openpyxl")
+        pytest.importorskip("pandas")
+        path = manager.export_excel([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
+        assert path and Path(path).exists()
+        from openpyxl import load_workbook
+        ws = load_workbook(path, read_only=True)["Data"]
+        rows = list(ws.iter_rows(values_only=True))
+        assert rows[0] == ("a", "b")
+        assert rows[1] == (1, "x") and rows[2] == (2, "y")
+
+    def test_streaming_nan_celda_vacia(self, manager, monkeypatch):
+        monkeypatch.setattr("scm.export_manager._XLSX_STREAM_CELLS", 1)
+        pytest.importorskip("openpyxl")
+        pytest.importorskip("pandas")
+        path = manager.export_excel([{"a": 1}, {"a": 1, "extra": None}])
+        from openpyxl import load_workbook
+        ws = load_workbook(path, read_only=True)["Data"]
+        rows = list(ws.iter_rows(values_only=True))
+        assert rows[0] == ("a", "extra")
+        # NaN (columna faltante en fila 1) → celda vacía
+        assert rows[1][1] in (None, "")
+
+    def test_streaming_hojas_meta_y_summary(self, manager, monkeypatch):
+        monkeypatch.setattr("scm.export_manager._XLSX_STREAM_CELLS", 1)
+        pytest.importorskip("openpyxl")
+        pytest.importorskip("pandas")
+        path = manager.export_excel(
+            [{"a": 1}], metadata={"org": "x"}, summary={"total": 1})
+        from openpyxl import load_workbook
+        wb = load_workbook(path, read_only=True)
+        assert set(wb.sheetnames) == {"Data", "Metadata", "Summary"}
+
+    def test_umbral_no_dispara_streaming(self, manager, monkeypatch):
+        # umbral alto → camino normal con auto-width (sin write-only)
+        monkeypatch.setattr("scm.export_manager._XLSX_STREAM_CELLS", 10**9)
+        pytest.importorskip("openpyxl")
+        pytest.importorskip("pandas")
+        path = manager.export_excel([{"a": 1}])
+        assert path and Path(path).exists()
