@@ -7,7 +7,7 @@
 
 ## Versión Actual
 
-**`1.9.89`** — 2026-11-25
+**`1.9.90`** — 2026-11-25
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Fecha | Versión | Descripción | Archivos / Scope |
 |-------|---------|-------------|----------------|
+| 2026-11-25 | **1.9.90** | **Opción 15: fix `PermissionError` en hoja Charts + guard OOM** — `_add_charts_sheet` reescribía el xlsx in-place tras `load_workbook`; en `/mnt/c` (DrvFS) la apertura para escritura fallaba con `PermissionError` por locks transitorios (antivirus/indexador sobre el archivo recién creado). Ahora: `wb.close()`, save a `.tmp.xlsx` + `os.replace` con 3 reintentos. Además la hoja Charts se omite cuando `filas×cols > _XLSX_STREAM_CELLS` (recargar ~12M celdas reintroduciría el pico de RAM que el write-only evitó) y su fallo ya no tumba el export (warn + continúa). cd_detailed v1.0.15. Tests: 75 | `scm/azdo/cicd_inventory_cd_detailed.py`, `README.version.md`, `VERSION` |
 | 2026-11-25 | **1.9.89** | **Fix OOM al escribir xlsx grandes (exit -9 / SIGKILL)** — `export_excel` construía el workbook completo en memoria con openpyxl y el pase de auto-width lo recargaba entero; con ~11.7M celdas (opción 15: 6,147 columnas × 1,898 filas) el proceso era matado por OOM en WSL justo después de CSV. Ahora, sobre `_XLSX_STREAM_CELLS` (2M celdas), el xlsx se escribe en modo write-only fila a fila (memoria constante; NaN→celda vacía; sin auto-width). Aplica a todas las opciones que exportan a Excel. export_manager v1.8.35. Tests: +4 (12 módulo) | `scm/export_manager.py`, `scm/tests/unit/test_export_manager.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.88** | **Opción 15: una columna por task** — además de `tasksContentPerStage_<stage>` (celda combinada con ` / `), ahora `taskContent_<stage>_<N>` emite cada task del stage en su propia columna (`Nombre@ver{inputs}` con `$(var)` resueltas), evitando mega-celdas en el formato una-fila-por-pipeline. cd_detailed v1.0.14. Tests: 75 | `scm/azdo/cicd_inventory_cd_detailed.py`, `scm/tests/unit/test_azdo_projects_config.py`, `README.version.md`, `VERSION` |
 | 2026-11-24 | **1.9.87** | **Opción 15: fix proceso "colgado"** — export_tasks escribía ~118k filas × ~240 cols a xlsx vía openpyxl (decenas de minutos). Ahora el xlsx de tasks se omite con >20k filas (`TASKS_XLSX_MAX_ROWS`) con nota; CSV/JSON siempre salen; flag `--tasks-excel` lo fuerza. cd_detailed v1.0.13. Tests: 73 | `scm/azdo/cicd_inventory_cd_detailed.py`, `README.version.md`, `VERSION` |

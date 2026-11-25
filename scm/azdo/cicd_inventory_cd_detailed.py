@@ -41,10 +41,11 @@ except ImportError:
     RICH_AVAILABLE = False
 
 try:
-    from export_manager import ExportManager
+    from export_manager import ExportManager, _XLSX_STREAM_CELLS
     EXPORT_MANAGER_AVAILABLE = True
 except ImportError:
     EXPORT_MANAGER_AVAILABLE = False
+    _XLSX_STREAM_CELLS = 2_000_000
 
 try:
     from utils import get_output_dir, resolve_output_path
@@ -78,7 +79,7 @@ except ImportError:
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-__version__ = "1.0.14"
+__version__ = "1.0.15"
 SCRIPT_NAME = "cicd_inventory_cd_detailed"
 DEFAULT_ORG = "Coppel-Retail"
 DEFAULT_PROJECT = "Compras.RMI"
@@ -910,7 +911,22 @@ def _add_charts_sheet(excel_path, rows):
     cs = wb.create_sheet("Charts", 0)
     for i, ch in enumerate(charts):
         cs.add_chart(ch, f"{'A' if i % 2 == 0 else 'N'}{1 + (i // 2) * 24}")
-    wb.save(excel_path)
+    try:
+        wb.close()  # suelta el handle de lectura (DrvFS bloquea reescritura)
+    except Exception:
+        pass
+    tmp_path = f"{excel_path}.tmp.xlsx"
+    # Locks transitorios en DrvFS (antivirus/indexador sobre el xlsx recién
+    # escrito) → PermissionError; reintentar antes de rendirse.
+    for attempt in range(3):
+        try:
+            wb.save(tmp_path)
+            os.replace(tmp_path, excel_path)
+            break
+        except PermissionError:
+            if attempt == 2:
+                raise
+            time.sleep(2)
     print(f"   📊 Hoja Charts: {len(charts)} gráficos nativos Excel")
 
 
@@ -979,7 +995,18 @@ def export_results(rows, output_dir, script_name=SCRIPT_NAME):
     excel_path = manager.export_excel(
         _truncate_for_excel(rows), sheet_name="CD Pipelines", summary=summary)
     if excel_path:
-        _add_charts_sheet(str(excel_path), rows)
+        # Sobre el umbral streaming el xlsx se escribió write-only;
+        # recargarlo entero para anexar Charts reintroduciría el pico de
+        # RAM (OOM/SIGKILL) — los datos ya están en xlsx/csv/json.
+        total_cols = len({k for r in rows for k in r}) if rows else 0
+        if len(rows) * total_cols > _XLSX_STREAM_CELLS:
+            print(f"   ⏭️  Hoja Charts omitida ({len(rows)}×{total_cols} "
+                  f"celdas > {_XLSX_STREAM_CELLS:,} — xlsx ya completo)")
+        else:
+            try:
+                _add_charts_sheet(str(excel_path), rows)
+            except Exception as e:
+                print(f"   ⚠️  Hoja Charts omitida: {e}")
         print(f"📊 Excel: {excel_path}")
 
     return excel_path, csv_path
