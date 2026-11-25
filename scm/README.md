@@ -976,6 +976,7 @@ Definido en `scm/config.json` sección `global.output_dir` (default: `"outcome"`
 
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
+| 2026-11-25 | **1.9.91** | Opción 15: separación 2-archivos — inventario principal sin `taskContent_*`/`tasksContentPerStage_*` (xlsx ~6k→~150 columnas); detalle por task solo en `cd_detailed_tasks_*` |
 | 2026-11-25 | **1.9.90** | Opción 15: fix `PermissionError` en hoja Charts (save a temp+replace con retry, DrvFS); Charts se omite en datasets >2M celdas (evita recargar el workbook entero) |
 | 2026-11-25 | **1.9.89** | Fix OOM xlsx (exit -9): `export_excel` escribe en modo write-only sobre 2M celdas — memoria constante, beneficia a todos los tools |
 | 2026-11-24 | **1.9.88** | Opción 15: `taskContent_<stage>_<N>` — cada task del stage en columna propia (una fila por pipeline, sin mega-celdas) |
