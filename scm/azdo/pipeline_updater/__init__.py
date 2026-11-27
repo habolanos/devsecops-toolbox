@@ -2,7 +2,7 @@
 Pipeline Updater - Herramienta de actualización masiva de pipelines CD
 """
 
-__version__ = "1.8.34"
+__version__ = "1.8.35"
 __author__ = "Harold Adrian"
 
 from .config import *

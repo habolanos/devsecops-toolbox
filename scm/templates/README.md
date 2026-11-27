@@ -274,6 +274,55 @@ Task "Copiar Artifacts de Release":
 
 ---
 
+### **pipe_cd_replace_agent_pools_all.yaml** 🆕
+Reemplazar agent pools (queueId) en **todos los stages** del pipeline CD.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 41
+# Ingresar: scm/templates/pipe_cd_replace_agent_pools_all.yaml
+```
+
+**Características**:
+- Formato plano de `options.replace_agent_pools`: `{old_queue_id: new_queue_id}`
+- Aplica a todos los `deployPhases[].deploymentInput.queueId` del pipeline
+- Solo reemplaza cuando el queueId actual está en el mapeo; sin coincidencias → sin PUT
+- Útil para migrar pools inexistentes (error `No agent pool found with identifier X`)
+
+---
+
+### **pipe_cd_replace_agent_pools_stages.yaml** 🆕
+Reemplazar agent pools (queueId) **solo en stages específicos** filtrados por nombre o regex.
+
+**Uso**:
+```bash
+python scm/main.py
+# Seleccionar: Azure DevOps → Tool 41
+# Ingresar: scm/templates/pipe_cd_replace_agent_pools_stages.yaml
+```
+
+**Características**:
+- Formato estructurado de `options.replace_agent_pools`: `stages` + `mappings`
+- `stages` usa la misma semántica que `search.stages`: `name` (exacto/wildcards `*`) y `pattern` (regex `re.match`, anclado al inicio; usar `$` para exacto, `(?i)` para case-insensitive)
+- Lógica OR entre criterios; strings sueltos se tratan como `name`
+- Los stages no filtrados conservan su queueId intacto
+- Regex inválido aborta con error claro al parsear (fail-fast)
+
+**Ejemplo**:
+```yaml
+options:
+  replace_agent_pools:
+    stages:
+      - name: "QA"
+      - name: "Production"
+      - pattern: "^\\d{2}-"     # stages regionales 01-*, 02-*, ...
+    mappings:
+      1749: 5331                # → "gents-AutoScaling-Releases"
+```
+
+---
+
 ## 🚀 Cómo Usar
 
 ### **Templates para Tool 41 (Pipeline Updater Template)**
@@ -496,6 +545,7 @@ Para más información sobre el formato de templates, consulta:
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.2.12 | 2026-11-27 | Feature: Nuevos templates `pipe_cd_replace_agent_pools_all.yaml` (reemplazo de queueId en todos los stages) y `pipe_cd_replace_agent_pools_stages.yaml` (filtro por stage con `name`/`pattern`, formato estructurado `stages` + `mappings`) |
 | 1.2.11 | 2026-09-07 | Feature: Documentación completa de template `release_update_task_script_and_contents.yaml` (Tool 42) con ejemplos y resultados esperados |
 | 1.2.10 | 2026-09-07 | Fix: Corregir path `inputs.Contents` a `inputs.contents` (lowercase) en template |
 | 1.2.9 | 2026-09-07 | Fix: Agregar sanitización de definición en `azdo_client.py` para detectar y limpiar duplicate keys antes de enviar a Azure DevOps |
@@ -509,6 +559,6 @@ Para más información sobre el formato de templates, consulta:
 | 1.2.1 | 2026-09-07 | Agregado template `pipe_cd_update_task_script_and_contents.yaml` |
 | 1.2 | 2026-08-09 | Templates iniciales listos para usar |
 
-**Versión**: 1.2.11  
-**Última actualización**: 2026-09-07  
+**Versión**: 1.2.12  
+**Última actualización**: 2026-11-27  
 **Estado**: ✅ Listos para usar

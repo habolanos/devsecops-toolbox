@@ -1,0 +1,62 @@
+metadata:
+  name: "Reemplazar agent pools en todos los stages"
+  version: "1.0"
+  description: >
+    Reemplaza agent pool IDs (queueId) viejos por IDs validos en TODOS
+    los stages del pipeline CD. Usa el formato plano de
+    options.replace_agent_pools (sin filtro de stages).
+  comment: |
+    Reemplazo global de agent pools en pipeline CD.
+
+    Cambios realizados:
+    1. Recorre todos los environments/stages del pipeline.
+    2. En cada deployPhases[].deploymentInput, si queueId coincide con
+       un ID viejo del mapeo, se reemplaza por el ID nuevo.
+    3. Tambien actualiza queue.id cuando el objeto queue existe.
+    4. Si ningun stage tiene un queueId mapeado, no se envia PUT.
+
+    Agent Pool valido: queueId=5331 para "gents-AutoScaling-Releases".
+    Para identificar pools validos: Project Settings > Pipelines >
+    Agent pools, o GET {org}/{project}/_apis/distributedtask/queues.
+
+  author: "Harold Adrian"
+  created_at: "2026-11-27"
+
+search:
+  # Requerido por el validador; el reemplazo de pools no depende
+  # de los matches, aplica a todos los environments con queueId mapeado.
+  stages:
+    - name: "*"
+
+update:
+  # Sin acciones de update: el cambio lo realiza options.replace_agent_pools.
+  stages: []
+
+options:
+  dry_run: false
+  rollback_on_error: true
+  # Reemplazar agent pools (queueId) en TODOS los stages.
+  # Formato plano: old_queue_id: new_queue_id
+  #6696  Agents-Android
+  #7888  Agents-Archetype-Dev
+  #4937  Agents-AutoScaling
+  #7969  Agents-AutoScaling-App-Releases
+  #8597  Agents-AutoScaling-Aurora
+  #8843  Agents-AutoScaling-Dev
+  #5331  Agents-AutoScaling-Releases
+  #7620  Agents-Cloud
+  #6807  Agents-publicis
+  #5479  Agents-Windows
+  #5238  Azure Pipelines
+  #8278  GitHub-hosted Agents
+  #6051  TestingAgents
+  replace_agent_pools:
+    1749: 5331
+    1751: 5331
+    2722: 5331
+    7251: 5331
+    5238: 5331
+    7888: 5331
+    4937: 5331
+    7969: 5331
+    6051: 5331

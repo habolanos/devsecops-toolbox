@@ -154,7 +154,34 @@ update:
 options:
   dry_run: false              # true = simular, false = ejecutar
   rollback_on_error: true     # true = revertir si falla
+
+  # Remover referencias a variable groups inexistentes antes del PUT.
+  # Lista simple (ambos niveles) o por scope:
+  ignore_variable_groups:
+    global: [186]             # solo definition.variableGroups
+    environments: [196]       # solo environments[].variableGroups
+    all: [200]                # ambos niveles
+
+  # Reemplazar agent pools (queueId) en deployPhases[].deploymentInput.
+  # Formato plano: aplica a TODOS los stages.
+  replace_agent_pools:
+    1751: 5331                # old_queue_id: new_queue_id
+
+  # Formato estructurado: limita el reemplazo a stages filtrados
+  # (misma semantica que search.stages; logica OR entre criterios).
+  replace_agent_pools:
+    stages:                   # opcional; omitir = todos los stages
+      - name: "QA"            # exacto o wildcards: "Prod*", "*Lab*"
+      - pattern: "^\\d{2}-"   # regex (re.match, anclado al inicio)
+    mappings:
+      1751: 5331
 ```
+
+**Notas:**
+- `replace_agent_pools` se aplica antes de las acciones de update y no depende de los matches de `search`.
+- `stages` valida los regex al parsear: un pattern invalido aborta con error (fail-fast).
+- Sin `stages`, el reemplazo aplica a todos los stages (backward compatible).
+- Si ningun stage filtrado tiene un queueId mapeado, no se envia PUT.
 
 ---
 

@@ -839,15 +839,24 @@ class UpdateEngine:
 
         Busca queueId en deployPhases[].deploymentInput de cada environment
         y reemplaza los IDs viejos por los nuevos especificados.
+
+        Si la opcion define 'stages' (criterios name/pattern con la misma
+        semantica que search.stages), solo aplica a los environments que
+        coincidan; sin filtros aplica a todos los stages.
         """
         replace_pools = self.template_options.replace_agent_pools
         if not replace_pools.has_any():
             return
 
         mappings = replace_pools.mappings
+        stage_filters = replace_pools.stage_filters
 
         for env in self.definition.get('environments', []):
             env_name = env.get('name', 'Unknown')
+
+            if (stage_filters
+                    and not self._stage_matches_filters(env_name, stage_filters)):
+                continue
 
             for phase in env.get('deployPhases', []):
                 deployment_input = phase.get('deploymentInput', {})
@@ -868,6 +877,49 @@ class UpdateEngine:
                         'old_queue_id': current_queue_id,
                         'new_queue_id': new_queue_id
                     })
+
+    @staticmethod
+    def _stage_matches_filters(stage_name: str, filters: List[Dict]) -> bool:
+        """
+        Verificar si un stage coincide con los filtros de
+        replace_agent_pools.stages (logica OR entre criterios).
+
+        Misma semantica que search.stages:
+          - 'pattern': regex aplicado con re.match (anclado al inicio)
+          - 'name': exacto o wildcards * (ver _matches_name)
+        """
+        for f in filters:
+            pattern = f.get('pattern')
+            if pattern:
+                if re.match(pattern, stage_name):
+                    return True
+                continue
+
+            name = f.get('name')
+            if name and UpdateEngine._matches_name(stage_name, name):
+                return True
+
+        return False
+
+    @staticmethod
+    def _matches_name(text: str, pattern: str) -> bool:
+        """
+        Verificar si texto coincide con un patron de nombre.
+
+        Misma semantica que SearchEngine._matches_pattern:
+        coincidencia exacta, *contiene*, *termina, empieza*.
+        """
+        if pattern == text:
+            return True
+
+        if pattern.startswith('*') and pattern.endswith('*'):
+            return pattern[1:-1] in text
+        elif pattern.startswith('*'):
+            return text.endswith(pattern[1:])
+        elif pattern.endswith('*'):
+            return text.startswith(pattern[:-1])
+
+        return False
 
     def _resolve_insert_index(self, environments: List[Dict], rule: Dict, default_ref: str) -> int:
         """

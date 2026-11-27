@@ -4,8 +4,9 @@ Parser de templates YAML para Pipeline Updater
 
 import yaml
 import json
+import re
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from .models import TemplateMetadata, SearchRule, UpdateRule, TemplateOptions, IgnoreVariableGroups, ReplaceAgentPools
 
 
@@ -206,22 +207,81 @@ class TemplateParser:
         """
         Parsear replace_agent_pools desde el template.
 
-        Formato:
-          replace_agent_pools:
-            1751: 100    # Reemplazar pool 1751 con pool 100
-            2722: 200    # Reemplazar pool 2722 con pool 200
+        Soporta dos formatos:
+
+        1. Plano (aplica a TODOS los stages):
+           replace_agent_pools:
+             1751: 100    # Reemplazar pool 1751 con pool 100
+             2722: 200    # Reemplazar pool 2722 con pool 200
+
+        2. Estructurado (filtro de stages opcional):
+           replace_agent_pools:
+             stages:              # opcional; si se omite aplica a todos
+               - name: "QA"
+               - pattern: "^\\d{2}-"
+             mappings:
+               1751: 100
+               2722: 200
         """
         if not raw or not isinstance(raw, dict):
             return ReplaceAgentPools()
 
+        if 'mappings' in raw or 'stages' in raw:
+            return ReplaceAgentPools(
+                mappings=TemplateParser._parse_pool_mappings(
+                    raw.get('mappings', {})),
+                stage_filters=TemplateParser._normalize_stage_filters(
+                    raw.get('stages', []))
+            )
+
+        return ReplaceAgentPools(
+            mappings=TemplateParser._parse_pool_mappings(raw))
+
+    @staticmethod
+    def _parse_pool_mappings(raw) -> Dict[int, int]:
+        """Parsear mapeo {old_id: new_id} ignorando claves no numericas."""
         mappings = {}
+        if not isinstance(raw, dict):
+            return mappings
         for old_id, new_id in raw.items():
             try:
                 mappings[int(old_id)] = int(new_id)
             except (ValueError, TypeError):
                 continue
+        return mappings
 
-        return ReplaceAgentPools(mappings=mappings)
+    @staticmethod
+    def _normalize_stage_filters(raw_stages) -> List[Dict]:
+        """
+        Normalizar stages a lista de criterios {name: ...} | {pattern: ...}.
+
+        Misma semantica que search.stages: los strings se tratan como 'name'
+        y los dicts aceptan 'name' (wildcards *) o 'pattern' (regex).
+        Los patterns se compilan al parsear para fallar temprano si el
+        regex es invalido (un filtro descartado silenciosamente ampliaria
+        el reemplazo a todos los stages).
+        """
+        filters = []
+        if not isinstance(raw_stages, list):
+            return filters
+
+        for item in raw_stages:
+            if isinstance(item, dict):
+                if item.get('pattern'):
+                    pattern = item['pattern']
+                    try:
+                        re.compile(pattern)
+                    except re.error as e:
+                        raise ValueError(
+                            f"replace_agent_pools.stages: regex invalido "
+                            f"'{pattern}': {e}")
+                    filters.append({'pattern': pattern})
+                elif item.get('name'):
+                    filters.append({'name': item['name']})
+            elif isinstance(item, str):
+                filters.append({'name': item})
+
+        return filters
 
     def to_dict(self) -> Dict:
         """Convertir template a diccionario"""

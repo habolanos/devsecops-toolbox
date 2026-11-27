@@ -1,0 +1,56 @@
+metadata:
+  name: "Reemplazar agent pools en stages especificos"
+  version: "1.0"
+  description: >
+    Reemplaza agent pool IDs (queueId) viejos por IDs validos solo en
+    los stages que coincidan con el filtro 'stages' (nombres exactos,
+    wildcards * o regex). Usa el formato estructurado de
+    options.replace_agent_pools.
+  comment: |
+    Reemplazo selectivo de agent pools en pipeline CD.
+
+    Cambios realizados:
+    1. Recorre los environments/stages del pipeline.
+    2. Solo en los stages que coinciden con 'stages' (logica OR entre
+       criterios), reemplaza deployPhases[].deploymentInput.queueId
+       si coincide con un ID viejo del mapeo.
+    3. Los demas stages conservan su queueId intacto.
+    4. Si ningun stage filtrado tiene queueId mapeado, no se envia PUT.
+
+    Sintaxis de 'stages' (misma semantica que search.stages):
+      - name: "QA"              exacto; wildcards: "Prod*", "*Lab*", "*fix"
+      - pattern: "^\\d{2}-"     regex Python con re.match (anclado al
+                                inicio; usar $ para match exacto, ej:
+                                "^QA$"; usar (?i) para case-insensitive)
+
+    Agent Pool valido: queueId=5331 para "gents-AutoScaling-Releases".
+
+  author: "Harold Adrian"
+  created_at: "2026-11-27"
+
+search:
+  # Requerido por el validador; el reemplazo de pools no depende
+  # de los matches. El filtro real esta en replace_agent_pools.stages.
+  stages:
+    - name: "*"
+
+update:
+  # Sin acciones de update: el cambio lo realiza options.replace_agent_pools.
+  stages: []
+
+options:
+  dry_run: false
+  rollback_on_error: true
+  # Reemplazar agent pools (queueId) solo en stages filtrados.
+  # En este ejemplo aplica a QA, Production y todos los stages
+  # regionales numericos (01-*, 02-*, etc.); el resto queda intacto.
+  replace_agent_pools:
+    stages:
+      - name: "QA"
+      - name: "Production"
+      - pattern: "^\\d{2}-"
+    mappings:
+      1749: 5331
+      1751: 5331
+      2722: 5331
+      7251: 5331

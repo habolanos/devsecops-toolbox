@@ -330,7 +330,7 @@ options:
 - **`dry_run`** (bool, default: false): Si es true, no aplica cambios reales, solo simula.
 - **`rollback_on_error`** (bool, default: true): Si es true, crea snapshot antes de actualizar y hace rollback si hay error.
 - **`ignore_variable_groups`** (list[int] | dict, default: []): IDs de variable groups a remover antes de actualizar. Acepta formato lista simple o diferenciado por scope (ver abajo).
-- **`replace_agent_pools`** (dict, default: {}): Mapeo de agent pool IDs viejos a nuevos. Formato: `{old_id: new_id}`.
+- **`replace_agent_pools`** (dict, default: {}): Mapeo de agent pool IDs viejos a nuevos. Formato plano `{old_id: new_id}` (aplica a todos los stages) o formato estructurado con `mappings` + `stages` opcional para filtrar por stage.
 
 **Variable Groups Faltantes:**
 
@@ -382,6 +382,28 @@ options:
 Azure DevOps almacena el agent pool en `deployPhases[].deploymentInput.queueId` de cada environment. El reemplazo actualiza tanto `queueId` como el objeto `queue` si existe.
 
 Los reemplazos se registran en el reporte de cambios con tipo `agent_pool_replaced`, indicando el `environment`, `old_queue_id` y `new_queue_id`.
+
+**Filtro por stage (formato estructurado):**
+
+Por defecto el reemplazo aplica a **todos** los stages. Para limitarlo a uno o varios stages especificos, use el formato estructurado con `stages` (opcional) y `mappings`:
+
+```yaml
+options:
+  replace_agent_pools:
+    stages:                    # opcional; si se omite aplica a todos
+      - name: "QA"             # exacto; wildcards: "Prod*", "*Lab*"
+      - name: "Production"
+      - pattern: "^\\d{2}-"    # regex (re.match, anclado al inicio)
+    mappings:
+      1751: 100
+      2722: 200
+```
+
+- `stages` usa la **misma semantica que `search.stages`**: `name` acepta coincidencia exacta o wildcards `*`; `pattern` es regex Python evaluado con `re.match` (anclado al inicio; usar `$` para match exacto, `(?i)` para case-insensitive). Strings sueltos se tratan como `name`.
+- La logica entre criterios es **OR**: basta que un stage coincida con un criterio para que aplique.
+- Los `pattern` se validan al parsear el template: un regex invalido aborta con error claro (evita que un filtro mal escrito se descarte silenciosamente y amplie el reemplazo a todos los stages).
+- Si el filtro no coincide con ningun stage, no hay cambios y se omite el PUT.
+- Templates de ejemplo: `pipe_cd_replace_agent_pools_all.yaml` (todos los stages) y `pipe_cd_replace_agent_pools_stages.yaml` (stages filtrados).
 
 **Como identificar el agent pool valido:**
 
@@ -595,14 +617,15 @@ El cliente elimina automáticamente: `_links`, `url`, `projectReference`,
 
 ## Versión
 
-- **Versión**: 1.0.9
+- **Versión**: 1.0.10
 - **Autor**: Harold Adrian
-- **Fecha**: 2026-08-08
+- **Fecha**: 2026-11-27
 
 ## Historial de Cambios
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.0.10 | 2026-11-27 | **`replace_agent_pools` con filtro de stages**: (1) **Formato estructurado**: `options.replace_agent_pools` ahora acepta `mappings` + `stages` opcional para limitar el reemplazo de `queueId` a uno o varios stages; el formato plano `{old_id: new_id}` sigue aplicando a todos los stages (backward compatible). (2) **`stages` con semantica de `search.stages`**: `name` (exacto/wildcards `*`) y `pattern` (regex con `re.match`); strings se normalizan a `name`; logica OR entre criterios. (3) **`ReplaceAgentPools.stage_filters`**: nuevo campo en el modelo. (4) **`_replace_agent_pools`** filtra environments por los criterios antes de reemplazar. (5) **Validacion fail-fast**: regex invalido en `stages` aborta el parseo con mensaje claro. (6) **Templates**: `pipe_cd_replace_agent_pools_all.yaml` y `pipe_cd_replace_agent_pools_stages.yaml`. (7) **Pruebas**: 15 tests nuevos en `test_replace_agent_pools.py` (parsing flat/estructurado, filtros name/pattern/wildcard, queue.id, noop). |
 | 1.0.9 | 2026-08-08 | **Acción de Pipeline: move**: Mover pipelines CD entre carpetas de Azure DevOps. (1) **`update.pipeline` con `action: "move"`**: cambia el campo `path` de la definición de release al valor especificado en `path`. (2) **Placeholder `{current}`**: se reemplaza por el path actual del pipeline, permitiendo mover sin conocer el path previo (ej: `path: '\Decomiso{current}'` → `\Decomiso\GCP\...`). (3) **Path absoluto**: también soporta paths fijos sin `{current}`. (4) **`TemplateParser.get_pipeline_path()`**: nuevo método para extraer el path destino. (5) **`ParallelExecutor`**: ramifica al flujo de move, resuelve `{current}`, setea `definition["path"]` y envía via PUT. (6) **Snapshot automático**: se crea antes de mover para rollback. (7) **Template**: `pipe_cd_move_to_folder.yaml` como ejemplo de uso. (8) **Pruebas**: 27 tests nuevos en `test_template_move_to_folder.py` (carga del template real desde disco, parser, validator, flujo move, {current} resolution, path absoluto, snapshot, error sin path, old_path vacío, diferentes paths actuales, envio de definicion modificada). Suite del módulo: 161 tests en verde (27 nuevos + 134 existentes). |
 | 1.0.8 | 2026-08-08 | **Tests de templates + fixes en engine**: (1) **27 tests nuevos** en 4 archivos separados (uno por template): `test_template_insert_stage_with_n_tasks.py` (8 tests), `test_template_rename_cedis_villa_hermosa.py` (7 tests), `test_template_rename_cedis_texcoco.py` (6 tests), `test_template_insert_task_before_show_manifest.py` (6 tests). (2) **Fix `_reorder_stages`**: ahora considera `definition.rank` para stages agregados via `action: add`. (3) **Fix `_update_stage`**: soporta formato `fields` además de `properties`. (4) **Fix `_set_nested_value`/`_get_nested_value`**: soportan notación de array index `key[0]` en paths (ej: `preDeployApprovals.approvals[0].approver.displayName`). Suite del módulo: 134 tests en verde (27 nuevos + 107 existentes). |
 | 1.0.7 | 2026-08-08 | **Resolución dinámica de Artifact Name ($auto)**: Elimina la necesidad de hardcodear el alias del artifact en templates. (1) **`$auto`**: resuelve al primer Build artifact del pipeline. (2) **`$auto:Git`**: resuelve al primer Git artifact. (3) **`$auto:Build`**: explícito para Build artifact. (4) Funciona en `update.triggers` con `action: add`, `update` y `remove`. (5) **`search.artifacts`** con `alias: "*"` encuentra cualquier artifact por tipo. (6) **`update.artifacts`** sin campo `name` aplica a todos los artifacts encontrados. (7) Template `pipe_cd_insert_stage_with_n_tasks.yaml` actualizado a v2.1 usando `$auto`. (8) **Pruebas**: 11 tests nuevos en `test_update_engine_auto.py`. Suite del módulo: 107 tests en verde (11 nuevos + 96 existentes). |

@@ -60,6 +60,7 @@ class IgnoreVariableGroups:
 class ReplaceAgentPools:
     """Mapeo de agent pool IDs viejos a nuevos para reemplazo"""
     mappings: Dict[int, int] = field(default_factory=dict)
+    stage_filters: List[Dict] = field(default_factory=list)
 
     def has_any(self) -> bool:
         return bool(self.mappings)
